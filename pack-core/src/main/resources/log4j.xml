@@ -26,10 +26,6 @@ under the License.
 			<param name="ConversionPattern" value="%-5p %d{yyyyMMdd_HH:mm:ss:SSS_z} [%t] %c{2}: %m%n" />
 		</layout>
 	</appender>
-	<logger name="org.apache.hadoop">
-    	<level value="ERROR" />
-	    <appender-ref ref="console"/>
-	</logger>
 	<root>
 		<priority value="info" />
 		<appender-ref ref="console" />

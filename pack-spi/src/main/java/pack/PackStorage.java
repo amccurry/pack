@@ -17,4 +17,6 @@ public interface PackStorage {
 
   List<String> listVolumes() throws Exception;
 
+  boolean exists(String volumeName) throws Exception;
+
 }
