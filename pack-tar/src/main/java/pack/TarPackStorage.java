@@ -46,11 +46,14 @@ public class TarPackStorage implements PackStorage {
   private final Map<String, File> mounts = new MapMaker().makeMap();
   private final int maxOldFiles;
 
-  public TarPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi) {
+  public TarPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi)
+      throws IOException {
     this.localFile = localFile;
     this.configuration = configuration;
     this.root = remotePath;
     this.ugi = ugi;
+    localFile.mkdirs();
+    getFileSystem(remotePath).mkdirs(remotePath);
     maxOldFiles = 5;
   }
 
@@ -221,8 +224,8 @@ public class TarPackStorage implements PackStorage {
     });
   }
 
-  private FileSystem getFileSystem(Path volumePath) throws IOException {
-    return volumePath.getFileSystem(configuration);
+  private FileSystem getFileSystem(Path path) throws IOException {
+    return path.getFileSystem(configuration);
   }
 
   private void read(String type, InputStream inputStream) {

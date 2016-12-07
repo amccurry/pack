@@ -8,6 +8,7 @@ docker run -d \
   -e pack.hdfs.path="<hdfs path>" \
   -e pack.hdfs.user=pack \
   -e pack.scope=global \
+  -v <hdfs config>:/pack/hadoop-conf \
   -v /var/lib/pack:/var/lib/pack \
   -v /etc/docker:/etc/docker \
   -v /var/run/docker.sock:/var/run/docker.sock \

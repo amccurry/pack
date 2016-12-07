@@ -6,6 +6,7 @@ import static spark.Spark.post;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -87,9 +88,7 @@ public abstract class PackServer {
       }
     };
 
-    Implements impls = Implements.builder()
-                                 .impls(Arrays.asList("VolumeDriver"))
-                                 .build();
+    Implements impls = Implements.builder().impls(Arrays.asList("VolumeDriver")).build();
     post("/VolumeDriver.Capabilities",
         (request, response) -> "{ \"Capabilities\": { \"Scope\": \"" + (global ? "global" : "local") + "\" } }");
 
@@ -101,13 +100,10 @@ public abstract class PackServer {
         CreateRequest createRequest = read(request, CreateRequest.class);
         try {
           packStorage.create(createRequest.getVolumeName(), createRequest.getOptions());
-          return Err.builder()
-                    .build();
+          return Err.builder().build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return Err.builder()
-                    .error(t.getMessage())
-                    .build();
+          return Err.builder().error(t.getMessage()).build();
         }
       }
     }, trans);
@@ -118,13 +114,10 @@ public abstract class PackServer {
         RemoveRequest removeRequest = read(request, RemoveRequest.class);
         try {
           packStorage.remove(removeRequest.getVolumeName());
-          return Err.builder()
-                    .build();
+          return Err.builder().build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return Err.builder()
-                    .error(t.getMessage())
-                    .build();
+          return Err.builder().error(t.getMessage()).build();
         }
       }
     }, trans);
@@ -135,15 +128,10 @@ public abstract class PackServer {
         MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
         try {
           String mountPoint = packStorage.mount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
-          return PathResponse.builder()
-                             .mountpoint(mountPoint)
-                             .build();
+          return PathResponse.builder().mountpoint(mountPoint).build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return PathResponse.builder()
-                             .mountpoint("<unknown>")
-                             .error(t.getMessage())
-                             .build();
+          return PathResponse.builder().mountpoint("<unknown>").error(t.getMessage()).build();
         }
       }
     }, trans);
@@ -154,14 +142,10 @@ public abstract class PackServer {
         PathRequest pathRequest = read(request, PathRequest.class);
         try {
           String mountPoint = packStorage.getMountPoint(pathRequest.getVolumeName());
-          return PathResponse.builder()
-                             .mountpoint(mountPoint)
-                             .build();
+          return PathResponse.builder().mountpoint(mountPoint).build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return PathResponse.builder()
-                             .error(t.getMessage())
-                             .build();
+          return PathResponse.builder().error(t.getMessage()).build();
         }
       }
     }, trans);
@@ -172,13 +156,10 @@ public abstract class PackServer {
         MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
         try {
           packStorage.unmount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
-          return Err.builder()
-                    .build();
+          return Err.builder().build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return Err.builder()
-                    .error(t.getMessage())
-                    .build();
+          return Err.builder().error(t.getMessage()).build();
         }
       }
     }, trans);
@@ -190,21 +171,13 @@ public abstract class PackServer {
         try {
           if (packStorage.exists(getRequest.getVolumeName())) {
             String mountPoint = packStorage.getMountPoint(getRequest.getVolumeName());
-            Volume volume = Volume.builder()
-                                  .volumeName(getRequest.getVolumeName())
-                                  .mountpoint(mountPoint)
-                                  .build();
-            return GetResponse.builder()
-                              .volume(volume)
-                              .build();
+            Volume volume = Volume.builder().volumeName(getRequest.getVolumeName()).mountpoint(mountPoint).build();
+            return GetResponse.builder().volume(volume).build();
           }
-          return GetResponse.builder()
-                            .build();
+          return GetResponse.builder().build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return GetResponse.builder()
-                            .error(t.getMessage())
-                            .build();
+          return GetResponse.builder().error(t.getMessage()).build();
         }
       }
     }, trans);
@@ -217,27 +190,22 @@ public abstract class PackServer {
           Builder<Volume> volumes = ImmutableList.builder();
           for (String volumeName : volumeNames) {
             String mountPoint = packStorage.getMountPoint(volumeName);
-            Volume volume = Volume.builder()
-                                  .volumeName(volumeName)
-                                  .mountpoint(mountPoint)
-                                  .build();
+            Volume volume = Volume.builder().volumeName(volumeName).mountpoint(mountPoint).build();
             volumes.add(volume);
           }
-          return ListResponse.builder()
-                             .volumes(volumes.build())
-                             .build();
+          return ListResponse.builder().volumes(volumes.build()).build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return ListResponse.builder()
-                             .error(t.getMessage())
-                             .build();
+          return ListResponse.builder().error(t.getMessage()).build();
         }
       }
     }, trans);
   }
 
   public void writeDockerPluginFile() throws IOException {
-    try (PrintWriter printWriter = new PrintWriter(new FileOutputStream("/etc/docker/plugins/pack.json"))) {
+    File pluginJsonFile = new File("/etc/docker/plugins/pack.json");
+    pluginJsonFile.getParentFile().mkdirs();
+    try (PrintWriter printWriter = new PrintWriter(new FileOutputStream(pluginJsonFile))) {
       printWriter.println("{\"Name\": \"pack\",\"Addr\": \"http://" + loopBackAddr + ":" + port + "\"}");
     }
   }
@@ -248,12 +216,7 @@ public abstract class PackServer {
 
   public static void addAddress(String dev, String ip) throws IOException, InterruptedException {
     Builder<String> builder = ImmutableList.builder();
-    builder.add(IP)
-           .add(ADDR)
-           .add(ADD)
-           .add(ip)
-           .add(DEV)
-           .add(dev);
+    builder.add(IP).add(ADDR).add(ADD).add(ip).add(DEV).add(dev);
 
     Result result = exec(builder.build());
     if (result.exitCode != 0) {
