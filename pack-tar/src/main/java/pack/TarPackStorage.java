@@ -30,21 +30,20 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.MapMaker;
-
 public class TarPackStorage implements PackStorage {
 
   private static final Logger LOG = LoggerFactory.getLogger(TarPackStorage.class);
 
-  private static final String TAR_GZ = ".tar.gz";
-  private static final String VOLUME_TAR_GZ = "volume.tar.gz";
+  protected static final String TAR_GZ = ".tar.gz";
+  protected static final String VOLUME_TAR_GZ = "volume.tar.gz";
+  protected static final String STDERR = "stderr";
+  protected static final String STDOUT = "stdout";
 
-  private final Configuration configuration;
-  private final Path root;
-  private final UserGroupInformation ugi;
-  private final File localFile;
-  private final Map<String, File> mounts = new MapMaker().makeMap();
-  private final int maxOldFiles;
+  protected final Configuration configuration;
+  protected final Path root;
+  protected final UserGroupInformation ugi;
+  protected final File localFile;
+  protected final int maxOldFiles;
 
   public TarPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi)
       throws IOException {
@@ -59,120 +58,126 @@ public class TarPackStorage implements PackStorage {
 
   @Override
   public void create(String volumeName, Map<String, Object> options) throws Exception {
-    ugi.doAs(new PrivilegedExceptionAction<Void>() {
-      @Override
-      public Void run() throws Exception {
-        LOG.info("Create Volume {}", volumeName);
-        Path volumePath = new Path(root, volumeName);
-        FileSystem fileSystem = getFileSystem(volumePath);
-        if (fileSystem.exists(volumePath)) {
-          throw new RuntimeException("Volume " + volumeName + " already exists.");
-        }
-        fileSystem.mkdirs(volumePath);
-        return null;
-      }
-    });
+    ugi.doAs(HdfsPriv.create(() -> createVolume(volumeName)));
   }
 
   @Override
   public void remove(String volumeName) throws Exception {
-    ugi.doAs(new PrivilegedExceptionAction<Void>() {
-      @Override
-      public Void run() throws Exception {
-        LOG.info("Remove Volume {}", volumeName);
-        Path volumePath = new Path(root, volumeName);
-        FileSystem fileSystem = getFileSystem(volumePath);
-        fileSystem.delete(volumePath, true);
-        return null;
-      }
-    });
+    ugi.doAs(HdfsPriv.create(() -> removeVolume(volumeName)));
   }
 
   @Override
   public String mount(String volumeName, String id) throws Exception {
-    return ugi.doAs(new PrivilegedExceptionAction<String>() {
-      @Override
-      public String run() throws Exception {
-        LOG.info("Mount Volume {} Id {}", volumeName, id);
-        Path volumePath = new Path(root, volumeName);
-        FileSystem fileSystem = getFileSystem(volumePath);
-        if (!fileSystem.exists(volumePath)) {
-          throw new RuntimeException("Volume " + volumeName + " does not exist.");
-        }
-        File mountFile = new File(localFile, id);
-        mountFile.mkdirs();
-        LOG.info("Local Volume Dir {} ", mountFile);
-        mounts.put(volumeName, mountFile);
-        File file = new File(localFile, id + TAR_GZ);
-        if (file.exists()) {
-          file.delete();
-        }
-        Path path = getExistingVolumePath(volumeName, fileSystem);
-        if (path != null && fileSystem.exists(path)) {
-          try (InputStream inputStream = fileSystem.open(path)) {
-            try (OutputStream output = new BufferedOutputStream(new FileOutputStream(file))) {
-              IOUtils.copy(inputStream, output);
-            }
-          }
-          LOG.info("Download of Tar Complete {} ", file);
-          ProcessBuilder builder = new ProcessBuilder(Arrays.asList("/usr/bin/tar", "-xpvzf", file.getAbsolutePath()));
-          builder.directory(mountFile);
-          Process process = builder.start();
-          read("stdout", process.getInputStream());
-          read("stderr", process.getErrorStream());
-          if (process.waitFor() != 0) {
-            throw new RuntimeException("Unknown error");
-          }
-          LOG.info("Extraction of Tar Complete {} ", file);
-          file.delete();
-        }
-        return mountFile.getAbsolutePath();
-      }
-
-    });
+    return ugi.doAs((PrivilegedExceptionAction<String>) () -> mountVolume(volumeName, id));
   }
 
   @Override
   public void unmount(String volumeName, String id) throws Exception {
-    ugi.doAs(new PrivilegedExceptionAction<Void>() {
-      @Override
-      public Void run() throws Exception {
-        LOG.info("Unmount Volume {} Id {}", volumeName, id);
-        Path volumePath = new Path(root, volumeName);
-        FileSystem fileSystem = getFileSystem(volumePath);
-        if (!fileSystem.exists(volumePath)) {
-          throw new RuntimeException("Volume " + volumeName + " does not exist.");
-        }
-        File mountFile = mounts.get(volumeName);
-        File file = new File(localFile, id + TAR_GZ);
-        LOG.info("Local Volume Dir {} ", mountFile);
-        // tar -cvzf out.tar.gx ./
-        ProcessBuilder builder = new ProcessBuilder(
-            Arrays.asList("/usr/bin/tar", "-cpvzf", file.getAbsolutePath(), "./"));
-        builder.directory(mountFile);
-        Process process = builder.start();
-        read("stdout", process.getInputStream());
-        read("stderr", process.getErrorStream());
-        if (process.waitFor() != 0) {
-          throw new RuntimeException("Unknown error");
-        }
-        LOG.info("Packing Volume Complete {} ", file);
+    ugi.doAs(HdfsPriv.create(() -> umountVolume(volumeName, id)));
+  }
 
-        Path path = getNewVolumePath(volumeName, fileSystem);
-        try (FSDataOutputStream outputStream = fileSystem.create(path, true)) {
-          try (InputStream input = new BufferedInputStream(new FileInputStream(file))) {
-            IOUtils.copy(input, outputStream);
-          }
-        }
+  @Override
+  public boolean exists(String volumeName) throws Exception {
+    return ugi.doAs((PrivilegedExceptionAction<Boolean>) () -> existsVolume(volumeName));
+  }
 
-        LOG.info("Upload Volume Complete {} ", path);
+  @Override
+  public String getMountPoint(String volumeName) {
+    File localMountFile = getLocalMountFile(volumeName);
+    LOG.info("Get MountPoint volume {} path {}", volumeName, localMountFile);
+    if (!localMountFile.exists()) {
+      return null;
+    }
+    return localMountFile.getAbsolutePath();
+  }
 
-        FileUtils.deleteDirectory(mountFile);
-        file.delete();
-        cleanupOldVolumes(fileSystem, volumePath);
-        return null;
+  @Override
+  public List<String> listVolumes() throws Exception {
+    return ugi.doAs((PrivilegedExceptionAction<List<String>>) () -> listHdfsVolumes());
+  }
+
+  protected List<String> listHdfsVolumes() throws IOException, FileNotFoundException {
+    LOG.info("List Volumes");
+    FileSystem fileSystem = getFileSystem(root);
+    FileStatus[] listStatus = fileSystem.listStatus(root);
+    List<String> result = new ArrayList<>();
+    for (FileStatus fileStatus : listStatus) {
+      result.add(fileStatus.getPath()
+                           .getName());
+    }
+    return result;
+  }
+
+  protected boolean existsVolume(String volumeName) throws IOException {
+    LOG.info("exists {}", volumeName);
+    FileSystem fileSystem = getFileSystem(root);
+    return fileSystem.exists(new Path(root, volumeName));
+  }
+
+  protected void createVolume(String volumeName) throws IOException {
+    Path volumePath = new Path(root, volumeName);
+    FileSystem fileSystem = getFileSystem(volumePath);
+    if (!fileSystem.exists(volumePath)) {
+      if (fileSystem.mkdirs(volumePath)) {
+        LOG.info("Create volume {}", volumeName);
+      } else {
+        LOG.info("Create not created volume {}", volumeName);
       }
-    });
+    }
+  }
+
+  protected void removeVolume(String volumeName) throws IOException {
+    LOG.info("Remove Volume {}", volumeName);
+    Path volumePath = new Path(root, volumeName);
+    FileSystem fileSystem = getFileSystem(volumePath);
+    fileSystem.delete(volumePath, true);
+  }
+
+  protected String mountVolume(String volumeName, String id)
+      throws IOException, FileNotFoundException, InterruptedException {
+    createVolume(volumeName);
+    LOG.info("Mount Volume {} Id {}", volumeName, id);
+    Path volumePath = new Path(root, volumeName);
+    FileSystem fileSystem = getFileSystem(volumePath);
+    if (!fileSystem.exists(volumePath)) {
+      throw new RuntimeException("Volume " + volumeName + " does not exist.");
+    }
+    File mountFile = getLocalMountFile(volumeName);
+    removeIfExists(mountFile);
+    mountFile.mkdirs();
+    LOG.info("Local Volume Dir {} ", mountFile);
+    File file = getLocalVolumeTarFile(volumeName);
+    removeIfExists(file);
+    Path path = getExistingVolumePath(volumeName, fileSystem);
+    if (path != null && fileSystem.exists(path)) {
+      try (InputStream inputStream = fileSystem.open(path)) {
+        try (OutputStream output = new BufferedOutputStream(new FileOutputStream(file))) {
+          IOUtils.copy(inputStream, output);
+        }
+      }
+      LOG.info("Download of Tar Complete {} ", file);
+      ProcessBuilder builder = new ProcessBuilder(Arrays.asList("/usr/bin/tar", "-xpvzf", file.getAbsolutePath()));
+      builder.directory(mountFile);
+      Process process = builder.start();
+      read(STDOUT, process.getInputStream());
+      read(STDERR, process.getErrorStream());
+      if (process.waitFor() != 0) {
+        throw new RuntimeException("Unknown error");
+      }
+      LOG.info("Extraction of Tar Complete {} ", file);
+      file.delete();
+    }
+    return mountFile.getAbsolutePath();
+  }
+
+  private void removeIfExists(File file) throws IOException {
+    if (file.exists()) {
+      if (file.isDirectory()) {
+        FileUtils.deleteDirectory(file);
+      } else {
+        file.delete();
+      }
+    }
   }
 
   protected void cleanupOldVolumes(FileSystem fileSystem, Path volumePath) throws IOException {
@@ -184,44 +189,47 @@ public class TarPackStorage implements PackStorage {
     }
   }
 
-  @Override
-  public boolean exists(String volumeName) throws Exception {
-    return ugi.doAs(new PrivilegedExceptionAction<Boolean>() {
-      @Override
-      public Boolean run() throws Exception {
-        LOG.info("exists {}", volumeName);
-        FileSystem fileSystem = getFileSystem(root);
-        return fileSystem.exists(new Path(root, volumeName));
-      }
-    });
-  }
-
-  @Override
-  public String getMountPoint(String volumeName) {
-    File file = mounts.get(volumeName);
-    LOG.info("Get MountPoint volume {} path {}", volumeName, file);
-    if (file == null) {
-      return null;
+  protected void umountVolume(String volumeName, String id)
+      throws IOException, InterruptedException, FileNotFoundException {
+    LOG.info("Unmount Volume {} Id {}", volumeName, id);
+    Path volumePath = new Path(root, volumeName);
+    FileSystem fileSystem = getFileSystem(volumePath);
+    if (!fileSystem.exists(volumePath)) {
+      throw new RuntimeException("Volume " + volumeName + " does not exist.");
     }
-    return file.getAbsolutePath();
+    File mountFile = getLocalMountFile(volumeName);
+    File file = getLocalVolumeTarFile(volumeName);
+    LOG.info("Local Volume Dir {} ", mountFile);
+    // tar -cvzf out.tar.gx ./
+    ProcessBuilder builder = new ProcessBuilder(Arrays.asList("/usr/bin/tar", "-cpvzf", file.getAbsolutePath(), "./"));
+    builder.directory(mountFile);
+    Process process = builder.start();
+    read(STDOUT, process.getInputStream());
+    read(STDERR, process.getErrorStream());
+    if (process.waitFor() != 0) {
+      throw new RuntimeException("Unknown error");
+    }
+    LOG.info("Packing Volume Complete {} ", file);
+
+    Path path = getNewVolumePath(volumeName, fileSystem);
+    try (FSDataOutputStream outputStream = fileSystem.create(path, true)) {
+      try (InputStream input = new BufferedInputStream(new FileInputStream(file))) {
+        IOUtils.copy(input, outputStream);
+      }
+    }
+
+    LOG.info("Upload Volume Complete {} ", path);
+    removeIfExists(mountFile);
+    removeIfExists(file);
+    cleanupOldVolumes(fileSystem, volumePath);
   }
 
-  @Override
-  public List<String> listVolumes() throws Exception {
-    return ugi.doAs(new PrivilegedExceptionAction<List<String>>() {
-      @Override
-      public List<String> run() throws Exception {
-        LOG.info("List Volumes");
-        FileSystem fileSystem = getFileSystem(root);
-        FileStatus[] listStatus = fileSystem.listStatus(root);
-        List<String> result = new ArrayList<>();
-        for (FileStatus fileStatus : listStatus) {
-          result.add(fileStatus.getPath()
-                               .getName());
-        }
-        return result;
-      }
-    });
+  private File getLocalVolumeTarFile(String volumeName) {
+    return new File(localFile, volumeName + TAR_GZ);
+  }
+
+  private File getLocalMountFile(String volumeName) {
+    return new File(localFile, volumeName);
   }
 
   private FileSystem getFileSystem(Path path) throws IOException {
@@ -306,4 +314,27 @@ public class TarPackStorage implements PackStorage {
     }
   }
 
+  static class HdfsPriv implements PrivilegedExceptionAction<Void> {
+
+    private final Exec exec;
+
+    private HdfsPriv(Exec exec) {
+      this.exec = exec;
+    }
+
+    @Override
+    public Void run() throws Exception {
+      exec.exec();
+      return null;
+    }
+
+    static PrivilegedExceptionAction<Void> create(Exec exec) {
+      return new HdfsPriv(exec);
+    }
+
+  }
+
+  static interface Exec {
+    void exec() throws Exception;
+  }
 }
