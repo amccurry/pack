@@ -39,6 +39,8 @@ public interface Store extends Closeable {
   
   void writeExternal(ExternalWriter storeWriter, boolean removeKeyValuesOnClose) throws IOException;
   
-  long getSize();
+  long getSizeOfData();
+  
+  int getNumberOfEntries();
 
 }

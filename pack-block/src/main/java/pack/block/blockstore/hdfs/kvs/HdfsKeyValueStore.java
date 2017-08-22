@@ -688,8 +688,13 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
-  public long getSize() {
+  public long getSizeOfData() {
     return _size.get();
+  }
+
+  @Override
+  public int getNumberOfEntries() {
+    return _pointers.size();
   }
 
 }

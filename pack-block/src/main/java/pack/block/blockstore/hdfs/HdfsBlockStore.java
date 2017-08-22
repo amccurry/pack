@@ -61,6 +61,7 @@ public class HdfsBlockStore implements BlockStore {
   private final byte[] _emptyBlock;
   private final AtomicReference<List<Path>> _blockFiles = new AtomicReference<>();
   private final Timer _blockFileTimer;
+  private final int _maxMemoryEntries;
 
   public HdfsBlockStore(FileSystem fileSystem, Path path) throws IOException {
     this(fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -68,6 +69,7 @@ public class HdfsBlockStore implements BlockStore {
 
   public HdfsBlockStore(FileSystem fileSystem, Path path, HdfsBlockStoreConfig config) throws IOException {
     _fileSystemBlockSize = config.getFileSystemBlockSize();
+    _maxMemoryEntries = config.getMaxMemoryEntries();
     _emptyBlock = new byte[_fileSystemBlockSize];
     _maxMemory = config.getMaxMemoryForCache();
     _fileSystem = fileSystem;
@@ -265,7 +267,7 @@ public class HdfsBlockStore implements BlockStore {
   }
 
   public long getKeyStoreMemoryUsage() {
-    return _hdfsKeyValueStore.getSize();
+    return _hdfsKeyValueStore.getSizeOfData();
   }
 
   protected Path getHdfsBlockPath(long hdfsBlock) {
@@ -285,10 +287,15 @@ public class HdfsBlockStore implements BlockStore {
   }
 
   private synchronized void writeBlockIfNeeded() throws IOException {
-    if (_hdfsKeyValueStore.getSize() >= _maxMemory) {
-      LOGGER.info("Writing block, memory size {}", _hdfsKeyValueStore.getSize());
+    if (_hdfsKeyValueStore.getSizeOfData() >= _maxMemory
+        || _hdfsKeyValueStore.getNumberOfEntries() >= _maxMemoryEntries) {
+      LOGGER.info("Writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
+          _hdfsKeyValueStore.getNumberOfEntries());
+
       _hdfsKeyValueStore.writeExternal(getExternalWriter(), true);
-      LOGGER.info("After writing block, memory size {}", _hdfsKeyValueStore.getSize());
+
+      LOGGER.info("After writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
+          _hdfsKeyValueStore.getNumberOfEntries());
     }
   }
 

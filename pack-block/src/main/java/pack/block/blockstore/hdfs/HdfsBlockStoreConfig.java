@@ -13,6 +13,7 @@ public class HdfsBlockStoreConfig {
 
   public static final HdfsBlockStoreConfig DEFAULT_CONFIG = HdfsBlockStoreConfig.builder()
                                                                                 .maxMemoryForCache(16 * 1024 * 1024)
+                                                                                .maxMemoryEntries(16 * 1024)
                                                                                 .fileSystemBlockSize(1024)
                                                                                 .blockFilePeriod(15)
                                                                                 .blockFileUnit(TimeUnit.SECONDS)
@@ -21,6 +22,8 @@ public class HdfsBlockStoreConfig {
   int fileSystemBlockSize;
 
   int maxMemoryForCache;
+
+  int maxMemoryEntries;
 
   long blockFilePeriod;
 
