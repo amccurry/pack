@@ -1,6 +1,8 @@
 package pack.block.blockstore.hdfs.file;
 
 import java.io.Closeable;
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
@@ -14,7 +16,10 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
+import org.roaringbitmap.IntConsumer;
 import org.roaringbitmap.RoaringBitmap;
+
+import com.google.common.collect.ImmutableList;
 
 public class BlockFile {
 
@@ -30,8 +35,13 @@ public class BlockFile {
     }
   }
 
+  public static Writer create(FileSystem fileSystem, Path path, int blockSize, List<String> sourceFileList)
+      throws IOException {
+    return new Writer(fileSystem, path, blockSize, sourceFileList);
+  }
+
   public static Writer create(FileSystem fileSystem, Path path, int blockSize) throws IOException {
-    return new Writer(fileSystem, path, blockSize);
+    return new Writer(fileSystem, path, blockSize, ImmutableList.of());
   }
 
   public static Reader open(FileSystem fileSystem, Path path) throws IOException {
@@ -39,14 +49,38 @@ public class BlockFile {
   }
 
   public static void merge(List<Reader> readers, Writer writer) {
-    List<PeekableIterator<BlockFileEntry>> iteratorList = new ArrayList<>();
-    for (Reader reader : readers) {
-      PeekableIterator<BlockFileEntry> iterator = PeekableIterator.wrap(reader.iterator());
-      iteratorList.add(iterator);
-    }
-    
-    // need to round robin through the readers...
+    RoaringBitmap allBlocks = getAllBlocks(readers);
+    BytesWritable value = new BytesWritable();
+    int readerCount = readers.size();
+    allBlocks.forEach((IntConsumer) blockId -> processReaders(readers, readerCount, blockId, writer, value));
+  }
 
+  private static void processReaders(List<Reader> readers, int readerCount, int blockId, Writer writer,
+      BytesWritable value) {
+    try {
+      for (int r = 0; r < readerCount; r++) {
+        Reader reader = readers.get(r);
+        if (reader.hasBlock(blockId)) {
+          reader.read(blockId, value);
+          writer.append(blockId, value);
+          return;
+        } else if (reader.hasEmptyBlock(blockId)) {
+          writer.appendEmpty(blockId);
+          return;
+        }
+      }
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static RoaringBitmap getAllBlocks(List<Reader> readers) {
+    RoaringBitmap result = new RoaringBitmap();
+    readers.forEach(reader -> {
+      result.or(reader._blocks);
+      result.or(reader._emptyBlocks);
+    });
+    return result;
   }
 
   public static class Writer implements Closeable {
@@ -55,12 +89,20 @@ public class BlockFile {
     private final RoaringBitmap _emptyBlocks = new RoaringBitmap();
     private final FSDataOutputStream _output;
     private final int _blockSize;
+    private final List<String> _sourceFiles;
 
     private long _prevKey = Long.MIN_VALUE;
 
-    private Writer(FileSystem fileSystem, Path path, int blockSize) throws IOException {
+    private Writer(FileSystem fileSystem, Path path, int blockSize, List<String> sourceFiles) throws IOException {
       _output = fileSystem.create(path);
       _blockSize = blockSize;
+      _sourceFiles = sourceFiles;
+    }
+
+    public void appendEmpty(int longKey) throws IOException {
+      int key = checkKey(longKey);
+      _emptyBlocks.add(key);
+      _prevKey = longKey;
     }
 
     public void append(long longKey, BytesWritable value) throws IOException {
@@ -99,6 +141,7 @@ public class BlockFile {
       _blocks.serialize(_output);
       _emptyBlocks.serialize(_output);
       _output.writeInt(_blockSize);
+      writeStringList(_output, _sourceFiles);
       _output.writeInt(MAGIC_STR.length);
       _output.write(MAGIC_STR);
       _output.writeLong(pos);
@@ -113,9 +156,12 @@ public class BlockFile {
     private final RoaringBitmap _emptyBlocks = new RoaringBitmap();
     private final FSDataInputStream _inputStream;
     private final int _blockSize;
+    private final Path _path;
+    private final List<String> _sourceFiles;
 
     private Reader(FileSystem fileSystem, Path path) throws IOException {
       _inputStream = fileSystem.open(path);
+      _path = path;
       FileStatus fileStatus = fileSystem.getFileStatus(path);
       long len = fileStatus.getLen();
       _inputStream.seek(len - 8);
@@ -124,7 +170,24 @@ public class BlockFile {
       _blocks.deserialize(_inputStream);
       _emptyBlocks.deserialize(_inputStream);
       _blockSize = _inputStream.readInt();
-      // @TODO read and validate the magic str
+      _sourceFiles = readStringList(_inputStream);
+      // @TODO read and validate the magic string
+    }
+
+    public boolean hasEmptyBlock(int blockId) {
+      return _emptyBlocks.contains(blockId);
+    }
+
+    public boolean hasBlock(int blockId) {
+      return _blocks.contains(blockId);
+    }
+
+    public Path getPath() {
+      return _path;
+    }
+
+    public int getBlockSize() {
+      return _blockSize;
     }
 
     public boolean read(long longKey, BytesWritable value) throws IOException {
@@ -183,12 +246,23 @@ public class BlockFile {
         public BlockFileEntry next() {
           Integer e = emptyIterator.peek();
           Integer b = blocksIterator.peek();
+
+          if (b == null) {
+            int id = emptyIterator.next();
+            return newBlockFileEntry(id, true);
+          }
+
+          if (e == null) {
+            int id = blocksIterator.next();
+            return newBlockFileEntry(id, false);
+          }
+
           if (e.compareTo(b) < 0) {
             int id = emptyIterator.next();
-            return newBlockFileEntry(id);
+            return newBlockFileEntry(id, true);
           } else {
             int id = blocksIterator.next();
-            return newBlockFileEntry(id);
+            return newBlockFileEntry(id, false);
           }
         }
 
@@ -199,10 +273,8 @@ public class BlockFile {
       return (long) ((int) i);
     }
 
-    private BlockFileEntry newBlockFileEntry(int id) {
+    private BlockFileEntry newBlockFileEntry(int id, boolean empty) {
       return new BlockFileEntry() {
-
-        private BytesWritable value;
 
         @Override
         public long getBlockId() {
@@ -211,18 +283,20 @@ public class BlockFile {
 
         @Override
         public boolean isEmpty() {
-          return true;
+          return empty;
         }
 
         @Override
-        public BytesWritable getData() throws IOException {
-          if (value == null) {
-            value = new BytesWritable();
-            readBlock(id, value);
-          }
-          return value;
+        public void readData(BytesWritable value) throws IOException {
+          value.setCapacity(_blockSize);
+          value.setSize(_blockSize);
+          readBlock(id, value);
         }
       };
+    }
+
+    public List<String> getSourceBlockFiles() {
+      return _sourceFiles;
     }
 
   }
@@ -246,7 +320,57 @@ public class BlockFile {
 
     boolean isEmpty();
 
-    BytesWritable getData() throws IOException;
+    void readData(BytesWritable value) throws IOException;
 
+  }
+
+  public static List<String> readStringList(DataInput input) throws IOException {
+    int length = input.readInt();
+    if (length < 0) {
+      return null;
+    } else if (length == 0) {
+      return ImmutableList.of();
+    } else {
+      List<String> list = new ArrayList<>();
+      for (int i = 0; i < length; i++) {
+        list.add(readString(input));
+      }
+      return list;
+    }
+  }
+
+  public static void writeStringList(DataOutput output, List<String> list) throws IOException {
+    if (list == null) {
+      output.writeInt(-1);
+      return;
+    }
+    if (list.isEmpty()) {
+      output.writeInt(0);
+      return;
+    }
+    output.writeInt(list.size());
+    for (String s : list) {
+      writeString(output, s);
+    }
+  }
+
+  public static String readString(DataInput input) throws IOException {
+    int length = input.readInt();
+    if (length < 0) {
+      return null;
+    }
+    byte[] buf = new byte[length];
+    input.readFully(buf);
+    return new String(buf, UTF_8);
+  }
+
+  public static void writeString(DataOutput output, String s) throws IOException {
+    if (s == null) {
+      output.writeInt(-1);
+      return;
+    }
+    byte[] bs = s.getBytes(UTF_8);
+    output.writeInt(bs.length);
+    output.write(bs);
   }
 }

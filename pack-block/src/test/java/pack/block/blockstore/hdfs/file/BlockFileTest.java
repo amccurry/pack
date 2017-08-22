@@ -4,9 +4,14 @@ import static org.junit.Assert.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Random;
 import java.util.Timer;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -18,7 +23,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import pack.block.blockstore.hdfs.HdfsMiniClusterUtil;
-import pack.block.blockstore.hdfs.file.BlockFile;
+import pack.block.blockstore.hdfs.file.BlockFile.BlockFileEntry;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 
@@ -124,7 +129,109 @@ public class BlockFileTest {
       assertTrue(reader.read(11, value));
       assertEquals(empty, value);
     }
+  }
 
+  @Test
+  public void testBlockFileMerge() throws IOException {
+    int vl = 10;
+
+    Path path0 = new Path("/testBlockFileMerge0");
+    writeBlockFile(path0, vl, kv(1));
+
+    Path path1 = new Path("/testBlockFileMerge1");
+    writeBlockFile(path1, vl, kv(1, vl), kv(3), kv(5, vl));
+
+    Path path2 = new Path("/testBlockFileMerge2");
+    writeBlockFile(path2, vl, kv(1, vl), kv(2), kv(4, vl));
+
+    Path path = new Path("/testBlockFileMergeOutput");
+    FileSystem fileSystem = _cluster.getFileSystem();
+
+    List<Reader> readers = new ArrayList<>();
+    readers.add(BlockFile.open(fileSystem, path0));
+    readers.add(BlockFile.open(fileSystem, path1));
+    readers.add(BlockFile.open(fileSystem, path2));
+
+    try (Writer writer = BlockFile.create(fileSystem, path, vl)) {
+      BlockFile.merge(readers, writer);
+    }
+    readers.forEach(reader -> IOUtils.closeQuietly(reader));
+
+    try (Reader reader = BlockFile.open(fileSystem, path)) {
+      Iterator<BlockFileEntry> iterator = reader.iterator();
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe1 = iterator.next();
+        assertEquals(1, bfe1.getBlockId());
+        assertTrue(bfe1.isEmpty());
+      }
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe2 = iterator.next();
+        assertEquals(2, bfe2.getBlockId());
+        assertTrue(bfe2.isEmpty());
+      }
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe3 = iterator.next();
+        assertEquals(3, bfe3.getBlockId());
+        assertTrue(bfe3.isEmpty());
+      }
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe4 = iterator.next();
+        assertEquals(4, bfe4.getBlockId());
+        assertFalse(bfe4.isEmpty());
+        BytesWritable bw = new BytesWritable();
+        bfe4.readData(bw);
+        assertEquals(createBytesWritable(vl), bw);
+      }
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe5 = iterator.next();
+        assertEquals(5, bfe5.getBlockId());
+        assertFalse(bfe5.isEmpty());
+        BytesWritable bw = new BytesWritable();
+        bfe5.readData(bw);
+        assertEquals(createBytesWritable(vl), bw);
+      }
+    }
+  }
+
+  private KeyValue kv(int key) {
+    return new KeyValue(key);
+  }
+
+  private KeyValue kv(int key, int valuelength) {
+    return new KeyValue(key, valuelength);
+  }
+
+  private void writeBlockFile(Path path, int valueLength, KeyValue... keyValues) throws IOException {
+    FileSystem fileSystem = _cluster.getFileSystem();
+    try (Writer writer = BlockFile.create(fileSystem, path, valueLength)) {
+      for (KeyValue kv : keyValues) {
+        if (kv.value == null) {
+          writer.appendEmpty(kv.key);
+        } else {
+          writer.append(kv.key, kv.value);
+        }
+      }
+    }
+  }
+
+  private static class KeyValue {
+    public KeyValue(int key) {
+      this.key = key;
+      this.value = null;
+    }
+
+    public KeyValue(int key, int valuelength) {
+      this.key = key;
+      this.value = createBytesWritable(valuelength);
+    }
+
+    final int key;
+    final BytesWritable value;
   }
 
   private BytesWritable getValue(long longKey, int length) {
@@ -134,4 +241,9 @@ public class BlockFileTest {
     return new BytesWritable(buf);
   }
 
+  private static BytesWritable createBytesWritable(int valuelength) {
+    byte[] bs = new byte[valuelength];
+    Arrays.fill(bs, (byte) 'a');
+    return new BytesWritable(bs);
+  }
 }

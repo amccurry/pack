@@ -25,6 +25,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Random;
@@ -82,7 +83,7 @@ public class HdfsKeyValueStoreTest {
     store.put(1, toBytesBuffer("value1"));
     store.put(2, toBytesBuffer("value2"));
     store.sync();
-    ByteBuffer value = ByteBuffer.allocate(6);
+    ByteBuffer value = createAndPopulateByteBuffer(6);
     assertTrue(store.get(1, value));
     assertEquals(toBytesBuffer("value1"), value);
     assertTrue(store.get(2, value));
@@ -96,7 +97,7 @@ public class HdfsKeyValueStoreTest {
     store.put(1, toBytesBuffer("value1"));
     store.put(2, toBytesBuffer("value2"));
     store.sync();
-    ByteBuffer value = ByteBuffer.allocate(6);
+    ByteBuffer value = createAndPopulateByteBuffer(6);
     store.get(1, value);
     assertEquals(toBytesBuffer("value1"), value);
     store.get(2, value);
@@ -114,7 +115,7 @@ public class HdfsKeyValueStoreTest {
     store1.put(1, toBytesBuffer("value1"));
     store1.put(2, toBytesBuffer("value2"));
     store1.sync();
-    ByteBuffer value1 = ByteBuffer.allocate(6);
+    ByteBuffer value1 = createAndPopulateByteBuffer(6);
     store1.get(1, value1);
     assertEquals(toBytesBuffer("value1"), value1);
     store1.get(2, value1);
@@ -122,7 +123,7 @@ public class HdfsKeyValueStoreTest {
     store1.close();
 
     HdfsKeyValueStore store2 = new HdfsKeyValueStore(false, _timer, _configuration, _path);
-    ByteBuffer value2 = ByteBuffer.allocate(6);
+    ByteBuffer value2 = createAndPopulateByteBuffer(6);
     store2.get(1, value2);
     assertEquals(toBytesBuffer("value1"), value2);
     store2.get(2, value2);
@@ -134,22 +135,28 @@ public class HdfsKeyValueStoreTest {
   public void testFileRolling() throws IOException {
     HdfsKeyValueStore store = new HdfsKeyValueStore(false, _timer, _configuration, _path, 1000);
     FileSystem fileSystem = _path.getFileSystem(_configuration);
-    store.put(1, ByteBuffer.allocate(0));
+    store.put(1, createAndPopulateByteBuffer(0));
     assertEquals(1, fileSystem.listStatus(_path).length);
-    store.put(1, ByteBuffer.allocate(2000));
+    store.put(1, createAndPopulateByteBuffer(2000));
     assertEquals(2, fileSystem.listStatus(_path).length);
     store.close();
+  }
+
+  private ByteBuffer createAndPopulateByteBuffer(int size) {
+    byte[] buf = new byte[size];
+    Arrays.fill(buf, (byte) 1);
+    return ByteBuffer.wrap(buf);
   }
 
   @Test
   public void testFileGC() throws IOException {
     HdfsKeyValueStore store = new HdfsKeyValueStore(false, _timer, _configuration, _path, 1000);
-    store.put(1, ByteBuffer.allocate(0));
+    store.put(1, createAndPopulateByteBuffer(0));
     FileSystem fileSystem = _path.getFileSystem(_configuration);
     assertEquals(1, fileSystem.listStatus(_path).length);
-    store.put(1, ByteBuffer.allocate(2000));
+    store.put(1, createAndPopulateByteBuffer(2000));
     assertEquals(2, fileSystem.listStatus(_path).length);
-    store.put(1, ByteBuffer.allocate(2000));
+    store.put(1, createAndPopulateByteBuffer(2000));
     store.cleanupOldFiles();
     assertEquals(2, fileSystem.listStatus(_path).length);
     store.close();
@@ -159,19 +166,19 @@ public class HdfsKeyValueStoreTest {
   public void testTwoKeyStoreInstancesWritingAtTheSameTime() throws IOException {
     HdfsKeyValueStore store1 = new HdfsKeyValueStore(false, _timer, _configuration, _path);
     listFiles();
-    store1.put(1, ByteBuffer.allocate(2000));
+    store1.put(1, createAndPopulateByteBuffer(2000));
     listFiles();
     HdfsKeyValueStore store2 = new HdfsKeyValueStore(false, _timer, _configuration, _path);
     listFiles();
-    store2.put(1, ByteBuffer.allocate(1000));
+    store2.put(1, createAndPopulateByteBuffer(1000));
     listFiles();
-    store1.put(2, ByteBuffer.allocate(2000));
+    store1.put(2, createAndPopulateByteBuffer(2000));
     listFiles();
-    store2.put(2, ByteBuffer.allocate(1000));
+    store2.put(2, createAndPopulateByteBuffer(1000));
     listFiles();
-    store1.put(3, ByteBuffer.allocate(2000));
+    store1.put(3, createAndPopulateByteBuffer(2000));
     listFiles();
-    store2.put(3, ByteBuffer.allocate(1000));
+    store2.put(3, createAndPopulateByteBuffer(1000));
     listFiles();
     try {
       store1.sync();
@@ -202,18 +209,18 @@ public class HdfsKeyValueStoreTest {
   @Test
   public void testTwoKeyStoreInstancesWritingAtTheSameTimeSmallFiles() throws IOException {
     HdfsKeyValueStore store1 = new HdfsKeyValueStore(false, _timer, _configuration, _path, 1000);
-    store1.put(1, ByteBuffer.allocate(2000));
+    store1.put(1, createAndPopulateByteBuffer(2000));
     HdfsKeyValueStore store2 = new HdfsKeyValueStore(false, _timer, _configuration, _path, 1000);
-    store2.put(1, ByteBuffer.allocate(1000));
+    store2.put(1, createAndPopulateByteBuffer(1000));
     try {
-      store1.put(2, ByteBuffer.allocate(2000));
+      store1.put(2, createAndPopulateByteBuffer(2000));
       fail();
     } catch (Exception e) {
       // Should throw exception
       store1.close();
     }
-    store2.put(2, ByteBuffer.allocate(1000));
-    store2.put(3, ByteBuffer.allocate(1000));
+    store2.put(2, createAndPopulateByteBuffer(1000));
+    store2.put(3, createAndPopulateByteBuffer(1000));
     store2.sync();
     store2.close();
 
@@ -229,13 +236,13 @@ public class HdfsKeyValueStoreTest {
   @Test
   public void testReadonlyPut() throws IOException {
     HdfsKeyValueStore store1 = new HdfsKeyValueStore(false, _timer, _configuration, _path, 1000);
-    store1.put(1, ByteBuffer.allocate(2000));
+    store1.put(1, createAndPopulateByteBuffer(2000));
 
     HdfsKeyValueStore store2 = new HdfsKeyValueStore(true, _timer, _configuration, _path, 1000);
-    assertTrue(store2.get(1, ByteBuffer.allocate(2000)));
+    assertTrue(store2.get(1, createAndPopulateByteBuffer(2000)));
 
     try {
-      store2.put(1, ByteBuffer.allocate(2000));
+      store2.put(1, createAndPopulateByteBuffer(2000));
       fail();
     } catch (IOException e) {
 
@@ -256,10 +263,10 @@ public class HdfsKeyValueStoreTest {
     }
 
     // Store 1 should still be able to write.
-    store1.put(2, ByteBuffer.allocate(2000));
+    store1.put(2, createAndPopulateByteBuffer(2000));
 
     // Store 2 should not be able to find.
-    assertFalse(store2.get(2, ByteBuffer.allocate(2000)));
+    assertFalse(store2.get(2, createAndPopulateByteBuffer(2000)));
 
     store2.close();
     store1.close();
@@ -272,7 +279,7 @@ public class HdfsKeyValueStoreTest {
       Random random = new Random();
       List<Long> ids = new ArrayList<Long>();
 
-      ByteBuffer buffer = ByteBuffer.allocate(20);
+      ByteBuffer buffer = createAndPopulateByteBuffer(20);
       for (int i = 0; i < 1000; i++) {
         long id = random.nextLong();
         store1.put(id, buffer);
@@ -299,7 +306,7 @@ public class HdfsKeyValueStoreTest {
     try (HdfsKeyValueStore store1 = new HdfsKeyValueStore(false, _timer, _configuration, _path, 1000)) {
       Random random = new Random();
       List<Long> ids = new ArrayList<Long>();
-      ByteBuffer buffer = ByteBuffer.allocate(20);
+      ByteBuffer buffer = createAndPopulateByteBuffer(20);
       for (int i = 0; i < 3; i++) {
         long id = random.nextLong();
         store1.put(id, buffer);
@@ -310,7 +317,7 @@ public class HdfsKeyValueStoreTest {
       store1.writeExternal((key, writable) -> {
         if (ref.get() == null) {
           ref.set(key);
-          store1.put(key, ByteBuffer.allocate(20));
+          store1.put(key, createAndPopulateByteBuffer(20));
         }
         idsOutput.add(key);
       }, true);

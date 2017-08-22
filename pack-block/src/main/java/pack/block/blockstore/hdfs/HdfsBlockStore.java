@@ -1,5 +1,6 @@
 package pack.block.blockstore.hdfs;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -9,6 +10,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -41,9 +43,9 @@ public class HdfsBlockStore implements BlockStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStore.class);
 
-  private static final String BLOCK = ".block";
-  private static final String KVS = "kvs";
-  private static final String METADATA = ".metadata";
+  public static final String BLOCK = "block";
+  public static final String KVS = "kvs";
+  public static final String METADATA = ".metadata";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   private final FileSystem _fileSystem;
@@ -58,6 +60,7 @@ public class HdfsBlockStore implements BlockStore {
   private final Cache<Path, BlockFile.Reader> _readerCache;
   private final byte[] _emptyBlock;
   private final AtomicReference<List<Path>> _blockFiles = new AtomicReference<>();
+  private final Timer _blockFileTimer;
 
   public HdfsBlockStore(FileSystem fileSystem, Path path) throws IOException {
     this(fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -68,29 +71,128 @@ public class HdfsBlockStore implements BlockStore {
     _emptyBlock = new byte[_fileSystemBlockSize];
     _maxMemory = config.getMaxMemoryForCache();
     _fileSystem = fileSystem;
-    _path = path;
+    _path = qualify(path);
     _metaData = readMetaData(path);
     _length = _metaData.getLength();
-    Path kvPath = new Path(_path, KVS);
-    _blockPath = new Path(_path, "block");
+    Path kvPath = qualify(new Path(_path, KVS));
+    _blockPath = qualify(new Path(_path, BLOCK));
     _fileSystem.mkdirs(_blockPath);
-    _hdfsKeyValueTimer = new Timer(KVS + kvPath, true);
+    _hdfsKeyValueTimer = new Timer(KVS + "|" + kvPath, true);
     _hdfsKeyValueStore = new HdfsKeyValueStore(false, _hdfsKeyValueTimer, fileSystem.getConf(), kvPath);
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
                                .removalListener(listener)
                                .build();
-    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> p.getName()
-                                                                                    .endsWith(BLOCK));
-    Arrays.sort(listStatus, Collections.reverseOrder());
-    List<Path> pathList = new ArrayList<>();
-    for (FileStatus fileStatus : listStatus) {
-      pathList.add(fileStatus.getPath());
-    }
+    List<Path> pathList = getBlockFilePathListFromStorage();
     _blockFiles.set(ImmutableList.copyOf(pathList));
     // create background thread that removes orphaned block files and checks for
     // new block files that have been merged externally
+    _blockFileTimer = new Timer(BLOCK + "|" + _blockPath.toUri()
+                                                        .getPath(),
+        true);
+    long period = config.getBlockFileUnit()
+                        .toMillis(config.getBlockFilePeriod());
+    _blockFileTimer.scheduleAtFixedRate(getBlockFileTask(), period, period);
+  }
 
+  private Path qualify(Path path) {
+    return path.makeQualified(_fileSystem.getUri(), _fileSystem.getWorkingDirectory());
+  }
+
+  private List<Path> getBlockFilePathListFromStorage() throws FileNotFoundException, IOException {
+    List<Path> pathList = new ArrayList<>();
+    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> p.getName()
+                                                                                    .endsWith("." + BLOCK));
+    Arrays.sort(listStatus, Collections.reverseOrder());
+
+    for (FileStatus fileStatus : listStatus) {
+      pathList.add(qualify(fileStatus.getPath()));
+    }
+    return pathList;
+  }
+
+  private TimerTask getBlockFileTask() {
+    return new TimerTask() {
+      @Override
+      public void run() {
+        try {
+          processBlockFiles();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error trying to clean old block files.", t);
+        }
+      }
+    };
+  }
+
+  public void processBlockFiles() throws IOException {
+    List<Path> newBlockFiles = loadAnyMissingBlockFiles();
+    dropOldBlockFiles(newBlockFiles);
+  }
+
+  private void dropOldBlockFiles(List<Path> newBlockFiles) throws IOException {
+    for (Path path : newBlockFiles) {
+      Reader reader = getReader(path);
+      List<String> sourceBlockFiles = reader.getSourceBlockFiles();
+      if (sourceBlockFiles != null) {
+        removeBlockFiles(sourceBlockFiles);
+      }
+    }
+  }
+
+  private void removeBlockFiles(List<String> sourceBlockFiles) throws IOException {
+    for (String name : sourceBlockFiles) {
+      removeBlockFile(qualify(new Path(_blockPath, name)));
+    }
+  }
+
+  private void removeBlockFile(Path path) throws IOException {
+    LOGGER.info("Removing old block file {}", path);
+    synchronized (_blockFiles) {
+      List<Path> list = new ArrayList<>(_blockFiles.get());
+      list.remove(path);
+      _blockFiles.set(ImmutableList.copyOf(list));
+    }
+    _readerCache.invalidate(path);
+    _fileSystem.delete(path, true);
+  }
+
+  /**
+   * Open stored files that are missing from the cache, these are likely from an
+   * external compaction.
+   * 
+   * @return newly opened block files.
+   * @throws IOException
+   */
+  private List<Path> loadAnyMissingBlockFiles() throws IOException {
+    List<Path> storageList;
+    List<Path> cacheList;
+    synchronized (_blockFiles) {
+      cacheList = new ArrayList<>(_blockFiles.get());
+      storageList = getBlockFilePathListFromStorage();
+      storageList.forEach(path -> LOGGER.info("Storage path {}", path));
+      cacheList.forEach(path -> LOGGER.info("Cache path {}", path));
+
+      if (storageList.equals(cacheList)) {
+        LOGGER.info("No missing block files to load.");
+        return ImmutableList.of();
+      }
+      if (!storageList.containsAll(cacheList)) {
+        cacheList.removeAll(storageList);
+        LOGGER.error("Cache list contains references to files that no longer exist {}", cacheList);
+        throw new IOException("Missing files error.");
+      }
+      _blockFiles.set(ImmutableList.copyOf(storageList));
+    }
+
+    List<Path> newFiles = new ArrayList<>(storageList);
+    newFiles.removeAll(cacheList);
+    LOGGER.info("New files found.");
+    for (Path path : storageList) {
+      LOGGER.info("Loading {}.", path);
+      getReader(path);
+    }
+
+    return newFiles;
   }
 
   public int getFileSystemBlockSize() {
@@ -106,6 +208,8 @@ public class HdfsBlockStore implements BlockStore {
     _hdfsKeyValueStore.close();
     _hdfsKeyValueTimer.cancel();
     _hdfsKeyValueTimer.purge();
+    _blockFileTimer.cancel();
+    _blockFileTimer.purge();
     _readerCache.invalidateAll();
   }
 
@@ -165,7 +269,7 @@ public class HdfsBlockStore implements BlockStore {
   }
 
   protected Path getHdfsBlockPath(long hdfsBlock) {
-    return new Path(_path, "block." + Long.toString(hdfsBlock));
+    return qualify(new Path(_path, "block." + Long.toString(hdfsBlock)));
   }
 
   public static void writeHdfsMetaData(HdfsMetaData metaData, FileSystem fileSystem, Path dir) throws IOException {
@@ -175,7 +279,7 @@ public class HdfsBlockStore implements BlockStore {
   }
 
   private HdfsMetaData readMetaData(Path path) throws IOException {
-    try (InputStream input = _fileSystem.open(new Path(_path, METADATA))) {
+    try (InputStream input = _fileSystem.open(qualify(new Path(_path, METADATA)))) {
       return MAPPER.readValue(input, HdfsMetaData.class);
     }
   }
@@ -189,9 +293,9 @@ public class HdfsBlockStore implements BlockStore {
   }
 
   private ExternalWriter getExternalWriter() throws IOException {
-    Path path = new Path(_blockPath, UUID.randomUUID()
-                                         .toString()
-        + ".tmp");
+    Path path = qualify(new Path(_blockPath, UUID.randomUUID()
+                                                 .toString()
+        + ".tmp"));
     Writer writer = BlockFile.create(_fileSystem, path, _fileSystemBlockSize);
     return new ExternalWriter() {
       @Override
@@ -205,13 +309,16 @@ public class HdfsBlockStore implements BlockStore {
         Path blockPath = getNewBlockFilePath();
         checkIfStillOwner();
         if (_fileSystem.rename(path, blockPath)) {
+          getReader(blockPath);// open file ahead of time
           Builder<Path> builder = ImmutableList.builder();
           builder.add(blockPath);
-          List<Path> list = _blockFiles.get();
-          if (list != null) {
-            builder.addAll(list);
+          synchronized (_blockFiles) {
+            List<Path> list = _blockFiles.get();
+            if (list != null) {
+              builder.addAll(list);
+            }
+            _blockFiles.set(builder.build());
           }
-          _blockFiles.set(builder.build());
         } else {
           throw new IOException("Could not commit tmp block " + path + " to " + blockPath);
         }
@@ -226,7 +333,7 @@ public class HdfsBlockStore implements BlockStore {
   }
 
   private Path getNewBlockFilePath() {
-    return new Path(_blockPath, System.currentTimeMillis() + BLOCK);
+    return qualify(new Path(_blockPath, System.currentTimeMillis() + "." + BLOCK));
   }
 
   private void assertPositionIdValid(long position) throws IOException {
