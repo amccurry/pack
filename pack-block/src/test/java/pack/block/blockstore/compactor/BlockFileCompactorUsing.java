@@ -18,7 +18,7 @@ public class BlockFileCompactorUsing {
     configuration.addResource(new FileInputStream("./tmp-conf/hdfs-site.xml"));
 
     FileSystem fileSystem = FileSystem.get(configuration);
-    Path path = new Path("/test");
+    Path path = new Path("/block/testing1");
     {
       FileStatus[] listStatus = fileSystem.listStatus(path);
       for (FileStatus fileStatus : listStatus) {
@@ -32,8 +32,8 @@ public class BlockFileCompactorUsing {
       }
     }
 
-    BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path);
-    compactor.runCompaction();
+//    BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path);
+//    compactor.runCompaction();
   }
 
 }

@@ -1,17 +1,11 @@
 package pack;
 
-import static spark.Spark.ipAddress;
-import static spark.Spark.port;
-import static spark.Spark.post;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.List;
 
@@ -38,47 +32,37 @@ import spark.Request;
 import spark.Response;
 import spark.ResponseTransformer;
 import spark.Route;
+import spark.Service;
+import spark.SparkJava;
+import spark.SparkJavaIdentifier;
 
 public abstract class PackServer {
 
-  private static final String ADDR = "addr";
-  private static final String DEV = "dev";
-  private static final String ADD = "add";
-  private static final String IP = "/usr/sbin/ip";
-  private static final String UTF_8 = "UTF-8";
-
   private static final Logger LOG = LoggerFactory.getLogger(PackServer.class);
 
-  private static final String LO = "lo";
-  public static final String LOOP_BACK_ADDR = "127.23.24.25";
-  public static final String LOOP_BACK_ADDR_CIDR = LOOP_BACK_ADDR + "/32";
-  public static final int PORT = 8732;
   private static final ObjectMapper objectMapper = new ObjectMapper();
 
-  private final int port;
-  private final String loopBackAddr;
-  private final String loopBackAddrCidr;
   private final boolean global;
+  private final String sockFile;
 
-  public PackServer(boolean global, int port, String loopBackAddr, String loopBackAddrCidr) {
+  public PackServer(boolean global, String sockFile) {
     this.global = global;
-    this.port = port;
-    this.loopBackAddr = loopBackAddr;
-    this.loopBackAddrCidr = loopBackAddrCidr;
+    this.sockFile = sockFile;
   }
 
   protected abstract PackStorage getPackStorage() throws Exception;
 
   public void runServer() throws Exception {
     PackStorage packStorage = getPackStorage();
-
-    try {
-      addAddress(LO, loopBackAddrCidr);
-    } catch (Exception e) {
-      LOG.info("Could not add address likely already exists {}", LOOP_BACK_ADDR_CIDR);
+    
+    SparkJava.init();
+    Service service = Service.ignite();
+    SparkJava.configureService(SparkJavaIdentifier.UNIX_SOCKET, service);
+    File file = new File(sockFile);
+    if (file.exists()) {
+      file.delete();
     }
-    ipAddress(loopBackAddr);
-    port(port);
+    service.ipAddress(sockFile);
 
     ResponseTransformer trans = model -> {
       if (model instanceof String) {
@@ -88,101 +72,129 @@ public abstract class PackServer {
       }
     };
 
-    Implements impls = Implements.builder().impls(Arrays.asList("VolumeDriver")).build();
-    post("/VolumeDriver.Capabilities",
+    Implements impls = Implements.builder()
+                                 .impls(Arrays.asList("VolumeDriver"))
+                                 .build();
+    service.post("/VolumeDriver.Capabilities",
         (request, response) -> "{ \"Capabilities\": { \"Scope\": \"" + (global ? "global" : "local") + "\" } }");
 
-    post("/Plugin.Activate", (request, response) -> impls, trans);
+    service.post("/Plugin.Activate", (request, response) -> impls, trans);
 
-    post("/VolumeDriver.Create", new Route() {
+    service.post("/VolumeDriver.Create", new Route() {
       @Override
       public Object handle(Request request, Response response) throws Exception {
         CreateRequest createRequest = read(request, CreateRequest.class);
         try {
           packStorage.create(createRequest.getVolumeName(), createRequest.getOptions());
-          return Err.builder().build();
+          return Err.builder()
+                    .build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return Err.builder().error(t.getMessage()).build();
+          return Err.builder()
+                    .error(t.getMessage())
+                    .build();
         }
       }
     }, trans);
 
-    post("/VolumeDriver.Remove", new Route() {
+    service.post("/VolumeDriver.Remove", new Route() {
       @Override
       public Object handle(Request request, Response response) throws Exception {
         RemoveRequest removeRequest = read(request, RemoveRequest.class);
         try {
           packStorage.remove(removeRequest.getVolumeName());
-          return Err.builder().build();
+          return Err.builder()
+                    .build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return Err.builder().error(t.getMessage()).build();
+          return Err.builder()
+                    .error(t.getMessage())
+                    .build();
         }
       }
     }, trans);
 
-    post("/VolumeDriver.Mount", new Route() {
+    service.post("/VolumeDriver.Mount", new Route() {
       @Override
       public Object handle(Request request, Response response) throws Exception {
         MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
         try {
           String mountPoint = packStorage.mount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
-          return PathResponse.builder().mountpoint(mountPoint).build();
+          return PathResponse.builder()
+                             .mountpoint(mountPoint)
+                             .build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return PathResponse.builder().mountpoint("<unknown>").error(t.getMessage()).build();
+          return PathResponse.builder()
+                             .mountpoint("<unknown>")
+                             .error(t.getMessage())
+                             .build();
         }
       }
     }, trans);
 
-    post("/VolumeDriver.Path", new Route() {
+    service.post("/VolumeDriver.Path", new Route() {
       @Override
       public Object handle(Request request, Response response) throws Exception {
         PathRequest pathRequest = read(request, PathRequest.class);
         try {
           String mountPoint = packStorage.getMountPoint(pathRequest.getVolumeName());
-          return PathResponse.builder().mountpoint(mountPoint).build();
+          return PathResponse.builder()
+                             .mountpoint(mountPoint)
+                             .build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return PathResponse.builder().error(t.getMessage()).build();
+          return PathResponse.builder()
+                             .error(t.getMessage())
+                             .build();
         }
       }
     }, trans);
 
-    post("/VolumeDriver.Unmount", new Route() {
+    service.post("/VolumeDriver.Unmount", new Route() {
       @Override
       public Object handle(Request request, Response response) throws Exception {
         MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
         try {
           packStorage.unmount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
-          return Err.builder().build();
+          return Err.builder()
+                    .build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return Err.builder().error(t.getMessage()).build();
+          return Err.builder()
+                    .error(t.getMessage())
+                    .build();
         }
       }
     }, trans);
 
-    post("/VolumeDriver.Get", new Route() {
+    service.post("/VolumeDriver.Get", new Route() {
       @Override
       public Object handle(Request request, Response response) throws Exception {
         GetRequest getRequest = read(request, GetRequest.class);
         try {
           if (packStorage.exists(getRequest.getVolumeName())) {
             String mountPoint = packStorage.getMountPoint(getRequest.getVolumeName());
-            Volume volume = Volume.builder().volumeName(getRequest.getVolumeName()).mountpoint(mountPoint).build();
-            return GetResponse.builder().volume(volume).build();
+            Volume volume = Volume.builder()
+                                  .volumeName(getRequest.getVolumeName())
+                                  .mountpoint(mountPoint)
+                                  .build();
+            return GetResponse.builder()
+                              .volume(volume)
+                              .build();
           }
-          return GetResponse.builder().build();
+          return GetResponse.builder()
+                            .build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return GetResponse.builder().error(t.getMessage()).build();
+          return GetResponse.builder()
+                            .error(t.getMessage())
+                            .build();
         }
       }
     }, trans);
 
-    post("/VolumeDriver.List", new Route() {
+    service.post("/VolumeDriver.List", new Route() {
       @Override
       public Object handle(Request request, Response response) throws Exception {
         try {
@@ -190,38 +202,27 @@ public abstract class PackServer {
           Builder<Volume> volumes = ImmutableList.builder();
           for (String volumeName : volumeNames) {
             String mountPoint = packStorage.getMountPoint(volumeName);
-            Volume volume = Volume.builder().volumeName(volumeName).mountpoint(mountPoint).build();
+            Volume volume = Volume.builder()
+                                  .volumeName(volumeName)
+                                  .mountpoint(mountPoint)
+                                  .build();
             volumes.add(volume);
           }
-          return ListResponse.builder().volumes(volumes.build()).build();
+          return ListResponse.builder()
+                             .volumes(volumes.build())
+                             .build();
         } catch (Throwable t) {
           LOG.error("error", t);
-          return ListResponse.builder().error(t.getMessage()).build();
+          return ListResponse.builder()
+                             .error(t.getMessage())
+                             .build();
         }
       }
     }, trans);
   }
 
-  public void writeDockerPluginFile() throws IOException {
-    File pluginJsonFile = new File("/etc/docker/plugins/pack.json");
-    pluginJsonFile.getParentFile().mkdirs();
-    try (PrintWriter printWriter = new PrintWriter(new FileOutputStream(pluginJsonFile))) {
-      printWriter.println("{\"Name\": \"pack\",\"Addr\": \"http://" + loopBackAddr + ":" + port + "\"}");
-    }
-  }
-
   private static <T> T read(Request request, Class<T> clazz) throws IOException {
     return objectMapper.readValue(request.bodyAsBytes(), clazz);
-  }
-
-  public static void addAddress(String dev, String ip) throws IOException, InterruptedException {
-    Builder<String> builder = ImmutableList.builder();
-    builder.add(IP).add(ADDR).add(ADD).add(ip).add(DEV).add(dev);
-
-    Result result = exec(builder.build());
-    if (result.exitCode != 0) {
-      throw new RuntimeException(toMessage(result.error));
-    }
   }
 
   public static Result exec(List<String> command) throws IOException, InterruptedException {
@@ -266,9 +267,5 @@ public abstract class PackServer {
         }
       }
     });
-  }
-
-  private static String toMessage(InputStream input) throws IOException {
-    return IOUtils.toString(input, UTF_8);
   }
 }

@@ -171,11 +171,11 @@ public class HdfsBlockStore implements BlockStore {
     synchronized (_blockFiles) {
       cacheList = new ArrayList<>(_blockFiles.get());
       storageList = getBlockFilePathListFromStorage();
-      storageList.forEach(path -> LOGGER.info("Storage path {}", path));
-      cacheList.forEach(path -> LOGGER.info("Cache path {}", path));
+      storageList.forEach(path -> LOGGER.debug("Storage path {}", path));
+      cacheList.forEach(path -> LOGGER.debug("Cache path {}", path));
 
       if (storageList.equals(cacheList)) {
-        LOGGER.info("No missing block files to load.");
+        LOGGER.debug("No missing block files to load.");
         return ImmutableList.of();
       }
       if (!storageList.containsAll(cacheList)) {
@@ -207,6 +207,7 @@ public class HdfsBlockStore implements BlockStore {
 
   @Override
   public void close() throws IOException {
+    _hdfsKeyValueStore.sync();
     _hdfsKeyValueStore.close();
     _hdfsKeyValueTimer.cancel();
     _hdfsKeyValueTimer.purge();
@@ -289,12 +290,12 @@ public class HdfsBlockStore implements BlockStore {
   private synchronized void writeBlockIfNeeded() throws IOException {
     if (_hdfsKeyValueStore.getSizeOfData() >= _maxMemory
         || _hdfsKeyValueStore.getNumberOfEntries() >= _maxMemoryEntries) {
-      LOGGER.info("Writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
+      LOGGER.debug("Writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
           _hdfsKeyValueStore.getNumberOfEntries());
 
       _hdfsKeyValueStore.writeExternal(getExternalWriter(), true);
 
-      LOGGER.info("After writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
+      LOGGER.debug("After writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
           _hdfsKeyValueStore.getNumberOfEntries());
     }
   }

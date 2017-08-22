@@ -1,4 +1,4 @@
-package pack;
+package pack.block.server;
 
 import java.io.File;
 
@@ -6,23 +6,26 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 
-public class TarPackServer extends PackServer {
+import pack.PackServer;
+import pack.PackStorage;
+
+public class BlockPackServer extends PackServer {
 
   private static final String VAR_LIB_PACK = "/var/lib/pack";
 
-  private static final String PACK_HDFS_PATH = "pack.hdfs.path";
-  private static final String PACK_HDFS_USER = "pack.hdfs.user";
-  private static final String PACK_LOCAL = "pack.local";
-  private static final String PACK_SCOPE = "pack.scope";
+  private static final String PACK_HDFS_PATH = "pack_hdfs_path";
+  private static final String PACK_HDFS_USER = "pack_hdfs_user";
+  private static final String PACK_LOCAL = "pack_local";
+  private static final String PACK_SCOPE = "pack_scope";
 
   public static void main(String[] args) throws Exception {
     File localFile = new File(getLocalCachePath());
     Path remotePath = new Path(getHdfsPath());
     UserGroupInformation ugi = UserGroupInformation.createRemoteUser(getHdfsUser());
 
-    String sockerFile = "/run/docker/plugins/tarpack.sock";
+    String sockerFile = "/run/docker/plugins/pack.sock";
 
-    TarPackServer packServer = new TarPackServer(isGlobal(), sockerFile, localFile, remotePath, ugi);
+    BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localFile, remotePath, ugi);
     packServer.runServer();
   }
 
@@ -63,7 +66,7 @@ public class TarPackServer extends PackServer {
   private final UserGroupInformation ugi;
   private final Configuration configuration = new Configuration();
 
-  public TarPackServer(boolean global, String sockFile, File localFile, Path remotePath, UserGroupInformation ugi) {
+  public BlockPackServer(boolean global, String sockFile, File localFile, Path remotePath, UserGroupInformation ugi) {
     super(global, sockFile);
     this.localFile = localFile;
     this.remotePath = remotePath;
@@ -73,7 +76,7 @@ public class TarPackServer extends PackServer {
 
   @Override
   protected PackStorage getPackStorage() throws Exception {
-    return new TarPackStorage(localFile, configuration, remotePath, ugi);
+    return new BlockPackStorage(localFile, configuration, remotePath, ugi);
   }
 
 }

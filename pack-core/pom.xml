@@ -46,5 +46,9 @@
 			<groupId>com.sparkjava</groupId>
 			<artifactId>spark-core</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>org.eclipse.jetty</groupId>
+			<artifactId>jetty-unixsocket</artifactId>
+		</dependency>
 	</dependencies>
 </project>

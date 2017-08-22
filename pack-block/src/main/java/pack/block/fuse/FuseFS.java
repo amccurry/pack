@@ -37,6 +37,11 @@ public class FuseFS extends FuseStubFS implements Closeable {
     mount(Paths.get(_localPath), true, false, opts);
   }
 
+  public void localMount(boolean blocking) {
+    String[] opts = new String[] { "-o", "allow_root", "-o", "auto_unmount" };
+    mount(Paths.get(_localPath), blocking, false, opts);
+  }
+
   @Override
   public void close() throws IOException {
     synchronized (rootDirectory.contents) {
@@ -72,9 +77,10 @@ public class FuseFS extends FuseStubFS implements Closeable {
     return true;
   }
 
-  public void removeBlockStore(String name) {
-    FusePath fusePath = rootDirectory.find(FILE_SEP + name);
-    rootDirectory.deleteChild(fusePath);
+  public BlockStore removeBlockStore(String name) {
+    FuseFile fuseFile = (FuseFile) rootDirectory.find(FILE_SEP + name);
+    rootDirectory.deleteChild(fuseFile);
+    return fuseFile._blockStore;
   }
 
   private class FuseDirectory extends FusePath {
