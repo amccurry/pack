@@ -74,7 +74,7 @@ public class HdfsBlockStore implements BlockStore {
     Path kvPath = new Path(_path, KVS);
     _blockPath = new Path(_path, "block");
     _fileSystem.mkdirs(_blockPath);
-    _hdfsKeyValueTimer = new Timer(KVS + "/" + kvPath, true);
+    _hdfsKeyValueTimer = new Timer(KVS + kvPath, true);
     _hdfsKeyValueStore = new HdfsKeyValueStore(false, _hdfsKeyValueTimer, fileSystem.getConf(), kvPath);
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
@@ -88,6 +88,9 @@ public class HdfsBlockStore implements BlockStore {
       pathList.add(fileStatus.getPath());
     }
     _blockFiles.set(ImmutableList.copyOf(pathList));
+    // create background thread that removes orphaned block files and checks for
+    // new block files that have been merged externally
+
   }
 
   public int getFileSystemBlockSize() {
@@ -100,14 +103,10 @@ public class HdfsBlockStore implements BlockStore {
 
   @Override
   public void close() throws IOException {
+    _hdfsKeyValueStore.close();
     _hdfsKeyValueTimer.cancel();
     _hdfsKeyValueTimer.purge();
-    _hdfsKeyValueStore.close();
     _readerCache.invalidateAll();
-  }
-
-  protected Path getHdfsBlockPath(long hdfsBlock) {
-    return new Path(_path, "block." + Long.toString(hdfsBlock));
   }
 
   @Override
@@ -125,6 +124,50 @@ public class HdfsBlockStore implements BlockStore {
     return System.currentTimeMillis();
   }
 
+  @Override
+  public int write(long position, Pointer buffer, int offset, int len) throws IOException {
+    // have hard and soft memory limits to allow for back ground thread to work
+    assertPositionIdValid(position);
+    int length = Math.min(_fileSystemBlockSize, len);
+    long blockId = getBlockId(position);
+    ByteBuffer byteBuffer = getByteBuffer(buffer, offset, length);
+    _hdfsKeyValueStore.put(blockId, byteBuffer);
+    writeBlockIfNeeded(); // run as back ground thread
+    return length;
+  }
+
+  @Override
+  public int read(long position, Pointer buffer, int offset, int len) throws IOException {
+    assertPositionIdValid(position);
+    int length = Math.min(_fileSystemBlockSize, len);
+    ByteBuffer byteBuffer = ByteBuffer.allocate(length);
+    long blockId = getBlockId(position);
+    if (!_hdfsKeyValueStore.get(blockId, byteBuffer)) {
+      readBlocks(blockId, byteBuffer);
+    }
+    if (byteBuffer.limit() == 0) {
+      buffer.put(offset, _emptyBlock, 0, length);
+    } else if (byteBuffer.limit() == length) {
+      buffer.put(offset, byteBuffer.array(), 0, length);
+    } else {
+      throw new IOException("Bytebuffer limit " + byteBuffer.limit() + " does not equal " + length);
+    }
+    return length;
+  }
+
+  @Override
+  public void fsync() throws IOException {
+    _hdfsKeyValueStore.sync();
+  }
+
+  public long getKeyStoreMemoryUsage() {
+    return _hdfsKeyValueStore.getSize();
+  }
+
+  protected Path getHdfsBlockPath(long hdfsBlock) {
+    return new Path(_path, "block." + Long.toString(hdfsBlock));
+  }
+
   public static void writeHdfsMetaData(HdfsMetaData metaData, FileSystem fileSystem, Path dir) throws IOException {
     try (OutputStream output = fileSystem.create(new Path(dir, METADATA))) {
       MAPPER.writeValue(output, metaData);
@@ -135,17 +178,6 @@ public class HdfsBlockStore implements BlockStore {
     try (InputStream input = _fileSystem.open(new Path(_path, METADATA))) {
       return MAPPER.readValue(input, HdfsMetaData.class);
     }
-  }
-
-  @Override
-  public int write(long position, Pointer buffer, int offset, int len) throws IOException {
-    assertPositionIdValid(position);
-    int length = Math.min(_fileSystemBlockSize, len);
-    long blockId = getBlockId(position);
-    ByteBuffer byteBuffer = getByteBuffer(buffer, offset, length);
-    _hdfsKeyValueStore.put(blockId, byteBuffer);
-    writeBlockIfNeeded();
-    return length;
   }
 
   private synchronized void writeBlockIfNeeded() throws IOException {
@@ -203,25 +235,6 @@ public class HdfsBlockStore implements BlockStore {
     }
   }
 
-  @Override
-  public int read(long position, Pointer buffer, int offset, int len) throws IOException {
-    assertPositionIdValid(position);
-    int length = Math.min(_fileSystemBlockSize, len);
-    ByteBuffer byteBuffer = ByteBuffer.allocate(length);
-    long blockId = getBlockId(position);
-    if (!_hdfsKeyValueStore.get(blockId, byteBuffer)) {
-      readBlocks(blockId, byteBuffer);
-    }
-    if (byteBuffer.limit() == 0) {
-      buffer.put(offset, _emptyBlock, 0, length);
-    } else if (byteBuffer.limit() == length) {
-      buffer.put(offset, byteBuffer.array(), 0, length);
-    } else {
-      throw new IOException("Bytebuffer limit " + byteBuffer.limit() + " does not equal " + length);
-    }
-    return length;
-  }
-
   private void readBlocks(long blockId, ByteBuffer byteBuffer) throws IOException {
     BytesWritable value = new BytesWritable();
     List<Path> list = _blockFiles.get();
@@ -249,11 +262,6 @@ public class HdfsBlockStore implements BlockStore {
     }
   }
 
-  @Override
-  public void fsync() throws IOException {
-    _hdfsKeyValueStore.sync();
-  }
-
   private long getBlockId(long position) {
     return position / _fileSystemBlockSize;
   }
@@ -262,10 +270,6 @@ public class HdfsBlockStore implements BlockStore {
     ByteBuffer byteBuffer = ByteBuffer.allocate(length);
     buffer.get(offset, byteBuffer.array(), 0, length);
     return byteBuffer;
-  }
-
-  public long getKeyStoreMemoryUsage() {
-    return _hdfsKeyValueStore.getSize();
   }
 
 }
