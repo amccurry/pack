@@ -3,7 +3,10 @@ package pack.block.blockstore.hdfs.file;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
 
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -29,6 +32,21 @@ public class BlockFile {
 
   public static Writer create(FileSystem fileSystem, Path path, int blockSize) throws IOException {
     return new Writer(fileSystem, path, blockSize);
+  }
+
+  public static Reader open(FileSystem fileSystem, Path path) throws IOException {
+    return new Reader(fileSystem, path);
+  }
+
+  public static void merge(List<Reader> readers, Writer writer) {
+    List<PeekableIterator<BlockFileEntry>> iteratorList = new ArrayList<>();
+    for (Reader reader : readers) {
+      PeekableIterator<BlockFileEntry> iterator = PeekableIterator.wrap(reader.iterator());
+      iteratorList.add(iterator);
+    }
+    
+    // need to round robin through the readers...
+
   }
 
   public static class Writer implements Closeable {
@@ -89,11 +107,7 @@ public class BlockFile {
 
   }
 
-  public static Reader open(FileSystem fileSystem, Path path) throws IOException {
-    return new Reader(fileSystem, path);
-  }
-
-  public static class Reader implements Closeable {
+  public static class Reader implements Iterable<BlockFileEntry>, Closeable {
 
     private final RoaringBitmap _blocks = new RoaringBitmap();
     private final RoaringBitmap _emptyBlocks = new RoaringBitmap();
@@ -123,10 +137,14 @@ public class BlockFile {
       if (!_blocks.contains(key)) {
         return false;
       }
+      readBlock(key, value);
+      return true;
+    }
+
+    private void readBlock(int key, BytesWritable value) throws IOException {
       int storageBlockPosition = _blocks.rank(key) - 1;
       long position = storageBlockPosition * (long) _blockSize;
       _inputStream.read(position, value.getBytes(), 0, _blockSize);
-      return true;
     }
 
     private void setAllZeros(BytesWritable value) {
@@ -137,6 +155,74 @@ public class BlockFile {
     @Override
     public void close() throws IOException {
       _inputStream.close();
+    }
+
+    @Override
+    public Iterator<BlockFileEntry> iterator() {
+      PeekableIterator<Integer> emptyIterator = PeekableIterator.wrap(_emptyBlocks.iterator());
+      PeekableIterator<Integer> blocksIterator = PeekableIterator.wrap(_blocks.iterator());
+      return newIndexIterator(emptyIterator, blocksIterator);
+    }
+
+    private Iterator<BlockFileEntry> newIndexIterator(PeekableIterator<Integer> emptyIterator,
+        PeekableIterator<Integer> blocksIterator) {
+      return new Iterator<BlockFileEntry>() {
+
+        @Override
+        public boolean hasNext() {
+          if (emptyIterator.peek() != null) {
+            return true;
+          } else if (blocksIterator.peek() != null) {
+            return true;
+          } else {
+            return false;
+          }
+        }
+
+        @Override
+        public BlockFileEntry next() {
+          Integer e = emptyIterator.peek();
+          Integer b = blocksIterator.peek();
+          if (e.compareTo(b) < 0) {
+            int id = emptyIterator.next();
+            return newBlockFileEntry(id);
+          } else {
+            int id = blocksIterator.next();
+            return newBlockFileEntry(id);
+          }
+        }
+
+      };
+    }
+
+    protected Long toLong(Integer i) {
+      return (long) ((int) i);
+    }
+
+    private BlockFileEntry newBlockFileEntry(int id) {
+      return new BlockFileEntry() {
+
+        private BytesWritable value;
+
+        @Override
+        public long getBlockId() {
+          return id;
+        }
+
+        @Override
+        public boolean isEmpty() {
+          return true;
+        }
+
+        @Override
+        public BytesWritable getData() throws IOException {
+          if (value == null) {
+            value = new BytesWritable();
+            readBlock(id, value);
+          }
+          return value;
+        }
+      };
     }
 
   }
@@ -152,5 +238,15 @@ public class BlockFile {
     if (value.getLength() > 0 && value.getLength() != blockSize) {
       throw new IOException("Value size " + value.getLength() + " is not equal to block size " + blockSize);
     }
+  }
+
+  public static interface BlockFileEntry {
+
+    long getBlockId();
+
+    boolean isEmpty();
+
+    BytesWritable getData() throws IOException;
+
   }
 }
