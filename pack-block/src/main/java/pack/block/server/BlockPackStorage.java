@@ -23,11 +23,13 @@ import com.google.common.collect.ImmutableMap;
 import pack.PackServer;
 import pack.PackServer.Result;
 import pack.PackStorage;
-import pack.block.BlockStore;
+import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.fuse.FuseFS;
+import pack.block.server.fs.LinuxFileSystem;
+import pack.block.util.Utils;
 
 public class BlockPackStorage implements PackStorage {
 
@@ -131,21 +133,14 @@ public class BlockPackStorage implements PackStorage {
                                             .build();
         LOG.info("HdfsMetaData volume {} {}", volumeName, metaData);
         HdfsBlockStore.writeHdfsMetaData(metaData, fileSystem, volumePath);
-        _memfs.addBlockStore(new HdfsBlockStore(fileSystem, volumePath));
+        BlockStore blockStore = new HdfsBlockStore(fileSystem, volumePath);
+        _memfs.addBlockStore(blockStore);
         File localDevice = getLocalDevice(volumeName);
-        // mkfs.ext4
+        LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
         try {
-          Result result = PackServer.exec(Arrays.asList("mkfs.ext4", "-F", localDevice.getAbsolutePath()));
-          LOG.info("mkfs.ext4 STDOUT {}", IOUtils.toString(result.output, UTF_8));
-          LOG.info("mkfs.ext4 STDERR {}", IOUtils.toString(result.error, UTF_8));
-          if (result.exitCode != 0) {
-            throw new IOException(IOUtils.toString(result.error, UTF_8));
-          }
-        } catch (InterruptedException e) {
-          throw new IOException(e);
+          linuxFileSystem.mkfs(localDevice);
         } finally {
-          BlockStore blockStore = _memfs.removeBlockStore(volumeName);
-          IOUtils.closeQuietly(blockStore);
+          Utils.close(LOG, _memfs.removeBlockStore(volumeName));
         }
       } else {
         LOG.info("Create not created volume {}", volumeName);
@@ -176,36 +171,36 @@ public class BlockPackStorage implements PackStorage {
 
     Path volumePath = getVolumePath(volumeName);
     FileSystem fileSystem = getFileSystem(volumePath);
-    _memfs.addBlockStore(new HdfsBlockStore(fileSystem, volumePath));
+    BlockStore blockStore = new HdfsBlockStore(fileSystem, volumePath);
+    _memfs.addBlockStore(blockStore);
 
     File localFileSystemMount = getLocalFileSystemMount(volumeName);
     localFileSystemMount.mkdirs();
     File localDevice = getLocalDevice(volumeName);
-    // mount
-    Result result = PackServer.exec(
-        Arrays.asList("mount", localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath()));
 
-    LOG.info("mount STDOUT {}", IOUtils.toString(result.output, UTF_8));
-    LOG.info("mount STDERR {}", IOUtils.toString(result.error, UTF_8));
-    if (result.exitCode != 0) {
-      throw new IOException(IOUtils.toString(result.error, UTF_8));
+    LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
+    if (linuxFileSystem.isGrowOfflineSupported()) {
+      linuxFileSystem.growOffline(localDevice);
+    }
+    linuxFileSystem.mount(localDevice, localFileSystemMount);
+    if (linuxFileSystem.isGrowOnlineSupported()) {
+      linuxFileSystem.growOnline(localDevice, localFileSystemMount);
     }
     return localFileSystemMount.getAbsolutePath();
+  }
+
+  private LinuxFileSystem getLinuxFileSystem(BlockStore blockStore) {
+    return null;
   }
 
   protected void umountVolume(String volumeName, String id)
       throws IOException, InterruptedException, FileNotFoundException {
     LOG.info("Unmount Volume {} Id {}", volumeName, id);
     File localFileSystemMount = getLocalFileSystemMount(volumeName);
-    // umount
-    Result result = PackServer.exec(Arrays.asList("umount", "-d", localFileSystemMount.getAbsolutePath()));
-    LOG.info("umount STDOUT {}", IOUtils.toString(result.output, UTF_8));
-    LOG.info("umount STDERR {}", IOUtils.toString(result.error, UTF_8));
-    if (result.exitCode != 0) {
-      throw new IOException(IOUtils.toString(result.error, UTF_8));
-    }
-    BlockStore blockStore = _memfs.removeBlockStore(volumeName);
-    IOUtils.closeQuietly(blockStore);
+    BlockStore blockStore = _memfs.getBlockStore(volumeName);
+    LinuxFileSystem linuxFileSystem = getLinuxFileSystem(_memfs.removeBlockStore(volumeName));
+    linuxFileSystem.umount(localFileSystemMount);
+    Utils.close(LOG, blockStore);
   }
 
   private File getLocalFileSystemMount(String volumeName) {

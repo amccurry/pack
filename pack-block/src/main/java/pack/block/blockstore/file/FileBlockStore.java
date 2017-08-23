@@ -7,7 +7,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
 import jnr.ffi.Pointer;
-import pack.block.BlockStore;
+import pack.block.blockstore.BlockStore;
+import pack.block.server.fs.Ext4LinuxFileSystem;
+import pack.block.server.fs.LinuxFileSystem;
 
 public class FileBlockStore implements BlockStore {
 
@@ -62,6 +64,11 @@ public class FileBlockStore implements BlockStore {
   @Override
   public void fsync() throws IOException {
     _channel.force(false);
+  }
+
+  @Override
+  public LinuxFileSystem getLinuxFileSystem() {
+    return Ext4LinuxFileSystem.INSTANCE;
   }
 
 }

@@ -32,12 +32,13 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
 import jnr.ffi.Pointer;
-import pack.block.BlockStore;
+import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.kvs.ExternalWriter;
 import pack.block.blockstore.hdfs.kvs.HdfsKeyValueStore;
+import pack.block.server.fs.LinuxFileSystem;
 
 public class HdfsBlockStore implements BlockStore {
 
@@ -62,12 +63,14 @@ public class HdfsBlockStore implements BlockStore {
   private final AtomicReference<List<Path>> _blockFiles = new AtomicReference<>();
   private final Timer _blockFileTimer;
   private final int _maxMemoryEntries;
+  private final HdfsBlockStoreConfig _config;
 
   public HdfsBlockStore(FileSystem fileSystem, Path path) throws IOException {
     this(fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
   }
 
   public HdfsBlockStore(FileSystem fileSystem, Path path, HdfsBlockStoreConfig config) throws IOException {
+    _config = config;
     _fileSystemBlockSize = config.getFileSystemBlockSize();
     _maxMemoryEntries = config.getMaxMemoryEntries();
     _emptyBlock = new byte[_fileSystemBlockSize];
@@ -385,6 +388,12 @@ public class HdfsBlockStore implements BlockStore {
     ByteBuffer byteBuffer = ByteBuffer.allocate(length);
     buffer.get(offset, byteBuffer.array(), 0, length);
     return byteBuffer;
+  }
+
+  @Override
+  public LinuxFileSystem getLinuxFileSystem() {
+    return _config.getFileSystemType()
+                  .getLinuxFileSystem();
   }
 
 }

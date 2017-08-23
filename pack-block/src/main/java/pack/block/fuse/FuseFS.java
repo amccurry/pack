@@ -15,12 +15,12 @@ import com.google.common.collect.ImmutableList.Builder;
 import jnr.ffi.Pointer;
 import jnr.ffi.types.off_t;
 import jnr.ffi.types.size_t;
-import pack.block.BlockStore;
 import jnrfuse.ErrorCodes;
 import jnrfuse.FuseFillDir;
 import jnrfuse.FuseStubFS;
 import jnrfuse.struct.FileStat;
 import jnrfuse.struct.FuseFileInfo;
+import pack.block.blockstore.BlockStore;
 
 public class FuseFS extends FuseStubFS implements Closeable {
 
@@ -75,6 +75,11 @@ public class FuseFS extends FuseStubFS implements Closeable {
     }
     rootDirectory.add(new FuseFile(bs));
     return true;
+  }
+  
+  public BlockStore getBlockStore(String name) {
+    FuseFile fuseFile = (FuseFile) rootDirectory.find(FILE_SEP + name);
+    return fuseFile._blockStore;
   }
 
   public BlockStore removeBlockStore(String name) {

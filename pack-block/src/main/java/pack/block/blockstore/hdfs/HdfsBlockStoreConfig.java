@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
+import pack.block.server.fs.FileSystemType;
 
 @Value
 @AllArgsConstructor
@@ -17,6 +18,7 @@ public class HdfsBlockStoreConfig {
                                                                                 .fileSystemBlockSize(1024)
                                                                                 .blockFilePeriod(15)
                                                                                 .blockFileUnit(TimeUnit.SECONDS)
+                                                                                .fileSystemType(FileSystemType.XFS)
                                                                                 .build();
 
   int fileSystemBlockSize;
@@ -28,5 +30,7 @@ public class HdfsBlockStoreConfig {
   long blockFilePeriod;
 
   TimeUnit blockFileUnit;
+
+  FileSystemType fileSystemType;
 
 }
