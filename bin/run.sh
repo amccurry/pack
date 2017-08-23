@@ -5,4 +5,4 @@ do
   export CLASSPATH="${CLASSPATH}:${f}"
 done
 echo $CLASSPATH
-exec -a pack java -Xmx64m -Xms64m -cp ${CLASSPATH} pack.TarPackServer
+exec -a pack java -Xmx1g -Xms1g -cp ${CLASSPATH} pack.block.server.BlockPackServer

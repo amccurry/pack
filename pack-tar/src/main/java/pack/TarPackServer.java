@@ -10,10 +10,10 @@ public class TarPackServer extends PackServer {
 
   private static final String VAR_LIB_PACK = "/var/lib/pack";
 
-  private static final String PACK_HDFS_PATH = "pack.hdfs.path";
-  private static final String PACK_HDFS_USER = "pack.hdfs.user";
-  private static final String PACK_LOCAL = "pack.local";
-  private static final String PACK_SCOPE = "pack.scope";
+  private static final String PACK_HDFS_PATH = "PACK_HDFS_PATH";
+  private static final String PACK_HDFS_USER = "PACK_HDFS_USER";
+  private static final String PACK_LOCAL = "PACK_LOCAL";
+  private static final String PACK_SCOPE = "PACK_SCOPE";
 
   public static void main(String[] args) throws Exception {
     File localFile = new File(getLocalCachePath());

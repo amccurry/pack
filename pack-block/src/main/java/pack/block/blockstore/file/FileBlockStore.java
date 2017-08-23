@@ -6,7 +6,6 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
-import jnr.ffi.Pointer;
 import pack.block.blockstore.BlockStore;
 import pack.block.server.fs.Ext4LinuxFileSystem;
 import pack.block.server.fs.LinuxFileSystem;
@@ -47,23 +46,20 @@ public class FileBlockStore implements BlockStore {
   }
 
   @Override
-  public int write(long position, Pointer buffer, int offset, int len) throws IOException {
-    byte[] buf = new byte[len];
-    buffer.get(offset, buf, 0, len);
-    return _channel.write(ByteBuffer.wrap(buf), position);
+  public int write(long position, byte[] buffer, int offset, int len) throws IOException {
+    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
+    return _channel.write(byteBuffer, position);
   }
 
   @Override
-  public int read(long position, Pointer buffer, int offset, int len) throws IOException {
-    ByteBuffer byteBuffer = ByteBuffer.allocate(len);
-    int read = _channel.read(byteBuffer, position);
-    buffer.put(offset, byteBuffer.array(), 0, read);
-    return read;
+  public int read(long position, byte[] buffer, int offset, int len) throws IOException {
+    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
+    return _channel.read(byteBuffer, position);
   }
 
   @Override
   public void fsync() throws IOException {
-    _channel.force(false);
+    _channel.force(true);
   }
 
   @Override

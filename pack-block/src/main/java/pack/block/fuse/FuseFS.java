@@ -34,7 +34,7 @@ public class FuseFS extends FuseStubFS implements Closeable {
 
   public void localMount() {
     String[] opts = new String[] { "-o", "allow_root", "-o", "auto_unmount" };
-    mount(Paths.get(_localPath), true, false, opts);
+    mount(Paths.get(_localPath), true, true, opts);
   }
 
   public void localMount(boolean blocking) {
@@ -76,7 +76,7 @@ public class FuseFS extends FuseStubFS implements Closeable {
     rootDirectory.add(new FuseFile(bs));
     return true;
   }
-  
+
   public BlockStore getBlockStore(String name) {
     FuseFile fuseFile = (FuseFile) rootDirectory.find(FILE_SEP + name);
     return fuseFile._blockStore;
@@ -166,21 +166,27 @@ public class FuseFS extends FuseStubFS implements Closeable {
 
     private int read(Pointer buffer, long size, long position) throws IOException {
       int len = (int) size;
+      byte[] buf = new byte[len];
       int offset = 0;
       while (len > 0) {
-        int write = _blockStore.read(position, buffer, offset, len);
+        int write = _blockStore.read(position, buf, offset, len);
         len -= write;
         offset += write;
         position += write;
       }
+      buffer.put(0, buf, 0, len);
       return offset;
     }
 
     private int write(Pointer buffer, long size, long position) throws IOException {
       int len = (int) size;
+
+      byte[] buf = new byte[len];
+      buffer.get(0, buf, 0, len);
+
       int offset = 0;
       while (len > 0) {
-        int write = _blockStore.write(position, buffer, offset, len);
+        int write = _blockStore.write(position, buf, offset, len);
         len -= write;
         offset += write;
         position += write;

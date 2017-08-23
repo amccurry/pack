@@ -3,11 +3,10 @@ package pack.block.blockstore;
 import java.io.Closeable;
 import java.io.IOException;
 
-import jnr.ffi.Pointer;
 import pack.block.server.fs.LinuxFileSystem;
 
 public interface BlockStore extends Closeable {
-  
+
   LinuxFileSystem getLinuxFileSystem();
 
   /**
@@ -31,9 +30,9 @@ public interface BlockStore extends Closeable {
    */
   long lastModified();
 
-  int write(long position, Pointer buffer, int offset, int len) throws IOException;
+  int write(long position, byte[] buffer, int offset, int len) throws IOException;
 
-  int read(long position, Pointer buffer, int offset, int len) throws IOException;
+  int read(long position, byte[] buffer, int offset, int len) throws IOException;
 
   void fsync() throws IOException;
 

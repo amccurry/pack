@@ -5,11 +5,9 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -20,20 +18,16 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableMap;
 
-import pack.PackServer;
-import pack.PackServer.Result;
 import pack.PackStorage;
 import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.fuse.FuseFS;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 
 public class BlockPackStorage implements PackStorage {
-
-  private static final String UTF_8 = "UTF-8";
 
   private static final Logger LOG = LoggerFactory.getLogger(BlockPackStorage.class);
 
@@ -52,7 +46,7 @@ public class BlockPackStorage implements PackStorage {
     _root = remotePath;
     _ugi = ugi;
 
-    LOG.info("Creating hdfs root {}", _root);
+    LOG.info("Creating hdfs root path {}", _root);
     _ugi.doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
     _localFileSystemDir = new File(localFile, "fs");
     _localFileSystemDir.mkdirs();
@@ -126,19 +120,15 @@ public class BlockPackStorage implements PackStorage {
     if (!fileSystem.exists(volumePath)) {
       if (fileSystem.mkdirs(volumePath)) {
         LOG.info("Create volume {}", volumeName);
-        int fileSystemBlockSize = HdfsBlockStoreConfig.DEFAULT_CONFIG.getFileSystemBlockSize();
-        HdfsMetaData metaData = HdfsMetaData.builder()
-                                            .length(
-                                                (getDefaultVolumeSize() / fileSystemBlockSize) * fileSystemBlockSize)
-                                            .build();
+        HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA;
         LOG.info("HdfsMetaData volume {} {}", volumeName, metaData);
-        HdfsBlockStore.writeHdfsMetaData(metaData, fileSystem, volumePath);
+        HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
         BlockStore blockStore = new HdfsBlockStore(fileSystem, volumePath);
         _memfs.addBlockStore(blockStore);
         File localDevice = getLocalDevice(volumeName);
         LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
         try {
-          linuxFileSystem.mkfs(localDevice);
+          linuxFileSystem.mkfs(localDevice, metaData.getFileSystemBlockSize());
         } finally {
           Utils.close(LOG, _memfs.removeBlockStore(volumeName));
         }
@@ -146,10 +136,6 @@ public class BlockPackStorage implements PackStorage {
         LOG.info("Create not created volume {}", volumeName);
       }
     }
-  }
-
-  private long getDefaultVolumeSize() {
-    return 50L * 1024L * 1024L * 1024L;
   }
 
   private Path getVolumePath(String volumeName) {

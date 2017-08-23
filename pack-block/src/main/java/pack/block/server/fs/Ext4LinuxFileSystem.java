@@ -7,6 +7,7 @@ public class Ext4LinuxFileSystem extends BaseLinuxFileSystem {
 
   public static final Ext4LinuxFileSystem INSTANCE = new Ext4LinuxFileSystem();
 
+  private static final String BLOCK_SIZE_SWITCH = "-b";
   private static final String FORCE_CHECKING_SWITCH = "-f";
   private static final String FORCE_SWITCH = "-F";
   private static final String RESIZE2FS = "resize2fs";
@@ -14,8 +15,8 @@ public class Ext4LinuxFileSystem extends BaseLinuxFileSystem {
   private static final String MKFS_EXT4 = "mkfs.ext4";
 
   @Override
-  public void mkfs(File device) throws IOException {
-    exec(MKFS_EXT4, FORCE_SWITCH, device.getAbsolutePath());
+  public void mkfs(File device, int blockSize) throws IOException {
+    exec(MKFS_EXT4, BLOCK_SIZE_SWITCH, Integer.toString(blockSize), FORCE_SWITCH, device.getAbsolutePath());
   }
 
   @Override

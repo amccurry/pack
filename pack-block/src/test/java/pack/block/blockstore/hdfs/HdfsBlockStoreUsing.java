@@ -10,6 +10,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 
+import pack.block.blockstore.file.FileBlockStore;
 import pack.block.fuse.FuseFS;
 
 public class HdfsBlockStoreUsing {
@@ -30,13 +31,13 @@ public class HdfsBlockStoreUsing {
     writeConfiguration(new File(file, "hdfs-site.xml"));
 
     Path path = new Path("/test");
-    int fileSystemBlockSize = HdfsBlockStoreConfig.DEFAULT_CONFIG.getFileSystemBlockSize();
-    HdfsMetaData metaData = HdfsMetaData.builder()
-                                        .length((1000000000000L / fileSystemBlockSize) * fileSystemBlockSize)
-                                        .build();
-    HdfsBlockStore.writeHdfsMetaData(metaData, fileSystem, path);
+    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                          .length(20 * 1000 * 1000)
+                                                          .build();
+    HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
     try (FuseFS memfs = new FuseFS("./mnt")) {
-      memfs.addBlockStore(new HdfsBlockStore(fileSystem, path));
+      // memfs.addBlockStore(new HdfsBlockStore(fileSystem, path));
+      memfs.addBlockStore(new FileBlockStore(new File("data/data1")));
       memfs.localMount();
     }
   }

@@ -9,7 +9,7 @@ public interface LinuxFileSystem {
 
   void umount(File mountLocation) throws IOException;
 
-  void mkfs(File device) throws IOException;
+  void mkfs(File device, int blockSize) throws IOException;
 
   default void growOffline(File device) throws IOException {
     throw new IOException("Not supported.");

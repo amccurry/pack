@@ -13,10 +13,10 @@ public class BlockPackServer extends PackServer {
 
   private static final String VAR_LIB_PACK = "/var/lib/pack";
 
-  private static final String PACK_HDFS_PATH = "pack_hdfs_path";
-  private static final String PACK_HDFS_USER = "pack_hdfs_user";
-  private static final String PACK_LOCAL = "pack_local";
-  private static final String PACK_SCOPE = "pack_scope";
+  private static final String PACK_HDFS_PATH = "PACK_HDFS_PATH";
+  private static final String PACK_HDFS_USER = "PACK_HDFS_USER";
+  private static final String PACK_LOCAL = "PACK_LOCAL";
+  private static final String PACK_SCOPE = "PACK_SCOPE";
 
   public static void main(String[] args) throws Exception {
     File localFile = new File(getLocalCachePath());

@@ -198,7 +198,7 @@ public class MemoryFS extends FuseStubFS {
     public static void main(String[] args) {
         MemoryFS memfs = new MemoryFS();
         try {
-            memfs.mount(Paths.get("/tmp/mnttt"), true);
+            memfs.mount(Paths.get("./mnt"), true);
         } finally {
             memfs.umount();
         }
