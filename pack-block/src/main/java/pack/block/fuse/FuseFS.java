@@ -16,11 +16,11 @@ import jnr.ffi.Pointer;
 import jnr.ffi.types.off_t;
 import jnr.ffi.types.size_t;
 import pack.block.BlockStore;
-import ru.serce.jnrfuse.ErrorCodes;
-import ru.serce.jnrfuse.FuseFillDir;
-import ru.serce.jnrfuse.FuseStubFS;
-import ru.serce.jnrfuse.struct.FileStat;
-import ru.serce.jnrfuse.struct.FuseFileInfo;
+import jnrfuse.ErrorCodes;
+import jnrfuse.FuseFillDir;
+import jnrfuse.FuseStubFS;
+import jnrfuse.struct.FileStat;
+import jnrfuse.struct.FuseFileInfo;
 
 public class FuseFS extends FuseStubFS implements Closeable {
 

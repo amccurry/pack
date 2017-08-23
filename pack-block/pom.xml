@@ -17,7 +17,7 @@
 			<artifactId>pack-core</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>com.github.serceman</groupId>
+			<groupId>pack</groupId>
 			<artifactId>jnr-fuse</artifactId>
 		</dependency>
 		<dependency>
