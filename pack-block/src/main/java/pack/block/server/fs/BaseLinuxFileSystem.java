@@ -16,6 +16,7 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseLinuxFileSystem.class);
 
+  private static final String FSTRIM = "fstrim";
   private static final String UMOUNT = "umount";
   private static final String MOUNT = "mount";
   private static final String UTF_8 = "UTF-8";
@@ -28,6 +29,11 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
   @Override
   public void umount(File mountLocation) throws IOException {
     exec(UMOUNT, "-d", mountLocation.getAbsolutePath());
+  }
+
+  @Override
+  public void fstrim(File mountLocation) throws IOException {
+    exec(FSTRIM, mountLocation.getAbsolutePath());
   }
 
   protected void exec(String... command) throws IOException {

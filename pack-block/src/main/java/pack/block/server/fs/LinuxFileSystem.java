@@ -8,6 +8,8 @@ public interface LinuxFileSystem {
   void mount(File device, File mountLocation) throws IOException;
 
   void umount(File mountLocation) throws IOException;
+  
+  void fstrim(File mountLocation) throws IOException;
 
   void mkfs(File device, int blockSize) throws IOException;
 

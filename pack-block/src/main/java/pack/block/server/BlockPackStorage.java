@@ -185,6 +185,7 @@ public class BlockPackStorage implements PackStorage {
     File localFileSystemMount = getLocalFileSystemMount(volumeName);
     BlockStore blockStore = _memfs.getBlockStore(volumeName);
     LinuxFileSystem linuxFileSystem = getLinuxFileSystem(_memfs.removeBlockStore(volumeName));
+    linuxFileSystem.fstrim(localFileSystemMount);
     linuxFileSystem.umount(localFileSystemMount);
     Utils.close(LOG, blockStore);
   }
