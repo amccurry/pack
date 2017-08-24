@@ -230,9 +230,6 @@ public class HdfsBlockStore implements BlockStore {
 
   @Override
   public int write(long position, byte[] buffer, int offset, int len) throws IOException {
-
-    System.out.println("write pos [" + position + "] buf [" + buffer.length + "] off [" + offset + "] len [" + len + "]");
-
     int blockSize = _fileSystemBlockSize;
     try {
 
@@ -260,9 +257,6 @@ public class HdfsBlockStore implements BlockStore {
 
   @Override
   public int read(long position, byte[] buffer, int offset, int len) throws IOException {
-    
-    System.out.println("read pos [" + position + "] buf [" + buffer.length + "] off [" + offset + "] len [" + len + "]");
-    
     int blockSize = _fileSystemBlockSize;
 
     ByteBuffer byteBuffer = ByteBuffer.allocate(blockSize);

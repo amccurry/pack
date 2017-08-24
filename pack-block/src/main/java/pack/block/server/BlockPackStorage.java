@@ -23,7 +23,7 @@ import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.fuse.FuseFS;
+import pack.block.fuse.FuseFileSystem;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 
@@ -36,7 +36,7 @@ public class BlockPackStorage implements PackStorage {
   protected final UserGroupInformation _ugi;
   protected final File _localFileSystemDir;
   protected final File _localDeviceDir;
-  protected final FuseFS _memfs;
+  protected final FuseFileSystem _memfs;
 
   public BlockPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi)
       throws IOException, InterruptedException {
@@ -52,7 +52,7 @@ public class BlockPackStorage implements PackStorage {
     _localFileSystemDir.mkdirs();
     _localDeviceDir = new File(localFile, "dev");
     _localDeviceDir.mkdirs();
-    _memfs = new FuseFS(_localDeviceDir.getAbsolutePath());
+    _memfs = new FuseFileSystem(_localDeviceDir.getAbsolutePath());
     _memfs.localMount(false);
   }
 
