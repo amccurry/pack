@@ -40,6 +40,7 @@ public class BlockPackStorage implements PackStorage {
 
   public BlockPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi)
       throws IOException, InterruptedException {
+
     _configuration = configuration;
     FileSystem fileSystem = getFileSystem(remotePath);
     remotePath = remotePath.makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
@@ -176,7 +177,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   private LinuxFileSystem getLinuxFileSystem(BlockStore blockStore) {
-    return null;
+    return blockStore.getLinuxFileSystem();
   }
 
   protected void umountVolume(String volumeName, String id)

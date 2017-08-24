@@ -25,6 +25,7 @@ public class HdfsMiniCluster {
     File file = new File("./tmp-conf/");
     file.mkdirs();
     writeConfiguration(new File(file, "hdfs-site.xml"));
+    writeConfiguration(new File(file, "core-site.xml"));
 
     Thread.sleep(10000000);
   }

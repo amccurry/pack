@@ -16,24 +16,21 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseLinuxFileSystem.class);
 
-  private static final String FSTRIM = "fstrim";
   private static final String UMOUNT = "umount";
   private static final String MOUNT = "mount";
   private static final String UTF_8 = "UTF-8";
+  private static final String OPTIONS_SWITCH = "-o";
+  private static final String SYNC_NOATIME = "sync,noatime";
+  private static final String REMOVE_LOOP_DEVICE_IF_NEEDED_SWITCH = "-d";
 
   @Override
   public void mount(File device, File mountLocation) throws IOException {
-    exec(MOUNT, device.getAbsolutePath(), mountLocation.getAbsolutePath());
+    exec(MOUNT, OPTIONS_SWITCH, SYNC_NOATIME, device.getAbsolutePath(), mountLocation.getAbsolutePath());
   }
 
   @Override
   public void umount(File mountLocation) throws IOException {
-    exec(UMOUNT, "-d", mountLocation.getAbsolutePath());
-  }
-
-  @Override
-  public void fstrim(File mountLocation) throws IOException {
-    exec(FSTRIM, mountLocation.getAbsolutePath());
+    exec(UMOUNT, REMOVE_LOOP_DEVICE_IF_NEEDED_SWITCH, mountLocation.getAbsolutePath());
   }
 
   protected void exec(String... command) throws IOException {

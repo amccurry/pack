@@ -119,6 +119,11 @@
 				<version>[0.6,)</version>
 			</dependency>
 			<dependency>
+				<groupId>io.dropwizard.metrics</groupId>
+				<artifactId>metrics-core</artifactId>
+				<version>3.2.4</version>
+			</dependency>
+			<dependency>
 				<groupId>org.apache.hadoop</groupId>
 				<artifactId>hadoop-minicluster</artifactId>
 				<version>${hadoop.version}</version>

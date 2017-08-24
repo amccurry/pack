@@ -7,6 +7,7 @@ public class Ext4LinuxFileSystem extends BaseLinuxFileSystem {
 
   public static final Ext4LinuxFileSystem INSTANCE = new Ext4LinuxFileSystem();
 
+  private static final String FSTRIM = "fstrim";
   private static final String BLOCK_SIZE_SWITCH = "-b";
   private static final String FORCE_CHECKING_SWITCH = "-f";
   private static final String FORCE_SWITCH = "-F";
@@ -28,6 +29,11 @@ public class Ext4LinuxFileSystem extends BaseLinuxFileSystem {
   @Override
   public boolean isGrowOfflineSupported() {
     return true;
+  }
+
+  @Override
+  public void fstrim(File mountLocation) throws IOException {
+    exec(FSTRIM, mountLocation.getAbsolutePath());
   }
 
 }

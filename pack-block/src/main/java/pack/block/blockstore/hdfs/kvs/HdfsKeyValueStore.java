@@ -61,8 +61,6 @@ public class HdfsKeyValueStore implements Store {
 
   private static final ByteBuffer EMPTY = ByteBuffer.allocate(0);
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(HdfsKeyValueStore.class);
-
   public static final int DEFAULT_MAX_AMOUNT_ALLOWED_PER_FILE = 64 * 1024 * 1024;
   public static final long DEFAULT_MAX_OPEN_FOR_WRITING = TimeUnit.MINUTES.toMillis(1);
 
@@ -152,24 +150,26 @@ public class HdfsKeyValueStore implements Store {
   private final Timer _hdfsKeyValueTimer;
   private final long _maxTimeOpenForWriting;
   private final boolean _readOnly;
+  private final Logger _logger;
 
   private FSDataOutputStream _output;
   private Path _outputPath;
   private boolean _isClosed;
 
-  public HdfsKeyValueStore(boolean readOnly, Timer hdfsKeyValueTimer, Configuration configuration, Path path)
-      throws IOException {
-    this(readOnly, hdfsKeyValueTimer, configuration, path, DEFAULT_MAX_AMOUNT_ALLOWED_PER_FILE,
+  public HdfsKeyValueStore(String name, boolean readOnly, Timer hdfsKeyValueTimer, Configuration configuration,
+      Path path) throws IOException {
+    this(name, readOnly, hdfsKeyValueTimer, configuration, path, DEFAULT_MAX_AMOUNT_ALLOWED_PER_FILE,
         DEFAULT_MAX_OPEN_FOR_WRITING);
   }
 
-  public HdfsKeyValueStore(boolean readOnly, Timer hdfsKeyValueTimer, Configuration configuration, Path path,
-      long maxAmountAllowedPerFile) throws IOException {
-    this(readOnly, hdfsKeyValueTimer, configuration, path, maxAmountAllowedPerFile, DEFAULT_MAX_OPEN_FOR_WRITING);
+  public HdfsKeyValueStore(String name, boolean readOnly, Timer hdfsKeyValueTimer, Configuration configuration,
+      Path path, long maxAmountAllowedPerFile) throws IOException {
+    this(name, readOnly, hdfsKeyValueTimer, configuration, path, maxAmountAllowedPerFile, DEFAULT_MAX_OPEN_FOR_WRITING);
   }
 
-  public HdfsKeyValueStore(boolean readOnly, Timer hdfsKeyValueTimer, Configuration configuration, Path path,
-      long maxAmountAllowedPerFile, long maxTimeOpenForWriting) throws IOException {
+  public HdfsKeyValueStore(String name, boolean readOnly, Timer hdfsKeyValueTimer, Configuration configuration,
+      Path path, long maxAmountAllowedPerFile, long maxTimeOpenForWriting) throws IOException {
+    _logger = LoggerFactory.getLogger("HDFS/KVS/" + name);
     _readOnly = readOnly;
     _maxTimeOpenForWriting = maxTimeOpenForWriting;
     _maxAmountAllowedPerFile = maxAmountAllowedPerFile;
@@ -211,7 +211,7 @@ public class HdfsKeyValueStore implements Store {
       inputStream.close();
       if (len < MAGIC.length + VERSION_LENGTH) {
         // Remove invalid file
-        LOGGER.warn("Removing file {} because length of {} is less than MAGIC plus version length of {}", path, len,
+        _logger.warn("Removing file {} because length of {} is less than MAGIC plus version length of {}", path, len,
             MAGIC.length + VERSION_LENGTH);
         _fileSystem.delete(path, false);
       }
@@ -225,7 +225,7 @@ public class HdfsKeyValueStore implements Store {
         try {
           cleanupOldFiles();
         } catch (Throwable e) {
-          LOGGER.error("Unknown error while trying to clean up old files.", e);
+          _logger.error("Unknown error while trying to clean up old files.", e);
         }
       }
     };
@@ -238,7 +238,7 @@ public class HdfsKeyValueStore implements Store {
         try {
           closeLogFileIfIdle();
         } catch (Throwable e) {
-          LOGGER.error("Unknown error while trying to close output file.", e);
+          _logger.error("Unknown error while trying to close output file.", e);
         }
       }
 
@@ -304,7 +304,7 @@ public class HdfsKeyValueStore implements Store {
   }
 
   private void rollFile() throws IOException {
-    LOGGER.info("Rolling file {}", _outputPath);
+    _logger.info("Rolling file {}", _outputPath);
     _output.close();
     _output = null;
     openWriter();
@@ -336,7 +336,7 @@ public class HdfsKeyValueStore implements Store {
         existingFiles.remove(p);
       }
       for (Path p : existingFiles) {
-        LOGGER.info("Removing file no longer referenced {}", p);
+        _logger.info("Removing file no longer referenced {}", p);
         _fileSystem.delete(p, false);
       }
     } finally {
@@ -349,7 +349,7 @@ public class HdfsKeyValueStore implements Store {
     try {
       if (_output != null && _lastWrite.get() + _maxTimeOpenForWriting < System.currentTimeMillis()) {
         // Close writer
-        LOGGER.info("Closing KV log due to inactivity {}.", _path);
+        _logger.info("Closing KV log due to inactivity {}.", _path);
         try {
           _output.close();
         } finally {
@@ -470,7 +470,7 @@ public class HdfsKeyValueStore implements Store {
       throw new IOException("Key value store is set in read only mode.");
     }
     _outputPath = getSegmentPath(_currentFileCounter.incrementAndGet());
-    LOGGER.info("Opening for writing {}", _outputPath);
+    _logger.info("Opening for writing {}", _outputPath);
     _output = _fileSystem.create(_outputPath, false);
     _output.write(MAGIC);
     _output.writeInt(VERSION);
@@ -680,7 +680,7 @@ public class HdfsKeyValueStore implements Store {
             _size.addAndGet(-remove._value.getCapacity());
           }
         } else {
-          LOGGER.info("Key {} was updated during write external.", key);
+          _logger.info("Key {} was updated during write external.", key);
         }
         _writeLock.unlock();
       }
