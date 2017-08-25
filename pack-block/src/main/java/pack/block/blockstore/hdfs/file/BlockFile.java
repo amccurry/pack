@@ -53,10 +53,15 @@ public class BlockFile {
   }
 
   public static void merge(List<Reader> readers, Writer writer) {
+    merge(readers, writer, null);
+  }
+
+  public static void merge(List<Reader> readers, Writer writer, RoaringBitmap blocksToIgnore) {
     RoaringBitmap allBlocks = getAllBlocks(readers);
     BytesWritable value = new BytesWritable();
     int readerCount = readers.size();
-    long longCardinality = allBlocks.getLongCardinality();
+
+    long longCardinality = applyIgnoreBlocks(blocksToIgnore, allBlocks);
 
     IntConsumer consumer = new IntConsumer() {
       private long count = 0;
@@ -77,6 +82,20 @@ public class BlockFile {
     };
 
     allBlocks.forEach(consumer);
+  }
+
+  private static long applyIgnoreBlocks(RoaringBitmap blocksToIgnore, RoaringBitmap allBlocks) {
+    long longCardinality;
+    if (blocksToIgnore != null) {
+      long longCardinalityBeforeIgnore = allBlocks.getLongCardinality();
+      LOGGER.info("All blocks cardinality before ignore {}", longCardinalityBeforeIgnore);
+      allBlocks.andNot(blocksToIgnore);
+      longCardinality = allBlocks.getLongCardinality();
+      LOGGER.info("All blocks cardinality after ignore {}", longCardinality);
+    } else {
+      longCardinality = allBlocks.getLongCardinality();
+    }
+    return longCardinality;
   }
 
   private static void processReaders(List<Reader> readers, int readerCount, int blockId, Writer writer,
@@ -197,6 +216,14 @@ public class BlockFile {
       _blockSize = _inputStream.readInt();
       _sourceFiles = readStringList(_inputStream);
       // @TODO read and validate the magic string
+    }
+
+    public RoaringBitmap getBlocks() {
+      return _blocks;
+    }
+
+    public RoaringBitmap getEmptyBlocks() {
+      return _emptyBlocks;
     }
 
     public boolean hasEmptyBlock(int blockId) {

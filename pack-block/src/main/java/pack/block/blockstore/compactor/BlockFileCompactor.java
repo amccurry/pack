@@ -1,30 +1,40 @@
 package pack.block.blockstore.compactor;
 
+import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableList.Builder;
 
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 
-public class BlockFileCompactor {
+public class BlockFileCompactor implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFileCompactor.class);
 
@@ -32,50 +42,175 @@ public class BlockFileCompactor {
   private static final Splitter SPLITTER = Splitter.on('.');
   private final Path _blockPath;
   private final FileSystem _fileSystem;
+  private final long _maxBlockFileSize;
+  private final Cache<Path, Reader> _readerCache;
 
-  public BlockFileCompactor(FileSystem fileSystem, Path path) {
+  public BlockFileCompactor(FileSystem fileSystem, Path path, long maxBlockFileSize) {
+    _maxBlockFileSize = maxBlockFileSize;
     _fileSystem = fileSystem;
     _blockPath = new Path(path, HdfsBlockStore.BLOCK);
+    RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
+    _readerCache = CacheBuilder.newBuilder()
+                               .removalListener(listener)
+                               .build();
+  }
+
+  @Override
+  public void close() throws IOException {
+    _readerCache.invalidateAll();
   }
 
   public void runCompaction() throws IOException {
     if (!_fileSystem.exists(_blockPath)) {
-      LOGGER.info("Path {} does not exist, exiting.", _blockPath);
+      LOGGER.info("Path {} does not exist, exiting", _blockPath);
       return;
     }
     FileStatus[] listStatus = getBlockFiles();
     if (listStatus.length < 2) {
-      LOGGER.info("Path {} contains less than 2 block files, exiting.", _blockPath);
+      LOGGER.info("Path {} contains less than 2 block files, exiting", _blockPath);
       return;
     }
     Arrays.sort(listStatus, Collections.reverseOrder());
+    List<CompactionJob> compactionJobs = getCompactionJobs(listStatus);
+    LOGGER.info("Compaction job count {} for path {}", compactionJobs.size(), _blockPath);
+    for (CompactionJob job : compactionJobs) {
+      runJob(job);
+    }
+  }
+
+  private void runJob(CompactionJob job) throws IOException {
     List<Reader> readers = new ArrayList<>();
-    try {
-      LOGGER.info("Starting merge for path {}.", _blockPath);
-      List<String> sourceFileList = new ArrayList<>();
-      for (FileStatus fileStatus : listStatus) {
-        Path path = fileStatus.getPath();
-        LOGGER.info("Adding block file for merge {}.", path);
-        readers.add(BlockFile.open(_fileSystem, path));
-        sourceFileList.add(path.getName());
+    LOGGER.info("Starting compaction {} for path {}", job, _blockPath);
+    List<String> sourceFileList = new ArrayList<>();
+
+    for (Path path : job.getPathListToCompact()) {
+      LOGGER.info("Adding block file for merge {}", path);
+      readers.add(getReader(path));
+      sourceFileList.add(path.getName());
+    }
+
+    Reader reader = readers.get(0);
+    Path newPath = getNewPath(reader.getPath());
+    Path tmpPath = new Path(_blockPath, getRandomTmpName());
+
+    RoaringBitmap blocksToIgnore = job.getBlocksToIgnore();
+
+    LOGGER.info("New merged output path {}", tmpPath);
+    try (Writer writer = BlockFile.create(_fileSystem, tmpPath, reader.getBlockSize(), sourceFileList)) {
+      BlockFile.merge(readers, writer, blocksToIgnore);
+    }
+
+    LOGGER.info("Merged complete path {}", tmpPath);
+    if (_fileSystem.rename(tmpPath, newPath)) {
+      LOGGER.info("Merged commit path {}", newPath);
+    } else {
+      throw new IOException("Merge failed");
+    }
+  }
+
+  private String getRandomTmpName() {
+    return UUID.randomUUID()
+               .toString()
+        + ".tmp";
+  }
+
+  class CompactionJob {
+
+    RoaringBitmap _blocksToIgnore;
+    List<Path> _pathList = new ArrayList<>();
+
+    public List<Path> getPathListToCompact() {
+      return ImmutableList.copyOf(_pathList);
+    }
+
+    public RoaringBitmap getBlocksToIgnore() {
+      return _blocksToIgnore;
+    }
+
+    void add(Path path) {
+      _pathList.add(path);
+    }
+
+    void finishSetup(RoaringBitmap blocksToIgnore) {
+      _blocksToIgnore = blocksToIgnore.clone();
+    }
+
+    void addCurrentBlocksForThisCompaction(RoaringBitmap bitSet) throws IOException {
+      for (Path p : _pathList) {
+        Reader reader = getReader(p);
+        bitSet.or(reader.getBlocks());
+        bitSet.or(reader.getEmptyBlocks());
       }
-      Reader reader = readers.get(0);
-      Path newPath = getNewPath(reader.getPath());
-      Path tmpPath = new Path(_blockPath, UUID.randomUUID()
-                                              .toString()
-          + ".tmp");
-      LOGGER.info("New merged output path {}.", tmpPath);
-      try (Writer writer = BlockFile.create(_fileSystem, tmpPath, reader.getBlockSize(), sourceFileList)) {
-        BlockFile.merge(readers, writer);
-      }
-      LOGGER.info("Merged complete path {}.", tmpPath);
-      if (_fileSystem.rename(tmpPath, newPath)) {
-        LOGGER.info("Merged commit path {}.", newPath);
+    }
+
+  }
+
+  private List<CompactionJob> getCompactionJobs(FileStatus[] listStatus) throws IOException {
+    List<FileStatus> liveFiles = removeOrphanedBlockFiles(listStatus);
+    Builder<CompactionJob> builder = ImmutableList.builder();
+    CompactionJob compactionJob = new CompactionJob();
+    RoaringBitmap blocksToIgnore = new RoaringBitmap();
+    for (FileStatus status : liveFiles) {
+      if (status.getLen() < _maxBlockFileSize) {
+        compactionJob.add(status.getPath());
       } else {
-        throw new IOException("Merge failed.");
+        finishSetup(builder, compactionJob, blocksToIgnore);
+        compactionJob.addCurrentBlocksForThisCompaction(blocksToIgnore);
+
+        // add current block file to the ignore list because we are skipping
+        // over this segment
+        addCurrentBlocks(blocksToIgnore, status.getPath());
+        // new compaction job
+        compactionJob = new CompactionJob();
       }
-    } finally {
-      readers.forEach(r -> IOUtils.closeQuietly(r));
+    }
+    finishSetup(builder, compactionJob, blocksToIgnore);
+    return builder.build();
+  }
+
+  private void addCurrentBlocks(RoaringBitmap blocksToIgnore, Path path) throws IOException {
+    Reader reader = getReader(path);
+    blocksToIgnore.or(reader.getBlocks());
+    blocksToIgnore.or(reader.getEmptyBlocks());
+  }
+
+  private void finishSetup(Builder<CompactionJob> builder, CompactionJob compactionJob, RoaringBitmap blocksToIgnore) {
+    compactionJob.finishSetup(blocksToIgnore);
+    if (!compactionJob.getPathListToCompact()
+                      .isEmpty()) {
+      builder.add(compactionJob);
+    }
+  }
+
+  private List<FileStatus> removeOrphanedBlockFiles(FileStatus[] listStatus) throws IOException {
+    Set<String> sourceBlockFiles = new HashSet<>();
+    for (FileStatus fileStatus : listStatus) {
+      Path path = fileStatus.getPath();
+      Reader reader = getReader(path);
+      sourceBlockFiles.addAll(reader.getSourceBlockFiles());
+    }
+
+    Builder<FileStatus> builder = ImmutableList.builder();
+    for (FileStatus fileStatus : listStatus) {
+      String name = fileStatus.getPath()
+                              .getName();
+      if (!sourceBlockFiles.contains(name)) {
+        builder.add(fileStatus);
+      }
+    }
+    return builder.build();
+  }
+
+  private Reader getReader(Path path) throws IOException {
+    try {
+      return _readerCache.get(path, () -> BlockFile.open(_fileSystem, path));
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof IOException) {
+        throw (IOException) cause;
+      } else {
+        throw new RuntimeException(cause);
+      }
     }
   }
 

@@ -35,8 +35,10 @@ public class BlockFileCompactorUsing {
     ContentSummary contentSummary = fileSystem.getContentSummary(path);
     System.out.println(contentSummary.getLength());
 
-//    BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path);
-//    compactor.runCompaction();
+    long maxBlockFileSize = 1_000_000_000;
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize)) {
+      compactor.runCompaction();
+    }
   }
 
 }
