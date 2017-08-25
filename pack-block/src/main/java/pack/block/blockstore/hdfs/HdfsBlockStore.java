@@ -152,14 +152,17 @@ public class HdfsBlockStore implements BlockStore {
   }
 
   private void dropOldBlockFiles() throws IOException {
-    // fix issue with files being removed from blockfile and then asking for a reader to check for deletion.
     List<Path> blockFiles = _blockFiles.get();
     for (Path path : blockFiles) {
+      if (!_fileSystem.exists(path)) {
+        _logger.info("Path no longer exists, due to old block files being removed {}", path);
+        continue;
+      }
       Reader reader = getReader(path);
       List<String> sourceBlockFiles = reader.getSourceBlockFiles();
       if (sourceBlockFiles != null) {
         removeBlockFiles(sourceBlockFiles);
-      }      
+      }
     }
   }
 
@@ -234,6 +237,7 @@ public class HdfsBlockStore implements BlockStore {
   public void close() throws IOException {
     _hdfsKeyValueStore.sync();
     writeExternalBlock();
+    _hdfsKeyValueStore.sync();
     _hdfsKeyValueStore.close();
     _hdfsKeyValueTimer.cancel();
     _hdfsKeyValueTimer.purge();
