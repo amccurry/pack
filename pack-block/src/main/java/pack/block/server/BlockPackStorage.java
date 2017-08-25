@@ -1,12 +1,16 @@
 package pack.block.server;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -17,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.io.Closer;
 
 import pack.PackStorage;
 import pack.block.blockstore.BlockStore;
@@ -37,9 +42,22 @@ public class BlockPackStorage implements PackStorage {
   protected final File _localFileSystemDir;
   protected final File _localDeviceDir;
   protected final FuseFileSystem _memfs;
+  protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
 
   public BlockPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi)
       throws IOException, InterruptedException {
+
+    Closer closer = Closer.create();
+    closer.register((Closeable) () -> {
+      for (String volumeName : _currentMountedVolumes) {
+        try {
+          unmount(volumeName, null);
+        } catch (Exception e) {
+          LOG.error("Unknown error while trying to umount volume " + volumeName);
+        }
+      }
+    });
+    addShutdownHook(closer);
 
     _configuration = configuration;
     FileSystem fileSystem = getFileSystem(remotePath);
@@ -55,6 +73,17 @@ public class BlockPackStorage implements PackStorage {
     _localDeviceDir.mkdirs();
     _memfs = new FuseFileSystem(_localDeviceDir.getAbsolutePath());
     _memfs.localMount(false);
+  }
+
+  private void addShutdownHook(Closer closer) {
+    Runtime.getRuntime()
+           .addShutdownHook(new Thread(() -> {
+             try {
+               closer.close();
+             } catch (IOException e) {
+               LOG.error("Unknown error while trying to umount volumes");
+             }
+           }));
   }
 
   @Override
@@ -169,6 +198,7 @@ public class BlockPackStorage implements PackStorage {
     if (linuxFileSystem.isGrowOfflineSupported()) {
       linuxFileSystem.growOffline(localDevice);
     }
+    _currentMountedVolumes.add(volumeName);
     linuxFileSystem.mount(localDevice, localFileSystemMount);
     if (linuxFileSystem.isGrowOnlineSupported()) {
       linuxFileSystem.growOnline(localDevice, localFileSystemMount);
@@ -188,6 +218,7 @@ public class BlockPackStorage implements PackStorage {
     LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
     linuxFileSystem.fstrim(localFileSystemMount);
     linuxFileSystem.umount(localFileSystemMount);
+    _currentMountedVolumes.remove(volumeName);
     _memfs.removeBlockStore(volumeName);
     Utils.close(LOG, blockStore);
   }
