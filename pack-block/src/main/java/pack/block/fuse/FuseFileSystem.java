@@ -6,6 +6,8 @@ import java.nio.file.Paths;
 import java.util.Collection;
 
 import org.apache.commons.io.IOUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
 
@@ -21,10 +23,12 @@ import pack.block.blockstore.BlockStore;
 
 public class FuseFileSystem extends FuseStubFS implements Closeable {
 
+  private final Logger _logger;
   private final String _localPath;
 
   public FuseFileSystem(String localPath) {
     _localPath = localPath;
+    _logger = LoggerFactory.getLogger(FuseFileSystem.class);
   }
 
   public void localMount() {
@@ -93,6 +97,7 @@ public class FuseFileSystem extends FuseStubFS implements Closeable {
       return -ErrorCodes.EISDIR();
     }
     try {
+      _logger.info("read {} position {} length {}", path, offset, size);
       return ((FuseFile) p).read(buf, size, offset);
     } catch (IOException e) {
       e.printStackTrace();
@@ -125,6 +130,7 @@ public class FuseFileSystem extends FuseStubFS implements Closeable {
       return -ErrorCodes.EISDIR();
     }
     try {
+      _logger.info("write {} position {} length {}", path, offset, size);
       return ((FuseFile) p).write(buf, size, offset);
     } catch (IOException e) {
       e.printStackTrace();
