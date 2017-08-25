@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -18,11 +19,14 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.roaringbitmap.IntConsumer;
 import org.roaringbitmap.RoaringBitmap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
 
 public class BlockFile {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(BlockFile.class);
   private static final String HDFS_BLOCK_FILE_V1 = "hdfs_block_file_v1";
   private static final String UTF_8 = "UTF-8";
   private final static byte[] MAGIC_STR;
@@ -52,7 +56,27 @@ public class BlockFile {
     RoaringBitmap allBlocks = getAllBlocks(readers);
     BytesWritable value = new BytesWritable();
     int readerCount = readers.size();
-    allBlocks.forEach((IntConsumer) blockId -> processReaders(readers, readerCount, blockId, writer, value));
+    long longCardinality = allBlocks.getLongCardinality();
+
+    IntConsumer consumer = new IntConsumer() {
+      private long count = 0;
+      private long last;
+      private long delay = TimeUnit.SECONDS.toMillis(5);
+
+      @Override
+      public void accept(int blockId) {
+        long now = System.currentTimeMillis();
+        if (last + delay < now) {
+          LOGGER.info("merge {}% complete, count {} total {}",
+              ((long) (((double) count / (double) longCardinality) * 1000) / 10.0), count, longCardinality);
+          last = System.currentTimeMillis();
+        }
+        processReaders(readers, readerCount, blockId, writer, value);
+        count++;
+      }
+    };
+
+    allBlocks.forEach(consumer);
   }
 
   private static void processReaders(List<Reader> readers, int readerCount, int blockId, Writer writer,
@@ -161,6 +185,7 @@ public class BlockFile {
 
     private Reader(FileSystem fileSystem, Path path) throws IOException {
       _inputStream = fileSystem.open(path);
+      _inputStream.setReadahead(0l);
       _path = path;
       FileStatus fileStatus = fileSystem.getFileStatus(path);
       long len = fileStatus.getLen();
