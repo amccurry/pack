@@ -65,6 +65,8 @@ public class BlockFileCompactor implements Closeable {
       LOGGER.info("Path {} does not exist, exiting", _blockPath);
       return;
     }
+    LOGGER.info("Path {} size {}", _blockPath, _fileSystem.getContentSummary(_blockPath)
+                                                          .getLength());
     FileStatus[] listStatus = getBlockFiles();
     if (listStatus.length < 2) {
       LOGGER.info("Path {} contains less than 2 block files, exiting", _blockPath);
@@ -72,6 +74,9 @@ public class BlockFileCompactor implements Closeable {
     }
     Arrays.sort(listStatus, Collections.reverseOrder());
     List<CompactionJob> compactionJobs = getCompactionJobs(listStatus);
+    if (compactionJobs.isEmpty()) {
+      return;
+    }
     LOGGER.info("Compaction job count {} for path {}", compactionJobs.size(), _blockPath);
     for (CompactionJob job : compactionJobs) {
       runJob(job);
@@ -79,11 +84,15 @@ public class BlockFileCompactor implements Closeable {
   }
 
   private void runJob(CompactionJob job) throws IOException {
+    List<Path> pathListToCompact = job.getPathListToCompact();
+    if (pathListToCompact.size() < 2) {
+      return;
+    }
+
     List<Reader> readers = new ArrayList<>();
     LOGGER.info("Starting compaction {} for path {}", job, _blockPath);
     List<String> sourceFileList = new ArrayList<>();
-
-    for (Path path : job.getPathListToCompact()) {
+    for (Path path : pathListToCompact) {
       LOGGER.info("Adding block file for merge {}", path);
       readers.add(getReader(path));
       sourceFileList.add(path.getName());
@@ -176,8 +185,8 @@ public class BlockFileCompactor implements Closeable {
 
   private void finishSetup(Builder<CompactionJob> builder, CompactionJob compactionJob, RoaringBitmap blocksToIgnore) {
     compactionJob.finishSetup(blocksToIgnore);
-    if (!compactionJob.getPathListToCompact()
-                      .isEmpty()) {
+    List<Path> pathListToCompact = compactionJob.getPathListToCompact();
+    if (pathListToCompact.size() > 1) {
       builder.add(compactionJob);
     }
   }
@@ -226,7 +235,7 @@ public class BlockFileCompactor implements Closeable {
     if (list.size() == 2) {
       newName = JOINER.join(list.get(0), "0", list.get(1));
     } else if (list.size() == 3) {
-      long gen = Long.parseLong(list.get(2));
+      long gen = Long.parseLong(list.get(1));
       newName = JOINER.join(list.get(0), Long.toString(gen + 1), list.get(2));
     } else {
       throw new IOException("Path " + path + " invalid");

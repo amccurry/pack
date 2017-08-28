@@ -67,6 +67,7 @@ public class PackCompactorServer implements Closeable {
     _fileSystem = fileSystem;
     _pathList = pathList;
     _closer.register(zooKeeper);
+    ZkUtils.mkNodesStr(zooKeeper, "/lock");
     _lockManager = new ZooKeeperLockManager(zooKeeper, "/lock");
   }
 

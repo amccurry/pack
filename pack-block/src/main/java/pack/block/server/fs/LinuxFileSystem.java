@@ -9,10 +9,6 @@ public interface LinuxFileSystem {
 
   void umount(File mountLocation) throws IOException;
 
-  default void fstrim(File mountLocation) throws IOException {
-
-  }
-
   void mkfs(File device, int blockSize) throws IOException;
 
   default void growOffline(File device) throws IOException {

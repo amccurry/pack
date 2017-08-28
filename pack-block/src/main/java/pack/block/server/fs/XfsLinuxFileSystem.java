@@ -13,7 +13,9 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void mkfs(File device, int blockSize) throws IOException {
-    exec(MKFS_XFS, BLOCK_SIZE_SWITCH, "size=" + Integer.toString(blockSize), device.getAbsolutePath());
+    // exec(MKFS_XFS, BLOCK_SIZE_SWITCH, "size=" + Integer.toString(blockSize),
+    // device.getAbsolutePath());
+    exec(MKFS_XFS, device.getAbsolutePath());
   }
 
   @Override
