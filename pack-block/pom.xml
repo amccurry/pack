@@ -25,6 +25,10 @@
 			<artifactId>RoaringBitmap</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>zk-utils</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-client</artifactId>
 			<exclusions>

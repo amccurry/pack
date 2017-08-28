@@ -12,7 +12,6 @@ import pack.PackStorage;
 public class BlockPackServer extends PackServer {
 
   private static final String VAR_LIB_PACK = "/var/lib/pack";
-
   private static final String PACK_HDFS_PATH = "PACK_HDFS_PATH";
   private static final String PACK_HDFS_USER = "PACK_HDFS_USER";
   private static final String PACK_LOCAL = "PACK_LOCAL";
@@ -21,10 +20,14 @@ public class BlockPackServer extends PackServer {
   public static void main(String[] args) throws Exception {
     File localFile = new File(getLocalCachePath());
     Path remotePath = new Path(getHdfsPath());
-    UserGroupInformation ugi = UserGroupInformation.createRemoteUser(getHdfsUser());
-
+    UserGroupInformation ugi;
+    String hdfsUser = getHdfsUser();
+    if (hdfsUser == null) {
+      ugi = UserGroupInformation.getCurrentUser();
+    } else {
+      ugi = UserGroupInformation.createRemoteUser(hdfsUser);
+    }
     String sockerFile = "/run/docker/plugins/pack.sock";
-
     BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localFile, remotePath, ugi);
     packServer.runServer();
   }
@@ -40,7 +43,7 @@ public class BlockPackServer extends PackServer {
   private static String getHdfsUser() {
     String v = System.getenv(PACK_HDFS_USER);
     if (v == null) {
-      throw new RuntimeException("Hdfs user not configured [" + PACK_HDFS_USER + "].");
+      return null;
     }
     return v;
   }

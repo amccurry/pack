@@ -29,6 +29,7 @@
 		<module>pack-tar</module>
 		<module>pack-block</module>
 		<module>jnr-fuse</module>
+		<module>zk-utils</module>
 	</modules>
 
 	<dependencyManagement>
@@ -47,6 +48,16 @@
 				<groupId>pack</groupId>
 				<artifactId>jnr-fuse</artifactId>
 				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>zk-utils</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+			    <groupId>org.apache.zookeeper</groupId>
+			    <artifactId>zookeeper</artifactId>
+			    <version>3.4.10</version>
 			</dependency>
 			<dependency>
 				<groupId>commons-io</groupId>

@@ -17,6 +17,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.json.Capabilities;
+import pack.json.CapabilitiesResponse;
 import pack.json.CreateRequest;
 import pack.json.Err;
 import pack.json.GetRequest;
@@ -29,7 +31,6 @@ import pack.json.PathResponse;
 import pack.json.RemoveRequest;
 import pack.json.Volume;
 import spark.Request;
-import spark.Response;
 import spark.ResponseTransformer;
 import spark.Route;
 import spark.Service;
@@ -37,6 +38,19 @@ import spark.SparkJava;
 import spark.SparkJavaIdentifier;
 
 public abstract class PackServer {
+
+  private static final String GLOBAL = "global";
+  private static final String LOCAL = "local";
+  private static final String VOLUME_DRIVER_CAPABILITIES = "/VolumeDriver.Capabilities";
+  private static final String PLUGIN_ACTIVATE = "/Plugin.Activate";
+  private static final String VOLUME_DRIVER = "VolumeDriver";
+  private static final String VOLUME_DRIVER_CREATE = "/VolumeDriver.Create";
+  private static final String VOLUME_DRIVER_REMOVE = "/VolumeDriver.Remove";
+  private static final String VOLUME_DRIVER_MOUNT = "/VolumeDriver.Mount";
+  private static final String VOLUME_DRIVER_PATH = "/VolumeDriver.Path";
+  private static final String VOLUME_DRIVER_UNMOUNT = "/VolumeDriver.Unmount";
+  private static final String VOLUME_DRIVER_GET = "/VolumeDriver.Get";
+  private static final String VOLUME_DRIVER_LIST = "/VolumeDriver.List";
 
   private static final Logger LOG = LoggerFactory.getLogger(PackServer.class);
 
@@ -54,7 +68,7 @@ public abstract class PackServer {
 
   public void runServer() throws Exception {
     PackStorage packStorage = getPackStorage();
-    
+
     SparkJava.init();
     Service service = Service.ignite();
     SparkJava.configureService(SparkJavaIdentifier.UNIX_SOCKET, service);
@@ -73,150 +87,135 @@ public abstract class PackServer {
     };
 
     Implements impls = Implements.builder()
-                                 .impls(Arrays.asList("VolumeDriver"))
+                                 .impls(Arrays.asList(VOLUME_DRIVER))
                                  .build();
-    service.post("/VolumeDriver.Capabilities",
-        (request, response) -> "{ \"Capabilities\": { \"Scope\": \"" + (global ? "global" : "local") + "\" } }");
 
-    service.post("/Plugin.Activate", (request, response) -> impls, trans);
+    String scope = global ? GLOBAL : LOCAL;
+    Capabilities capabilities = Capabilities.builder()
+                                            .scope(scope)
+                                            .build();
+    CapabilitiesResponse capabilitiesResponse = CapabilitiesResponse.builder()
+                                                                    .capabilities(capabilities)
+                                                                    .build();
 
-    service.post("/VolumeDriver.Create", new Route() {
-      @Override
-      public Object handle(Request request, Response response) throws Exception {
-        CreateRequest createRequest = read(request, CreateRequest.class);
-        try {
-          packStorage.create(createRequest.getVolumeName(), createRequest.getOptions());
-          return Err.builder()
-                    .build();
-        } catch (Throwable t) {
-          LOG.error("error", t);
-          return Err.builder()
-                    .error(t.getMessage())
-                    .build();
-        }
+    service.post(VOLUME_DRIVER_CAPABILITIES, (request, response) -> capabilitiesResponse);
+    service.post(PLUGIN_ACTIVATE, (request, response) -> impls, trans);
+    service.post(VOLUME_DRIVER_CREATE, (Route) (request, response) -> {
+      CreateRequest createRequest = read(request, CreateRequest.class);
+      try {
+        packStorage.create(createRequest.getVolumeName(), createRequest.getOptions());
+        return Err.builder()
+                  .build();
+      } catch (Throwable t) {
+        LOG.error("error", t);
+        return Err.builder()
+                  .error(t.getMessage())
+                  .build();
       }
     }, trans);
 
-    service.post("/VolumeDriver.Remove", new Route() {
-      @Override
-      public Object handle(Request request, Response response) throws Exception {
-        RemoveRequest removeRequest = read(request, RemoveRequest.class);
-        try {
-          packStorage.remove(removeRequest.getVolumeName());
-          return Err.builder()
-                    .build();
-        } catch (Throwable t) {
-          LOG.error("error", t);
-          return Err.builder()
-                    .error(t.getMessage())
-                    .build();
-        }
+    service.post(VOLUME_DRIVER_REMOVE, (Route) (request, response) -> {
+      RemoveRequest removeRequest = read(request, RemoveRequest.class);
+      try {
+        packStorage.remove(removeRequest.getVolumeName());
+        return Err.builder()
+                  .build();
+      } catch (Throwable t) {
+        LOG.error("error", t);
+        return Err.builder()
+                  .error(t.getMessage())
+                  .build();
       }
     }, trans);
 
-    service.post("/VolumeDriver.Mount", new Route() {
-      @Override
-      public Object handle(Request request, Response response) throws Exception {
-        MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
-        try {
-          String mountPoint = packStorage.mount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
-          return PathResponse.builder()
-                             .mountpoint(mountPoint)
-                             .build();
-        } catch (Throwable t) {
-          LOG.error("error", t);
-          return PathResponse.builder()
-                             .mountpoint("<unknown>")
-                             .error(t.getMessage())
-                             .build();
-        }
+    service.post(VOLUME_DRIVER_MOUNT, (Route) (request, response) -> {
+      MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
+      try {
+        String mountPoint = packStorage.mount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
+        return PathResponse.builder()
+                           .mountpoint(mountPoint)
+                           .build();
+      } catch (Throwable t) {
+        LOG.error("error", t);
+        return PathResponse.builder()
+                           .mountpoint("<unknown>")
+                           .error(t.getMessage())
+                           .build();
       }
     }, trans);
 
-    service.post("/VolumeDriver.Path", new Route() {
-      @Override
-      public Object handle(Request request, Response response) throws Exception {
-        PathRequest pathRequest = read(request, PathRequest.class);
-        try {
-          String mountPoint = packStorage.getMountPoint(pathRequest.getVolumeName());
-          return PathResponse.builder()
-                             .mountpoint(mountPoint)
-                             .build();
-        } catch (Throwable t) {
-          LOG.error("error", t);
-          return PathResponse.builder()
-                             .error(t.getMessage())
-                             .build();
-        }
+    service.post(VOLUME_DRIVER_PATH, (Route) (request, response) -> {
+      PathRequest pathRequest = read(request, PathRequest.class);
+      try {
+        String mountPoint = packStorage.getMountPoint(pathRequest.getVolumeName());
+        return PathResponse.builder()
+                           .mountpoint(mountPoint)
+                           .build();
+      } catch (Throwable t) {
+        LOG.error("error", t);
+        return PathResponse.builder()
+                           .error(t.getMessage())
+                           .build();
       }
     }, trans);
 
-    service.post("/VolumeDriver.Unmount", new Route() {
-      @Override
-      public Object handle(Request request, Response response) throws Exception {
-        MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
-        try {
-          packStorage.unmount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
-          return Err.builder()
-                    .build();
-        } catch (Throwable t) {
-          LOG.error("error", t);
-          return Err.builder()
-                    .error(t.getMessage())
-                    .build();
-        }
+    service.post(VOLUME_DRIVER_UNMOUNT, (Route) (request, response) -> {
+      MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
+      try {
+        packStorage.unmount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
+        return Err.builder()
+                  .build();
+      } catch (Throwable t) {
+        LOG.error("error", t);
+        return Err.builder()
+                  .error(t.getMessage())
+                  .build();
       }
     }, trans);
 
-    service.post("/VolumeDriver.Get", new Route() {
-      @Override
-      public Object handle(Request request, Response response) throws Exception {
-        GetRequest getRequest = read(request, GetRequest.class);
-        try {
-          if (packStorage.exists(getRequest.getVolumeName())) {
-            String mountPoint = packStorage.getMountPoint(getRequest.getVolumeName());
-            Volume volume = Volume.builder()
-                                  .volumeName(getRequest.getVolumeName())
-                                  .mountpoint(mountPoint)
-                                  .build();
-            return GetResponse.builder()
-                              .volume(volume)
-                              .build();
-          }
+    service.post(VOLUME_DRIVER_GET, (Route) (request, response) -> {
+      GetRequest getRequest = read(request, GetRequest.class);
+      try {
+        if (packStorage.exists(getRequest.getVolumeName())) {
+          String mountPoint = packStorage.getMountPoint(getRequest.getVolumeName());
+          Volume volume = Volume.builder()
+                                .volumeName(getRequest.getVolumeName())
+                                .mountpoint(mountPoint)
+                                .build();
           return GetResponse.builder()
-                            .build();
-        } catch (Throwable t) {
-          LOG.error("error", t);
-          return GetResponse.builder()
-                            .error(t.getMessage())
+                            .volume(volume)
                             .build();
         }
+        return GetResponse.builder()
+                          .build();
+      } catch (Throwable t) {
+        LOG.error("error", t);
+        return GetResponse.builder()
+                          .error(t.getMessage())
+                          .build();
       }
     }, trans);
 
-    service.post("/VolumeDriver.List", new Route() {
-      @Override
-      public Object handle(Request request, Response response) throws Exception {
-        try {
-          List<String> volumeNames = packStorage.listVolumes();
-          Builder<Volume> volumes = ImmutableList.builder();
-          for (String volumeName : volumeNames) {
-            String mountPoint = packStorage.getMountPoint(volumeName);
-            Volume volume = Volume.builder()
-                                  .volumeName(volumeName)
-                                  .mountpoint(mountPoint)
-                                  .build();
-            volumes.add(volume);
-          }
-          return ListResponse.builder()
-                             .volumes(volumes.build())
-                             .build();
-        } catch (Throwable t) {
-          LOG.error("error", t);
-          return ListResponse.builder()
-                             .error(t.getMessage())
-                             .build();
+    service.post(VOLUME_DRIVER_LIST, (Route) (request, response) -> {
+      try {
+        List<String> volumeNames = packStorage.listVolumes();
+        Builder<Volume> volumes = ImmutableList.builder();
+        for (String volumeName : volumeNames) {
+          String mountPoint = packStorage.getMountPoint(volumeName);
+          Volume volume = Volume.builder()
+                                .volumeName(volumeName)
+                                .mountpoint(mountPoint)
+                                .build();
+          volumes.add(volume);
         }
+        return ListResponse.builder()
+                           .volumes(volumes.build())
+                           .build();
+      } catch (Throwable t) {
+        LOG.error("error", t);
+        return ListResponse.builder()
+                           .error(t.getMessage())
+                           .build();
       }
     }, trans);
   }

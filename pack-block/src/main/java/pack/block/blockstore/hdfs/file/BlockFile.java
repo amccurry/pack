@@ -191,6 +191,10 @@ public class BlockFile {
       _output.close();
     }
 
+    public long getLen() throws IOException {
+      return _output.getPos();
+    }
+
   }
 
   public static class Reader implements Iterable<BlockFileEntry>, Closeable {

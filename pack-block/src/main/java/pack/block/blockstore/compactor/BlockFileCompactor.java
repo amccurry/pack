@@ -109,9 +109,9 @@ public class BlockFileCompactor implements Closeable {
   }
 
   private String getRandomTmpName() {
-    return UUID.randomUUID()
-               .toString()
-        + ".tmp";
+    String uuid = UUID.randomUUID()
+                      .toString();
+    return JOINER.join(uuid, "tmp");
   }
 
   class CompactionJob {
