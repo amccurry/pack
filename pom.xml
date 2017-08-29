@@ -8,6 +8,12 @@
 	<name>pack</name>
 
 	<properties>
+		<parcel.assembly.file>src/assemble/parcel.xml</parcel.assembly.file>
+		<parcel.version.suffix></parcel.version.suffix>
+		<parcel.name>PACK</parcel.name>
+		<!--parcel.version>${project.version}${parcel.version.suffix}</parcel.version>-->
+		<parcel.version>${maven.build.timestamp}</parcel.version>
+		<maven.build.timestamp.format>yy.MM.dd.HH.mm</maven.build.timestamp.format>
 		<hadoop.version>2.6.0-cdh5.9.0</hadoop.version>
 	</properties>
 

@@ -22,7 +22,7 @@ public class HdfsMetaData {
 
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
                                                                    .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
-                                                                   .fileSystemType(FileSystemType.EXT4)
+                                                                   .fileSystemType(FileSystemType.XFS)
                                                                    .length(DEFAULT_LENGTH_BYTES)
                                                                    .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE)
                                                                    .build();
