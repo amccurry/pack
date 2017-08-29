@@ -208,7 +208,11 @@ public class BlockFile {
 
     private Reader(FileSystem fileSystem, Path path) throws IOException {
       _inputStream = fileSystem.open(path);
-      _inputStream.setReadahead(0l);
+      try {
+        _inputStream.setReadahead(0l);
+      } catch (UnsupportedOperationException e) {
+        LOGGER.debug("Can not set readahead for path {}", path);
+      }
       _path = path;
       FileStatus fileStatus = fileSystem.getFileStatus(path);
       long len = fileStatus.getLen();
