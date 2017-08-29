@@ -69,7 +69,7 @@ public class BlockPackStorage implements PackStorage {
     _ugi.doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
     _localFileSystemDir = new File(localFile, "fs");
     _localFileSystemDir.mkdirs();
-    _localDeviceDir = new File(localFile, "dev");
+    _localDeviceDir = new File(localFile, "devices");
     _localDeviceDir.mkdirs();
     _memfs = new FuseFileSystem(_localDeviceDir.getAbsolutePath());
     _memfs.localMount(false);
