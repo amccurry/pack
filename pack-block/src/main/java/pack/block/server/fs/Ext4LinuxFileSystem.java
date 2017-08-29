@@ -23,7 +23,7 @@ public class Ext4LinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public boolean isGrowOfflineSupported() {
-    return true;
+    return false;
   }
 
 }
