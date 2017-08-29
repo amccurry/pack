@@ -7,20 +7,18 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   public static final XfsLinuxFileSystem INSTANCE = new XfsLinuxFileSystem();
 
-  private static final String BLOCK_SIZE_SWITCH = "-b";
+  private static final String GROWFS_SWITCH = "-d";
   private static final String XFS_GROWFS = "xfs_growfs";
   private static final String MKFS_XFS = "mkfs.xfs";
 
   @Override
   public void mkfs(File device, int blockSize) throws IOException {
-    // exec(MKFS_XFS, BLOCK_SIZE_SWITCH, "size=" + Integer.toString(blockSize),
-    // device.getAbsolutePath());
     exec(MKFS_XFS, device.getAbsolutePath());
   }
 
   @Override
   public void growOnline(File device, File mountLocation) throws IOException {
-    exec(XFS_GROWFS, "-d", mountLocation.getAbsolutePath());
+    exec(XFS_GROWFS, GROWFS_SWITCH, mountLocation.getAbsolutePath());
   }
 
   @Override
