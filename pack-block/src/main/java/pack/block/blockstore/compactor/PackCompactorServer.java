@@ -1,10 +1,8 @@
 package pack.block.blockstore.compactor;
 
 import java.io.Closeable;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -13,42 +11,51 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.zookeeper.KeeperException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Splitter;
 import com.google.common.io.Closer;
 
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class PackCompactorServer implements Closeable {
 
-  private static final String PACK_ROOT_PATH_LIST = "PACK_ROOT_PATH_LIST";
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackCompactorServer.class);
+
   private static final String COMPACTION = "/compaction";
-  private static final String ZK_SESSION_TIMEOUT = "ZK_SESSION_TIMEOUT";
-  private static final String ZK_CONECTION_STR = "ZK_CONECTION_STR";
-  private static final String HDFS_CONFIG_DIR = "HDFS_CONFIG_DIR";
 
   public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
-    String dirPath = System.getenv(HDFS_CONFIG_DIR);
-    String zkConnectionString = System.getenv(ZK_CONECTION_STR);
-    int sessionTimeout = Integer.parseInt(System.getenv(ZK_SESSION_TIMEOUT));
-    String packRootPathList = System.getenv(PACK_ROOT_PATH_LIST);
+    Utils.setupLog4j();
+    UserGroupInformation ugi = Utils.getUserGroupInformation();
+    String zkConnectionString = Utils.getZooKeeperConnectionString();
+    int sessionTimeout = Utils.getZooKeeperConnectionTimeout();
+    String hdfsPath = Utils.getHdfsPath();
 
     Configuration configuration = new Configuration();
-    loadConfigIfExists(configuration, dirPath);
     FileSystem fileSystem = FileSystem.get(configuration);
 
     ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnectionString + COMPACTION, sessionTimeout);
-    List<Path> pathList = getPathList(fileSystem, packRootPathList);
+    List<Path> pathList = getPathList(fileSystem, hdfsPath);
 
     try (PackCompactorServer packCompactorServer = new PackCompactorServer(fileSystem, pathList, zooKeeper)) {
       while (true) {
-        packCompactorServer.executeCompaction();
-        Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+        ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+          try {
+            packCompactorServer.executeCompaction();
+            Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+          } catch (Throwable t) {
+            LOGGER.error("Unknown error", t);
+          }
+          return null;
+        });
       }
     }
   }
@@ -119,20 +126,6 @@ public class PackCompactorServer implements Closeable {
       pathList.add(fileStatus.getPath());
     }
     return pathList;
-  }
-
-  private static void loadConfigIfExists(Configuration configuration, String dirPath) throws FileNotFoundException {
-    if (dirPath != null) {
-      File dir = new File(dirPath);
-      File core = new File(dir, "core-site.xml");
-      if (core.exists()) {
-        configuration.addResource(new FileInputStream(core));
-      }
-      File hdfs = new File(dir, "hdfs-site.xml");
-      if (hdfs.exists()) {
-        configuration.addResource(new FileInputStream(hdfs));
-      }
-    }
   }
 
 }

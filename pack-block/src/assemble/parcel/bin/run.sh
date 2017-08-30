@@ -10,6 +10,12 @@ done
 set -x
 echo $CLASSPATH
 
+if [ -z ${HDFS_CONF_DIR+x} ]; then
+ echo "HDFS_CONF_DIR is not defined";
+else
+ echo "HDFS_CONF_DIR=${HDFS_CONF_DIR}";
+fi
+
 if [ -z ${PACK_HDFS_KERBEROS_KEYTAB+x} ]; then
  echo "PACK_HDFS_KERBEROS_KEYTAB is not defined";
 else
@@ -46,4 +52,28 @@ else
  echo "PACK_SCOPE=${PACK_SCOPE}";
 fi
 
-exec -a pack java -Xmx1g -Xms1g -cp ${CLASSPATH} pack.block.server.BlockPackServer
+if [ -z ${PACK_LOG4J_CONFIG+x} ]; then
+ echo "PACK_LOG4J_CONFIG is not defined";
+else
+ echo "PACK_LOG4J_CONFIG=${PACK_LOG4J_CONFIG}";
+fi
+
+if [ -z ${PACK_ZOOKEEPER_CONNECTION_STR+x} ]; then
+ echo "PACK_ZOOKEEPER_CONNECTION_STR is not defined";
+else
+ echo "PACK_ZOOKEEPER_CONNECTION_STR=${PACK_ZOOKEEPER_CONNECTION_STR}";
+fi
+
+CMD=$1
+
+case $CMD in
+  (pack)
+    exec -a pack java -Xmx1g -Xms1g -cp ${CLASSPATH} pack.block.server.BlockPackServer
+    ;;
+  (compaction)
+    exec -a pack-compactor java -Xmx1g -Xms1g -cp ${CLASSPATH} pack.block.blockstore.compactor.PackCompactorServer
+    ;;
+  (*)
+    echo "Don't understand [$CMD]"
+    ;;
+esac
