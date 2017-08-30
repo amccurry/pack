@@ -26,10 +26,12 @@ import com.google.common.collect.ImmutableList;
 
 public class BlockFile {
 
+  private static final String PACK_STREAM_ONLY = "PACK_STREAM_ONLY";
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFile.class);
   private static final String HDFS_BLOCK_FILE_V1 = "hdfs_block_file_v1";
   private static final String UTF_8 = "UTF-8";
-  private final static byte[] MAGIC_STR;
+  private static final byte[] MAGIC_STR;
+  private static final boolean STREAM_ONLY;
 
   static {
     try {
@@ -37,6 +39,7 @@ public class BlockFile {
     } catch (UnsupportedEncodingException e) {
       throw new RuntimeException(e);
     }
+    STREAM_ONLY = System.getenv(PACK_STREAM_ONLY) != null;
   }
 
   public static Writer create(FileSystem fileSystem, Path path, int blockSize, List<String> sourceFileList)
@@ -49,6 +52,9 @@ public class BlockFile {
   }
 
   public static Reader open(FileSystem fileSystem, Path path) throws IOException {
+    if (STREAM_ONLY) {
+      return openForStreaming(fileSystem, path);
+    }
     return new RandomAccessReader(fileSystem, path);
   }
 
@@ -361,7 +367,6 @@ public class BlockFile {
   }
 
   public static class RandomAccessReader extends Reader {
-
     public RandomAccessReader(FileSystem fileSystem, Path path) throws IOException {
       super(fileSystem, path);
       try {
@@ -370,28 +375,30 @@ public class BlockFile {
         LOGGER.debug("Can not set readahead for path {}", path);
       }
     }
-
   }
 
   public static class StreamReader extends Reader {
 
     private final long _maxSkip = 128 * 1024 * 1024;
+    private final Object _lock = new Object();
 
     public StreamReader(FileSystem fileSystem, Path path) throws IOException {
       super(fileSystem, path);
     }
 
     protected void readBlock(int key, BytesWritable value) throws IOException {
-      int storageBlockPosition = _blocks.rank(key) - 1;
-      long position = storageBlockPosition * (long) _blockSize;
-      long pos = _inputStream.getPos();
-      long skip = position - pos;
-      if (skip < 0 || skip > _maxSkip) {
-        _inputStream.seek(position);
-      } else {
-        _inputStream.skip(skip);
+      synchronized (_lock) {
+        int storageBlockPosition = _blocks.rank(key) - 1;
+        long position = storageBlockPosition * (long) _blockSize;
+        long pos = _inputStream.getPos();
+        long skip = position - pos;
+        if (skip < 0 || skip > _maxSkip) {
+          _inputStream.seek(position);
+        } else {
+          _inputStream.skip(skip);
+        }
+        _inputStream.read(value.getBytes(), 0, _blockSize);
       }
-      _inputStream.read(value.getBytes(), 0, _blockSize);
     }
 
   }

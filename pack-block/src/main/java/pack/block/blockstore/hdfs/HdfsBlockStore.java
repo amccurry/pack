@@ -54,16 +54,20 @@ public class HdfsBlockStore implements BlockStore {
   private final HdfsKeyValueStore _hdfsKeyValueStore;
   private final int _fileSystemBlockSize;
   private final Path _blockPath;
-  private final long _maxMemory;
+  private final long _maxMemorySoft;
+  private final long _maxMemoryHard;
+  private final int _maxMemoryEntriesSoft;
+  private final int _maxMemoryEntriesHard;
   private final Cache<Path, BlockFile.Reader> _readerCache;
   private final byte[] _emptyBlock;
   private final AtomicReference<List<Path>> _blockFiles = new AtomicReference<>();
   private final Timer _blockFileTimer;
-  private final int _maxMemoryEntries;
   private final MetricRegistry _registry = new MetricRegistry();
   private final Slf4jReporter _reporter;
   private final com.codahale.metrics.Timer _writeTimer;
   private final com.codahale.metrics.Timer _readTimer;
+  private final AtomicReference<Thread> _writeThread = new AtomicReference<Thread>();
+  private final Object _writeExternalBlockLock = new Object();
 
   public HdfsBlockStore(FileSystem fileSystem, Path path) throws IOException {
     this(fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -83,9 +87,11 @@ public class HdfsBlockStore implements BlockStore {
     _metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
 
     _fileSystemBlockSize = _metaData.getFileSystemBlockSize();
-    _maxMemoryEntries = config.getMaxMemoryEntries();
+    _maxMemorySoft = config.getCacheMaxMemorySoft();
+    _maxMemoryHard = config.getCacheMaxMemoryHard();
+    _maxMemoryEntriesSoft = config.getCacheMaxMemoryEntriesSoft();
+    _maxMemoryEntriesHard = config.getCacheMaxMemoryEntriesHard();
     _emptyBlock = new byte[_fileSystemBlockSize];
-    _maxMemory = config.getMaxMemoryForCache();
 
     _length = _metaData.getLength();
     Path kvPath = qualify(new Path(_path, KVS));
@@ -229,14 +235,8 @@ public class HdfsBlockStore implements BlockStore {
     return _fileSystemBlockSize;
   }
 
-  public long getMaxMemory() {
-    return _maxMemory;
-  }
-
   @Override
   public void close() throws IOException {
-    _hdfsKeyValueStore.sync();
-    writeExternalBlock();
     _hdfsKeyValueStore.sync();
     _hdfsKeyValueStore.close();
     _hdfsKeyValueTimer.cancel();
@@ -325,27 +325,70 @@ public class HdfsBlockStore implements BlockStore {
     return qualify(new Path(_path, "block." + Long.toString(hdfsBlock)));
   }
 
-  private synchronized void writeExternalBlockIfNeeded() throws IOException {
-    if (_hdfsKeyValueStore.getSizeOfData() >= _maxMemory
-        || _hdfsKeyValueStore.getNumberOfEntries() >= _maxMemoryEntries) {
-      writeExternalBlock();
+  private void writeExternalBlockIfNeeded() throws IOException {
+    long sizeOfData = _hdfsKeyValueStore.getSizeOfData();
+    int numberOfEntries = _hdfsKeyValueStore.getNumberOfEntries();
+    if (sizeOfData >= _maxMemorySoft || numberOfEntries >= _maxMemoryEntriesSoft) {
+      tryToStartWriteExternalBlock();
+    }
+    if (sizeOfData >= _maxMemoryHard || numberOfEntries >= _maxMemoryEntriesHard) {
+      // wait until external write is finished....
+      long start = System.nanoTime();
+      waitUntilExternalWriteCompletes();
+      long end = System.nanoTime();
+      _logger.info("Blocking waiting for KVS to flush {} ms", (end - start) / 1_000_000.0);
     }
   }
 
+  private void waitUntilExternalWriteCompletes() throws IOException {
+    while (true) {
+      if (_writeThread.get() == null) {
+        return;
+      }
+      try {
+        Thread.sleep(TimeUnit.MILLISECONDS.toMillis(20));
+      } catch (InterruptedException e) {
+        throw new IOException(e);
+      }
+    }
+  }
+
+  private void tryToStartWriteExternalBlock() {
+    if (_writeThread.get() != null) {
+      return;
+    }
+    Thread thread;
+    if (_writeThread.compareAndSet(null, thread = createWriterThread())) {
+      thread.setName("externalBlock|" + _path.toUri()
+                                             .getPath());
+      thread.setDaemon(true);
+      thread.start();
+    }
+  }
+
+  private Thread createWriterThread() {
+    return new Thread(() -> {
+      try {
+        writeExternalBlock();
+      } catch (IOException e) {
+        _logger.error("Unknown error while writing external block", e);
+      }
+      _writeThread.set(null);
+    });
+  }
+
   private void writeExternalBlock() throws IOException {
-    _logger.debug("Writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
-        _hdfsKeyValueStore.getNumberOfEntries());
-
-    long start = System.nanoTime();
-
-    _hdfsKeyValueStore.writeExternal(getExternalWriter(), true);
-
-    long end = System.nanoTime();
-
-    _logger.info("write external block pause {} ms", (end - start) / 1_000_000.0);
-
-    _logger.debug("After writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
-        _hdfsKeyValueStore.getNumberOfEntries());
+    synchronized (_writeExternalBlockLock) {
+      if (_logger.isDebugEnabled()) {
+        _logger.debug("Writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
+            _hdfsKeyValueStore.getNumberOfEntries());
+      }
+      _hdfsKeyValueStore.writeExternal(getExternalWriter(), true);
+      if (_logger.isDebugEnabled()) {
+        _logger.debug("After writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
+            _hdfsKeyValueStore.getNumberOfEntries());
+      }
+    }
   }
 
   private ExternalWriter getExternalWriter() throws IOException {

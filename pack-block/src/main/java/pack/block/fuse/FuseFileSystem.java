@@ -97,7 +97,7 @@ public class FuseFileSystem extends FuseStubFS implements Closeable {
       return -ErrorCodes.EISDIR();
     }
     try {
-      // _logger.info("read {} position {} length {}", path, offset, size);
+      _logger.debug("read {} position {} length {}", path, offset, size);
       return ((FuseFile) p).read(buf, size, offset);
     } catch (IOException e) {
       e.printStackTrace();
@@ -130,7 +130,7 @@ public class FuseFileSystem extends FuseStubFS implements Closeable {
       return -ErrorCodes.EISDIR();
     }
     try {
-      // _logger.info("write {} position {} length {}", path, offset, size);
+      _logger.debug("write {} position {} length {}", path, offset, size);
       return ((FuseFile) p).write(buf, size, offset);
     } catch (IOException e) {
       e.printStackTrace();

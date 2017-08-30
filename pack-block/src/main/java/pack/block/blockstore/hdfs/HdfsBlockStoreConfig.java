@@ -12,15 +12,21 @@ import lombok.Value;
 public class HdfsBlockStoreConfig {
 
   public static final HdfsBlockStoreConfig DEFAULT_CONFIG = HdfsBlockStoreConfig.builder()
-                                                                                .maxMemoryForCache(16 * 1024 * 1024)
-                                                                                .maxMemoryEntries(16 * 1024)
+                                                                                .cacheMaxMemorySoft(16 * 1024 * 1024)
+                                                                                .cacheMaxMemoryHard(32 * 1024 * 1024)
+                                                                                .cacheMaxMemoryEntriesSoft(16 * 1024)
+                                                                                .cacheMaxMemoryEntriesHard(32 * 1024)
                                                                                 .blockFilePeriod(15)
                                                                                 .blockFileUnit(TimeUnit.SECONDS)
                                                                                 .build();
 
-  int maxMemoryForCache;
+  int cacheMaxMemoryHard;
 
-  int maxMemoryEntries;
+  int cacheMaxMemoryEntriesHard;
+
+  int cacheMaxMemorySoft;
+
+  int cacheMaxMemoryEntriesSoft;
 
   long blockFilePeriod;
 

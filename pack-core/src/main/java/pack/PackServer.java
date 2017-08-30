@@ -1,10 +1,12 @@
 package pack;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.List;
@@ -224,45 +226,43 @@ public abstract class PackServer {
     return objectMapper.readValue(request.bodyAsBytes(), clazz);
   }
 
-  public static Result exec(List<String> command) throws IOException, InterruptedException {
+  public static Result exec(String cmdId, List<String> command, Logger logger)
+      throws IOException, InterruptedException {
     ProcessBuilder builder = new ProcessBuilder(command);
     Process process = builder.start();
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    ByteArrayOutputStream errorStream = new ByteArrayOutputStream();
-    Thread t1 = captureOutput(process.getInputStream(), outputStream);
-    Thread t2 = captureOutput(process.getErrorStream(), errorStream);
+    Thread t1 = captureOutput(cmdId, "stdout", toBuffer(process.getInputStream()), logger);
+    Thread t2 = captureOutput(cmdId, "stderr", toBuffer(process.getErrorStream()), logger);
     t1.start();
     t2.start();
     int exitCode = process.waitFor();
     t1.join();
     t2.join();
-    return new Result(exitCode, new ByteArrayInputStream(outputStream.toByteArray()),
-        new ByteArrayInputStream(errorStream.toByteArray()));
+    return new Result(exitCode);
+  }
+
+  private static BufferedReader toBuffer(InputStream inputStream) {
+    return new BufferedReader(new InputStreamReader(inputStream));
   }
 
   public static class Result {
     public final int exitCode;
-    public final InputStream output;
-    public final InputStream error;
 
-    public Result(int exitCode, InputStream output, InputStream error) {
+    public Result(int exitCode) {
       this.exitCode = exitCode;
-      this.output = output;
-      this.error = error;
     }
   }
 
-  private static Thread captureOutput(InputStream inputStream, OutputStream outputStream) {
+  private static Thread captureOutput(String cmdId, String type, BufferedReader reader, Logger logger) {
     return new Thread(new Runnable() {
       @Override
       public void run() {
         try {
-          IOUtils.copy(inputStream, outputStream);
+          String s;
+          while ((s = reader.readLine()) != null) {
+            logger.info("Command {} Type {} Message {}", cmdId, type, s.trim());
+          }
         } catch (IOException e) {
           LOG.error("Unknown error", e);
-        } finally {
-          IOUtils.closeQuietly(inputStream);
-          IOUtils.closeQuietly(outputStream);
         }
       }
     });
