@@ -20,7 +20,7 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
   private static final String MOUNT = "mount";
   private static final String UTF_8 = "UTF-8";
   private static final String OPTIONS_SWITCH = "-o";
-  private static final String DEFAULT_MOUNT_OPTIONS = "noatime";
+  private static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
 
   @Override
   public void mount(File device, File mountLocation) throws IOException {

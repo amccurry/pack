@@ -17,6 +17,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,11 +32,15 @@ import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.fuse.FuseFileSystem;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
+import pack.zk.utils.ZkUtils;
+import pack.zk.utils.ZooKeeperClient;
+import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
 
   private static final Logger LOG = LoggerFactory.getLogger(BlockPackStorage.class);
 
+  public static final String MOUNT = "/mount";
   protected final Configuration _configuration;
   protected final Path _root;
   protected final UserGroupInformation _ugi;
@@ -43,10 +48,12 @@ public class BlockPackStorage implements PackStorage {
   protected final File _localDeviceDir;
   protected final FuseFileSystem _memfs;
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
+  protected final ZooKeeperLockManager _lockManager;
 
-  public BlockPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi)
-      throws IOException, InterruptedException {
-
+  public BlockPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi,
+      ZooKeeperClient zooKeeper) throws IOException, InterruptedException {
+    ZkUtils.mkNodesStr(zooKeeper, MOUNT + "/lock");
+    _lockManager = createLockmanager(zooKeeper);
     Closer closer = Closer.create();
     closer.register((Closeable) () -> {
       for (String volumeName : _currentMountedVolumes) {
@@ -73,6 +80,10 @@ public class BlockPackStorage implements PackStorage {
     _localDeviceDir.mkdirs();
     _memfs = new FuseFileSystem(_localDeviceDir.getAbsolutePath());
     _memfs.localMount(false);
+  }
+
+  public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zooKeeper) {
+    return new ZooKeeperLockManager(zooKeeper, MOUNT + "/lock");
   }
 
   private void addShutdownHook(Closer closer) {
@@ -181,29 +192,34 @@ public class BlockPackStorage implements PackStorage {
   }
 
   protected String mountVolume(String volumeName, String id)
-      throws IOException, FileNotFoundException, InterruptedException {
+      throws IOException, FileNotFoundException, InterruptedException, KeeperException {
     createVolume(volumeName, ImmutableMap.of());
     LOG.info("Mount Volume {} Id {}", volumeName, id);
 
     Path volumePath = getVolumePath(volumeName);
     FileSystem fileSystem = getFileSystem(volumePath);
-    BlockStore blockStore = new HdfsBlockStore(fileSystem, volumePath);
-    _memfs.addBlockStore(blockStore);
 
-    File localFileSystemMount = getLocalFileSystemMount(volumeName);
-    localFileSystemMount.mkdirs();
-    File localDevice = getLocalDevice(volumeName);
+    if (_lockManager.tryToLock(Utils.getLockName(volumePath))) {
+      BlockStore blockStore = new HdfsBlockStore(fileSystem, volumePath);
+      _memfs.addBlockStore(blockStore);
 
-    LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
-    if (linuxFileSystem.isGrowOfflineSupported()) {
-      linuxFileSystem.growOffline(localDevice);
+      File localFileSystemMount = getLocalFileSystemMount(volumeName);
+      localFileSystemMount.mkdirs();
+      File localDevice = getLocalDevice(volumeName);
+
+      LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
+      if (linuxFileSystem.isGrowOfflineSupported()) {
+        linuxFileSystem.growOffline(localDevice);
+      }
+      _currentMountedVolumes.add(volumeName);
+      linuxFileSystem.mount(localDevice, localFileSystemMount);
+      if (linuxFileSystem.isGrowOnlineSupported()) {
+        linuxFileSystem.growOnline(localDevice, localFileSystemMount);
+      }
+      return localFileSystemMount.getAbsolutePath();
+    } else {
+      throw new IOException("Could not mount volume " + volumeName);
     }
-    _currentMountedVolumes.add(volumeName);
-    linuxFileSystem.mount(localDevice, localFileSystemMount);
-    if (linuxFileSystem.isGrowOnlineSupported()) {
-      linuxFileSystem.growOnline(localDevice, localFileSystemMount);
-    }
-    return localFileSystemMount.getAbsolutePath();
   }
 
   private LinuxFileSystem getLinuxFileSystem(BlockStore blockStore) {
@@ -211,15 +227,20 @@ public class BlockPackStorage implements PackStorage {
   }
 
   protected void umountVolume(String volumeName, String id)
-      throws IOException, InterruptedException, FileNotFoundException {
+      throws IOException, InterruptedException, FileNotFoundException, KeeperException {
     LOG.info("Unmount Volume {} Id {}", volumeName, id);
-    File localFileSystemMount = getLocalFileSystemMount(volumeName);
-    BlockStore blockStore = _memfs.getBlockStore(volumeName);
-    LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
-    linuxFileSystem.umount(localFileSystemMount);
-    _currentMountedVolumes.remove(volumeName);
-    _memfs.removeBlockStore(volumeName);
-    Utils.close(LOG, blockStore);
+    Path volumePath = getVolumePath(volumeName);
+    try {
+      File localFileSystemMount = getLocalFileSystemMount(volumeName);
+      BlockStore blockStore = _memfs.getBlockStore(volumeName);
+      LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
+      linuxFileSystem.umount(localFileSystemMount);
+      _currentMountedVolumes.remove(volumeName);
+      _memfs.removeBlockStore(volumeName);
+      Utils.close(LOG, blockStore);
+    } finally {
+      _lockManager.unlock(Utils.getLockName(volumePath));
+    }
   }
 
   private File getLocalFileSystemMount(String volumeName) {

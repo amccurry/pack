@@ -86,7 +86,7 @@ public class BlockFileCompactorTest {
     int maxNumberOfBlocksToWrite = 100;
     generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, Long.MAX_VALUE)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, Long.MAX_VALUE, null)) {
       compactor.runCompaction();
     }
 
@@ -108,7 +108,7 @@ public class BlockFileCompactorTest {
     generatBlockFilesNotConsidered(data, path, random, blockSize, maxFilesUnderBlockFileSize, maxFilesOverBlockFileSize,
         maxBlockIdsIncr, maxNumberOfBlocksToWrite, maxBlockFileSize);
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize, null)) {
       compactor.runCompaction();
     }
 

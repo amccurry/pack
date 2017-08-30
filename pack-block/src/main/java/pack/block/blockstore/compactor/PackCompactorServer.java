@@ -21,6 +21,7 @@ import com.google.common.io.Closer;
 
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.server.BlockPackStorage;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
@@ -42,7 +43,7 @@ public class PackCompactorServer implements Closeable {
     Configuration configuration = new Configuration();
     FileSystem fileSystem = FileSystem.get(configuration);
 
-    ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnectionString + COMPACTION, sessionTimeout);
+    ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout);
     List<Path> pathList = getPathList(fileSystem, hdfsPath);
 
     try (PackCompactorServer packCompactorServer = new PackCompactorServer(fileSystem, pathList, zooKeeper)) {
@@ -62,8 +63,9 @@ public class PackCompactorServer implements Closeable {
 
   private final FileSystem _fileSystem;
   private final List<Path> _pathList;
-  private final ZooKeeperLockManager _lockManager;
+  private final ZooKeeperLockManager _compactionLockManager;
   private final Closer _closer;
+  private final ZooKeeperLockManager _mountLockManager;
 
   public PackCompactorServer(FileSystem fileSystem, List<Path> pathList, ZooKeeperClient zooKeeper) {
     // coord with zookeeper
@@ -74,8 +76,9 @@ public class PackCompactorServer implements Closeable {
     _fileSystem = fileSystem;
     _pathList = pathList;
     _closer.register(zooKeeper);
-    ZkUtils.mkNodesStr(zooKeeper, "/lock");
-    _lockManager = new ZooKeeperLockManager(zooKeeper, "/lock");
+    ZkUtils.mkNodesStr(zooKeeper, COMPACTION + "/lock");
+    _mountLockManager = BlockPackStorage.createLockmanager(zooKeeper);
+    _compactionLockManager = new ZooKeeperLockManager(zooKeeper, COMPACTION + "/lock");
   }
 
   @Override
@@ -97,24 +100,19 @@ public class PackCompactorServer implements Closeable {
   }
 
   private void executeCompactionVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
-    String lockName = getLockName(volumePath);
-    if (_lockManager.tryToLock(lockName)) {
+    String lockName = Utils.getLockName(volumePath);
+    if (_compactionLockManager.tryToLock(lockName)) {
       try {
         HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
         long maxBlockFileSize = metaData.getMaxBlockFileSize();
-        try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, maxBlockFileSize)) {
+        try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, maxBlockFileSize,
+            _mountLockManager)) {
           compactor.runCompaction();
         }
       } finally {
-        _lockManager.unlock(lockName);
+        _compactionLockManager.unlock(lockName);
       }
     }
-  }
-
-  private String getLockName(Path volumePath) {
-    String path = volumePath.toUri()
-                            .getPath();
-    return path.replaceAll("/", "__");
   }
 
   private static List<Path> getPathList(FileSystem fileSystem, String packRootPathList) throws IOException {

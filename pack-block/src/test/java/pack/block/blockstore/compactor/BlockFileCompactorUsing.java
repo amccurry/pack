@@ -36,7 +36,7 @@ public class BlockFileCompactorUsing {
     System.out.println(contentSummary.getLength());
 
     long maxBlockFileSize = 1_000_000_000;
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize, null)) {
       compactor.runCompaction();
     }
   }

@@ -336,7 +336,13 @@ public class HdfsBlockStore implements BlockStore {
     _logger.debug("Writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
         _hdfsKeyValueStore.getNumberOfEntries());
 
+    long start = System.nanoTime();
+
     _hdfsKeyValueStore.writeExternal(getExternalWriter(), true);
+
+    long end = System.nanoTime();
+
+    _logger.info("write external block pause {} ms", (end - start) / 1_000_000.0);
 
     _logger.debug("After writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
         _hdfsKeyValueStore.getNumberOfEntries());

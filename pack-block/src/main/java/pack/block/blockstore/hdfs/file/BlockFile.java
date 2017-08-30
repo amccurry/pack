@@ -49,7 +49,11 @@ public class BlockFile {
   }
 
   public static Reader open(FileSystem fileSystem, Path path) throws IOException {
-    return new Reader(fileSystem, path);
+    return new RandomAccessReader(fileSystem, path);
+  }
+
+  public static Reader openForStreaming(FileSystem fileSystem, Path path) throws IOException {
+    return new StreamReader(fileSystem, path);
   }
 
   public static void merge(List<Reader> readers, Writer writer) {
@@ -197,22 +201,17 @@ public class BlockFile {
 
   }
 
-  public static class Reader implements Iterable<BlockFileEntry>, Closeable {
+  public abstract static class Reader implements Iterable<BlockFileEntry>, Closeable {
 
-    private final RoaringBitmap _blocks = new RoaringBitmap();
-    private final RoaringBitmap _emptyBlocks = new RoaringBitmap();
-    private final FSDataInputStream _inputStream;
-    private final int _blockSize;
-    private final Path _path;
-    private final List<String> _sourceFiles;
+    protected final RoaringBitmap _blocks = new RoaringBitmap();
+    protected final RoaringBitmap _emptyBlocks = new RoaringBitmap();
+    protected final FSDataInputStream _inputStream;
+    protected final int _blockSize;
+    protected final Path _path;
+    protected final List<String> _sourceFiles;
 
-    private Reader(FileSystem fileSystem, Path path) throws IOException {
+    protected Reader(FileSystem fileSystem, Path path) throws IOException {
       _inputStream = fileSystem.open(path);
-      try {
-        _inputStream.setReadahead(0l);
-      } catch (UnsupportedOperationException e) {
-        LOGGER.debug("Can not set readahead for path {}", path);
-      }
       _path = path;
       FileStatus fileStatus = fileSystem.getFileStatus(path);
       long len = fileStatus.getLen();
@@ -224,6 +223,20 @@ public class BlockFile {
       _blockSize = _inputStream.readInt();
       _sourceFiles = readStringList(_inputStream);
       // @TODO read and validate the magic string
+    }
+
+    public boolean read(long longKey, BytesWritable value) throws IOException {
+      int key = getIntKey(longKey);
+      value.setSize(_blockSize);
+      if (_emptyBlocks.contains(key)) {
+        setAllZeros(value);
+        return true;
+      }
+      if (!_blocks.contains(key)) {
+        return false;
+      }
+      readBlock(key, value);
+      return true;
     }
 
     public RoaringBitmap getBlocks() {
@@ -250,27 +263,13 @@ public class BlockFile {
       return _blockSize;
     }
 
-    public boolean read(long longKey, BytesWritable value) throws IOException {
-      int key = getIntKey(longKey);
-      value.setSize(_blockSize);
-      if (_emptyBlocks.contains(key)) {
-        setAllZeros(value);
-        return true;
-      }
-      if (!_blocks.contains(key)) {
-        return false;
-      }
-      readBlock(key, value);
-      return true;
-    }
-
-    private void readBlock(int key, BytesWritable value) throws IOException {
+    protected void readBlock(int key, BytesWritable value) throws IOException {
       int storageBlockPosition = _blocks.rank(key) - 1;
       long position = storageBlockPosition * (long) _blockSize;
       _inputStream.read(position, value.getBytes(), 0, _blockSize);
     }
 
-    private void setAllZeros(BytesWritable value) {
+    protected void setAllZeros(BytesWritable value) {
       int length = value.getLength();
       Arrays.fill(value.getBytes(), 0, length, (byte) 0);
     }
@@ -287,7 +286,7 @@ public class BlockFile {
       return newIndexIterator(emptyIterator, blocksIterator);
     }
 
-    private Iterator<BlockFileEntry> newIndexIterator(PeekableIterator<Integer> emptyIterator,
+    protected Iterator<BlockFileEntry> newIndexIterator(PeekableIterator<Integer> emptyIterator,
         PeekableIterator<Integer> blocksIterator) {
       return new Iterator<BlockFileEntry>() {
 
@@ -333,7 +332,7 @@ public class BlockFile {
       return (long) ((int) i);
     }
 
-    private BlockFileEntry newBlockFileEntry(int id, boolean empty) {
+    protected BlockFileEntry newBlockFileEntry(int id, boolean empty) {
       return new BlockFileEntry() {
 
         @Override
@@ -357,6 +356,42 @@ public class BlockFile {
 
     public List<String> getSourceBlockFiles() {
       return _sourceFiles;
+    }
+
+  }
+
+  public static class RandomAccessReader extends Reader {
+
+    public RandomAccessReader(FileSystem fileSystem, Path path) throws IOException {
+      super(fileSystem, path);
+      try {
+        _inputStream.setReadahead(0l);
+      } catch (UnsupportedOperationException e) {
+        LOGGER.debug("Can not set readahead for path {}", path);
+      }
+    }
+
+  }
+
+  public static class StreamReader extends Reader {
+
+    private final long _maxSkip = 128 * 1024 * 1024;
+
+    public StreamReader(FileSystem fileSystem, Path path) throws IOException {
+      super(fileSystem, path);
+    }
+
+    protected void readBlock(int key, BytesWritable value) throws IOException {
+      int storageBlockPosition = _blocks.rank(key) - 1;
+      long position = storageBlockPosition * (long) _blockSize;
+      long pos = _inputStream.getPos();
+      long skip = position - pos;
+      if (skip < 0 || skip > _maxSkip) {
+        _inputStream.seek(position);
+      } else {
+        _inputStream.skip(skip);
+      }
+      _inputStream.read(value.getBytes(), 0, _blockSize);
     }
 
   }

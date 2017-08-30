@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.log4j.xml.DOMConfigurator;
@@ -140,5 +141,11 @@ public class Utils {
       return PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT;
     }
     return Integer.parseInt(v);
+  }
+
+  public static String getLockName(Path volumePath) {
+    String path = volumePath.toUri()
+                            .getPath();
+    return path.replaceAll("/", "__");
   }
 }

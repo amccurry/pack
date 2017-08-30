@@ -17,6 +17,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.zookeeper.KeeperException;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,6 +34,8 @@ import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
+import pack.block.util.Utils;
+import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockFileCompactor implements Closeable {
 
@@ -44,10 +47,15 @@ public class BlockFileCompactor implements Closeable {
   private final FileSystem _fileSystem;
   private final long _maxBlockFileSize;
   private final Cache<Path, Reader> _readerCache;
+  private final ZooKeeperLockManager _inUseLockManager;
+  private final String _lockName;
 
-  public BlockFileCompactor(FileSystem fileSystem, Path path, long maxBlockFileSize) {
+  public BlockFileCompactor(FileSystem fileSystem, Path path, long maxBlockFileSize,
+      ZooKeeperLockManager inUseLockManager) {
+    _inUseLockManager = inUseLockManager;
     _maxBlockFileSize = maxBlockFileSize;
     _fileSystem = fileSystem;
+    _lockName = Utils.getLockName(path);
     _blockPath = new Path(path, HdfsBlockStore.BLOCK);
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
@@ -199,20 +207,49 @@ public class BlockFileCompactor implements Closeable {
       sourceBlockFiles.addAll(reader.getSourceBlockFiles());
     }
 
+    Builder<FileStatus> toBeDeleted = ImmutableList.builder();
     Builder<FileStatus> builder = ImmutableList.builder();
     for (FileStatus fileStatus : listStatus) {
       String name = fileStatus.getPath()
                               .getName();
       if (!sourceBlockFiles.contains(name)) {
         builder.add(fileStatus);
+      } else {
+        toBeDeleted.add(fileStatus);
       }
     }
+    tryToRemove(toBeDeleted.build());
     return builder.build();
+  }
+
+  private void tryToRemove(List<FileStatus> filesToBeDeleted) {
+    for (FileStatus fileStatus : filesToBeDeleted) {
+      try {
+        tryToRemove(fileStatus);
+      } catch (KeeperException | InterruptedException | IOException e) {
+        LOGGER.error("Unknown error", e);
+      }
+    }
+  }
+
+  private void tryToRemove(FileStatus fileStatus) throws KeeperException, InterruptedException, IOException {
+    if (_inUseLockManager == null) {
+      return;
+    }
+    if (_inUseLockManager.tryToLock(_lockName)) {
+      try {
+        Path path = fileStatus.getPath();
+        LOGGER.info("Removing orphaned file {}", path);
+        _fileSystem.delete(path, false);
+      } finally {
+        _inUseLockManager.unlock(_lockName);
+      }
+    }
   }
 
   private Reader getReader(Path path) throws IOException {
     try {
-      return _readerCache.get(path, () -> BlockFile.open(_fileSystem, path));
+      return _readerCache.get(path, () -> BlockFile.openForStreaming(_fileSystem, path));
     } catch (ExecutionException e) {
       Throwable cause = e.getCause();
       if (cause instanceof IOException) {
