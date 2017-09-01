@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.security.PrivilegedExceptionAction;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -13,6 +14,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ShutdownHookManager;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
@@ -46,6 +48,17 @@ public class BlockPackFuse implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuse.class);
 
+  private static final String LOCK = "/lock";
+  private static final String BACKGROUND = "&";
+  private static final String STDERR_REDIRECT = "2>";
+  private static final String STDOUT_REDIRECT = ">";
+  private static final String STDERR = "/stderr";
+  private static final String STDOUT = "/stdout";
+  private static final String INHERENT_ENV_VAR_SWITCH = "-E";
+  private static final String SUDO = "sudo";
+  private static final String ENV = "env";
+  private static final String BIN_BASH = "#!/bin/bash";
+  private static final String START_SH = "start.sh";
   private static final String NOHUP = "/bin/nohup";
   private static final String JAVA_HOME = "java.home";
   private static final String JAVA_CLASS_PATH = "java.class.path";
@@ -63,6 +76,7 @@ public class BlockPackFuse implements Closeable {
     String javaHome = System.getProperty(JAVA_HOME);
     String className = System.getProperty(JAVA_CLASS_PATH);
     Builder<String> builder = ImmutableList.builder();
+    String zkTimeoutStr = Integer.toString(zkTimeout);
     builder.add(NOHUP)
            .add(javaHome + BIN_JAVA)
            .add(XMX_SWITCH)
@@ -74,23 +88,23 @@ public class BlockPackFuse implements Closeable {
            .add(fsMountLocation)
            .add(hdfVolumePath)
            .add(zkConnection)
-           .add(Integer.toString(zkTimeout))
-           .add(">" + logOutput + "/stdout")
-           .add("2>" + logOutput + "/stderr")
-           .add("&")
+           .add(zkTimeoutStr)
+           .add(STDOUT_REDIRECT + logOutput + STDOUT)
+           .add(STDERR_REDIRECT + logOutput + STDERR)
+           .add(BACKGROUND)
            .build();
     ImmutableList<String> build = builder.build();
     String cmd = Joiner.on(' ')
                        .join(build);
-    File start = new File(logOutput, "start.sh");
+    File start = new File(logOutput, START_SH);
     try (PrintWriter output = new PrintWriter(start)) {
-      output.println("#!/bin/bash");
-      output.println("env");
+      output.println(BIN_BASH);
+      output.println(ENV);
       IOUtils.write(cmd, output);
       output.println();
     }
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
-    return new ProcessBuilder("sudo", "-E", "bash", "-x", start.getAbsolutePath()).start();
+    return new ProcessBuilder(SUDO, INHERENT_ENV_VAR_SWITCH, "bash", "-x", start.getAbsolutePath()).start();
   }
 
   public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
@@ -103,12 +117,16 @@ public class BlockPackFuse implements Closeable {
     FileSystem fileSystem = FileSystem.get(conf);
     HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
 
-    try (Closer closer = autoClose(Closer.create())) {
-      ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
-      BlockPackFuse blockPackFuse = closer.register(
-          new BlockPackFuse(fileSystem, path, config, fuseLocalPath, fsLocalPath, zooKeeper));
-      blockPackFuse.mount();
-    }
+    UserGroupInformation ugi = Utils.getUserGroupInformation();
+    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      try (Closer closer = autoClose(Closer.create())) {
+        ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
+        BlockPackFuse blockPackFuse = closer.register(
+            new BlockPackFuse(fileSystem, path, config, fuseLocalPath, fsLocalPath, zooKeeper));
+        blockPackFuse.mount();
+      }
+      return null;
+    });
   }
 
   private final HdfsBlockStore _blockStore;
@@ -125,7 +143,7 @@ public class BlockPackFuse implements Closeable {
 
   public BlockPackFuse(FileSystem fileSystem, Path path, HdfsBlockStoreConfig config, String fuseLocalPath,
       String fsLocalPath, ZooKeeperClient zooKeeper) throws IOException {
-    ZkUtils.mkNodesStr(zooKeeper, MOUNT + "/lock");
+    ZkUtils.mkNodesStr(zooKeeper, MOUNT + LOCK);
     _path = path;
     _lockManager = createLockmanager(zooKeeper);
     _closer = Closer.create();
@@ -218,6 +236,6 @@ public class BlockPackFuse implements Closeable {
   }
 
   public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zooKeeper) {
-    return new ZooKeeperLockManager(zooKeeper, MOUNT + "/lock");
+    return new ZooKeeperLockManager(zooKeeper, MOUNT + LOCK);
   }
 }

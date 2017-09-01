@@ -12,6 +12,7 @@ import pack.block.util.Utils;
 
 public class BlockPackServer extends PackServer {
 
+  private static final String GLOBAL = "global";
   private static final String PACK_SCOPE = "PACK_SCOPE";
 
   public static void main(String[] args) throws Exception {
@@ -52,7 +53,7 @@ public class BlockPackServer extends PackServer {
 
   private static boolean isGlobal() {
     String v = System.getenv(PACK_SCOPE);
-    if (v != null && "global".equals(v.toLowerCase())) {
+    if (v != null && GLOBAL.equals(v.toLowerCase())) {
       return true;
     }
     return false;
