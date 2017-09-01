@@ -3,9 +3,15 @@ package pack.block.server.fs;
 import java.io.File;
 import java.io.IOException;
 
-public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import pack.block.util.Utils;
+
+public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
   public static final XfsLinuxFileSystem INSTANCE = new XfsLinuxFileSystem();
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(XfsLinuxFileSystem.class);
 
   private static final String GROWFS_SWITCH = "-d";
   private static final String XFS_GROWFS = "xfs_growfs";
@@ -13,12 +19,12 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void mkfs(File device, int blockSize) throws IOException {
-    exec(MKFS_XFS, device.getAbsolutePath());
+    Utils.exec(LOGGER, MKFS_XFS, device.getAbsolutePath());
   }
 
   @Override
   public void growOnline(File device, File mountLocation) throws IOException {
-    exec(XFS_GROWFS, GROWFS_SWITCH, mountLocation.getAbsolutePath());
+    Utils.exec(LOGGER, XFS_GROWFS, GROWFS_SWITCH, mountLocation.getAbsolutePath());
   }
 
   @Override

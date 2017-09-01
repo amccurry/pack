@@ -466,6 +466,10 @@ public class HdfsBlockStore implements BlockStore {
     return position / _fileSystemBlockSize;
   }
 
+  public HdfsMetaData getMetaData() {
+    return _metaData;
+  }
+
   @Override
   public LinuxFileSystem getLinuxFileSystem() {
     return _metaData.getFileSystemType()

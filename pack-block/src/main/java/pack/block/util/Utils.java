@@ -4,6 +4,9 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.UUID;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -11,6 +14,9 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
+
+import pack.PackServer;
+import pack.PackServer.Result;
 
 public class Utils {
 
@@ -147,5 +153,39 @@ public class Utils {
     String path = volumePath.toUri()
                             .getPath();
     return path.replaceAll("/", "__");
+  }
+
+  public static void exec(Logger logger, String... command) throws IOException {
+    String uuid = UUID.randomUUID()
+                      .toString();
+    List<String> list = Arrays.asList(command);
+    logger.info("Executing command id {} cmd {}", uuid, list);
+    Result result;
+    try {
+      result = PackServer.exec(uuid, list, logger);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    } finally {
+      logger.info("Command id {} complete", uuid);
+    }
+    if (result.exitCode != 0) {
+      throw new IOException("Unknown error while trying to run command " + Arrays.asList(command));
+    }
+  }
+
+  public static int execReturnExitCode(Logger logger, String... command) throws IOException {
+    String uuid = UUID.randomUUID()
+                      .toString();
+    List<String> list = Arrays.asList(command);
+    logger.info("Executing command id {} cmd {}", uuid, list);
+    Result result;
+    try {
+      result = PackServer.exec(uuid, list, logger);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    } finally {
+      logger.info("Command id {} complete", uuid);
+    }
+    return result.exitCode;
   }
 }

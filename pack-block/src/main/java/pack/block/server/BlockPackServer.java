@@ -9,8 +9,6 @@ import org.apache.hadoop.security.UserGroupInformation;
 import pack.PackServer;
 import pack.PackStorage;
 import pack.block.util.Utils;
-import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClient;
 
 public class BlockPackServer extends PackServer {
 
@@ -23,9 +21,9 @@ public class BlockPackServer extends PackServer {
     UserGroupInformation ugi = Utils.getUserGroupInformation();
     String zkConnectionString = Utils.getZooKeeperConnectionString();
     int sessionTimeout = Utils.getZooKeeperConnectionTimeout();
-    ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout);
     String sockerFile = "/run/docker/plugins/pack.sock";
-    BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localFile, remotePath, ugi, zooKeeper);
+    BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localFile, remotePath, ugi,
+        zkConnectionString, sessionTimeout);
     packServer.runServer();
   }
 
@@ -33,21 +31,23 @@ public class BlockPackServer extends PackServer {
   private final Path remotePath;
   private final UserGroupInformation ugi;
   private final Configuration configuration = new Configuration();
-  private final ZooKeeperClient zooKeeper;
+  private final String zkConnection;
+  private final int zkTimeout;
 
   public BlockPackServer(boolean global, String sockFile, File localFile, Path remotePath, UserGroupInformation ugi,
-      ZooKeeperClient zooKeeper) {
+      String zkConnection, int zkTimeout) {
     super(global, sockFile);
     this.localFile = localFile;
     this.remotePath = remotePath;
     this.ugi = ugi;
-    this.zooKeeper = zooKeeper;
+    this.zkConnection = zkConnection;
+    this.zkTimeout = zkTimeout;
     localFile.mkdirs();
   }
 
   @Override
   protected PackStorage getPackStorage() throws Exception {
-    return new BlockPackStorage(localFile, configuration, remotePath, ugi, zooKeeper);
+    return new BlockPackStorage(localFile, configuration, remotePath, ugi, zkConnection, zkTimeout);
   }
 
   private static boolean isGlobal() {

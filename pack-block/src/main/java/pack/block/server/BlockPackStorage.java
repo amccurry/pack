@@ -2,8 +2,10 @@ package pack.block.server;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,7 +13,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -25,18 +29,18 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Closer;
 
 import pack.PackStorage;
-import pack.block.blockstore.BlockStore;
-import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.fuse.FuseFileSystem;
-import pack.block.server.fs.LinuxFileSystem;
+import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.util.Utils;
-import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
+
+  private static final String KILL = "kill";
+
+  private static final String UTF_8 = "UTF-8";
 
   private static final Logger LOG = LoggerFactory.getLogger(BlockPackStorage.class);
 
@@ -46,14 +50,13 @@ public class BlockPackStorage implements PackStorage {
   protected final UserGroupInformation _ugi;
   protected final File _localFileSystemDir;
   protected final File _localDeviceDir;
-  protected final FuseFileSystem _memfs;
+  protected final File _localLogDir;
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
-  protected final ZooKeeperLockManager _lockManager;
+  protected final String _zkConnection;
+  protected final int _zkTimeout;
 
   public BlockPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi,
-      ZooKeeperClient zooKeeper) throws IOException, InterruptedException {
-    ZkUtils.mkNodesStr(zooKeeper, MOUNT + "/lock");
-    _lockManager = createLockmanager(zooKeeper);
+      String zkConnection, int zkTimeout) throws IOException, InterruptedException {
     Closer closer = Closer.create();
     closer.register((Closeable) () -> {
       for (String volumeName : _currentMountedVolumes) {
@@ -65,6 +68,8 @@ public class BlockPackStorage implements PackStorage {
       }
     });
     addShutdownHook(closer);
+    _zkConnection = zkConnection;
+    _zkTimeout = zkTimeout;
 
     _configuration = configuration;
     FileSystem fileSystem = getFileSystem(remotePath);
@@ -78,8 +83,8 @@ public class BlockPackStorage implements PackStorage {
     _localFileSystemDir.mkdirs();
     _localDeviceDir = new File(localFile, "devices");
     _localDeviceDir.mkdirs();
-    _memfs = new FuseFileSystem(_localDeviceDir.getAbsolutePath());
-    _memfs.localMount(false);
+    _localLogDir = new File(localFile, "logs");
+    _localLogDir.mkdirs();
   }
 
   public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zooKeeper) {
@@ -164,15 +169,6 @@ public class BlockPackStorage implements PackStorage {
         HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA;
         LOG.info("HdfsMetaData volume {} {}", volumeName, metaData);
         HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
-        BlockStore blockStore = new HdfsBlockStore(fileSystem, volumePath);
-        _memfs.addBlockStore(blockStore);
-        File localDevice = getLocalDevice(volumeName);
-        LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
-        try {
-          linuxFileSystem.mkfs(localDevice, metaData.getFileSystemBlockSize());
-        } finally {
-          Utils.close(LOG, _memfs.removeBlockStore(volumeName));
-        }
       } else {
         LOG.info("Create not created volume {}", volumeName);
       }
@@ -197,50 +193,67 @@ public class BlockPackStorage implements PackStorage {
     LOG.info("Mount Volume {} Id {}", volumeName, id);
 
     Path volumePath = getVolumePath(volumeName);
-    FileSystem fileSystem = getFileSystem(volumePath);
+    File localFileSystemMount = getLocalFileSystemMount(volumeName);
+    File localDevice = getLocalDevice(volumeName);
+    localFileSystemMount.mkdirs();
+    localDevice.mkdirs();
 
-    if (_lockManager.tryToLock(Utils.getLockName(volumePath))) {
-      BlockStore blockStore = new HdfsBlockStore(fileSystem, volumePath);
-      _memfs.addBlockStore(blockStore);
+    String path = volumePath.toUri()
+                            .getPath();
 
-      File localFileSystemMount = getLocalFileSystemMount(volumeName);
-      localFileSystemMount.mkdirs();
-      File localDevice = getLocalDevice(volumeName);
-
-      LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
-      if (linuxFileSystem.isGrowOfflineSupported()) {
-        linuxFileSystem.growOffline(localDevice);
-      }
-      _currentMountedVolumes.add(volumeName);
-      linuxFileSystem.mount(localDevice, localFileSystemMount);
-      if (linuxFileSystem.isGrowOnlineSupported()) {
-        linuxFileSystem.growOnline(localDevice, localFileSystemMount);
-      }
-      return localFileSystemMount.getAbsolutePath();
-    } else {
-      throw new IOException("Could not mount volume " + volumeName);
-    }
+    File logDir = getLogDir(volumeName);
+    BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(), path,
+        _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath());
+    waitForMount(localDevice);
+    return localFileSystemMount.getAbsolutePath();
   }
 
-  private LinuxFileSystem getLinuxFileSystem(BlockStore blockStore) {
-    return blockStore.getLinuxFileSystem();
+  private File getLogDir(String volumeName) {
+    File logDir = new File(new File(_localLogDir, volumeName), Long.toString(System.currentTimeMillis()));
+    logDir.mkdirs();
+    return logDir;
+  }
+
+  private void waitForMount(File localDevice) throws InterruptedException, IOException {
+    Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
+    File fusePid = getDeviceFusePidFile(localDevice);
+    for (int i = 0; i < 60; i++) {
+      if (fusePid.exists()) {
+        return;
+      }
+      LOG.info("Waiting for mount {}", localDevice);
+      Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+    }
+    throw new IOException("Timeout could not mount " + localDevice);
+  }
+
+  private File getDeviceFusePidFile(File localDevice) {
+    return new File(localDevice, FuseFileSystemSingleMount.FUSE_PID);
   }
 
   protected void umountVolume(String volumeName, String id)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
     LOG.info("Unmount Volume {} Id {}", volumeName, id);
-    Path volumePath = getVolumePath(volumeName);
-    try {
-      File localFileSystemMount = getLocalFileSystemMount(volumeName);
-      BlockStore blockStore = _memfs.getBlockStore(volumeName);
-      LinuxFileSystem linuxFileSystem = getLinuxFileSystem(blockStore);
-      linuxFileSystem.umount(localFileSystemMount);
-      _currentMountedVolumes.remove(volumeName);
-      _memfs.removeBlockStore(volumeName);
-      Utils.close(LOG, blockStore);
-    } finally {
-      _lockManager.unlock(Utils.getLockName(volumePath));
+    File localDevice = getLocalDevice(volumeName);
+    File fusePid = getDeviceFusePidFile(localDevice);
+    killMount(fusePid);
+  }
+
+  private void killMount(File fusePid) throws IOException {
+    String contents;
+    try (InputStream input = new FileInputStream(fusePid)) {
+      contents = IOUtils.toString(input, UTF_8);
     }
+    String pid = getPid(contents);
+    Utils.exec(LOG, KILL, pid);
+  }
+
+  private String getPid(String contents) throws IOException {
+    int indexOf = contents.indexOf('@');
+    if (indexOf < 0) {
+      throw new IOException("Could not determine pid.");
+    }
+    return contents.substring(0, indexOf);
   }
 
   private File getLocalFileSystemMount(String volumeName) {

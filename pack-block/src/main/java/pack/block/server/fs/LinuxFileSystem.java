@@ -26,4 +26,6 @@ public interface LinuxFileSystem {
   default boolean isGrowOfflineSupported() {
     return false;
   }
+
+  boolean isFileSystemExists(File device) throws IOException;
 }

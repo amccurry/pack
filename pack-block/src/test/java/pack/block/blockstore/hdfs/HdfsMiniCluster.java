@@ -7,6 +7,7 @@ import java.io.OutputStream;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 
 public class HdfsMiniCluster {
@@ -26,7 +27,12 @@ public class HdfsMiniCluster {
     file.mkdirs();
     writeConfiguration(new File(file, "hdfs-site.xml"));
     writeConfiguration(new File(file, "core-site.xml"));
-
+    
+    Path path = new Path("/test");
+    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                          .build();
+    HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
+    
     Thread.sleep(10000000);
   }
 
