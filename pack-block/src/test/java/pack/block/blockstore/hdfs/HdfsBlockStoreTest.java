@@ -16,11 +16,14 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.codahale.metrics.MetricRegistry;
+
 public class HdfsBlockStoreTest {
 
   private static MiniDFSCluster cluster;
   private static File storePathDir = new File("./test");
   private static FileSystem fileSystem;
+  private static MetricRegistry metrics = new MetricRegistry();
 
   @BeforeClass
   public static void beforeClass() throws IOException {
@@ -45,7 +48,7 @@ public class HdfsBlockStoreTest {
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
     Random random = new Random();
 
-    try (HdfsBlockStore store = new HdfsBlockStore(fileSystem, path)) {
+    try (HdfsBlockStore store = new HdfsBlockStore(metrics, fileSystem, path)) {
       for (int i = 0; i < 10000; i++) {
         int blockSize = store.getFileSystemBlockSize();
         int pos = random.nextInt(1000) * blockSize;
@@ -76,7 +79,7 @@ public class HdfsBlockStoreTest {
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
 
-    try (HdfsBlockStore store = new HdfsBlockStore(fileSystem, path)) {
+    try (HdfsBlockStore store = new HdfsBlockStore(metrics, fileSystem, path)) {
       int blockSize = store.getFileSystemBlockSize();
       {
         byte[] buf = new byte[blockSize];
@@ -123,7 +126,7 @@ public class HdfsBlockStoreTest {
     int maxPos = blockSize * 100;
     int maxOffset = 100;
 
-    try (HdfsBlockStore store = new HdfsBlockStore(fileSystem, path)) {
+    try (HdfsBlockStore store = new HdfsBlockStore(metrics, fileSystem, path)) {
       for (int j = 0; j < 10000; j++) {
         int length = random.nextInt(maxLength);
         int offset = random.nextInt(maxOffset);
@@ -164,7 +167,7 @@ public class HdfsBlockStoreTest {
     byte[] buf = new byte[122880];
     random.nextBytes(buf);
 
-    try (HdfsBlockStore store = new HdfsBlockStore(fileSystem, path)) {
+    try (HdfsBlockStore store = new HdfsBlockStore(metrics, fileSystem, path)) {
       {
         long pos = 139264;
         int len = buf.length;

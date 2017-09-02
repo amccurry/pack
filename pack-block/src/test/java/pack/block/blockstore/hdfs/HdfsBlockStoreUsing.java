@@ -4,14 +4,14 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.RandomAccessFile;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 
-import pack.block.blockstore.file.FileBlockStore;
+import com.codahale.metrics.MetricRegistry;
+
 import pack.block.fuse.FuseFileSystem;
 
 public class HdfsBlockStoreUsing {
@@ -19,6 +19,7 @@ public class HdfsBlockStoreUsing {
   private static MiniDFSCluster cluster;
   private static File storePathDir = new File("./test");
   private static FileSystem fileSystem;
+  private static MetricRegistry metrics = new MetricRegistry();
 
   public static void main(String[] args) throws IOException {
     Configuration configuration = new Configuration();
@@ -38,7 +39,7 @@ public class HdfsBlockStoreUsing {
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
     try (FuseFileSystem memfs = new FuseFileSystem("./mnt")) {
-      memfs.addBlockStore(new HdfsBlockStore(fileSystem, path));
+      memfs.addBlockStore(new HdfsBlockStore(metrics, fileSystem, path));
       // {
       // File file2 = new File("data/data1");
       // try (RandomAccessFile rand = new RandomAccessFile(file2, "rw")) {
