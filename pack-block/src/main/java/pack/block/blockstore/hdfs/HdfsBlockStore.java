@@ -24,7 +24,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Slf4jReporter;
 import com.codahale.metrics.Timer.Context;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -45,7 +44,8 @@ public class HdfsBlockStore implements BlockStore {
   public static final String BLOCK = "block";
   public static final String KVS = "kvs";
 
-  private final Logger _logger;
+  private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStore.class);
+
   private final FileSystem _fileSystem;
   private final Path _path;
   private final HdfsMetaData _metaData;
@@ -62,22 +62,20 @@ public class HdfsBlockStore implements BlockStore {
   private final byte[] _emptyBlock;
   private final AtomicReference<List<Path>> _blockFiles = new AtomicReference<>();
   private final Timer _blockFileTimer;
-  private final MetricRegistry _registry = new MetricRegistry();
-  private final Slf4jReporter _reporter;
+  private final MetricRegistry _registry;
   private final com.codahale.metrics.Timer _writeTimer;
   private final com.codahale.metrics.Timer _readTimer;
   private final AtomicReference<Thread> _writeThread = new AtomicReference<Thread>();
   private final Object _writeExternalBlockLock = new Object();
 
-  public HdfsBlockStore(FileSystem fileSystem, Path path) throws IOException {
-    this(fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
+  public HdfsBlockStore(MetricRegistry registry, FileSystem fileSystem, Path path) throws IOException {
+    this(registry, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
   }
 
-  public HdfsBlockStore(FileSystem fileSystem, Path path, HdfsBlockStoreConfig config) throws IOException {
+  public HdfsBlockStore(MetricRegistry registry, FileSystem fileSystem, Path path, HdfsBlockStoreConfig config)
+      throws IOException {
     String name = path.getName();
-    _logger = LoggerFactory.getLogger("HDFS/BS/" + name);
-    _reporter = buildReporter(_registry);
-    _reporter.start(1, TimeUnit.MINUTES);
+    _registry = registry;
 
     _writeTimer = _registry.timer("write");
     _readTimer = _registry.timer("read");
@@ -115,14 +113,6 @@ public class HdfsBlockStore implements BlockStore {
     _blockFileTimer.scheduleAtFixedRate(getBlockFileTask(), period, period);
   }
 
-  private Slf4jReporter buildReporter(MetricRegistry registry) {
-    return Slf4jReporter.forRegistry(registry)
-                        .outputTo(_logger)
-                        .convertRatesTo(TimeUnit.SECONDS)
-                        .convertDurationsTo(TimeUnit.MILLISECONDS)
-                        .build();
-  }
-
   private Path qualify(Path path) {
     return path.makeQualified(_fileSystem.getUri(), _fileSystem.getWorkingDirectory());
   }
@@ -146,7 +136,7 @@ public class HdfsBlockStore implements BlockStore {
         try {
           processBlockFiles();
         } catch (Throwable t) {
-          _logger.error("Unknown error trying to clean old block files.", t);
+          LOGGER.error("Unknown error trying to clean old block files.", t);
         }
       }
     };
@@ -161,7 +151,7 @@ public class HdfsBlockStore implements BlockStore {
     List<Path> blockFiles = _blockFiles.get();
     for (Path path : blockFiles) {
       if (!_fileSystem.exists(path)) {
-        _logger.info("Path no longer exists, due to old block files being removed {}", path);
+        LOGGER.info("Path no longer exists, due to old block files being removed {}", path);
         continue;
       }
       Reader reader = getReader(path);
@@ -182,7 +172,7 @@ public class HdfsBlockStore implements BlockStore {
     if (!_fileSystem.exists(path)) {
       return;
     }
-    _logger.info("Removing old block file {}", path);
+    LOGGER.info("Removing old block file {}", path);
     synchronized (_blockFiles) {
       List<Path> list = new ArrayList<>(_blockFiles.get());
       list.remove(path);
@@ -205,18 +195,18 @@ public class HdfsBlockStore implements BlockStore {
     synchronized (_blockFiles) {
       cacheList = new ArrayList<>(_blockFiles.get());
       storageList = getBlockFilePathListFromStorage();
-      if (_logger.isDebugEnabled()) {
-        storageList.forEach(path -> _logger.debug("Storage path {}", path));
-        cacheList.forEach(path -> _logger.debug("Cache path {}", path));
+      if (LOGGER.isDebugEnabled()) {
+        storageList.forEach(path -> LOGGER.debug("Storage path {}", path));
+        cacheList.forEach(path -> LOGGER.debug("Cache path {}", path));
       }
 
       if (storageList.equals(cacheList)) {
-        _logger.debug("No missing block files to load.");
+        LOGGER.debug("No missing block files to load.");
         return;
       }
       if (!storageList.containsAll(cacheList)) {
         cacheList.removeAll(storageList);
-        _logger.error("Cache list contains references to files that no longer exist {}", cacheList);
+        LOGGER.error("Cache list contains references to files that no longer exist {}", cacheList);
         throw new IOException("Missing files error.");
       }
       _blockFiles.set(ImmutableList.copyOf(storageList));
@@ -224,9 +214,9 @@ public class HdfsBlockStore implements BlockStore {
 
     List<Path> newFiles = new ArrayList<>(storageList);
     newFiles.removeAll(cacheList);
-    _logger.info("New files found.");
+    LOGGER.info("New files found.");
     for (Path path : storageList) {
-      _logger.info("Loading {}.", path);
+      LOGGER.info("Loading {}.", path);
       getReader(path);
     }
   }
@@ -244,7 +234,6 @@ public class HdfsBlockStore implements BlockStore {
     _blockFileTimer.cancel();
     _blockFileTimer.purge();
     _readerCache.invalidateAll();
-    _reporter.close();
   }
 
   @Override
@@ -336,7 +325,7 @@ public class HdfsBlockStore implements BlockStore {
       long start = System.nanoTime();
       waitUntilExternalWriteCompletes();
       long end = System.nanoTime();
-      _logger.info("Blocking waiting for KVS to flush {} ms", (end - start) / 1_000_000.0);
+      LOGGER.info("Blocking waiting for KVS to flush {} ms", (end - start) / 1_000_000.0);
     }
   }
 
@@ -371,7 +360,7 @@ public class HdfsBlockStore implements BlockStore {
       try {
         writeExternalBlock();
       } catch (IOException e) {
-        _logger.error("Unknown error while writing external block", e);
+        LOGGER.error("Unknown error while writing external block", e);
       }
       _writeThread.set(null);
     });
@@ -379,13 +368,13 @@ public class HdfsBlockStore implements BlockStore {
 
   private void writeExternalBlock() throws IOException {
     synchronized (_writeExternalBlockLock) {
-      if (_logger.isDebugEnabled()) {
-        _logger.debug("Writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("Writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
             _hdfsKeyValueStore.getNumberOfEntries());
       }
       _hdfsKeyValueStore.writeExternal(getExternalWriter(), true);
-      if (_logger.isDebugEnabled()) {
-        _logger.debug("After writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
+      if (LOGGER.isDebugEnabled()) {
+        LOGGER.debug("After writing block, memory size {} entries {}", _hdfsKeyValueStore.getSizeOfData(),
             _hdfsKeyValueStore.getNumberOfEntries());
       }
     }

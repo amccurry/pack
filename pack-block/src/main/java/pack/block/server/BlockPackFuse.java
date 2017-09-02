@@ -20,6 +20,8 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.CsvReporter;
+import com.codahale.metrics.MetricRegistry;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
@@ -71,8 +73,9 @@ public class BlockPackFuse implements Closeable {
   private static final String SITE_XML = "-site.xml";
   private static final String HDFS_CONF = "hdfs-conf";
 
-  public static Process startProcess(String fuseMountLocation, String fsMountLocation, String hdfVolumePath,
-      String zkConnection, int zkTimeout, String volumeName, String logOutput) throws IOException {
+  public static Process startProcess(String fuseMountLocation, String fsMountLocation, String fsMetricsLocation,
+      String hdfVolumePath, String zkConnection, int zkTimeout, String volumeName, String logOutput)
+      throws IOException {
     String javaHome = System.getProperty(JAVA_HOME);
     String className = System.getProperty(JAVA_CLASS_PATH);
     Builder<String> builder = ImmutableList.builder();
@@ -86,6 +89,7 @@ public class BlockPackFuse implements Closeable {
            .add(BlockPackFuse.class.getName())
            .add(fuseMountLocation)
            .add(fsMountLocation)
+           .add(fsMetricsLocation)
            .add(hdfVolumePath)
            .add(zkConnection)
            .add(zkTimeoutStr)
@@ -111,9 +115,10 @@ public class BlockPackFuse implements Closeable {
     Configuration conf = getConfig();
     String fuseLocalPath = args[0];
     String fsLocalPath = args[1];
-    Path path = new Path(args[2]);
-    String zkConnection = args[3];
-    int zkTimeout = Integer.parseInt(args[4]);
+    String metricsLocalPath = args[2];
+    Path path = new Path(args[3]);
+    String zkConnection = args[4];
+    int zkTimeout = Integer.parseInt(args[5]);
     FileSystem fileSystem = FileSystem.get(conf);
     HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
 
@@ -122,7 +127,7 @@ public class BlockPackFuse implements Closeable {
       try (Closer closer = autoClose(Closer.create())) {
         ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
         BlockPackFuse blockPackFuse = closer.register(
-            new BlockPackFuse(fileSystem, path, config, fuseLocalPath, fsLocalPath, zooKeeper));
+            new BlockPackFuse(fileSystem, path, config, fuseLocalPath, fsLocalPath, metricsLocalPath, zooKeeper));
         blockPackFuse.mount();
       }
       return null;
@@ -140,18 +145,31 @@ public class BlockPackFuse implements Closeable {
   private final AtomicBoolean _closed = new AtomicBoolean(true);
   private final ZooKeeperLockManager _lockManager;
   private final Path _path;
+  private final MetricRegistry _registry = new MetricRegistry();
+  private final CsvReporter _reporter;
+  private final boolean _fileSystemMount;
 
   public BlockPackFuse(FileSystem fileSystem, Path path, HdfsBlockStoreConfig config, String fuseLocalPath,
-      String fsLocalPath, ZooKeeperClient zooKeeper) throws IOException {
+      String fsLocalPath, String metricsLocaPath, ZooKeeperClient zooKeeper) throws IOException {
+    this(fileSystem, path, config, fuseLocalPath, fsLocalPath, metricsLocaPath, zooKeeper, true);
+  }
+
+  public BlockPackFuse(FileSystem fileSystem, Path path, HdfsBlockStoreConfig config, String fuseLocalPath,
+      String fsLocalPath, String metricsLocaPath, ZooKeeperClient zooKeeper, boolean fileSystemMount)
+      throws IOException {
     ZkUtils.mkNodesStr(zooKeeper, MOUNT + LOCK);
+    _fileSystemMount = fileSystemMount;
     _path = path;
     _lockManager = createLockmanager(zooKeeper);
     _closer = Closer.create();
+    _reporter = _closer.register(CsvReporter.forRegistry(_registry)
+                                            .build(new File(metricsLocaPath)));
+    _reporter.start(1, TimeUnit.MINUTES);
     _fuseLocalPath = new File(fuseLocalPath);
     _fuseLocalPath.mkdirs();
     _fsLocalPath = new File(fsLocalPath);
     _fsLocalPath.mkdirs();
-    _blockStore = new HdfsBlockStore(fileSystem, path, config);
+    _blockStore = new HdfsBlockStore(_registry, fileSystem, path, config);
     _linuxFileSystem = _blockStore.getLinuxFileSystem();
     _metaData = _blockStore.getMetaData();
     _fuse = _closer.register(new FuseFileSystemSingleMount(fuseLocalPath, _blockStore));
@@ -163,8 +181,16 @@ public class BlockPackFuse implements Closeable {
   public void close() throws IOException {
     synchronized (_closed) {
       if (!_closed.get()) {
-        _linuxFileSystem.umount(_fsLocalPath);
+        if (_fileSystemMount) {
+          _linuxFileSystem.umount(_fsLocalPath);
+        }
         _closer.close();
+        _fuseMountThread.interrupt();
+        try {
+          _fuseMountThread.join();
+        } catch (InterruptedException e) {
+          LOGGER.info("Unknown error", e);
+        }
         try {
           _lockManager.unlock(Utils.getLockName(_path));
         } catch (InterruptedException | KeeperException e) {
@@ -176,22 +202,30 @@ public class BlockPackFuse implements Closeable {
   }
 
   public void mount() throws IOException, InterruptedException, KeeperException {
+    mount(true);
+  }
+
+  public void mount(boolean blocking) throws IOException, InterruptedException, KeeperException {
     if (_lockManager.tryToLock(Utils.getLockName(_path))) {
       _closed.set(false);
       startFuseMount();
       LOGGER.info("fuse mount {} complete", _fuseLocalPath);
       waitUntilFuseIsMounted();
       LOGGER.info("fuse mount {} visible", _fuseLocalPath);
-      File device = new File(_fuseLocalPath, _blockStore.getName());
-      if (!_linuxFileSystem.isFileSystemExists(device)) {
-        LOGGER.info("file system does not exist on mount {} visible", _fuseLocalPath);
-        int blockSize = _metaData.getFileSystemBlockSize();
-        LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, _fuseLocalPath);
-        _linuxFileSystem.mkfs(device, blockSize);
+      if (_fileSystemMount) {
+        File device = new File(_fuseLocalPath, FuseFileSystemSingleMount.BRICK);
+        if (!_linuxFileSystem.isFileSystemExists(device)) {
+          LOGGER.info("file system does not exist on mount {} visible", _fuseLocalPath);
+          int blockSize = _metaData.getFileSystemBlockSize();
+          LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, _fuseLocalPath);
+          _linuxFileSystem.mkfs(device, blockSize);
+        }
+        _linuxFileSystem.mount(device, _fsLocalPath);
+        LOGGER.info("fs mount {} complete", _fsLocalPath);
       }
-      _linuxFileSystem.mount(device, _fsLocalPath);
-      LOGGER.info("fs mount {} complete", _fsLocalPath);
-      _fuseMountThread.join();
+      if (blocking) {
+        _fuseMountThread.join();
+      }
     } else {
       LOGGER.error("volume {} already is use.", _path);
     }

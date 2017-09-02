@@ -8,7 +8,7 @@ import pack.block.server.fs.LinuxFileSystem;
 public interface BlockStore extends Closeable {
 
   LinuxFileSystem getLinuxFileSystem();
-
+  
   /**
    * Name of the BlockStore, must be a valid filename.
    * 

@@ -7,8 +7,10 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.PrivilegedExceptionAction;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,13 +40,15 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
 
-  private static final String KILL = "kill";
-
-  private static final String UTF_8 = "UTF-8";
-
-  private static final Logger LOG = LoggerFactory.getLogger(BlockPackStorage.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
   public static final String MOUNT = "/mount";
+
+  private static final String KILL = "kill";
+  private static final String UTF_8 = "UTF-8";
+  private static final String DATE_FORMAT = "yyyyMMddkkmmss";
+  private static final String METRICS = "metrics";
+
   protected final Configuration _configuration;
   protected final Path _root;
   protected final UserGroupInformation _ugi;
@@ -63,7 +67,7 @@ public class BlockPackStorage implements PackStorage {
         try {
           unmount(volumeName, null);
         } catch (Exception e) {
-          LOG.error("Unknown error while trying to umount volume " + volumeName);
+          LOGGER.error("Unknown error while trying to umount volume " + volumeName);
         }
       }
     });
@@ -77,7 +81,7 @@ public class BlockPackStorage implements PackStorage {
     _root = remotePath;
     _ugi = ugi;
 
-    LOG.info("Creating hdfs root path {}", _root);
+    LOGGER.info("Creating hdfs root path {}", _root);
     _ugi.doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
     _localFileSystemDir = new File(localFile, "fs");
     _localFileSystemDir.mkdirs();
@@ -97,7 +101,7 @@ public class BlockPackStorage implements PackStorage {
              try {
                closer.close();
              } catch (IOException e) {
-               LOG.error("Unknown error while trying to umount volumes");
+               LOGGER.error("Unknown error while trying to umount volumes");
              }
            }));
   }
@@ -130,7 +134,7 @@ public class BlockPackStorage implements PackStorage {
   @Override
   public String getMountPoint(String volumeName) {
     File localMountFile = getLocalFileSystemMount(volumeName);
-    LOG.info("Get MountPoint volume {} path {}", volumeName, localMountFile);
+    LOGGER.info("Get MountPoint volume {} path {}", volumeName, localMountFile);
     if (!localMountFile.exists()) {
       return null;
     }
@@ -143,7 +147,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   protected List<String> listHdfsVolumes() throws IOException, FileNotFoundException {
-    LOG.info("List Volumes");
+    LOGGER.info("List Volumes");
     FileSystem fileSystem = getFileSystem(_root);
     FileStatus[] listStatus = fileSystem.listStatus(_root);
     List<String> result = new ArrayList<>();
@@ -155,7 +159,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   protected boolean existsVolume(String volumeName) throws IOException {
-    LOG.info("exists {}", volumeName);
+    LOGGER.info("exists {}", volumeName);
     FileSystem fileSystem = getFileSystem(_root);
     return fileSystem.exists(getVolumePath(volumeName));
   }
@@ -165,12 +169,12 @@ public class BlockPackStorage implements PackStorage {
     FileSystem fileSystem = getFileSystem(volumePath);
     if (!fileSystem.exists(volumePath)) {
       if (fileSystem.mkdirs(volumePath)) {
-        LOG.info("Create volume {}", volumeName);
+        LOGGER.info("Create volume {}", volumeName);
         HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA;
-        LOG.info("HdfsMetaData volume {} {}", volumeName, metaData);
+        LOGGER.info("HdfsMetaData volume {} {}", volumeName, metaData);
         HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
       } else {
-        LOG.info("Create not created volume {}", volumeName);
+        LOGGER.info("Create not created volume {}", volumeName);
       }
     }
   }
@@ -180,7 +184,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   protected void removeVolume(String volumeName) throws IOException {
-    LOG.info("Remove Volume {}", volumeName);
+    LOGGER.info("Remove Volume {}", volumeName);
     Path volumePath = getVolumePath(volumeName);
 
     FileSystem fileSystem = getFileSystem(volumePath);
@@ -190,26 +194,37 @@ public class BlockPackStorage implements PackStorage {
   protected String mountVolume(String volumeName, String id)
       throws IOException, FileNotFoundException, InterruptedException, KeeperException {
     createVolume(volumeName, ImmutableMap.of());
-    LOG.info("Mount Volume {} Id {}", volumeName, id);
+    LOGGER.info("Mount Volume {} Id {}", volumeName, id);
+
+    File logDir = getLogDir(volumeName);
 
     Path volumePath = getVolumePath(volumeName);
     File localFileSystemMount = getLocalFileSystemMount(volumeName);
     File localDevice = getLocalDevice(volumeName);
+    File localMetrics = getLocalMetrics(logDir);
     localFileSystemMount.mkdirs();
     localDevice.mkdirs();
+    localMetrics.mkdirs();
 
     String path = volumePath.toUri()
                             .getPath();
 
-    File logDir = getLogDir(volumeName);
-    BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(), path,
-        _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath());
+    BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(),
+        localMetrics.getAbsolutePath(), path, _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath());
     waitForMount(localDevice);
     return localFileSystemMount.getAbsolutePath();
   }
 
+  private File getLocalMetrics(File logDir) {
+    File file = new File(logDir, METRICS);
+    file.mkdirs();
+    return file;
+  }
+
   private File getLogDir(String volumeName) {
-    File logDir = new File(new File(_localLogDir, volumeName), Long.toString(System.currentTimeMillis()));
+    SimpleDateFormat format = new SimpleDateFormat(DATE_FORMAT);
+    String formatStr = format.format(new Date());
+    File logDir = new File(new File(_localLogDir, volumeName), formatStr);
     logDir.mkdirs();
     return logDir;
   }
@@ -221,7 +236,7 @@ public class BlockPackStorage implements PackStorage {
       if (fusePid.exists()) {
         return;
       }
-      LOG.info("Waiting for mount {}", localDevice);
+      LOGGER.info("Waiting for mount {}", localDevice);
       Thread.sleep(TimeUnit.SECONDS.toMillis(1));
     }
     throw new IOException("Timeout could not mount " + localDevice);
@@ -233,7 +248,7 @@ public class BlockPackStorage implements PackStorage {
 
   protected void umountVolume(String volumeName, String id)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
-    LOG.info("Unmount Volume {} Id {}", volumeName, id);
+    LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
     File localDevice = getLocalDevice(volumeName);
     File fusePid = getDeviceFusePidFile(localDevice);
     killMount(fusePid);
@@ -245,7 +260,7 @@ public class BlockPackStorage implements PackStorage {
       contents = IOUtils.toString(input, UTF_8);
     }
     String pid = getPid(contents);
-    Utils.exec(LOG, KILL, pid);
+    Utils.exec(LOGGER, KILL, pid);
   }
 
   private String getPid(String contents) throws IOException {

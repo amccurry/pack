@@ -21,18 +21,19 @@ import pack.block.blockstore.BlockStore;
 
 public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
+  public static final String BRICK = "brick";
   public static final String FUSE_PID = "fuse_pid";
   private static final String PARENT_DIR = "..";
   private static final String CURRENT_DIR = ".";
   private static final String FILE_SEP = "/";
   private static final String PID_FILENAME = FILE_SEP + FUSE_PID;
+  private static final String BRICK_FILENAME = FILE_SEP + BRICK;
   private static final String OPTION_SWITCH = "-o";
   private static final String AUTO_UNMOUNT = "auto_unmount";
   private static final String ALLOW_ROOT = "allow_root";
   private final Logger _logger;
   private final String _localPath;
   private final BlockStore _blockStore;
-  private final String _mountPath;
   private final long _length;
   private final byte[] _pidContent;
 
@@ -41,19 +42,27 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     _localPath = localPath;
     _blockStore = blockStore;
     _length = blockStore.getLength();
-    _mountPath = FILE_SEP + blockStore.getName();
     _pidContent = ManagementFactory.getRuntimeMXBean()
                                    .getName()
                                    .getBytes();
   }
 
   public void localMount() {
-    String[] opts = new String[] { OPTION_SWITCH, ALLOW_ROOT, OPTION_SWITCH, AUTO_UNMOUNT };
-    mount(Paths.get(_localPath), true, false, opts);
+    localMount(true);
   }
 
   public void localMount(boolean blocking) {
-    String[] opts = new String[] { OPTION_SWITCH, ALLOW_ROOT, OPTION_SWITCH, AUTO_UNMOUNT };
+    jnr.ffi.Platform p = jnr.ffi.Platform.getNativePlatform();
+    String[] opts;
+    switch (p.getOS()) {
+    case DARWIN:
+      opts = new String[] { OPTION_SWITCH, ALLOW_ROOT };
+      break;
+    case LINUX:
+    default:
+      opts = new String[] { OPTION_SWITCH, ALLOW_ROOT, OPTION_SWITCH, AUTO_UNMOUNT };
+      break;
+    }
     mount(Paths.get(_localPath), blocking, false, opts);
   }
 
@@ -68,43 +77,45 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     long lastModified = _blockStore.lastModified();
     stat.st_mtim.tv_sec.set(lastModified / 1000);
     stat.st_mtim.tv_nsec.set(0);
-    if (path.equals(FILE_SEP)) {
-      stat.st_mode.set(FileStat.S_IFDIR | 0777);
-      stat.st_size.set(2);
-      return 0;
-    } else if (path.equals(_mountPath)) {
+    switch (path) {
+    case BRICK_FILENAME:
       stat.st_mode.set(FileStat.S_IFREG | 0777);
       stat.st_size.set(_length);
       return 0;
-    } else if (path.equals(PID_FILENAME)) {
+    case FILE_SEP:
+      stat.st_mode.set(FileStat.S_IFDIR | 0777);
+      stat.st_size.set(2);
+      return 0;
+    case PID_FILENAME:
       stat.st_mode.set(FileStat.S_IFREG | 0444);
       stat.st_size.set(_pidContent.length);
       return 0;
-    } else {
+    default:
       return -ErrorCodes.ENOENT();
     }
   }
 
   @Override
   public int readdir(String path, Pointer buf, FuseFillDir filter, @off_t long offset, FuseFileInfo fi) {
-    if (path.equals(FILE_SEP)) {
+    switch (path) {
+    case FILE_SEP:
       filter.apply(buf, CURRENT_DIR, null, 0);
       filter.apply(buf, PARENT_DIR, null, 0);
-      filter.apply(buf, _blockStore.getName(), null, 0);
+      filter.apply(buf, BRICK, null, 0);
       filter.apply(buf, FUSE_PID, null, 0);
       return 0;
-    } else if (path.equals(_mountPath)) {
+    case BRICK_FILENAME:
+    case PID_FILENAME:
       return -ErrorCodes.ENOTDIR();
-    } else {
+    default:
       return -ErrorCodes.ENOENT();
     }
   }
 
   @Override
   public int read(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
-    if (path.equals(FILE_SEP)) {
-      return -ErrorCodes.EISDIR();
-    } else if (path.equals(_mountPath)) {
+    switch (path) {
+    case BRICK_FILENAME:
       try {
         _logger.debug("read {} position {} length {}", path, offset, size);
         return readBlockStore(_blockStore, buf, size, offset);
@@ -112,19 +123,20 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
         _logger.error("Unknown error.", t);
         return -ErrorCodes.EIO();
       }
-    } else if (path.equals(PID_FILENAME)) {
+    case FILE_SEP:
+      return -ErrorCodes.EISDIR();
+    case PID_FILENAME:
       buf.put(0, _pidContent, 0, _pidContent.length);
       return _pidContent.length;
-    } else {
+    default:
       return -ErrorCodes.ENOENT();
     }
   }
 
   @Override
   public int write(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
-    if (path.equals(FILE_SEP)) {
-      return -ErrorCodes.EISDIR();
-    } else if (path.equals(_mountPath)) {
+    switch (path) {
+    case BRICK_FILENAME:
       try {
         _logger.debug("write {} position {} length {}", path, offset, size);
         return writeBlockStore(_blockStore, buf, size, offset);
@@ -132,18 +144,19 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
         _logger.error("Unknown error.", t);
         return -ErrorCodes.EIO();
       }
-    } else if (path.equals(PID_FILENAME)) {
+    case FILE_SEP:
+      return -ErrorCodes.EISDIR();
+    case PID_FILENAME:
       return -ErrorCodes.EIO();
-    } else {
+    default:
       return -ErrorCodes.ENOENT();
     }
   }
 
   @Override
   public int fsync(String path, int isdatasync, FuseFileInfo fi) {
-    if (path.equals(FILE_SEP)) {
-      return -ErrorCodes.EISDIR();
-    } else if (path.equals(_mountPath)) {
+    switch (path) {
+    case BRICK_FILENAME:
       try {
         _blockStore.fsync();
         return 0;
@@ -151,7 +164,11 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
         _logger.error("Unknown error.", t);
         return -ErrorCodes.EIO();
       }
-    } else {
+    case FILE_SEP:
+      return -ErrorCodes.EISDIR();
+    case PID_FILENAME:
+      return -ErrorCodes.EIO();
+    default:
       return -ErrorCodes.ENOENT();
     }
   }
