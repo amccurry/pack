@@ -262,6 +262,24 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
+  public void flush() throws IOException {
+    ensureOpen();
+    _writeLock.lock();
+    ensureOpenForWriting();
+    try {
+      flushInternal();
+    } catch (RemoteException e) {
+      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+    } catch (LeaseExpiredException e) {
+      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+    } finally {
+      _writeLock.unlock();
+    }
+  }
+
+
+
+  @Override
   public void put(long key, ByteBuffer value) throws IOException {
     ensureOpen();
     if (value == null) {
@@ -505,6 +523,12 @@ public class HdfsKeyValueStore implements Store {
   }
 
   private void syncInternal() throws IOException {
+    validateNextSegmentHasNotStarted();
+    _output.hsync();
+    _lastWrite.set(System.currentTimeMillis());
+  }
+  
+  private void flushInternal() throws IOException {
     validateNextSegmentHasNotStarted();
     _output.hflush();
     _lastWrite.set(System.currentTimeMillis());

@@ -43,4 +43,6 @@ public interface Store extends Closeable {
   
   int getNumberOfEntries();
 
+  void flush() throws IOException;
+
 }
