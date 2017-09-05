@@ -36,17 +36,17 @@ public class HdfsMiniClusterBench {
     random.nextBytes(buf);
     Path path = new Path("/test");
     for (int i = 0; i < 10000; i++) {
-//      long writeFile = writeFile(fileSystem, path, buf);
+      // long writeFile = writeFile(fileSystem, path, buf);
       // long writeFileFlush = writeFileFlush(fileSystem, path, buf);
       // long writeFileSync = writeFileSync(fileSystem, path, buf);
       // long writeFileFlushAsync = writeFileFlushAsync(fileSystem, path, buf);
       // long writeFileSyncAsync = writeFileSyncAsync(fileSystem, path, buf);
       long writeKvs = writeKvs(fileSystem, path, buf);
-//      long writeKvsSync = writeKvsSync(fileSystem, path, buf);
-//      long writeKvsFlush = writeKvsFlush(fileSystem, path, buf);
+      long writeKvsSync = writeKvsSync(fileSystem, path, buf);
+      // long writeKvsFlush = writeKvsFlush(fileSystem, path, buf);
 
       System.out.println("================");
-//      System.out.println("writeFile " + writeFile / 1_000_000.0 + " ms");
+      // System.out.println("writeFile " + writeFile / 1_000_000.0 + " ms");
       // System.out.println("writeFileFlush " + writeFileFlush / 1_000_000.0 + "
       // ms");
       // System.out.println("writeFileSync " + writeFileSync / 1_000_000.0 + "
@@ -56,8 +56,9 @@ public class HdfsMiniClusterBench {
       // System.out.println("writeFileSyncAsync " + writeFileSyncAsync /
       // 1_000_000.0 + " ms");
       System.out.println("writeKvs " + writeKvs / 1_000_000.0 + " ms");
-//      System.out.println("writeKvsSync " + writeKvsSync / 1_000_000.0 + " ms");
-//      System.out.println("writeKvsFlush " + writeKvsFlush / 1_000_000.0 + " ms");
+      System.out.println("writeKvsSync " + writeKvsSync / 1_000_000.0 + " ms");
+      // System.out.println("writeKvsFlush " + writeKvsFlush / 1_000_000.0 + "
+      // ms");
     }
     cluster.shutdown();
   }
