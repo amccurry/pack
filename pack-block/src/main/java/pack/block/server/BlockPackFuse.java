@@ -217,7 +217,7 @@ public class BlockPackFuse implements Closeable {
         if (!_linuxFileSystem.isFileSystemExists(device)) {
           LOGGER.info("file system does not exist on mount {} visible", _fuseLocalPath);
           int blockSize = _metaData.getFileSystemBlockSize();
-          LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, _fuseLocalPath);
+          LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, device);
           _linuxFileSystem.mkfs(device, blockSize);
         }
         _linuxFileSystem.mount(device, _fsLocalPath);

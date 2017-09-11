@@ -14,11 +14,14 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import pack.PackServer;
 import pack.PackServer.Result;
 
 public class Utils {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
 
   private static final int PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT = 30000;
   private static final String PACK_ZOOKEEPER_CONNECTION_TIMEOUT = "PACK_ZOOKEEPER_CONNECTION_TIMEOUT";
@@ -65,12 +68,13 @@ public class Utils {
 
   public static UserGroupInformation getUserGroupInformation() throws IOException {
     UserGroupInformation ugi;
-    String hdfsPrinciaplName = getHdfsPrinciaplName();
+    String hdfsPrinciaplName = getHdfsPrincipalName();  
     String hdfsUser = getHdfsUser();
     if (hdfsPrinciaplName != null) {
       String hdfsKeytab = getHdfsKeytab();
+      LOGGER.info("principal {} keytab location {}", hdfsPrinciaplName, hdfsKeytab);
       UserGroupInformation.loginUserFromKeytab(hdfsPrinciaplName, hdfsKeytab);
-      ugi = UserGroupInformation.getCurrentUser();
+      ugi = UserGroupInformation.getLoginUser();
     } else if (hdfsUser == null) {
       ugi = UserGroupInformation.getCurrentUser();
     } else {
@@ -79,7 +83,7 @@ public class Utils {
     return ugi;
   }
 
-  public static String getHdfsPrinciaplName() {
+  public static String getHdfsPrincipalName() {
     String v = System.getenv(PACK_HDFS_KERBEROS_PRINCIPAL_NAME);
     if (v == null) {
       return null;

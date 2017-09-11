@@ -6,6 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.Random;
 import java.util.Timer;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.hadoop.conf.Configuration;
@@ -18,9 +19,11 @@ import pack.block.blockstore.hdfs.kvs.HdfsKeyValueStore;
 
 public class HdfsMiniClusterBench {
 
-  private static final int NUMBER_OF_WRITES = 100000;
+  private static final int NUMBER_OF_WRITES = 10000;
 
   private static final Timer hdfsKeyValueTimer = new Timer("test", true);
+
+  private static long _5_SECONDS = TimeUnit.SECONDS.toNanos(5);
 
   public static void main(String[] args) throws IOException, InterruptedException {
     File storePathDir = new File("./test");
@@ -36,29 +39,32 @@ public class HdfsMiniClusterBench {
     random.nextBytes(buf);
     Path path = new Path("/test");
     for (int i = 0; i < 10000; i++) {
-      // long writeFile = writeFile(fileSystem, path, buf);
-      // long writeFileFlush = writeFileFlush(fileSystem, path, buf);
-      // long writeFileSync = writeFileSync(fileSystem, path, buf);
-      // long writeFileFlushAsync = writeFileFlushAsync(fileSystem, path, buf);
-      // long writeFileSyncAsync = writeFileSyncAsync(fileSystem, path, buf);
+      System.out.println("writeFile");
+      long writeFile = writeFile(fileSystem, path, buf);
+      System.out.println("writeFileFlush");
+      long writeFileFlush = writeFileFlush(fileSystem, path, buf);
+      System.out.println("writeFileSync");
+      long writeFileSync = writeFileSync(fileSystem, path, buf);
+      System.out.println("writeFileFlushAsync");
+      long writeFileFlushAsync = writeFileFlushAsync(fileSystem, path, buf);
+      System.out.println("writeFileSyncAsync");
+      long writeFileSyncAsync = writeFileSyncAsync(fileSystem, path, buf);
+      System.out.println("writeKvs");
       long writeKvs = writeKvs(fileSystem, path, buf);
+      System.out.println("writeKvsSync");
       long writeKvsSync = writeKvsSync(fileSystem, path, buf);
-      // long writeKvsFlush = writeKvsFlush(fileSystem, path, buf);
+      System.out.println("writeKvsFlush");
+      long writeKvsFlush = writeKvsFlush(fileSystem, path, buf);
 
       System.out.println("================");
-      // System.out.println("writeFile " + writeFile / 1_000_000.0 + " ms");
-      // System.out.println("writeFileFlush " + writeFileFlush / 1_000_000.0 + "
-      // ms");
-      // System.out.println("writeFileSync " + writeFileSync / 1_000_000.0 + "
-      // ms");
-      // System.out.println("writeFileFlushAsync " + writeFileFlushAsync /
-      // 1_000_000.0 + " ms");
-      // System.out.println("writeFileSyncAsync " + writeFileSyncAsync /
-      // 1_000_000.0 + " ms");
+      System.out.println("writeFile " + writeFile / 1_000_000.0 + " ms");
+      System.out.println("writeFileFlush " + writeFileFlush / 1_000_000.0 + " ms");
+      System.out.println("writeFileSync " + writeFileSync / 1_000_000.0 + " ms");
+      System.out.println("writeFileFlushAsync " + writeFileFlushAsync / 1_000_000.0 + " ms");
+      System.out.println("writeFileSyncAsync " + writeFileSyncAsync / 1_000_000.0 + " ms");
       System.out.println("writeKvs " + writeKvs / 1_000_000.0 + " ms");
       System.out.println("writeKvsSync " + writeKvsSync / 1_000_000.0 + " ms");
-      // System.out.println("writeKvsFlush " + writeKvsFlush / 1_000_000.0 + "
-      // ms");
+      System.out.println("writeKvsFlush " + writeKvsFlush / 1_000_000.0 + " ms");
     }
     cluster.shutdown();
   }
@@ -69,7 +75,6 @@ public class HdfsMiniClusterBench {
     try (HdfsKeyValueStore hdfsKeyValueStore = new HdfsKeyValueStore("test", false, hdfsKeyValueTimer,
         fileSystem.getConf(), path)) {
       long start = System.nanoTime();
-
       for (int i = 0; i < NUMBER_OF_WRITES; i++) {
         hdfsKeyValueStore.put(i, ByteBuffer.wrap(buf));
         hdfsKeyValueStore.flush();
@@ -85,8 +90,12 @@ public class HdfsMiniClusterBench {
     try (HdfsKeyValueStore hdfsKeyValueStore = new HdfsKeyValueStore("test", false, hdfsKeyValueTimer,
         fileSystem.getConf(), path)) {
       long start = System.nanoTime();
-
+      long lastReport = System.nanoTime();
       for (int i = 0; i < NUMBER_OF_WRITES; i++) {
+        if (lastReport + _5_SECONDS < System.nanoTime()) {
+          System.out.println("block " + i);
+          lastReport = System.nanoTime();
+        }
         hdfsKeyValueStore.put(i, ByteBuffer.wrap(buf));
         hdfsKeyValueStore.sync();
       }
@@ -169,7 +178,12 @@ public class HdfsMiniClusterBench {
     try (HdfsKeyValueStore hdfsKeyValueStore = new HdfsKeyValueStore("test", false, hdfsKeyValueTimer,
         fileSystem.getConf(), path)) {
       long start = System.nanoTime();
+      long lastReport = System.nanoTime();
       for (int i = 0; i < NUMBER_OF_WRITES; i++) {
+        if (lastReport + _5_SECONDS < System.nanoTime()) {
+          System.out.println("block " + i);
+          lastReport = System.nanoTime();
+        }
         hdfsKeyValueStore.put(i, ByteBuffer.wrap(buf));
       }
       long end = System.nanoTime();
@@ -198,7 +212,12 @@ public class HdfsMiniClusterBench {
     try (FSDataOutputStream outputStream = fileSystem.create(new Path(path, UUID.randomUUID()
                                                                                 .toString()))) {
       long start = System.nanoTime();
+      long lastReport = System.nanoTime();
       for (int i = 0; i < NUMBER_OF_WRITES; i++) {
+        if (lastReport + _5_SECONDS < System.nanoTime()) {
+          System.out.println("block " + i);
+          lastReport = System.nanoTime();
+        }
         outputStream.write(buf);
         outputStream.hsync();
       }

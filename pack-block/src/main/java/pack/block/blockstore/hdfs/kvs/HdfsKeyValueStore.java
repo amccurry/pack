@@ -277,7 +277,9 @@ public class HdfsKeyValueStore implements Store {
     }
   }
 
-
+  private final AtomicLong _lastKey = new AtomicLong();
+  private final AtomicLong _lastKeyGreaterThanCount = new AtomicLong();
+  private final AtomicLong _lastKeyEqualToCount = new AtomicLong();
 
   @Override
   public void put(long key, ByteBuffer value) throws IOException {
@@ -287,6 +289,16 @@ public class HdfsKeyValueStore implements Store {
       return;
     }
     _writeLock.lock();
+    if (key > _lastKey.get()) {
+      _lastKeyGreaterThanCount.incrementAndGet();
+    } else if (key == _lastKey.get()) {
+      _lastKeyEqualToCount.incrementAndGet();
+    } else {
+      _logger.info("In-order write reset. > {} = {}", _lastKeyGreaterThanCount.get(), _lastKeyEqualToCount.get());
+      _lastKeyGreaterThanCount.set(0);
+      _lastKeyEqualToCount.set(0);
+    }
+    _lastKey.set(key);
     ensureOpenForWriting();
     try {
       Operation op = getPutOperation(OperationType.PUT, key, value);
@@ -527,7 +539,7 @@ public class HdfsKeyValueStore implements Store {
     _output.hsync();
     _lastWrite.set(System.currentTimeMillis());
   }
-  
+
   private void flushInternal() throws IOException {
     validateNextSegmentHasNotStarted();
     _output.hflush();

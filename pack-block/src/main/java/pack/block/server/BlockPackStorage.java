@@ -4,8 +4,10 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.security.PrivilegedExceptionAction;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -14,6 +16,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -194,14 +197,17 @@ public class BlockPackStorage implements PackStorage {
   protected String mountVolume(String volumeName, String id)
       throws IOException, FileNotFoundException, InterruptedException, KeeperException {
     createVolume(volumeName, ImmutableMap.of());
-    LOGGER.info("Mount Volume {} Id {}", volumeName, id);
-
+    LOGGER.info("Mount Id {} volumeName {}", id, volumeName);
     File logDir = getLogDir(volumeName);
-
+    LOGGER.info("Mount Id {} logDir {}", id, logDir);
     Path volumePath = getVolumePath(volumeName);
+    LOGGER.info("Mount Id {} volumePath {}", id, volumePath);
     File localFileSystemMount = getLocalFileSystemMount(volumeName);
+    LOGGER.info("Mount Id {} localFileSystemMount {}", id, localFileSystemMount);
     File localDevice = getLocalDevice(volumeName);
+    LOGGER.info("Mount Id {} localDevice {}", id, localDevice);
     File localMetrics = getLocalMetrics(logDir);
+    LOGGER.info("Mount Id {} localMetrics {}", id, localMetrics);
     localFileSystemMount.mkdirs();
     localDevice.mkdirs();
     localMetrics.mkdirs();
@@ -209,10 +215,20 @@ public class BlockPackStorage implements PackStorage {
     String path = volumePath.toUri()
                             .getPath();
 
+    File touchFile = touch(localFileSystemMount, UUID.randomUUID()
+                                                     .toString());
+
     BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(),
         localMetrics.getAbsolutePath(), path, _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath());
-    waitForMount(localDevice);
+    waitForMount(localFileSystemMount, touchFile);
     return localFileSystemMount.getAbsolutePath();
+  }
+
+  private File touch(File localFileSystemMount, String uuid) throws IOException {
+    File file = new File(localFileSystemMount, uuid);
+    try (OutputStream in = new FileOutputStream(file)) {
+      return file;
+    }
   }
 
   private File getLocalMetrics(File logDir) {
@@ -229,17 +245,16 @@ public class BlockPackStorage implements PackStorage {
     return logDir;
   }
 
-  private void waitForMount(File localDevice) throws InterruptedException, IOException {
+  private void waitForMount(File localFileSystemMount, File touchFile) throws InterruptedException, IOException {
     Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
-    File fusePid = getDeviceFusePidFile(localDevice);
     for (int i = 0; i < 60; i++) {
-      if (fusePid.exists()) {
+      if (!touchFile.exists()) {
         return;
       }
-      LOGGER.info("Waiting for mount {}", localDevice);
+      LOGGER.info("Waiting for mount {}", localFileSystemMount);
       Thread.sleep(TimeUnit.SECONDS.toMillis(1));
     }
-    throw new IOException("Timeout could not mount " + localDevice);
+    throw new IOException("Timeout could not mount " + localFileSystemMount);
   }
 
   private File getDeviceFusePidFile(File localDevice) {

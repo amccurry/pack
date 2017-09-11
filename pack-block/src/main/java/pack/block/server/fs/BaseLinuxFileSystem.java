@@ -21,7 +21,8 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
   private static final String UMOUNT = "umount";
   private static final String MOUNT = "mount";
   private static final String OPTIONS_SWITCH = "-o";
-  private static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
+//  private static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
+  private static final String DEFAULT_MOUNT_OPTIONS = "noatime";
 
   @Override
   public void mount(File device, File mountLocation) throws IOException {
