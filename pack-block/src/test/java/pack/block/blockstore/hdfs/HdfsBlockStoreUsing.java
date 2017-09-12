@@ -12,6 +12,7 @@ import org.apache.hadoop.hdfs.MiniDFSCluster;
 
 import com.codahale.metrics.MetricRegistry;
 
+import pack.block.blockstore.hdfs.v1.HdfsBlockStoreV1;
 import pack.block.fuse.FuseFileSystem;
 
 public class HdfsBlockStoreUsing {
@@ -39,7 +40,7 @@ public class HdfsBlockStoreUsing {
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
     try (FuseFileSystem memfs = new FuseFileSystem("./mnt")) {
-      memfs.addBlockStore(new HdfsBlockStore(metrics, fileSystem, path));
+      memfs.addBlockStore(new HdfsBlockStoreV1(metrics, fileSystem, path));
       // {
       // File file2 = new File("data/data1");
       // try (RandomAccessFile rand = new RandomAccessFile(file2, "rw")) {

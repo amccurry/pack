@@ -30,7 +30,7 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
-import pack.block.blockstore.hdfs.HdfsBlockStore;
+import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
@@ -56,7 +56,7 @@ public class BlockFileCompactor implements Closeable {
     _maxBlockFileSize = maxBlockFileSize;
     _fileSystem = fileSystem;
     _lockName = Utils.getLockName(path);
-    _blockPath = new Path(path, HdfsBlockStore.BLOCK);
+    _blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
                                .removalListener(listener)
@@ -262,7 +262,7 @@ public class BlockFileCompactor implements Closeable {
 
   private FileStatus[] getBlockFiles() throws FileNotFoundException, IOException {
     return _fileSystem.listStatus(_blockPath, (PathFilter) p -> p.getName()
-                                                                 .endsWith("." + HdfsBlockStore.BLOCK));
+                                                                 .endsWith("." + HdfsBlockStoreConfig.BLOCK));
   }
 
   private Path getNewPath(Path path) throws IOException {

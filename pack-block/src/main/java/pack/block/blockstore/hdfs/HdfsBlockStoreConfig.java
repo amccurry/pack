@@ -11,6 +11,9 @@ import lombok.Value;
 @Builder(toBuilder = true)
 public class HdfsBlockStoreConfig {
 
+  public static final String BLOCK = "block";
+  public static final String KVS = "kvs";
+
   public static final HdfsBlockStoreConfig DEFAULT_CONFIG = HdfsBlockStoreConfig.builder()
                                                                                 .cacheMaxMemorySoft(16 * 1024 * 1024)
                                                                                 .cacheMaxMemoryHard(32 * 1024 * 1024)

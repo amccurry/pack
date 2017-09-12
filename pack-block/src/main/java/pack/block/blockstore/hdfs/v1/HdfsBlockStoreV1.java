@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs;
+package pack.block.blockstore.hdfs.v1;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -32,6 +32,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
 import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
+import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
@@ -39,12 +42,9 @@ import pack.block.blockstore.hdfs.kvs.ExternalWriter;
 import pack.block.blockstore.hdfs.kvs.HdfsKeyValueStore;
 import pack.block.server.fs.LinuxFileSystem;
 
-public class HdfsBlockStore implements BlockStore {
+public class HdfsBlockStoreV1 implements BlockStore {
 
-  public static final String BLOCK = "block";
-  public static final String KVS = "kvs";
-
-  private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStore.class);
+  private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreV1.class);
 
   private final FileSystem _fileSystem;
   private final Path _path;
@@ -68,11 +68,11 @@ public class HdfsBlockStore implements BlockStore {
   private final AtomicReference<Thread> _writeThread = new AtomicReference<Thread>();
   private final Object _writeExternalBlockLock = new Object();
 
-  public HdfsBlockStore(MetricRegistry registry, FileSystem fileSystem, Path path) throws IOException {
+  public HdfsBlockStoreV1(MetricRegistry registry, FileSystem fileSystem, Path path) throws IOException {
     this(registry, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
   }
 
-  public HdfsBlockStore(MetricRegistry registry, FileSystem fileSystem, Path path, HdfsBlockStoreConfig config)
+  public HdfsBlockStoreV1(MetricRegistry registry, FileSystem fileSystem, Path path, HdfsBlockStoreConfig config)
       throws IOException {
     String name = path.getName();
     _registry = registry;
@@ -92,10 +92,10 @@ public class HdfsBlockStore implements BlockStore {
     _emptyBlock = new byte[_fileSystemBlockSize];
 
     _length = _metaData.getLength();
-    Path kvPath = qualify(new Path(_path, KVS));
-    _blockPath = qualify(new Path(_path, BLOCK));
+    Path kvPath = qualify(new Path(_path, HdfsBlockStoreConfig.KVS));
+    _blockPath = qualify(new Path(_path, HdfsBlockStoreConfig.BLOCK));
     _fileSystem.mkdirs(_blockPath);
-    _hdfsKeyValueTimer = new Timer(KVS + "|" + kvPath, true);
+    _hdfsKeyValueTimer = new Timer(HdfsBlockStoreConfig.KVS + "|" + kvPath, true);
     _hdfsKeyValueStore = new HdfsKeyValueStore(name, false, _hdfsKeyValueTimer, fileSystem.getConf(), kvPath);
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
@@ -105,8 +105,8 @@ public class HdfsBlockStore implements BlockStore {
     _blockFiles.set(ImmutableList.copyOf(pathList));
     // create background thread that removes orphaned block files and checks for
     // new block files that have been merged externally
-    _blockFileTimer = new Timer(BLOCK + "|" + _blockPath.toUri()
-                                                        .getPath(),
+    _blockFileTimer = new Timer(HdfsBlockStoreConfig.BLOCK + "|" + _blockPath.toUri()
+                                                                             .getPath(),
         true);
     long period = config.getBlockFileUnit()
                         .toMillis(config.getBlockFilePeriod());
@@ -120,7 +120,8 @@ public class HdfsBlockStore implements BlockStore {
   private List<Path> getBlockFilePathListFromStorage() throws FileNotFoundException, IOException {
     List<Path> pathList = new ArrayList<>();
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> p.getName()
-                                                                                    .endsWith("." + BLOCK));
+                                                                                    .endsWith("."
+                                                                                        + HdfsBlockStoreConfig.BLOCK));
     Arrays.sort(listStatus, Collections.reverseOrder());
 
     for (FileStatus fileStatus : listStatus) {
@@ -421,7 +422,7 @@ public class HdfsBlockStore implements BlockStore {
   }
 
   private Path getNewBlockFilePath() {
-    return qualify(new Path(_blockPath, System.currentTimeMillis() + "." + BLOCK));
+    return qualify(new Path(_blockPath, System.currentTimeMillis() + "." + HdfsBlockStoreConfig.BLOCK));
   }
 
   private void readBlocks(long blockId, ByteBuffer byteBuffer) throws IOException {

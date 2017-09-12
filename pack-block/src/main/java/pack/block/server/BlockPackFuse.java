@@ -27,9 +27,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.io.Closer;
 
-import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.v1.HdfsBlockStoreV1;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
@@ -134,7 +134,7 @@ public class BlockPackFuse implements Closeable {
     });
   }
 
-  private final HdfsBlockStore _blockStore;
+  private final HdfsBlockStoreV1 _blockStore;
   private final FuseFileSystemSingleMount _fuse;
   private final File _fuseLocalPath;
   private final File _fsLocalPath;
@@ -169,7 +169,7 @@ public class BlockPackFuse implements Closeable {
     _fuseLocalPath.mkdirs();
     _fsLocalPath = new File(fsLocalPath);
     _fsLocalPath.mkdirs();
-    _blockStore = new HdfsBlockStore(_registry, fileSystem, path, config);
+    _blockStore = new HdfsBlockStoreV1(_registry, fileSystem, path, config);
     _linuxFileSystem = _blockStore.getLinuxFileSystem();
     _metaData = _blockStore.getMetaData();
     _fuse = _closer.register(new FuseFileSystemSingleMount(fuseLocalPath, _blockStore));

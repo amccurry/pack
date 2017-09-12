@@ -9,7 +9,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
-import pack.block.blockstore.hdfs.HdfsBlockStore;
+import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 
 public class BlockFileCompactorUsing {
 
@@ -27,7 +27,7 @@ public class BlockFileCompactorUsing {
       }
     }
     {
-      FileStatus[] listStatus = fileSystem.listStatus(new Path(path, HdfsBlockStore.BLOCK));
+      FileStatus[] listStatus = fileSystem.listStatus(new Path(path, HdfsBlockStoreConfig.BLOCK));
       for (FileStatus fileStatus : listStatus) {
         System.out.println(fileStatus.getPath() + " " + fileStatus.getLen());
       }

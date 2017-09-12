@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs;
+package pack.block.blockstore.hdfs.v1;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -17,6 +17,10 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.codahale.metrics.MetricRegistry;
+
+import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
+import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.v1.HdfsBlockStoreV1;
 
 public class HdfsBlockStoreTest {
 
@@ -48,7 +52,7 @@ public class HdfsBlockStoreTest {
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
     Random random = new Random();
 
-    try (HdfsBlockStore store = new HdfsBlockStore(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreV1 store = new HdfsBlockStoreV1(metrics, fileSystem, path)) {
       for (int i = 0; i < 10000; i++) {
         int blockSize = store.getFileSystemBlockSize();
         int pos = random.nextInt(1000) * blockSize;
@@ -79,7 +83,7 @@ public class HdfsBlockStoreTest {
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
 
-    try (HdfsBlockStore store = new HdfsBlockStore(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreV1 store = new HdfsBlockStoreV1(metrics, fileSystem, path)) {
       int blockSize = store.getFileSystemBlockSize();
       {
         byte[] buf = new byte[blockSize];
@@ -126,7 +130,7 @@ public class HdfsBlockStoreTest {
     int maxPos = blockSize * 100;
     int maxOffset = 100;
 
-    try (HdfsBlockStore store = new HdfsBlockStore(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreV1 store = new HdfsBlockStoreV1(metrics, fileSystem, path)) {
       for (int j = 0; j < 10000; j++) {
         int length = random.nextInt(maxLength);
         int offset = random.nextInt(maxOffset);
@@ -167,7 +171,7 @@ public class HdfsBlockStoreTest {
     byte[] buf = new byte[122880];
     random.nextBytes(buf);
 
-    try (HdfsBlockStore store = new HdfsBlockStore(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreV1 store = new HdfsBlockStoreV1(metrics, fileSystem, path)) {
       {
         long pos = 139264;
         int len = buf.length;
