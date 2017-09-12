@@ -58,6 +58,7 @@ public class BlockPackStorage implements PackStorage {
   protected final File _localFileSystemDir;
   protected final File _localDeviceDir;
   protected final File _localLogDir;
+  protected final File _localCacheDir;
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
   protected final String _zkConnection;
   protected final int _zkTimeout;
@@ -92,6 +93,8 @@ public class BlockPackStorage implements PackStorage {
     _localDeviceDir.mkdirs();
     _localLogDir = new File(localFile, "logs");
     _localLogDir.mkdirs();
+    _localCacheDir = new File(localFile, "cache");
+    _localCacheDir.mkdirs();
   }
 
   public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zooKeeper) {
@@ -208,6 +211,9 @@ public class BlockPackStorage implements PackStorage {
     LOGGER.info("Mount Id {} localDevice {}", id, localDevice);
     File localMetrics = getLocalMetrics(logDir);
     LOGGER.info("Mount Id {} localMetrics {}", id, localMetrics);
+    File localCache = getLocalCache(volumeName);
+    LOGGER.info("Mount Id {} localCache {}", id, localCache);
+    localCache.mkdirs();
     localFileSystemMount.mkdirs();
     localDevice.mkdirs();
     localMetrics.mkdirs();
@@ -219,9 +225,14 @@ public class BlockPackStorage implements PackStorage {
                                                      .toString());
 
     BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(),
-        localMetrics.getAbsolutePath(), path, _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath());
+        localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path, _zkConnection, _zkTimeout, volumeName,
+        logDir.getAbsolutePath());
     waitForMount(localFileSystemMount, touchFile);
     return localFileSystemMount.getAbsolutePath();
+  }
+
+  private File getLocalCache(String volumeName) {
+    return new File(_localCacheDir, volumeName);
   }
 
   private File touch(File localFileSystemMount, String uuid) throws IOException {

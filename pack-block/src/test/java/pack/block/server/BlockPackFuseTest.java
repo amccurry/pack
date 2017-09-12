@@ -26,6 +26,7 @@ import pack.zk.utils.ZooKeeperClient;
 
 public class BlockPackFuseTest {
 
+  private static final String CACHE = "cache";
   private static final String BRICK = "brick";
   private static final String RW = "rw";
   private static final String HDFS = "hdfs";
@@ -83,10 +84,11 @@ public class BlockPackFuseTest {
     File fuseDir = new File(fuse, FUSE);
     String fuseLocalPath = mkdir(fuseDir).getAbsolutePath();
     String fsLocalPath = mkdir(new File(fuse, MOUNT)).getAbsolutePath();
+    String fsLocalCachePath = mkdir(new File(fuse, CACHE)).getAbsolutePath();
     String metricsLocalPath = mkdir(new File(fuse, METRICS)).getAbsolutePath();
     ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnection, zkTimeout);
     try (BlockPackFuse blockPackFuse = new BlockPackFuse(fileSystem, volumePath, config, fuseLocalPath, fsLocalPath,
-        metricsLocalPath, zooKeeper, false)) {
+        metricsLocalPath, fsLocalCachePath, zooKeeper, false)) {
       blockPackFuse.mount(false);
       testFuseMount(fuseDir);
     }

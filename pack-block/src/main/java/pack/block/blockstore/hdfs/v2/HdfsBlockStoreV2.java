@@ -36,7 +36,7 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
-import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
@@ -44,8 +44,9 @@ import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.block.util.Utils;
 
-public class HdfsBlockStoreV2 implements BlockStore {
+public class HdfsBlockStoreV2 implements HdfsBlockStore {
 
   public static final String BLOCK = "block";
 
@@ -65,6 +66,9 @@ public class HdfsBlockStoreV2 implements BlockStore {
   private final Object _writeLock = new Object();
   private final AtomicReference<FileRef> fileRef = new AtomicReference<FileRef>();
   private final File _localDir;
+  private final RandomAccessFile _raf;
+  private final ConcurrentBitSet _cacheIndex;
+  private final FileChannel _brickChannel;
 
   public HdfsBlockStoreV2(File localDir, FileSystem fileSystem, Path path) throws IOException {
     this(localDir, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -98,6 +102,10 @@ public class HdfsBlockStoreV2 implements BlockStore {
     long period = config.getBlockFileUnit()
                         .toMillis(config.getBlockFilePeriod());
     _blockFileTimer.scheduleAtFixedRate(getBlockFileTask(), period, period);
+    long numberOfBlocks = _metaData.getLength() / _metaData.getFileSystemBlockSize();
+    _cacheIndex = new ConcurrentBitSet(numberOfBlocks);
+    _raf = new RandomAccessFile(new File(_localDir, "brick_cache"), "rw");
+    _brickChannel = _raf.getChannel();
   }
 
   private Path qualify(Path path) {
@@ -217,6 +225,8 @@ public class HdfsBlockStoreV2 implements BlockStore {
     _blockFileTimer.cancel();
     _blockFileTimer.purge();
     _readerCache.invalidateAll();
+    _raf.close();
+    Utils.rmr(_localDir);
   }
 
   @Override
@@ -252,7 +262,7 @@ public class HdfsBlockStoreV2 implements BlockStore {
       System.arraycopy(buffer, offset, buf, blockOffset, len);
       byteBuffer = ByteBuffer.wrap(buf, 0, blockSize);
     }
-    internalWrite(blockId, byteBuffer);
+    writeInternal(blockId, byteBuffer);
     return len;
   }
 
@@ -262,10 +272,10 @@ public class HdfsBlockStoreV2 implements BlockStore {
     ByteBuffer byteBuffer = ByteBuffer.allocate(blockSize);
     long blockId = getBlockId(position);
     try {
-      readInternalAndRemoteBlocks(byteBuffer, blockId);
+      readInternal(blockId, byteBuffer);
     } catch (ClosedChannelException e) {
       // might have been rolling local file.
-      readInternalAndRemoteBlocks(byteBuffer, blockId);
+      readInternal(blockId, byteBuffer);
     }
     int blockOffset = (int) (position % blockSize);
     int length = Math.min(len, blockSize - blockOffset);
@@ -279,13 +289,52 @@ public class HdfsBlockStoreV2 implements BlockStore {
     return length;
   }
 
-  private void readInternalAndRemoteBlocks(ByteBuffer byteBuffer, long blockId) throws IOException {
-    if (!internalRead(blockId, byteBuffer)) {
-      readBlocks(blockId, byteBuffer);
+  private void readInternal(long blockId, ByteBuffer byteBuffer) throws IOException {
+    if (!readFromBrickCache(blockId, byteBuffer)) {
+      if (!readFromLocalWriteCache(blockId, byteBuffer)) {
+        readBlocks(blockId, byteBuffer);
+      }
+    }
+    writeToBrickCache(blockId, byteBuffer);
+  }
+
+  private boolean readFromBrickCache(long blockId, ByteBuffer byteBuffer) throws IOException {
+    int index = (int) blockId;
+    if (_cacheIndex.get(index)) {
+      long position = blockId * _fileSystemBlockSize;
+      while (byteBuffer.remaining() > 0) {
+        position += _brickChannel.read(byteBuffer, position);
+      }
+      byteBuffer.flip();
+      return true;
+    }
+    return false;
+  }
+
+  private void writeToBrickCache(long blockId, ByteBuffer byteBuffer) throws IOException {
+    ByteBuffer duplicate = byteBuffer.duplicate();
+    long position = blockId * _fileSystemBlockSize;
+    while (duplicate.remaining() > 0) {
+      position += _brickChannel.write(duplicate, position);
+    }
+    int index = (int) blockId;
+    _cacheIndex.set(index);
+  }
+
+  private void writeInternal(long blockId, ByteBuffer byteBuffer) throws IOException {
+    synchronized (_writeLock) {
+      ByteBuffer duplicate1 = byteBuffer.duplicate();
+      FileChannel fileChannel = getFileChannel();
+      long position = fileChannel.position();
+      while (duplicate1.remaining() > 0) {
+        fileChannel.write(duplicate1);
+      }
+      _blockLookup.put(blockId, position);
+      writeToBrickCache(blockId, byteBuffer);
     }
   }
 
-  private boolean internalRead(long blockId, ByteBuffer byteBuffer) throws IOException {
+  private boolean readFromLocalWriteCache(long blockId, ByteBuffer byteBuffer) throws IOException {
     Long position = _blockLookup.get(blockId);
     if (position == null) {
       return false;
@@ -298,17 +347,6 @@ public class HdfsBlockStoreV2 implements BlockStore {
     }
     byteBuffer.flip();
     return true;
-  }
-
-  private void internalWrite(long blockId, ByteBuffer byteBuffer) throws IOException {
-    synchronized (_writeLock) {
-      FileChannel fileChannel = getFileChannel();
-      long position = fileChannel.position();
-      while (byteBuffer.remaining() > 0) {
-        fileChannel.write(byteBuffer);
-      }
-      _blockLookup.put(blockId, position);
-    }
   }
 
   static class FileRef implements Closeable {
@@ -362,7 +400,9 @@ public class HdfsBlockStoreV2 implements BlockStore {
       FileRef oldRef = fileRef.get();
       FileRef newRef = newFileRef();
       fileRef.set(newRef);
-      oldRef.close();
+      if (oldRef != null) {
+        oldRef.close();
+      }
     }
   }
 
@@ -378,7 +418,7 @@ public class HdfsBlockStoreV2 implements BlockStore {
         Collections.sort(blockIds);
         ByteBuffer byteBuffer = ByteBuffer.allocate(_fileSystemBlockSize);
         for (Long blockId : blockIds) {
-          if (internalRead(blockId, byteBuffer)) {
+          if (readFromLocalWriteCache(blockId, byteBuffer)) {
             writer.append(blockId, new BytesWritable(byteBuffer.array()));
           }
         }
@@ -443,6 +483,7 @@ public class HdfsBlockStoreV2 implements BlockStore {
     return position / _fileSystemBlockSize;
   }
 
+  @Override
   public HdfsMetaData getMetaData() {
     return _metaData;
   }

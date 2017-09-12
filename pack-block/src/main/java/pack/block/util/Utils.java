@@ -68,7 +68,7 @@ public class Utils {
 
   public static UserGroupInformation getUserGroupInformation() throws IOException {
     UserGroupInformation ugi;
-    String hdfsPrinciaplName = getHdfsPrincipalName();  
+    String hdfsPrinciaplName = getHdfsPrincipalName();
     String hdfsUser = getHdfsUser();
     if (hdfsPrinciaplName != null) {
       String hdfsKeytab = getHdfsKeytab();
@@ -191,5 +191,17 @@ public class Utils {
       logger.info("Command id {} complete", uuid);
     }
     return result.exitCode;
+  }
+
+  public static void rmr(File file) {
+    if (!file.exists()) {
+      return;
+    }
+    if (file.isDirectory()) {
+      for (File f : file.listFiles()) {
+        rmr(f);
+      }
+    }
+    file.delete();
   }
 }

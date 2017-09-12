@@ -215,6 +215,8 @@ public class BlockFile {
     protected final int _blockSize;
     protected final Path _path;
     protected final List<String> _sourceFiles;
+    protected final long _first;
+    protected final long _last;
 
     protected Reader(FileSystem fileSystem, Path path) throws IOException {
       _inputStream = fileSystem.open(path);
@@ -228,10 +230,41 @@ public class BlockFile {
       _emptyBlocks.deserialize(_inputStream);
       _blockSize = _inputStream.readInt();
       _sourceFiles = readStringList(_inputStream);
+      _first = getFirst();
+      _last = getLast();
       // @TODO read and validate the magic string
     }
 
+    private int getFirst() {
+      if (_blocks.isEmpty() && _emptyBlocks.isEmpty()) {
+        return Integer.MAX_VALUE;
+      } else if (_blocks.isEmpty()) {
+        return _emptyBlocks.first();
+      } else if (_emptyBlocks.isEmpty()) {
+        return _blocks.first();
+      } else {
+        return Math.min(_blocks.first(), _emptyBlocks.first());
+      }
+    }
+
+    private int getLast() {
+      if (_blocks.isEmpty() && _emptyBlocks.isEmpty()) {
+        return Integer.MIN_VALUE;
+      } else if (_blocks.isEmpty()) {
+        return _emptyBlocks.last();
+      } else if (_emptyBlocks.isEmpty()) {
+        return _blocks.last();
+      } else {
+        return Math.max(_blocks.last(), _emptyBlocks.last());
+      }
+    }
+
     public boolean read(long longKey, BytesWritable value) throws IOException {
+      if (longKey < _first) {
+        return false;
+      } else if (longKey > _last) {
+        return false;
+      }
       int key = getIntKey(longKey);
       value.setSize(_blockSize);
       if (_emptyBlocks.contains(key)) {

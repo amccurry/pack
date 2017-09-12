@@ -31,7 +31,7 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
-import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
@@ -42,7 +42,7 @@ import pack.block.blockstore.hdfs.kvs.ExternalWriter;
 import pack.block.blockstore.hdfs.kvs.HdfsKeyValueStore;
 import pack.block.server.fs.LinuxFileSystem;
 
-public class HdfsBlockStoreV1 implements BlockStore {
+public class HdfsBlockStoreV1 implements HdfsBlockStore {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreV1.class);
 
@@ -456,6 +456,7 @@ public class HdfsBlockStoreV1 implements BlockStore {
     return position / _fileSystemBlockSize;
   }
 
+  @Override
   public HdfsMetaData getMetaData() {
     return _metaData;
   }

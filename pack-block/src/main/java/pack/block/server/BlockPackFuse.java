@@ -27,9 +27,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.io.Closer;
 
+import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.v1.HdfsBlockStoreV1;
+import pack.block.blockstore.hdfs.v2.HdfsBlockStoreV2;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
@@ -73,9 +75,11 @@ public class BlockPackFuse implements Closeable {
   private static final String SITE_XML = "-site.xml";
   private static final String HDFS_CONF = "hdfs-conf";
 
+  private static final boolean USER_V1_BLOCK_STORE = false;
+
   public static Process startProcess(String fuseMountLocation, String fsMountLocation, String fsMetricsLocation,
-      String hdfVolumePath, String zkConnection, int zkTimeout, String volumeName, String logOutput)
-      throws IOException {
+      String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout, String volumeName,
+      String logOutput) throws IOException {
     String javaHome = System.getProperty(JAVA_HOME);
     String className = System.getProperty(JAVA_CLASS_PATH);
     Builder<String> builder = ImmutableList.builder();
@@ -90,6 +94,7 @@ public class BlockPackFuse implements Closeable {
            .add(fuseMountLocation)
            .add(fsMountLocation)
            .add(fsMetricsLocation)
+           .add(fsLocalCache)
            .add(hdfVolumePath)
            .add(zkConnection)
            .add(zkTimeoutStr)
@@ -116,9 +121,10 @@ public class BlockPackFuse implements Closeable {
     String fuseLocalPath = args[0];
     String fsLocalPath = args[1];
     String metricsLocalPath = args[2];
-    Path path = new Path(args[3]);
-    String zkConnection = args[4];
-    int zkTimeout = Integer.parseInt(args[5]);
+    String fsLocalCache = args[3];
+    Path path = new Path(args[4]);
+    String zkConnection = args[5];
+    int zkTimeout = Integer.parseInt(args[6]);
     FileSystem fileSystem = FileSystem.get(conf);
     HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
 
@@ -126,15 +132,15 @@ public class BlockPackFuse implements Closeable {
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       try (Closer closer = autoClose(Closer.create())) {
         ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
-        BlockPackFuse blockPackFuse = closer.register(
-            new BlockPackFuse(fileSystem, path, config, fuseLocalPath, fsLocalPath, metricsLocalPath, zooKeeper));
+        BlockPackFuse blockPackFuse = closer.register(new BlockPackFuse(fileSystem, path, config, fuseLocalPath,
+            fsLocalPath, metricsLocalPath, fsLocalCache, zooKeeper));
         blockPackFuse.mount();
       }
       return null;
     });
   }
 
-  private final HdfsBlockStoreV1 _blockStore;
+  private final HdfsBlockStore _blockStore;
   private final FuseFileSystemSingleMount _fuse;
   private final File _fuseLocalPath;
   private final File _fsLocalPath;
@@ -150,26 +156,32 @@ public class BlockPackFuse implements Closeable {
   private final boolean _fileSystemMount;
 
   public BlockPackFuse(FileSystem fileSystem, Path path, HdfsBlockStoreConfig config, String fuseLocalPath,
-      String fsLocalPath, String metricsLocaPath, ZooKeeperClient zooKeeper) throws IOException {
-    this(fileSystem, path, config, fuseLocalPath, fsLocalPath, metricsLocaPath, zooKeeper, true);
+      String fsLocalPath, String metricsLocalPath, String fsLocalCache, ZooKeeperClient zooKeeper) throws IOException {
+    this(fileSystem, path, config, fuseLocalPath, fsLocalPath, metricsLocalPath, fsLocalCache, zooKeeper, true);
   }
 
   public BlockPackFuse(FileSystem fileSystem, Path path, HdfsBlockStoreConfig config, String fuseLocalPath,
-      String fsLocalPath, String metricsLocaPath, ZooKeeperClient zooKeeper, boolean fileSystemMount)
-      throws IOException {
+      String fsLocalPath, String metricsLocalPath, String fsLocalCache, ZooKeeperClient zooKeeper,
+      boolean fileSystemMount) throws IOException {
     ZkUtils.mkNodesStr(zooKeeper, MOUNT + LOCK);
     _fileSystemMount = fileSystemMount;
     _path = path;
     _lockManager = createLockmanager(zooKeeper);
     _closer = Closer.create();
     _reporter = _closer.register(CsvReporter.forRegistry(_registry)
-                                            .build(new File(metricsLocaPath)));
+                                            .build(new File(metricsLocalPath)));
     _reporter.start(1, TimeUnit.MINUTES);
     _fuseLocalPath = new File(fuseLocalPath);
     _fuseLocalPath.mkdirs();
     _fsLocalPath = new File(fsLocalPath);
     _fsLocalPath.mkdirs();
-    _blockStore = new HdfsBlockStoreV1(_registry, fileSystem, path, config);
+    if (USER_V1_BLOCK_STORE) {
+      _blockStore = new HdfsBlockStoreV1(_registry, fileSystem, path, config);
+    } else {
+      File fsLocalCacheDir = new File(fsLocalCache);
+      fsLocalCacheDir.mkdirs();
+      _blockStore = new HdfsBlockStoreV2(fsLocalCacheDir, fileSystem, path, config);
+    }
     _linuxFileSystem = _blockStore.getLinuxFileSystem();
     _metaData = _blockStore.getMetaData();
     _fuse = _closer.register(new FuseFileSystemSingleMount(fuseLocalPath, _blockStore));
