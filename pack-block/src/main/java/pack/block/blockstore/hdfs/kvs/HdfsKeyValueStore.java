@@ -59,6 +59,8 @@ import org.apache.hadoop.ipc.RemoteException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.block.blockstore.hdfs.file.ReadRequest;
+
 public class HdfsKeyValueStore implements Store {
 
   private static final ByteBuffer EMPTY = ByteBuffer.allocate(0);
@@ -449,6 +451,30 @@ public class HdfsKeyValueStore implements Store {
     operation.type = delete;
     operation.key.set(key);
     return operation;
+  }
+
+  @Override
+  public boolean get(List<ReadRequest> requests) throws IOException {
+    ensureOpen();
+    _readLock.lock();
+    try {
+      boolean moreRequestsNeeded = false;
+      for (ReadRequest readRequest : requests) {
+        Value internalValue = _pointers.get(readRequest.getBlockId());
+        if (internalValue == null) {
+          moreRequestsNeeded = true;
+        } else {
+          if (internalValue._value.getLength() == 0) {
+            readRequest.handleEmptyResult();
+          } else {
+            readRequest.handleResult(internalValue._value.getBytes());
+          }
+        }
+      }
+      return moreRequestsNeeded;
+    } finally {
+      _readLock.unlock();
+    }
   }
 
   @Override

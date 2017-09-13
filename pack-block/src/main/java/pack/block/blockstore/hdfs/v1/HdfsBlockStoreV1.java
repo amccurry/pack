@@ -38,6 +38,7 @@ import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
+import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.kvs.ExternalWriter;
 import pack.block.blockstore.hdfs.kvs.HdfsKeyValueStore;
 import pack.block.server.fs.LinuxFileSystem;
@@ -282,24 +283,64 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
   public int read(long position, byte[] buffer, int offset, int len) throws IOException {
     int blockSize = _fileSystemBlockSize;
     try (Context context = _readTimer.time()) {
-      ByteBuffer byteBuffer = ByteBuffer.allocate(blockSize);
-      long blockId = getBlockId(position);
-      if (!_hdfsKeyValueStore.get(blockId, byteBuffer)) {
-        readBlocks(blockId, byteBuffer);
-      }
-      int blockOffset = (int) (position % blockSize);
-      int length = Math.min(len, blockSize - blockOffset);
-      if (byteBuffer.limit() == 0) {
-        System.arraycopy(_emptyBlock, 0, buffer, offset, length);
-      } else if (byteBuffer.limit() == blockSize) {
-        System.arraycopy(byteBuffer.array(), blockOffset, buffer, offset, length);
-      } else {
-        throw new IOException("Bytebuffer limit " + byteBuffer.limit() + " does not equal " + blockSize);
-      }
-      return length;
+      ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
+      List<ReadRequest> requests = createRequests(position, byteBuffer, blockSize);
+      _hdfsKeyValueStore.get(requests);
+      readBlocks(requests);
+      // for (ReadRequest readRequest : requests) {
+      // read(readRequest);
+      // }
+      return len;
     } finally {
       // Nothing
     }
+  }
+
+  private void readBlocks(List<ReadRequest> requests) throws IOException {
+    BytesWritable value = new BytesWritable();
+    List<Path> list = _blockFiles.get();
+    if (list != null) {
+      for (Path path : list) {
+        Reader reader = getReader(path);
+        if (!reader.read(requests)) {
+          return;
+        }
+      }
+    }
+  }
+
+  // private void read(ReadRequest readRequest) throws IOException {
+  // ByteBuffer byteBuffer = ByteBuffer.allocate(_fileSystemBlockSize);
+  // try {
+  // long blockId = readRequest.getBlockId();
+  // if (!_hdfsKeyValueStore.get(blockId, byteBuffer)) {
+  // readBlocks(blockId, byteBuffer);
+  // }
+  // } finally {
+  // readRequest.handleResult(byteBuffer);
+  // }
+  // }
+
+  private List<ReadRequest> createRequests(long position, ByteBuffer byteBuffer, int blockSize) {
+    int remaining = byteBuffer.remaining();
+    int bufferPosition = 0;
+    List<ReadRequest> result = new ArrayList<>();
+    while (remaining > 0) {
+      int blockOffset = (int) (position % blockSize);
+      long blockId = getBlockId(position);
+      int len = Math.min(blockSize - blockOffset, remaining);
+
+      byteBuffer.position(bufferPosition);
+      byteBuffer.limit(bufferPosition + len);
+
+      ByteBuffer slice = byteBuffer.slice();
+      result.add(new ReadRequest(blockId, blockOffset, slice));
+
+      position += len;
+      bufferPosition += len;
+      remaining -= len;
+    }
+    return result;
   }
 
   @Override

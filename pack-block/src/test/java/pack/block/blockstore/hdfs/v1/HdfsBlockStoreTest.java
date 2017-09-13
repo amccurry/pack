@@ -121,7 +121,6 @@ public class HdfsBlockStoreTest {
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
 
     Random randomSeed = new Random();
-
     long seed = randomSeed.nextLong();
     Random random = new Random(seed);
 
@@ -147,10 +146,9 @@ public class HdfsBlockStoreTest {
         byte[] buf2 = new byte[length2];
 
         long pos2 = pos - 1;
-        int readLength = getLength(pos2, length2, blockSize);
-        assertEquals("Seed " + seed, readLength, store.read(pos2, buf2, 0, length2));
+        assertEquals("Seed " + seed, length2, store.read(pos2, buf2, 0, length2));
 
-        for (int i = 1; i < readLength && i < writeLength + 1; i++) {
+        for (int i = 1; i < length2 && i < writeLength + 1; i++) {
           byte expected = buf1[i - 1 + offset];
           byte actual = buf2[i];
           assertEquals("Seed " + seed, expected, actual);

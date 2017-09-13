@@ -4,6 +4,7 @@ import static org.junit.Assert.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -73,7 +74,7 @@ public class BlockFileTest {
         System.out.println("======================");
         System.out.println(longKey);
         System.out.println(value);
-        longKey += random.nextInt(10000);
+        longKey += random.nextInt(10000 - 1) + 1;
       }
     }
 
@@ -90,9 +91,77 @@ public class BlockFileTest {
         System.out.println(expected);
         System.out.println(actual);
         assertTrue(expected.compareTo(actual) == 0);
-        longKey += random.nextInt(10000);
+        longKey += random.nextInt(10000 - 1) + 1;
       }
     }
+
+  }
+
+  @Test
+  public void testReadRequests() throws IOException {
+    Path path = new Path("/testReadRequests");
+    FileSystem fileSystem = _cluster.getFileSystem();
+    int valueLength = 100;
+    int checkCount = 1000;
+    int maxSkip = 10;
+    int startingPoint = 1000000;
+    long seed = 4;
+    System.out.println("Writing");
+    try (Writer writer = BlockFile.create(fileSystem, path, valueLength)) {
+      Random random = new Random(seed);
+      long longKey = random.nextInt(startingPoint);
+      for (int i = 0; i < checkCount; i++) {
+        BytesWritable value = getValue(longKey, valueLength);
+        writer.append(longKey, value);
+        System.out.println("======================");
+        System.out.println(longKey);
+        System.out.println(value);
+        longKey += random.nextInt(maxSkip - 1) + 1;
+      }
+    }
+
+    System.out.println("Reading Requests");
+    try (Reader reader = BlockFile.open(fileSystem, path)) {
+
+      List<BytesWritable> expectedList = new ArrayList<>();
+      List<ByteBuffer> actualList = new ArrayList<>();
+      List<ReadRequest> requests = new ArrayList<>();
+
+      {
+        Random random = new Random(seed);
+        long longKey = random.nextInt(startingPoint);
+
+        for (int i = 0; i < checkCount; i++) {
+          expectedList.add(getValue(longKey, valueLength));
+          ByteBuffer dest = ByteBuffer.allocate(valueLength);
+          actualList.add(dest);
+          requests.add(new ReadRequest(longKey, 0, dest));
+          longKey += random.nextInt(maxSkip - 1) + 1;
+        }
+      }
+      reader.read(requests);
+      {
+        Random random = new Random(seed);
+        long longKey = random.nextInt(startingPoint);
+
+        for (int i = 0; i < checkCount; i++) {
+          BytesWritable actual = toBw(actualList.get(i));
+          BytesWritable expected = expectedList.get(i);
+          assertTrue(requests.get(i)
+                             .isCompleted());
+          System.out.println("======================");
+          System.out.println(longKey);
+          System.out.println(expected);
+          System.out.println(actual);
+          assertTrue(expected.compareTo(actual) == 0);
+          longKey += random.nextInt(maxSkip - 1) + 1;
+        }
+      }
+    }
+  }
+
+  private BytesWritable toBw(ByteBuffer byteBuffer) {
+    return new BytesWritable(byteBuffer.array());
   }
 
   @Test

@@ -19,28 +19,39 @@ package pack.block.blockstore.hdfs.kvs;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Map.Entry;
+
+import pack.block.blockstore.hdfs.file.ReadRequest;
 
 public interface Store extends Closeable {
 
   boolean isOwner() throws IOException;
-  
+
   void sync(boolean sync) throws IOException;
-  
+
   Iterable<Entry<Long, ByteBuffer>> scan(Long key) throws IOException;
 
   void put(long key, ByteBuffer value) throws IOException;
 
   boolean get(long key, ByteBuffer value) throws IOException;
 
+  /**
+   * Return true if more read results remain.
+   * @param requests
+   * @return
+   * @throws IOException
+   */
+  boolean get(List<ReadRequest> requests) throws IOException;
+
   void delete(long key) throws IOException;
 
   void close() throws IOException;
-  
+
   void writeExternal(ExternalWriter storeWriter, boolean removeKeyValuesOnClose) throws IOException;
-  
+
   long getSizeOfData();
-  
+
   int getNumberOfEntries();
 
   void flush(boolean sync) throws IOException;

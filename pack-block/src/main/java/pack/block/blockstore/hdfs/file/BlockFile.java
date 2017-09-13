@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -256,6 +257,72 @@ public class BlockFile {
         return _blocks.last();
       } else {
         return Math.max(_blocks.last(), _emptyBlocks.last());
+      }
+    }
+
+    private final int _maxParallelBlocksToPull = 32;
+
+    /**
+     * Return true if more read requests remain.
+     * 
+     * @param requests
+     * @return
+     * @throws IOException
+     */
+    public boolean read(List<ReadRequest> requests) throws IOException {
+      Collections.sort(requests, (o1, o2) -> Long.compare(o1.getBlockId(), o2.getBlockId()));
+      // @TODO, combine requests???
+      boolean moreRequestsNeeded = false;
+      byte[] hdfsBuffer = new byte[_maxParallelBlocksToPull * _blockSize];
+      int startBlockIndex = -1;
+      int prevBlockIndex = -1;
+      ReadRequest[] requestBatch = new ReadRequest[_maxParallelBlocksToPull];
+      for (ReadRequest readRequest : requests) {
+        if (!readRequest.isCompleted()) {
+          long blockId = readRequest.getBlockId();
+          int key = getIntKey(blockId);
+          if (_emptyBlocks.contains(key)) {
+            readRequest.handleEmptyResult();
+          } else if (_blocks.contains(key)) {
+            int storageBlockIndex = _blocks.rank(key) - 1;
+            if (startBlockIndex < 0) {
+              startBlockIndex = storageBlockIndex;
+            }
+
+            if (storageBlockIndex - startBlockIndex >= _maxParallelBlocksToPull) {
+              // can't add request to current batch, would be too large
+              readFromHdfs(hdfsBuffer, startBlockIndex, prevBlockIndex, requestBatch);
+              Arrays.fill(requestBatch, null);
+              startBlockIndex = storageBlockIndex;
+            }
+            
+            prevBlockIndex = storageBlockIndex;
+            requestBatch[storageBlockIndex - startBlockIndex] = readRequest;
+          } else {
+            moreRequestsNeeded = true;
+          }
+        }
+      }
+
+      if (startBlockIndex >= 0) {
+        readFromHdfs(hdfsBuffer, startBlockIndex, prevBlockIndex, requestBatch);
+      }
+
+      return moreRequestsNeeded;
+    }
+
+    private void readFromHdfs(byte[] hdfsBuffer, int startBlockIndex, int prevBlockIndex, ReadRequest[] requestBatch)
+        throws IOException {
+      int numberOfContiguousBlock = (prevBlockIndex - startBlockIndex) + 1;
+      long position = startBlockIndex * (long) _blockSize;
+      _inputStream.read(position, hdfsBuffer, 0, numberOfContiguousBlock * _blockSize);
+      // handle requests...
+      for (int i = 0; i < requestBatch.length; i++) {
+        ReadRequest batchRequest = requestBatch[i];
+        if (batchRequest != null) {
+          int offset = i * _blockSize;
+          batchRequest.handleResult(hdfsBuffer, offset);
+        }
       }
     }
 
