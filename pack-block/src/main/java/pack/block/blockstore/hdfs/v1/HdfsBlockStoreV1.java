@@ -228,7 +228,7 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
 
   @Override
   public void close() throws IOException {
-    _hdfsKeyValueStore.sync();
+    _hdfsKeyValueStore.sync(true);
     _hdfsKeyValueStore.close();
     _hdfsKeyValueTimer.cancel();
     _hdfsKeyValueTimer.purge();
@@ -304,7 +304,7 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
 
   @Override
   public void fsync() throws IOException {
-    _hdfsKeyValueStore.sync();
+    _hdfsKeyValueStore.flush(false);
   }
 
   public long getKeyStoreMemoryUsage() {

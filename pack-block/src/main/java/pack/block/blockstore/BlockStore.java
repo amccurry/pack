@@ -7,28 +7,28 @@ import pack.block.server.fs.LinuxFileSystem;
 
 public interface BlockStore extends Closeable {
 
-  LinuxFileSystem getLinuxFileSystem();
-  
+  LinuxFileSystem getLinuxFileSystem() throws IOException;
+
   /**
    * Name of the BlockStore, must be a valid filename.
    * 
    * @return
    */
-  String getName();
+  String getName() throws IOException;
 
   /**
    * Length of BlockStore in bytes.
    * 
    * @return
    */
-  long getLength();
+  long getLength() throws IOException;
 
   /**
    * Last modified time, not required (return 0).
    * 
    * @return
    */
-  long lastModified();
+  long lastModified() throws IOException;
 
   int write(long position, byte[] buffer, int offset, int len) throws IOException;
 

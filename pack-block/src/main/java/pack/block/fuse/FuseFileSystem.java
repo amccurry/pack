@@ -47,11 +47,11 @@ public class FuseFileSystem extends FuseStubFS implements Closeable {
     umount();
   }
 
-  public Collection<String> listBlockStore() {
+  public Collection<String> listBlockStore() throws IOException {
     return ImmutableList.copyOf(rootDirectory.getBlockStoreNames());
   }
 
-  public synchronized boolean addBlockStore(BlockStore bs) {
+  public synchronized boolean addBlockStore(BlockStore bs) throws IOException {
     FusePath fusePath = rootDirectory.find(FusePath.FILE_SEP + bs);
     if (fusePath != null) {
       return false;
@@ -81,7 +81,12 @@ public class FuseFileSystem extends FuseStubFS implements Closeable {
   public int getattr(String path, FileStat stat) {
     FusePath p = getPath(path);
     if (p != null) {
-      p.getattr(stat);
+      try {
+        p.getattr(stat);
+      } catch (IOException e) {
+        e.printStackTrace();
+        return -ErrorCodes.EIO();
+      }
       return 0;
     }
     return -ErrorCodes.ENOENT();

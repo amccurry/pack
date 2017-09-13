@@ -13,6 +13,7 @@ import pack.block.server.fs.FileSystemType;
 public class HdfsMetaData {
 
   public static final int DEFAULT_FILESYSTEM_BLOCKSIZE = 4096;
+  // public static final int DEFAULT_FILESYSTEM_BLOCKSIZE = 131072;
 
   // 100GB
   public static final long DEFAULT_LENGTH_BYTES = (long) (100L * Math.pow(1024, 3));

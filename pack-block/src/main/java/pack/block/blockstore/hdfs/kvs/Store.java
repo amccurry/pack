@@ -25,7 +25,7 @@ public interface Store extends Closeable {
 
   boolean isOwner() throws IOException;
   
-  void sync() throws IOException;
+  void sync(boolean sync) throws IOException;
   
   Iterable<Entry<Long, ByteBuffer>> scan(Long key) throws IOException;
 
@@ -43,6 +43,6 @@ public interface Store extends Closeable {
   
   int getNumberOfEntries();
 
-  void flush() throws IOException;
+  void flush(boolean sync) throws IOException;
 
 }

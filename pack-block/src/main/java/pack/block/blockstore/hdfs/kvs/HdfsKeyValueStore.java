@@ -35,6 +35,8 @@ import java.util.TimerTask;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -151,6 +153,10 @@ public class HdfsKeyValueStore implements Store {
   private final long _maxTimeOpenForWriting;
   private final boolean _readOnly;
   private final Logger _logger;
+  private final ExecutorService _service;
+  private final AtomicLong _lastKey = new AtomicLong();
+  private final AtomicLong _lastKeyGreaterThanCount = new AtomicLong();
+  private final AtomicLong _lastKeyEqualToCount = new AtomicLong();
 
   private FSDataOutputStream _output;
   private Path _outputPath;
@@ -170,6 +176,7 @@ public class HdfsKeyValueStore implements Store {
   public HdfsKeyValueStore(String name, boolean readOnly, Timer hdfsKeyValueTimer, Configuration configuration,
       Path path, long maxAmountAllowedPerFile, long maxTimeOpenForWriting) throws IOException {
     _logger = LoggerFactory.getLogger("HDFS/KVS/" + name);
+    _service = Executors.newSingleThreadExecutor();
     _readOnly = readOnly;
     _maxTimeOpenForWriting = maxTimeOpenForWriting;
     _maxAmountAllowedPerFile = maxAmountAllowedPerFile;
@@ -246,40 +253,56 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
-  public void sync() throws IOException {
-    ensureOpen();
-    _writeLock.lock();
-    ensureOpenForWriting();
-    try {
-      syncInternal();
-    } catch (RemoteException e) {
-      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
-    } catch (LeaseExpiredException e) {
-      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
-    } finally {
-      _writeLock.unlock();
+  public void sync(boolean sync) throws IOException {
+    if (sync) {
+      ensureOpen();
+      _writeLock.lock();
+      ensureOpenForWriting();
+      try {
+        syncInternal();
+      } catch (RemoteException e) {
+        throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+      } catch (LeaseExpiredException e) {
+        throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+      } finally {
+        _writeLock.unlock();
+      }
+    } else {
+      _service.submit(() -> {
+        try {
+          syncInternal();
+        } catch (Exception e) {
+          _logger.error("Unknown error while syncing data.", e);
+        }
+      });
     }
   }
 
   @Override
-  public void flush() throws IOException {
-    ensureOpen();
-    _writeLock.lock();
-    ensureOpenForWriting();
-    try {
-      flushInternal();
-    } catch (RemoteException e) {
-      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
-    } catch (LeaseExpiredException e) {
-      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
-    } finally {
-      _writeLock.unlock();
+  public void flush(boolean sync) throws IOException {
+    if (sync) {
+      ensureOpen();
+      _writeLock.lock();
+      ensureOpenForWriting();
+      try {
+        flushInternal();
+      } catch (RemoteException e) {
+        throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+      } catch (LeaseExpiredException e) {
+        throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+      } finally {
+        _writeLock.unlock();
+      }
+    } else {
+      _service.submit(() -> {
+        try {
+          flushInternal();
+        } catch (Exception e) {
+          _logger.error("Unknown error while syncing data.", e);
+        }
+      });
     }
   }
-
-  private final AtomicLong _lastKey = new AtomicLong();
-  private final AtomicLong _lastKeyGreaterThanCount = new AtomicLong();
-  private final AtomicLong _lastKeyEqualToCount = new AtomicLong();
 
   @Override
   public void put(long key, ByteBuffer value) throws IOException {
@@ -492,6 +515,7 @@ public class HdfsKeyValueStore implements Store {
       } finally {
         _writeLock.unlock();
       }
+      _service.shutdownNow();
     }
   }
 

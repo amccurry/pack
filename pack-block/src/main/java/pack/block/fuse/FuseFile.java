@@ -14,14 +14,14 @@ public class FuseFile extends FusePath {
   private final long _length;
   private final BlockStore _blockStore;
 
-  public FuseFile(BlockStore blockStore) {
+  public FuseFile(BlockStore blockStore) throws IOException {
     super(blockStore.getName());
     _blockStore = blockStore;
     _length = blockStore.getLength();
   }
 
   @Override
-  protected void getattr(FileStat stat) {
+  protected void getattr(FileStat stat) throws IOException {
     stat.st_mode.set(FileStat.S_IFREG | 0777);
     stat.st_size.set(_length);
     long lastModified = _blockStore.lastModified();

@@ -12,6 +12,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -87,8 +88,8 @@ public class BlockPackFuseTest {
     String fsLocalCachePath = mkdir(new File(fuse, CACHE)).getAbsolutePath();
     String metricsLocalPath = mkdir(new File(fuse, METRICS)).getAbsolutePath();
     ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnection, zkTimeout);
-    try (BlockPackFuse blockPackFuse = new BlockPackFuse(fileSystem, volumePath, config, fuseLocalPath, fsLocalPath,
-        metricsLocalPath, fsLocalCachePath, zooKeeper, false)) {
+    try (BlockPackFuse blockPackFuse = new BlockPackFuse(UserGroupInformation.getCurrentUser(), fileSystem, volumePath,
+        config, fuseLocalPath, fsLocalPath, metricsLocalPath, fsLocalCachePath, zooKeeper, false)) {
       blockPackFuse.mount(false);
       testFuseMount(fuseDir);
     }

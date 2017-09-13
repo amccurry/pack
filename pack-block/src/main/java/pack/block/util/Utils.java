@@ -67,20 +67,18 @@ public class Utils {
   }
 
   public static UserGroupInformation getUserGroupInformation() throws IOException {
-    UserGroupInformation ugi;
     String hdfsPrinciaplName = getHdfsPrincipalName();
     String hdfsUser = getHdfsUser();
     if (hdfsPrinciaplName != null) {
       String hdfsKeytab = getHdfsKeytab();
       LOGGER.info("principal {} keytab location {}", hdfsPrinciaplName, hdfsKeytab);
       UserGroupInformation.loginUserFromKeytab(hdfsPrinciaplName, hdfsKeytab);
-      ugi = UserGroupInformation.getLoginUser();
+      return UserGroupInformation.getLoginUser();
     } else if (hdfsUser == null) {
-      ugi = UserGroupInformation.getCurrentUser();
+      return UserGroupInformation.getCurrentUser();
     } else {
-      ugi = UserGroupInformation.createRemoteUser(hdfsUser);
+      return UserGroupInformation.createRemoteUser(hdfsUser);
     }
-    return ugi;
   }
 
   public static String getHdfsPrincipalName() {

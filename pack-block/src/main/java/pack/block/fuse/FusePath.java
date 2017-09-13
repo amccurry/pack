@@ -1,6 +1,7 @@
 package pack.block.fuse;
 
 import java.io.Closeable;
+import java.io.IOException;
 
 import jnrfuse.struct.FileStat;
 
@@ -24,6 +25,6 @@ public abstract class FusePath implements Closeable {
     return null;
   }
 
-  protected abstract void getattr(FileStat stat);
+  protected abstract void getattr(FileStat stat) throws IOException;
 
 }

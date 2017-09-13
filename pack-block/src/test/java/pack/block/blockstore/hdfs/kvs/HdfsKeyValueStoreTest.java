@@ -82,7 +82,7 @@ public class HdfsKeyValueStoreTest {
     HdfsKeyValueStore store = new HdfsKeyValueStore(_path.getName(), false, _timer, _configuration, _path);
     store.put(1, toBytesBuffer("value1"));
     store.put(2, toBytesBuffer("value2"));
-    store.sync();
+    store.sync(true);
     ByteBuffer value = createAndPopulateByteBuffer(6);
     assertTrue(store.get(1, value));
     assertEquals(toBytesBuffer("value1"), value);
@@ -96,7 +96,7 @@ public class HdfsKeyValueStoreTest {
     HdfsKeyValueStore store = new HdfsKeyValueStore(_path.getName(), false, _timer, _configuration, _path);
     store.put(1, toBytesBuffer("value1"));
     store.put(2, toBytesBuffer("value2"));
-    store.sync();
+    store.sync(true);
     ByteBuffer value = createAndPopulateByteBuffer(6);
     store.get(1, value);
     assertEquals(toBytesBuffer("value1"), value);
@@ -104,7 +104,7 @@ public class HdfsKeyValueStoreTest {
     assertEquals(toBytesBuffer("value2"), value);
 
     store.delete(2);
-    store.sync();
+    store.sync(true);
     assertFalse(store.get(2, value));
     store.close();
   }
@@ -114,7 +114,7 @@ public class HdfsKeyValueStoreTest {
     HdfsKeyValueStore store1 = new HdfsKeyValueStore(_path.getName(), false, _timer, _configuration, _path);
     store1.put(1, toBytesBuffer("value1"));
     store1.put(2, toBytesBuffer("value2"));
-    store1.sync();
+    store1.sync(true);
     ByteBuffer value1 = createAndPopulateByteBuffer(6);
     store1.get(1, value1);
     assertEquals(toBytesBuffer("value1"), value1);
@@ -181,12 +181,12 @@ public class HdfsKeyValueStoreTest {
     store2.put(3, createAndPopulateByteBuffer(1000));
     listFiles();
     try {
-      store1.sync();
+      store1.sync(true);
       fail();
     } catch (Exception e) {
 
     }
-    store2.sync();
+    store2.sync(true);
 
     try {
       store1.close();
@@ -221,7 +221,7 @@ public class HdfsKeyValueStoreTest {
     }
     store2.put(2, createAndPopulateByteBuffer(1000));
     store2.put(3, createAndPopulateByteBuffer(1000));
-    store2.sync();
+    store2.sync(true);
     store2.close();
 
     HdfsKeyValueStore store3 = new HdfsKeyValueStore(_path.getName(), false, _timer, _configuration, _path);
@@ -256,7 +256,7 @@ public class HdfsKeyValueStoreTest {
     }
 
     try {
-      store2.sync();
+      store2.sync(true);
       fail();
     } catch (IOException e) {
 

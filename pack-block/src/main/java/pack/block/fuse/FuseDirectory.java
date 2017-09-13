@@ -89,7 +89,7 @@ public class FuseDirectory extends FusePath {
     }
   }
 
-  public List<String> getBlockStoreNames() {
+  public List<String> getBlockStoreNames() throws IOException {
     Builder<String> builder = ImmutableList.builder();
     synchronized (contents) {
       for (FusePath p : contents) {

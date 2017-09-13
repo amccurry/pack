@@ -37,7 +37,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   private final long _length;
   private final byte[] _pidContent;
 
-  public FuseFileSystemSingleMount(String localPath, BlockStore blockStore) {
+  public FuseFileSystemSingleMount(String localPath, BlockStore blockStore) throws IOException {
     _logger = LoggerFactory.getLogger(FuseFileSystemSingleMount.class);
     _localPath = localPath;
     _blockStore = blockStore;
@@ -74,7 +74,13 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int getattr(String path, FileStat stat) {
-    long lastModified = _blockStore.lastModified();
+    long lastModified;
+    try {
+      lastModified = _blockStore.lastModified();
+    } catch (Throwable t) {
+      _logger.error("Unknown error.", t);
+      return -ErrorCodes.EIO();
+    }
     stat.st_mtim.tv_sec.set(lastModified / 1000);
     stat.st_mtim.tv_nsec.set(0);
     switch (path) {
@@ -138,7 +144,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     switch (path) {
     case BRICK_FILENAME:
       try {
-        _logger.debug("write {} position {} length {}", path, offset, size);
+        _logger.info("write {} position {} length {}", path, offset, size);
         return writeBlockStore(_blockStore, buf, size, offset);
       } catch (Throwable t) {
         _logger.error("Unknown error.", t);
@@ -177,12 +183,15 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     int len = (int) size;
     byte[] buf = new byte[len];
     int offset = 0;
+    int readCount = 0;
     while (len > 0) {
       int read = blockStore.read(position, buf, offset, len);
       len -= read;
       offset += read;
       position += read;
+      readCount++;
     }
+    System.out.println("readCount " + readCount);
     buffer.put(0, buf, 0, offset);
     return offset;
   }
