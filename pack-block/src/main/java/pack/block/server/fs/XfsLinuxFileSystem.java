@@ -9,10 +9,12 @@ import org.slf4j.LoggerFactory;
 import pack.block.util.Utils;
 
 public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
+
   public static final XfsLinuxFileSystem INSTANCE = new XfsLinuxFileSystem();
 
   private static final Logger LOGGER = LoggerFactory.getLogger(XfsLinuxFileSystem.class);
 
+  private static final String XFS = "XFS";
   private static final String GROWFS_SWITCH = "-d";
   private static final String XFS_GROWFS = "xfs_growfs";
   private static final String MKFS_XFS = "mkfs.xfs";
@@ -30,6 +32,11 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
   @Override
   public boolean isGrowOnlineSupported() {
     return true;
+  }
+
+  @Override
+  public String getType() {
+    return XFS;
   }
 
 }

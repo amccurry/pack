@@ -28,4 +28,6 @@ public interface LinuxFileSystem {
   }
 
   boolean isFileSystemExists(File device) throws IOException;
+
+  String getType();
 }

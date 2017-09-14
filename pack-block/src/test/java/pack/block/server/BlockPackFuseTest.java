@@ -21,6 +21,7 @@ import org.junit.Test;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.server.admin.BlockPackAdmin;
 import pack.zk.utils.ZkMiniCluster;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
@@ -88,8 +89,23 @@ public class BlockPackFuseTest {
     String fsLocalCachePath = mkdir(new File(fuse, CACHE)).getAbsolutePath();
     String metricsLocalPath = mkdir(new File(fuse, METRICS)).getAbsolutePath();
     ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnection, zkTimeout);
-    try (BlockPackFuse blockPackFuse = new BlockPackFuse(UserGroupInformation.getCurrentUser(), fileSystem, volumePath,
-        config, fuseLocalPath, fsLocalPath, metricsLocalPath, fsLocalCachePath, zooKeeper, false)) {
+
+    BlockPackAdmin blockPackAdmin = null;
+    BlockPackFuseConfig fuseConfig = BlockPackFuseConfig.builder()
+                                                        .blockPackAdmin(blockPackAdmin)
+                                                        .ugi(UserGroupInformation.getCurrentUser())
+                                                        .fileSystem(fileSystem)
+                                                        .path(volumePath)
+                                                        .config(config)
+                                                        .fuseLocalPath(fuseLocalPath)
+                                                        .fsLocalPath(fsLocalPath)
+                                                        .metricsLocalPath(metricsLocalPath)
+                                                        .fsLocalCache(fsLocalCachePath)
+                                                        .zooKeeper(zooKeeper)
+                                                        .fileSystemMount(false)
+                                                        .build();
+
+    try (BlockPackFuse blockPackFuse = new BlockPackFuse(fuseConfig)) {
       blockPackFuse.mount(false);
       testFuseMount(fuseDir);
     }

@@ -3,8 +3,10 @@ package pack.block.server;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
@@ -35,6 +37,8 @@ import pack.block.blockstore.hdfs.UgiHdfsBlockStore;
 import pack.block.blockstore.hdfs.v1.HdfsBlockStoreV1;
 import pack.block.blockstore.hdfs.v2.HdfsBlockStoreV2;
 import pack.block.fuse.FuseFileSystemSingleMount;
+import pack.block.server.admin.BlockPackAdmin;
+import pack.block.server.admin.Status;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
@@ -42,6 +46,8 @@ import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackFuse implements Closeable {
+
+  private static final String LOG4J_FUSE_PROCESS_XML = "log4j-fuse-process.xml";
 
   private static <T extends Closeable> T autoClose(T t) {
     ShutdownHookManager.get()
@@ -81,15 +87,17 @@ public class BlockPackFuse implements Closeable {
 
   public static Process startProcess(String fuseMountLocation, String fsMountLocation, String fsMetricsLocation,
       String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout, String volumeName,
-      String logOutput) throws IOException {
+      String logOutput, String unixSock) throws IOException {
     String javaHome = System.getProperty(JAVA_HOME);
     String className = System.getProperty(JAVA_CLASS_PATH);
     Builder<String> builder = ImmutableList.builder();
+
     String zkTimeoutStr = Integer.toString(zkTimeout);
     builder.add(NOHUP)
            .add(javaHome + BIN_JAVA)
            .add(XMX_SWITCH)
            .add(XMS_SWITCH)
+           .add("-Dpack.log.dir=" + logOutput)
            .add(CLASSPATH_SWITCH)
            .add(className)
            .add(BlockPackFuse.class.getName())
@@ -100,6 +108,7 @@ public class BlockPackFuse implements Closeable {
            .add(hdfVolumePath)
            .add(zkConnection)
            .add(zkTimeoutStr)
+           .add(unixSock)
            .add(STDOUT_REDIRECT + logOutput + STDOUT)
            .add(STDERR_REDIRECT + logOutput + STDERR)
            .add(BACKGROUND)
@@ -107,18 +116,29 @@ public class BlockPackFuse implements Closeable {
     ImmutableList<String> build = builder.build();
     String cmd = Joiner.on(' ')
                        .join(build);
+    File logConfig = new File(logOutput, LOG4J_FUSE_PROCESS_XML);
     File start = new File(logOutput, START_SH);
     try (PrintWriter output = new PrintWriter(start)) {
       output.println(BIN_BASH);
       output.println(ENV);
+      output.println("export PACK_LOG4J_CONFIG=" + logConfig.getAbsolutePath());
       IOUtils.write(cmd, output);
       output.println();
     }
+    if (!logConfig.exists()) {
+      try (InputStream inputStream = BlockPackFuse.class.getResourceAsStream("/" + LOG4J_FUSE_PROCESS_XML)) {
+        try (FileOutputStream outputStream = new FileOutputStream(logConfig)) {
+          IOUtils.copy(inputStream, outputStream);
+        }
+      }
+    }
+
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
     return new ProcessBuilder(SUDO, INHERENT_ENV_VAR_SWITCH, "bash", "-x", start.getAbsolutePath()).start();
   }
 
   public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
+    Utils.setupLog4j();
     Configuration conf = getConfig();
     String fuseLocalPath = args[0];
     String fsLocalPath = args[1];
@@ -127,15 +147,30 @@ public class BlockPackFuse implements Closeable {
     Path path = new Path(args[4]);
     String zkConnection = args[5];
     int zkTimeout = Integer.parseInt(args[6]);
-
+    String unixSock = args[7];
+    BlockPackAdmin blockPackAdmin = BlockPackAdmin.startAdminServer(unixSock);
+    blockPackAdmin.setStatus(Status.INITIALIZATION);
     HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
     UserGroupInformation ugi = Utils.getUserGroupInformation();
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       FileSystem fileSystem = FileSystem.get(conf);
       try (Closer closer = autoClose(Closer.create())) {
         ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
-        BlockPackFuse blockPackFuse = closer.register(new BlockPackFuse(ugi, fileSystem, path, config, fuseLocalPath,
-            fsLocalPath, metricsLocalPath, fsLocalCache, zooKeeper));
+
+        BlockPackFuseConfig fuseConfig = BlockPackFuseConfig.builder()
+                                                            .blockPackAdmin(blockPackAdmin)
+                                                            .ugi(ugi)
+                                                            .fileSystem(fileSystem)
+                                                            .path(path)
+                                                            .config(config)
+                                                            .fuseLocalPath(fuseLocalPath)
+                                                            .fsLocalPath(fsLocalPath)
+                                                            .metricsLocalPath(metricsLocalPath)
+                                                            .fsLocalCache(fsLocalCache)
+                                                            .zooKeeper(zooKeeper)
+                                                            .fileSystemMount(true)
+                                                            .build();
+        BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
         blockPackFuse.mount();
       }
       return null;
@@ -157,39 +192,37 @@ public class BlockPackFuse implements Closeable {
   private final CsvReporter _reporter;
   private final boolean _fileSystemMount;
   private final UserGroupInformation _ugi;
+  private final BlockPackAdmin _blockPackAdmin;
 
-  public BlockPackFuse(UserGroupInformation ugi, FileSystem fileSystem, Path path, HdfsBlockStoreConfig config,
-      String fuseLocalPath, String fsLocalPath, String metricsLocalPath, String fsLocalCache, ZooKeeperClient zooKeeper)
-      throws IOException {
-    this(ugi, fileSystem, path, config, fuseLocalPath, fsLocalPath, metricsLocalPath, fsLocalCache, zooKeeper, true);
-  }
-
-  public BlockPackFuse(UserGroupInformation ugi, FileSystem fileSystem, Path path, HdfsBlockStoreConfig config,
-      String fuseLocalPath, String fsLocalPath, String metricsLocalPath, String fsLocalCache, ZooKeeperClient zooKeeper,
-      boolean fileSystemMount) throws IOException {
-    ZkUtils.mkNodesStr(zooKeeper, MOUNT + LOCK);
-    _ugi = ugi;
-    _fileSystemMount = fileSystemMount;
-    _path = path;
-    _lockManager = createLockmanager(zooKeeper);
+  public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws IOException {
+    ZkUtils.mkNodesStr(packFuseConfig.getZooKeeper(), MOUNT + LOCK);
+    _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
+    _ugi = packFuseConfig.getUgi();
+    _fileSystemMount = packFuseConfig.isFileSystemMount();
+    _path = packFuseConfig.getPath();
+    _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
+    _lockManager = createLockmanager(packFuseConfig.getZooKeeper());
     _closer = Closer.create();
     _reporter = _closer.register(CsvReporter.forRegistry(_registry)
-                                            .build(new File(metricsLocalPath)));
+                                            .build(new File(packFuseConfig.getMetricsLocalPath())));
     _reporter.start(1, TimeUnit.MINUTES);
-    _fuseLocalPath = new File(fuseLocalPath);
+    _fuseLocalPath = new File(packFuseConfig.getFuseLocalPath());
     _fuseLocalPath.mkdirs();
-    _fsLocalPath = new File(fsLocalPath);
+    _fsLocalPath = new File(packFuseConfig.getFsLocalPath());
     _fsLocalPath.mkdirs();
     if (USER_V1_BLOCK_STORE) {
-      _blockStore = UgiHdfsBlockStore.wrap(_ugi, new HdfsBlockStoreV1(_registry, fileSystem, path, config));
+      _blockPackAdmin.setStatus(Status.INITIALIZATION, "Opening KVS");
+      _blockStore = UgiHdfsBlockStore.wrap(_ugi, new HdfsBlockStoreV1(_registry, packFuseConfig.getFileSystem(),
+          packFuseConfig.getPath(), packFuseConfig.getConfig()));
     } else {
-      File fsLocalCacheDir = new File(fsLocalCache);
+      File fsLocalCacheDir = new File(packFuseConfig.getFsLocalCache());
       fsLocalCacheDir.mkdirs();
-      _blockStore = UgiHdfsBlockStore.wrap(_ugi, new HdfsBlockStoreV2(fsLocalCacheDir, fileSystem, path, config));
+      _blockStore = UgiHdfsBlockStore.wrap(_ugi, new HdfsBlockStoreV2(fsLocalCacheDir, packFuseConfig.getFileSystem(),
+          packFuseConfig.getPath(), packFuseConfig.getConfig()));
     }
     _linuxFileSystem = _blockStore.getLinuxFileSystem();
     _metaData = _blockStore.getMetaData();
-    _fuse = _closer.register(new FuseFileSystemSingleMount(fuseLocalPath, _blockStore));
+    _fuse = _closer.register(new FuseFileSystemSingleMount(packFuseConfig.getFuseLocalPath(), _blockStore));
     _fuseMountThread = new Thread(() -> _ugi.doAs((PrivilegedAction<Void>) () -> {
       _fuse.localMount();
       return null;
@@ -202,7 +235,9 @@ public class BlockPackFuse implements Closeable {
     synchronized (_closed) {
       if (!_closed.get()) {
         if (_fileSystemMount) {
+          _blockPackAdmin.setStatus(Status.FS_UMOUNT_STARTED, "Unmounting " + _fsLocalPath);
           _linuxFileSystem.umount(_fsLocalPath);
+          _blockPackAdmin.setStatus(Status.FS_UMOUNT_COMPLETE, "Unmounted " + _fsLocalPath);
         }
         _closer.close();
         _fuseMountThread.interrupt();
@@ -229,8 +264,10 @@ public class BlockPackFuse implements Closeable {
     if (_lockManager.tryToLock(Utils.getLockName(_path))) {
       _closed.set(false);
       startFuseMount();
+      _blockPackAdmin.setStatus(Status.FUSE_MOUNT_STARTED, "Mounting FUSE @ " + _fuseLocalPath);
       LOGGER.info("fuse mount {} complete", _fuseLocalPath);
       waitUntilFuseIsMounted();
+      _blockPackAdmin.setStatus(Status.FUSE_MOUNT_COMPLETE, "Mounting FUSE @ " + _fuseLocalPath);
       LOGGER.info("fuse mount {} visible", _fuseLocalPath);
       if (_fileSystemMount) {
         File device = new File(_fuseLocalPath, FuseFileSystemSingleMount.BRICK);
@@ -238,9 +275,12 @@ public class BlockPackFuse implements Closeable {
           LOGGER.info("file system does not exist on mount {} visible", _fuseLocalPath);
           int blockSize = _metaData.getFileSystemBlockSize();
           LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, device);
+          _blockPackAdmin.setStatus(Status.FS_MKFS, "Creating " + _linuxFileSystem.getType() + " @ " + device);
           _linuxFileSystem.mkfs(device, blockSize);
         }
+        _blockPackAdmin.setStatus(Status.FS_MOUNT_STARTED, "Mounting " + device + " => " + _fsLocalPath);
         _linuxFileSystem.mount(device, _fsLocalPath);
+        _blockPackAdmin.setStatus(Status.FS_MOUNT_COMPLETED, "Mounted " + device + " => " + _fsLocalPath);
         LOGGER.info("fs mount {} complete", _fsLocalPath);
       }
       if (blocking) {

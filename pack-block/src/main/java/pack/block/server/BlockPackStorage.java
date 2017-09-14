@@ -2,25 +2,17 @@ package pack.block.server;
 
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.security.PrivilegedExceptionAction;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -36,8 +28,10 @@ import com.google.common.io.Closer;
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.fuse.FuseFileSystemSingleMount;
-import pack.block.util.Utils;
+import pack.block.server.admin.Status;
+import pack.block.server.admin.client.BlockPackAdminClient;
+import pack.block.server.admin.client.ConnectionRefusedException;
+import pack.block.server.admin.client.NoFileException;
 import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
@@ -47,9 +41,6 @@ public class BlockPackStorage implements PackStorage {
 
   public static final String MOUNT = "/mount";
 
-  private static final String KILL = "kill";
-  private static final String UTF_8 = "UTF-8";
-  private static final String DATE_FORMAT = "yyyyMMddkkmmss";
   private static final String METRICS = "metrics";
 
   protected final Configuration _configuration;
@@ -59,6 +50,7 @@ public class BlockPackStorage implements PackStorage {
   protected final File _localDeviceDir;
   protected final File _localLogDir;
   protected final File _localCacheDir;
+  protected final File _localUnixSocketDir;
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
   protected final String _zkConnection;
   protected final int _zkTimeout;
@@ -95,6 +87,8 @@ public class BlockPackStorage implements PackStorage {
     _localLogDir.mkdirs();
     _localCacheDir = new File(localFile, "cache");
     _localCacheDir.mkdirs();
+    _localUnixSocketDir = new File(localFile, "sock");
+    _localUnixSocketDir.mkdirs();
   }
 
   public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zooKeeper) {
@@ -213,34 +207,60 @@ public class BlockPackStorage implements PackStorage {
     LOGGER.info("Mount Id {} localMetrics {}", id, localMetrics);
     File localCache = getLocalCache(volumeName);
     LOGGER.info("Mount Id {} localCache {}", id, localCache);
+    File unixSockFile = getUnixSocketFile(volumeName);
+    LOGGER.info("Mount Id {} localCache {}", id, unixSockFile);
+
     localCache.mkdirs();
     localFileSystemMount.mkdirs();
     localDevice.mkdirs();
     localMetrics.mkdirs();
 
+    if (isMounted(unixSockFile)) {
+      return localFileSystemMount.getAbsolutePath();
+    }
+
+    if (unixSockFile.exists()) {
+      unixSockFile.delete();
+    }
+
     String path = volumePath.toUri()
                             .getPath();
 
-    File touchFile = touch(localFileSystemMount, UUID.randomUUID()
-                                                     .toString());
-
     BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(),
         localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path, _zkConnection, _zkTimeout, volumeName,
-        logDir.getAbsolutePath());
-    waitForMount(localFileSystemMount, touchFile);
+        logDir.getAbsolutePath(), unixSockFile.getAbsolutePath());
+
+    waitForMount(localFileSystemMount, unixSockFile);
     return localFileSystemMount.getAbsolutePath();
+  }
+
+  private boolean isMounted(File unixSockFile) throws IOException {
+    BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
+    try {
+      client.getPid();
+      return true;
+    } catch (NoFileException e) {
+      return false;
+    } catch (ConnectionRefusedException e) {
+      return false;
+    }
+  }
+
+  private File getUnixSocketFile(String volumeName) {
+    return new File(_localUnixSocketDir, volumeName);
   }
 
   private File getLocalCache(String volumeName) {
     return new File(_localCacheDir, volumeName);
   }
 
-  private File touch(File localFileSystemMount, String uuid) throws IOException {
-    File file = new File(localFileSystemMount, uuid);
-    try (OutputStream in = new FileOutputStream(file)) {
-      return file;
-    }
-  }
+  // private File touch(File localFileSystemMount, String uuid) throws
+  // IOException {
+  // File file = new File(localFileSystemMount, uuid);
+  // try (OutputStream in = new FileOutputStream(file)) {
+  // return file;
+  // }
+  // }
 
   private File getLocalMetrics(File logDir) {
     File file = new File(logDir, METRICS);
@@ -249,52 +269,71 @@ public class BlockPackStorage implements PackStorage {
   }
 
   private File getLogDir(String volumeName) {
-    SimpleDateFormat format = new SimpleDateFormat(DATE_FORMAT);
-    String formatStr = format.format(new Date());
-    File logDir = new File(new File(_localLogDir, volumeName), formatStr);
+    File logDir = new File(_localLogDir, volumeName);
     logDir.mkdirs();
     return logDir;
   }
 
-  private void waitForMount(File localFileSystemMount, File touchFile) throws InterruptedException, IOException {
+  private void waitForMount(File localFileSystemMount, File sockFile) throws InterruptedException, IOException {
     Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
-    for (int i = 0; i < 60; i++) {
-      if (!touchFile.exists()) {
+    while (true) {
+      if (sockFile.exists()) {
+        break;
+      }
+      LOGGER.info("waiting for unix socket file to exist {}", sockFile);
+      Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
+    }
+    BlockPackAdminClient client = BlockPackAdminClient.create(sockFile);
+    while (true) {
+      Status status = client.getStatus();
+      if (status == Status.FS_MOUNT_COMPLETED) {
+        LOGGER.info("mount complete {}", localFileSystemMount);
         return;
       }
-      LOGGER.info("Waiting for mount {}", localFileSystemMount);
+      LOGGER.info("Waiting for mount {} status {}", localFileSystemMount, status);
       Thread.sleep(TimeUnit.SECONDS.toMillis(1));
     }
-    throw new IOException("Timeout could not mount " + localFileSystemMount);
-  }
-
-  private File getDeviceFusePidFile(File localDevice) {
-    return new File(localDevice, FuseFileSystemSingleMount.FUSE_PID);
   }
 
   protected void umountVolume(String volumeName, String id)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
     LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
-    File localDevice = getLocalDevice(volumeName);
-    File fusePid = getDeviceFusePidFile(localDevice);
-    killMount(fusePid);
+    File unixSockFile = getUnixSocketFile(volumeName);
+    try {
+      umountVolume(unixSockFile);
+    } catch (NoFileException e) {
+      LOGGER.info("fuse process seems to be gone {}", unixSockFile);
+      return;
+    } catch (ConnectionRefusedException e) {
+      LOGGER.info("fuse process seems to be gone {}", unixSockFile);
+      return;
+    }
   }
 
-  private void killMount(File fusePid) throws IOException {
-    String contents;
-    try (InputStream input = new FileInputStream(fusePid)) {
-      contents = IOUtils.toString(input, UTF_8);
+  private void umountVolume(File unixSockFile) throws IOException, InterruptedException {
+    BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
+    while (true) {
+      Status status = client.getStatus();
+      switch (status) {
+      case FS_MKFS:
+      case FS_MOUNT_COMPLETED:
+      case FS_MOUNT_STARTED:
+        client.umount();
+        break;
+      case FS_UMOUNT_STARTED:
+        break;
+      case FS_UMOUNT_COMPLETE:
+      case UNKNOWN:
+      case FUSE_MOUNT_COMPLETE:
+      case FUSE_MOUNT_STARTED:
+      case INITIALIZATION:
+        client.shutdown();
+        break;
+      default:
+        break;
+      }
+      Thread.sleep(TimeUnit.SECONDS.toMillis(1));
     }
-    String pid = getPid(contents);
-    Utils.exec(LOGGER, KILL, pid);
-  }
-
-  private String getPid(String contents) throws IOException {
-    int indexOf = contents.indexOf('@');
-    if (indexOf < 0) {
-      throw new IOException("Could not determine pid.");
-    }
-    return contents.substring(0, indexOf);
   }
 
   private File getLocalFileSystemMount(String volumeName) {

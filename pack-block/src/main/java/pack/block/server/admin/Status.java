@@ -1,0 +1,23 @@
+package pack.block.server.admin;
+
+public enum Status {
+
+  UNKNOWN,
+
+  INITIALIZATION,
+
+  FS_MKFS,
+
+  FS_MOUNT_STARTED,
+
+  FS_MOUNT_COMPLETED,
+
+  FS_UMOUNT_STARTED,
+
+  FS_UMOUNT_COMPLETE,
+
+  FUSE_MOUNT_COMPLETE,
+
+  FUSE_MOUNT_STARTED
+
+}

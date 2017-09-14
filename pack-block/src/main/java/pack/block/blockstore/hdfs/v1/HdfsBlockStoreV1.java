@@ -60,7 +60,6 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
   private final int _maxMemoryEntriesSoft;
   private final int _maxMemoryEntriesHard;
   private final Cache<Path, BlockFile.Reader> _readerCache;
-  private final byte[] _emptyBlock;
   private final AtomicReference<List<Path>> _blockFiles = new AtomicReference<>();
   private final Timer _blockFileTimer;
   private final MetricRegistry _registry;
@@ -90,7 +89,6 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
     _maxMemoryHard = config.getCacheMaxMemoryHard();
     _maxMemoryEntriesSoft = config.getCacheMaxMemoryEntriesSoft();
     _maxMemoryEntriesHard = config.getCacheMaxMemoryEntriesHard();
-    _emptyBlock = new byte[_fileSystemBlockSize];
 
     _length = _metaData.getLength();
     Path kvPath = qualify(new Path(_path, HdfsBlockStoreConfig.KVS));
@@ -287,9 +285,6 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
       List<ReadRequest> requests = createRequests(position, byteBuffer, blockSize);
       _hdfsKeyValueStore.get(requests);
       readBlocks(requests);
-      // for (ReadRequest readRequest : requests) {
-      // read(readRequest);
-      // }
       return len;
     } finally {
       // Nothing
@@ -297,7 +292,6 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
   }
 
   private void readBlocks(List<ReadRequest> requests) throws IOException {
-    BytesWritable value = new BytesWritable();
     List<Path> list = _blockFiles.get();
     if (list != null) {
       for (Path path : list) {
@@ -308,18 +302,6 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
       }
     }
   }
-
-  // private void read(ReadRequest readRequest) throws IOException {
-  // ByteBuffer byteBuffer = ByteBuffer.allocate(_fileSystemBlockSize);
-  // try {
-  // long blockId = readRequest.getBlockId();
-  // if (!_hdfsKeyValueStore.get(blockId, byteBuffer)) {
-  // readBlocks(blockId, byteBuffer);
-  // }
-  // } finally {
-  // readRequest.handleResult(byteBuffer);
-  // }
-  // }
 
   private List<ReadRequest> createRequests(long position, ByteBuffer byteBuffer, int blockSize) {
     int remaining = byteBuffer.remaining();
@@ -345,7 +327,7 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
 
   @Override
   public void fsync() throws IOException {
-    _hdfsKeyValueStore.flush(false);
+    // _hdfsKeyValueStore.flush(false);
   }
 
   public long getKeyStoreMemoryUsage() {
@@ -464,20 +446,6 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
 
   private Path getNewBlockFilePath() {
     return qualify(new Path(_blockPath, System.currentTimeMillis() + "." + HdfsBlockStoreConfig.BLOCK));
-  }
-
-  private void readBlocks(long blockId, ByteBuffer byteBuffer) throws IOException {
-    BytesWritable value = new BytesWritable();
-    List<Path> list = _blockFiles.get();
-    if (list != null) {
-      for (Path path : list) {
-        Reader reader = getReader(path);
-        if (reader.read(blockId, value)) {
-          byteBuffer.put(value.getBytes(), 0, value.getLength());
-          return;
-        }
-      }
-    }
   }
 
   private Reader getReader(Path path) throws IOException {

@@ -272,9 +272,14 @@ public class HdfsKeyValueStore implements Store {
     } else {
       _service.submit(() -> {
         try {
+          ensureOpen();
+          _writeLock.lock();
+          ensureOpenForWriting();
           syncInternal();
         } catch (Exception e) {
           _logger.error("Unknown error while syncing data.", e);
+        } finally {
+          _writeLock.unlock();
         }
       });
     }
@@ -298,9 +303,14 @@ public class HdfsKeyValueStore implements Store {
     } else {
       _service.submit(() -> {
         try {
+          ensureOpen();
+          _writeLock.lock();
+          ensureOpenForWriting();
           flushInternal();
         } catch (Exception e) {
           _logger.error("Unknown error while syncing data.", e);
+        } finally {
+          _writeLock.unlock();
         }
       });
     }
@@ -319,7 +329,7 @@ public class HdfsKeyValueStore implements Store {
     } else if (key == _lastKey.get()) {
       _lastKeyEqualToCount.incrementAndGet();
     } else {
-      _logger.info("In-order write reset. > {} = {}", _lastKeyGreaterThanCount.get(), _lastKeyEqualToCount.get());
+      _logger.debug("In-order write reset. > {} = {}", _lastKeyGreaterThanCount.get(), _lastKeyEqualToCount.get());
       _lastKeyGreaterThanCount.set(0);
       _lastKeyEqualToCount.set(0);
     }
@@ -519,6 +529,12 @@ public class HdfsKeyValueStore implements Store {
   public void close() throws IOException {
     if (!_isClosed) {
       _isClosed = true;
+      _service.shutdown();
+      try {
+        _service.awaitTermination(1, TimeUnit.MINUTES);
+      } catch (InterruptedException e) {
+        _logger.error("Could not wait any longer for executor service to shutdown.", e);
+      }
       if (_idleLogTimerTask != null) {
         _idleLogTimerTask.cancel();
       }
@@ -541,7 +557,6 @@ public class HdfsKeyValueStore implements Store {
       } finally {
         _writeLock.unlock();
       }
-      _service.shutdownNow();
     }
   }
 
