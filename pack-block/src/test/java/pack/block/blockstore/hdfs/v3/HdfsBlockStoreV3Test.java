@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.v1;
+package pack.block.blockstore.hdfs.v3;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -20,9 +20,8 @@ import com.codahale.metrics.MetricRegistry;
 
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.blockstore.hdfs.v1.HdfsBlockStoreV1;
 
-public class HdfsBlockStoreTest {
+public class HdfsBlockStoreV3Test {
 
   private static MiniDFSCluster cluster;
   private static File storePathDir = new File("./test");
@@ -50,9 +49,9 @@ public class HdfsBlockStoreTest {
                                                           .length(100000000)
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
-    Random random = new Random();
+    Random random = new Random(1);
 
-    try (HdfsBlockStoreV1 store = new HdfsBlockStoreV1(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
       for (int i = 0; i < 10000; i++) {
         int blockSize = store.getFileSystemBlockSize();
         int pos = random.nextInt(1000) * blockSize;
@@ -74,43 +73,44 @@ public class HdfsBlockStoreTest {
       }
     }
   }
-
-  @Test
-  public void testEmptyBlock() throws Exception {
-    Path path = new Path("/testEmptyBlock");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
-                                                          .length(100000000)
-                                                          .build();
-    HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
-
-    try (HdfsBlockStoreV1 store = new HdfsBlockStoreV1(metrics, fileSystem, path)) {
-      int blockSize = store.getFileSystemBlockSize();
-      {
-        byte[] buf = new byte[blockSize];
-        store.write(0, buf, 0, blockSize);
-        store.read(0, buf, 0, blockSize);
-      }
-
-      assertEquals(0L, store.getKeyStoreMemoryUsage());
-
-      {
-        byte[] buf = new byte[blockSize];
-        Arrays.fill(buf, (byte) 1);
-        store.write(0, buf, 0, blockSize);
-        store.read(0, buf, 0, blockSize);
-      }
-
-      assertTrue(store.getKeyStoreMemoryUsage() >= blockSize);
-
-      {
-        byte[] buf = new byte[blockSize];
-        store.write(0, buf, 0, blockSize);
-        store.read(0, buf, 0, blockSize);
-      }
-
-      assertEquals(0L, store.getKeyStoreMemoryUsage());
-    }
-  }
+  //
+  // @Test
+  // public void testEmptyBlock() throws Exception {
+  // Path path = new Path("/testEmptyBlock");
+  // HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+  // .length(100000000)
+  // .build();
+  // HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
+  //
+  // try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem,
+  // path)) {
+  // int blockSize = store.getFileSystemBlockSize();
+  // {
+  // byte[] buf = new byte[blockSize];
+  // store.write(0, buf, 0, blockSize);
+  // store.read(0, buf, 0, blockSize);
+  // }
+  //
+  // assertEquals(0L, store.getKeyStoreMemoryUsage());
+  //
+  // {
+  // byte[] buf = new byte[blockSize];
+  // Arrays.fill(buf, (byte) 1);
+  // store.write(0, buf, 0, blockSize);
+  // store.read(0, buf, 0, blockSize);
+  // }
+  //
+  // assertTrue(store.getKeyStoreMemoryUsage() >= blockSize);
+  //
+  // {
+  // byte[] buf = new byte[blockSize];
+  // store.write(0, buf, 0, blockSize);
+  // store.read(0, buf, 0, blockSize);
+  // }
+  //
+  // assertEquals(0L, store.getKeyStoreMemoryUsage());
+  // }
+  // }
 
   @Test
   public void testReadingWritingNotBlockAligned() throws Exception {
@@ -129,7 +129,7 @@ public class HdfsBlockStoreTest {
     int maxPos = blockSize * 100;
     int maxOffset = 100;
 
-    try (HdfsBlockStoreV1 store = new HdfsBlockStoreV1(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
       for (int j = 0; j < 10000; j++) {
         int length = random.nextInt(maxLength);
         int offset = random.nextInt(maxOffset);
@@ -169,7 +169,7 @@ public class HdfsBlockStoreTest {
     byte[] buf = new byte[122880];
     random.nextBytes(buf);
 
-    try (HdfsBlockStoreV1 store = new HdfsBlockStoreV1(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
       {
         long pos = 139264;
         int len = buf.length;
