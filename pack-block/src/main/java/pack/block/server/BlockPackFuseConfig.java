@@ -26,4 +26,5 @@ public class BlockPackFuseConfig {
   String fsLocalCache;
   ZooKeeperClient zooKeeper;
   boolean fileSystemMount;
+  BlockStoreFactory blockStoreFactory;
 }

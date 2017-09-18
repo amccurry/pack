@@ -67,4 +67,9 @@ public class FileBlockStore implements BlockStore {
     return Ext4LinuxFileSystem.INSTANCE;
   }
 
+  @Override
+  public void delete(long position, long length) {
+
+  }
+
 }

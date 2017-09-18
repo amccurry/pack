@@ -33,9 +33,6 @@ import com.google.common.io.Closer;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.blockstore.hdfs.UgiHdfsBlockStore;
-import pack.block.blockstore.hdfs.v1.HdfsBlockStoreV1;
-import pack.block.blockstore.hdfs.v2.HdfsBlockStoreV2;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.Status;
@@ -82,8 +79,6 @@ public class BlockPackFuse implements Closeable {
   private static final String FUSE_MOUNT_THREAD = "fuse-mount-thread";
   private static final String SITE_XML = "-site.xml";
   private static final String HDFS_CONF = "hdfs-conf";
-
-  private static final boolean USER_V1_BLOCK_STORE = true;
 
   public static Process startProcess(String fuseMountLocation, String fsMountLocation, String fsMetricsLocation,
       String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout, String volumeName,
@@ -169,6 +164,7 @@ public class BlockPackFuse implements Closeable {
                                                             .fsLocalCache(fsLocalCache)
                                                             .zooKeeper(zooKeeper)
                                                             .fileSystemMount(true)
+                                                            .blockStoreFactory(BlockStoreFactory.DEFAULT)
                                                             .build();
         BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
         blockPackFuse.mount();
@@ -210,16 +206,9 @@ public class BlockPackFuse implements Closeable {
     _fuseLocalPath.mkdirs();
     _fsLocalPath = new File(packFuseConfig.getFsLocalPath());
     _fsLocalPath.mkdirs();
-    if (USER_V1_BLOCK_STORE) {
-      _blockPackAdmin.setStatus(Status.INITIALIZATION, "Opening KVS");
-      _blockStore = UgiHdfsBlockStore.wrap(_ugi, new HdfsBlockStoreV1(_registry, packFuseConfig.getFileSystem(),
-          packFuseConfig.getPath(), packFuseConfig.getConfig()));
-    } else {
-      File fsLocalCacheDir = new File(packFuseConfig.getFsLocalCache());
-      fsLocalCacheDir.mkdirs();
-      _blockStore = UgiHdfsBlockStore.wrap(_ugi, new HdfsBlockStoreV2(fsLocalCacheDir, packFuseConfig.getFileSystem(),
-          packFuseConfig.getPath(), packFuseConfig.getConfig()));
-    }
+
+    BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
+    _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _ugi, _registry);
     _linuxFileSystem = _blockStore.getLinuxFileSystem();
     _metaData = _blockStore.getMetaData();
     _fuse = _closer.register(new FuseFileSystemSingleMount(packFuseConfig.getFuseLocalPath(), _blockStore));
@@ -235,6 +224,11 @@ public class BlockPackFuse implements Closeable {
     synchronized (_closed) {
       if (!_closed.get()) {
         if (_fileSystemMount) {
+          if (_linuxFileSystem.isFstrimSupported()) {
+            _blockPackAdmin.setStatus(Status.FS_TRIM_STARTED, "Fstrim started " + _fsLocalPath);
+            _linuxFileSystem.fstrim(_fsLocalPath);
+            _blockPackAdmin.setStatus(Status.FS_TRIM_COMPLETE, "Fstrim complete " + _fsLocalPath);
+          }
           _blockPackAdmin.setStatus(Status.FS_UMOUNT_STARTED, "Unmounting " + _fsLocalPath);
           _linuxFileSystem.umount(_fsLocalPath);
           _blockPackAdmin.setStatus(Status.FS_UMOUNT_COMPLETE, "Unmounted " + _fsLocalPath);

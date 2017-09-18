@@ -326,6 +326,8 @@ public class BlockPackStorage implements PackStorage {
       case UNKNOWN:
       case FUSE_MOUNT_COMPLETE:
       case FUSE_MOUNT_STARTED:
+      case FS_TRIM_STARTED:
+      case FS_TRIM_COMPLETE:
       case INITIALIZATION:
         client.shutdown();
         break;

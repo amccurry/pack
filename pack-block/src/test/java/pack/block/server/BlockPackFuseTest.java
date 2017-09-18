@@ -103,6 +103,7 @@ public class BlockPackFuseTest {
                                                         .fsLocalCache(fsLocalCachePath)
                                                         .zooKeeper(zooKeeper)
                                                         .fileSystemMount(false)
+                                                        .blockStoreFactory(BlockStoreFactory.DEFAULT)
                                                         .build();
 
     try (BlockPackFuse blockPackFuse = new BlockPackFuse(fuseConfig)) {

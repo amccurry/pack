@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Paths;
+import java.util.Set;
 
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import jnr.ffi.types.size_t;
 import jnrfuse.ErrorCodes;
 import jnrfuse.FuseFillDir;
 import jnrfuse.FuseStubFS;
+import jnrfuse.flags.FallocFlags;
 import jnrfuse.struct.FileStat;
 import jnrfuse.struct.FuseFileInfo;
 import pack.block.blockstore.BlockStore;
@@ -177,6 +179,36 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     default:
       return -ErrorCodes.ENOENT();
     }
+  }
+
+  @Override
+  public int fallocate(String path, int mode, long off, long length, FuseFileInfo fi) {
+    Set<FallocFlags> lookup = FallocFlags.lookup(mode);
+    switch (path) {
+    case BRICK_FILENAME:
+      if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) && lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
+        try {
+          _blockStore.delete(off, length);
+          return 0;
+        } catch (Throwable t) {
+          _logger.error("Unknown error.", t);
+          return -ErrorCodes.EIO();
+        }
+      } else {
+        return -ErrorCodes.EOPNOTSUPP();
+      }
+    case FILE_SEP:
+      return -ErrorCodes.EISDIR();
+    case PID_FILENAME:
+      return -ErrorCodes.EIO();
+    default:
+      return -ErrorCodes.ENOENT();
+    }
+  }
+
+  @Override
+  public int flush(String path, FuseFileInfo fi) {
+    return 0;
   }
 
   public static int readBlockStore(BlockStore blockStore, Pointer buffer, long size, long position) throws IOException {

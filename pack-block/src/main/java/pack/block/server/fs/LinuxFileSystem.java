@@ -30,4 +30,12 @@ public interface LinuxFileSystem {
   boolean isFileSystemExists(File device) throws IOException;
 
   String getType();
+
+  default boolean isFstrimSupported() {
+    return false;
+  }
+
+  default void fstrim(File mountLocation) throws IOException {
+
+  }
 }

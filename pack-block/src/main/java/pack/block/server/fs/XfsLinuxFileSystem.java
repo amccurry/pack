@@ -18,6 +18,8 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
   private static final String GROWFS_SWITCH = "-d";
   private static final String XFS_GROWFS = "xfs_growfs";
   private static final String MKFS_XFS = "mkfs.xfs";
+  private static final String FSTRIM = "fstrim";
+  private static final String VERBOSE_SWITCH = "-v";
 
   @Override
   public void mkfs(File device, int blockSize) throws IOException {
@@ -37,6 +39,16 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
   @Override
   public String getType() {
     return XFS;
+  }
+
+  @Override
+  public boolean isFstrimSupported() {
+    return true;
+  }
+
+  @Override
+  public void fstrim(File mountLocation) throws IOException {
+    Utils.exec(LOGGER, FSTRIM, VERBOSE_SWITCH, mountLocation.getAbsolutePath());
   }
 
 }

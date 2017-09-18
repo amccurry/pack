@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.Random;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
@@ -18,7 +19,9 @@ import org.junit.Test;
 
 import com.codahale.metrics.MetricRegistry;
 
+import pack.block.blockstore.compactor.BlockFileCompactor;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
+import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 
 public class HdfsBlockStoreV3Test {
@@ -73,44 +76,44 @@ public class HdfsBlockStoreV3Test {
       }
     }
   }
-  //
-  // @Test
-  // public void testEmptyBlock() throws Exception {
-  // Path path = new Path("/testEmptyBlock");
-  // HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
-  // .length(100000000)
-  // .build();
-  // HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
-  //
-  // try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem,
-  // path)) {
-  // int blockSize = store.getFileSystemBlockSize();
-  // {
-  // byte[] buf = new byte[blockSize];
-  // store.write(0, buf, 0, blockSize);
-  // store.read(0, buf, 0, blockSize);
-  // }
-  //
-  // assertEquals(0L, store.getKeyStoreMemoryUsage());
-  //
-  // {
-  // byte[] buf = new byte[blockSize];
-  // Arrays.fill(buf, (byte) 1);
-  // store.write(0, buf, 0, blockSize);
-  // store.read(0, buf, 0, blockSize);
-  // }
-  //
-  // assertTrue(store.getKeyStoreMemoryUsage() >= blockSize);
-  //
-  // {
-  // byte[] buf = new byte[blockSize];
-  // store.write(0, buf, 0, blockSize);
-  // store.read(0, buf, 0, blockSize);
-  // }
-  //
-  // assertEquals(0L, store.getKeyStoreMemoryUsage());
-  // }
-  // }
+
+  @Test
+  public void testDeleteBlocks() throws Exception {
+
+    Path path = new Path("/testDeleteBlocks");
+    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                          .length(100000000)
+                                                          .build();
+    HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
+
+    int blockSize = metaData.getFileSystemBlockSize();
+    byte[] buffer = new byte[blockSize];
+    Arrays.fill(buffer, (byte) 1);
+
+    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
+      long position = 0;
+      for (int j = 0; j < 10000; j++) {
+        if (j % 123 == 0) {
+          store.fsync();
+        }
+        store.write(position, buffer, 0, blockSize);
+        position += blockSize;
+      }
+
+      store.delete(0, 10000 * blockSize);
+    }
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, Long.MAX_VALUE, null)) {
+      compactor.runCompaction();
+    }
+
+    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
+      store.processBlockFiles();
+    }
+
+    FileStatus[] fileStatus = fileSystem.listStatus(new Path(path, HdfsBlockStoreConfig.BLOCK));
+    assertEquals(1, fileStatus.length);
+  }
 
   @Test
   public void testReadingWritingNotBlockAligned() throws Exception {

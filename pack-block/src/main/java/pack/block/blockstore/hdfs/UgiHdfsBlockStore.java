@@ -122,4 +122,16 @@ public class UgiHdfsBlockStore implements HdfsBlockStore {
     }
   }
 
+  @Override
+  public void delete(long position, long length) throws IOException {
+    try {
+      _ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+        _blockStore.delete(position, length);
+        return null;
+      });
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
+  }
+
 }
