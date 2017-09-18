@@ -86,6 +86,8 @@ public class BlockPackFuse implements Closeable {
     String javaHome = System.getProperty(JAVA_HOME);
     String className = System.getProperty(JAVA_CLASS_PATH);
     Builder<String> builder = ImmutableList.builder();
+    
+    also copy libs to new process...
 
     String zkTimeoutStr = Integer.toString(zkTimeout);
     builder.add(NOHUP)
@@ -93,6 +95,10 @@ public class BlockPackFuse implements Closeable {
            .add(XMX_SWITCH)
            .add(XMS_SWITCH)
            .add("-Dpack.log.dir=" + logOutput)
+           
+           add docker sock, if needed
+           add docker volume, if needed
+           
            .add(CLASSPATH_SWITCH)
            .add(className)
            .add(BlockPackFuse.class.getName())

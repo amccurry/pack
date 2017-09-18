@@ -2,36 +2,25 @@ package pack.block.server.admin.client;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.httpclient.ConnectTimeoutException;
-import org.apache.commons.httpclient.ConnectionPoolTimeoutException;
-import org.apache.commons.httpclient.HostConfiguration;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpConnection;
-import org.apache.commons.httpclient.HttpConnectionManager;
 import org.apache.commons.httpclient.HttpException;
-import org.apache.commons.httpclient.HttpMethodBase;
+import org.apache.commons.httpclient.methods.ByteArrayRequestEntity;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.params.HttpConnectionManagerParams;
-import org.apache.commons.httpclient.params.HttpConnectionParams;
-import org.apache.commons.httpclient.protocol.Protocol;
-import org.apache.commons.httpclient.protocol.ProtocolSocketFactory;
-import org.apache.commons.io.IOUtils;
+import org.apache.commons.httpclient.methods.RequestEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import jnr.unixsocket.UnixSocket;
-import jnr.unixsocket.UnixSocketAddress;
-import jnr.unixsocket.UnixSocketChannel;
 import pack.block.server.admin.BlockPackAdmin;
+import pack.block.server.admin.CounterAction;
+import pack.block.server.admin.CounterRequest;
+import pack.block.server.admin.CounterResponse;
 import pack.block.server.admin.PidResponse;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.StatusResponse;
@@ -39,13 +28,9 @@ import spark.Service;
 import spark.SparkJava;
 import spark.SparkJavaIdentifier;
 
-public class BlockPackAdminClient {
+public class BlockPackAdminClient extends UnixDomainSocketClient {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackAdminClient.class);
-
-  private static final String CONNECTION_REFUSED = "connection refused";
-  private static final String UTF_8 = "UTF-8";
-  private static final String HTTP_LOCALHOST = "http://localhost";
 
   public static void main(String[] args) throws IOException, InterruptedException {
     File file = new File("test.sock");
@@ -71,14 +56,13 @@ public class BlockPackAdminClient {
   }
 
   private final ObjectMapper _mapper = new ObjectMapper();
-  private final File _sockFile;
 
   public static BlockPackAdminClient create(File sockFile) {
     return new BlockPackAdminClient(sockFile);
   }
 
   public BlockPackAdminClient(File sockFile) {
-    _sockFile = sockFile;
+    super(sockFile);
   }
 
   public Status getStatus() throws IOException {
@@ -106,8 +90,38 @@ public class BlockPackAdminClient {
     }
   }
 
-  private HttpClient getClient() {
-    return createHttpClient(_sockFile);
+  public long incrementCounter(String name) throws IOException {
+    LOGGER.info("incrementCounter {} {}", name, _sockFile);
+    CounterAction action = CounterAction.INCREMENT;
+    long value = 1L;
+    return execCounter(name, action, value);
+  }
+
+  private long execCounter(String name, CounterAction action, long value)
+      throws JsonProcessingException, IOException, HttpException, JsonParseException, JsonMappingException {
+    PostMethod post = new PostMethod(HTTP_LOCALHOST + BlockPackAdmin.COUNTER);
+    CounterRequest request = CounterRequest.builder()
+                                           .name(name)
+                                           .action(action)
+                                           .value(value)
+                                           .build();
+    RequestEntity requestEntity = new ByteArrayRequestEntity(OBJECT_MAPPER.writeValueAsBytes(request));
+    post.setRequestEntity(requestEntity);
+    int executeMethod = getClient().executeMethod(post);
+    String bodyAsString = getBodyAsString(post);
+    if (executeMethod != 200) {
+      throw new IOException(bodyAsString);
+    } else {
+      CounterResponse response = OBJECT_MAPPER.readValue(bodyAsString, CounterResponse.class);
+      return response.getValue();
+    }
+  }
+
+  public long decrementCounter(String name) throws IOException {
+    LOGGER.info("decrementCounter {} {}", name, _sockFile);
+    CounterAction action = CounterAction.DECREMENT;
+    long value = -1L;
+    return execCounter(name, action, value);
   }
 
   public void umount() throws IOException {
@@ -128,88 +142,6 @@ public class BlockPackAdminClient {
     }
   }
 
-  private static HttpClient createHttpClient(File path) {
-    HttpClient client = new HttpClient();
-    client.setHttpConnectionManager(getConnectionManager(path));
-    return client;
-  }
-
-  private static HttpConnectionManager getConnectionManager(File path) {
-    return new HttpConnectionManager() {
-
-      @Override
-      public void setParams(HttpConnectionManagerParams params) {
-        throw new RuntimeException();
-      }
-
-      @Override
-      public void releaseConnection(HttpConnection conn) {
-        conn.close();
-      }
-
-      @Override
-      public HttpConnectionManagerParams getParams() {
-        return new HttpConnectionManagerParams();
-      }
-
-      @Override
-      public HttpConnection getConnectionWithTimeout(HostConfiguration hostConfiguration, long timeout)
-          throws ConnectionPoolTimeoutException {
-        ProtocolSocketFactory factory = new ProtocolSocketFactory() {
-
-          @Override
-          public Socket createSocket(String host, int port, InetAddress localAddress, int localPort,
-              HttpConnectionParams params) throws IOException, UnknownHostException, ConnectTimeoutException {
-            if (!path.exists()) {
-              throw new NoFileException();
-            }
-            UnixSocketAddress addr = new UnixSocketAddress(path);
-            try {
-              return new UnixSocket(UnixSocketChannel.open(addr));
-            } catch (IOException e) {
-              if (CONNECTION_REFUSED.equals(e.getMessage()
-                                             .toLowerCase()
-                                             .trim())) {
-                throw new ConnectionRefusedException();
-              }
-              throw e;
-            }
-          }
-
-          @Override
-          public Socket createSocket(String host, int port, InetAddress localAddress, int localPort)
-              throws IOException, UnknownHostException {
-            throw new RuntimeException();
-          }
-
-          @Override
-          public Socket createSocket(String host, int port) throws IOException, UnknownHostException {
-            throw new RuntimeException();
-          }
-        };
-        Protocol protocol = new Protocol("http", factory, 80);
-        HttpConnection httpConnection = new HttpConnection("localhost", 80, protocol);
-        httpConnection.setHttpConnectionManager(this);
-        return httpConnection;
-      }
-
-      @Override
-      public HttpConnection getConnection(HostConfiguration hostConfiguration, long timeout) throws HttpException {
-        throw new RuntimeException();
-      }
-
-      @Override
-      public HttpConnection getConnection(HostConfiguration hostConfiguration) {
-        throw new RuntimeException();
-      }
-
-      @Override
-      public void closeIdleConnections(long idleTimeout) {
-        throw new RuntimeException();
-      }
-    };
-  }
-
   private static Service startTestServer(File sockFile) {
     SparkJava.init();
     Service service = Service.ignite();
@@ -223,9 +155,4 @@ public class BlockPackAdminClient {
     return service;
   }
 
-  private static String getBodyAsString(HttpMethodBase base) throws IOException {
-    try (InputStream input = base.getResponseBodyAsStream()) {
-      return IOUtils.toString(input, UTF_8);
-    }
-  }
 }

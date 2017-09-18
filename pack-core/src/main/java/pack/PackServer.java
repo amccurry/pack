@@ -1,17 +1,15 @@
 package pack;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
-import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -81,6 +79,7 @@ public abstract class PackServer {
     service.ipAddress(sockFile);
 
     ResponseTransformer trans = model -> {
+      LOG.info("response {}", model);
       if (model instanceof String) {
         return (String) model;
       } else {
@@ -103,6 +102,7 @@ public abstract class PackServer {
     service.post(VOLUME_DRIVER_CAPABILITIES, (request, response) -> capabilitiesResponse);
     service.post(PLUGIN_ACTIVATE, (request, response) -> impls, trans);
     service.post(VOLUME_DRIVER_CREATE, (Route) (request, response) -> {
+      debugInfo(request);
       CreateRequest createRequest = read(request, CreateRequest.class);
       try {
         packStorage.create(createRequest.getVolumeName(), createRequest.getOptions());
@@ -117,6 +117,7 @@ public abstract class PackServer {
     }, trans);
 
     service.post(VOLUME_DRIVER_REMOVE, (Route) (request, response) -> {
+      debugInfo(request);
       RemoveRequest removeRequest = read(request, RemoveRequest.class);
       try {
         packStorage.remove(removeRequest.getVolumeName());
@@ -131,6 +132,7 @@ public abstract class PackServer {
     }, trans);
 
     service.post(VOLUME_DRIVER_MOUNT, (Route) (request, response) -> {
+      debugInfo(request);
       MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
       try {
         String mountPoint = packStorage.mount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
@@ -147,6 +149,7 @@ public abstract class PackServer {
     }, trans);
 
     service.post(VOLUME_DRIVER_PATH, (Route) (request, response) -> {
+      debugInfo(request);
       PathRequest pathRequest = read(request, PathRequest.class);
       try {
         String mountPoint = packStorage.getMountPoint(pathRequest.getVolumeName());
@@ -162,6 +165,7 @@ public abstract class PackServer {
     }, trans);
 
     service.post(VOLUME_DRIVER_UNMOUNT, (Route) (request, response) -> {
+      debugInfo(request);
       MountUnmountRequest mountUnmountRequest = read(request, MountUnmountRequest.class);
       try {
         packStorage.unmount(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId());
@@ -176,6 +180,7 @@ public abstract class PackServer {
     }, trans);
 
     service.post(VOLUME_DRIVER_GET, (Route) (request, response) -> {
+      debugInfo(request);
       GetRequest getRequest = read(request, GetRequest.class);
       try {
         if (packStorage.exists(getRequest.getVolumeName())) {
@@ -199,6 +204,7 @@ public abstract class PackServer {
     }, trans);
 
     service.post(VOLUME_DRIVER_LIST, (Route) (request, response) -> {
+      debugInfo(request);
       try {
         List<String> volumeNames = packStorage.listVolumes();
         Builder<Volume> volumes = ImmutableList.builder();
@@ -266,5 +272,18 @@ public abstract class PackServer {
         }
       }
     });
+  }
+
+  private void debugInfo(Request request) {
+    LOG.info("pathInfo {} contextPath {}", request.pathInfo(), request.contextPath());
+    Set<String> attributes = new TreeSet<>(request.attributes());
+    for (String attribute : attributes) {
+      LOG.info("attribute {} {}", attribute, request.attribute(attribute));
+    }
+    Set<String> headers = new TreeSet<>(request.headers());
+    for (String header : headers) {
+      LOG.info("header {} {}", header, request.headers(header));
+    }
+    LOG.info("params {}", request.params());
   }
 }

@@ -2,8 +2,11 @@ package pack.block.server.admin;
 
 import java.lang.management.ManagementFactory;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
@@ -26,6 +29,7 @@ public class BlockPackAdmin {
   public static final String PID = "/pid";
   public static final String STATUS = "/status";
   public static final String UMOUNT = "/umount";
+  public static final String COUNTER = "/counter";
   public static final String SHUTDOWN = "/shutdown";
   public static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -47,6 +51,7 @@ public class BlockPackAdmin {
   private final AtomicReference<String> _currentStatusMessage = new AtomicReference<String>();
   private final String _pid;
   private final AtomicBoolean _shutDown = new AtomicBoolean(false);
+  private final Map<String, AtomicLong> _counter = new ConcurrentHashMap<>();
 
   private BlockPackAdmin(String sockFile) {
     _pid = getPid();
@@ -65,6 +70,7 @@ public class BlockPackAdmin {
                                                              .status(_currentStatus.get())
                                                              .build(),
         TRANSFORMER);
+
     service.post(UMOUNT, (request, response) -> {
       LOGGER.info("umount request");
       BlockPackFuse blockPackFuse = _blockPackFuse.get();
@@ -76,6 +82,41 @@ public class BlockPackAdmin {
       waitForStatusToChange(Status.FS_UMOUNT_COMPLETE, Status.FS_UMOUNT_STARTED);
       return UnmountResponse.builder()
                             .build();
+    }, TRANSFORMER);
+
+    service.post(COUNTER, (request, response) -> {
+      LOGGER.info("counter request");
+      LOGGER.info("current counters {}", _counter);
+      CounterRequest counterRequest = OBJECT_MAPPER.readValue(request.bodyAsBytes(), CounterRequest.class);
+      String name = counterRequest.getName();
+      if (!_counter.containsKey(name)) {
+        LOGGER.info("counter {} not found adding new entry", name);
+        _counter.put(name, new AtomicLong());
+      }
+      AtomicLong counter = _counter.get(name);
+      LOGGER.info("current counter {} value {}", name, counter);
+      LOGGER.info("counterRequest {} ", counterRequest);
+      CounterAction action = counterRequest.getAction();
+      switch (action) {
+      case PUT:
+        counter.set(counterRequest.getValue());
+        break;
+      case INCREMENT:
+        counter.incrementAndGet();
+        break;
+      case DECREMENT:
+        counter.decrementAndGet();
+        break;
+      default:
+        break;
+      }
+
+      CounterResponse counterResponse = CounterResponse.builder()
+                                                       .name(name)
+                                                       .value(counter.get())
+                                                       .build();
+      LOGGER.info("counterResponse {} ", counterResponse);
+      return counterResponse;
     }, TRANSFORMER);
 
     service.post(SHUTDOWN, (request, response) -> {

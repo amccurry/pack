@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,6 +38,8 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
 
+  private static final String MOUNT_COUNT = "mountCount";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
   public static final String MOUNT = "/mount";
@@ -46,6 +49,7 @@ public class BlockPackStorage implements PackStorage {
   protected final Configuration _configuration;
   protected final Path _root;
   protected final UserGroupInformation _ugi;
+  protected final File _localMountCountDir;
   protected final File _localFileSystemDir;
   protected final File _localDeviceDir;
   protected final File _localLogDir;
@@ -79,8 +83,11 @@ public class BlockPackStorage implements PackStorage {
 
     LOGGER.info("Creating hdfs root path {}", _root);
     _ugi.doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
+
     _localFileSystemDir = new File(localFile, "fs");
     _localFileSystemDir.mkdirs();
+    _localMountCountDir = new File(localFile, "counts");
+    _localMountCountDir.mkdirs();
     _localDeviceDir = new File(localFile, "devices");
     _localDeviceDir.mkdirs();
     _localLogDir = new File(localFile, "logs");
@@ -132,13 +139,15 @@ public class BlockPackStorage implements PackStorage {
   }
 
   @Override
-  public String getMountPoint(String volumeName) {
-    File localMountFile = getLocalFileSystemMount(volumeName);
-    LOGGER.info("Get MountPoint volume {} path {}", volumeName, localMountFile);
-    if (!localMountFile.exists()) {
-      return null;
+  public String getMountPoint(String volumeName) throws IOException {
+    File localFileSystemMount = getLocalFileSystemMount(volumeName);
+    LOGGER.info("Get MountPoint volume {} path {}", volumeName, localFileSystemMount);
+    File unixSockFile = getUnixSocketFile(volumeName);
+    LOGGER.info("Volume {} localCache {}", volumeName, unixSockFile);
+    if (isMounted(unixSockFile)) {
+      return localFileSystemMount.getAbsolutePath();
     }
-    return localMountFile.getAbsolutePath();
+    return null;
   }
 
   @Override
@@ -191,6 +200,8 @@ public class BlockPackStorage implements PackStorage {
     fileSystem.delete(volumePath, true);
   }
 
+  private Set<String> _currentMounts = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
   protected String mountVolume(String volumeName, String id)
       throws IOException, FileNotFoundException, InterruptedException, KeeperException {
     createVolume(volumeName, ImmutableMap.of());
@@ -208,14 +219,22 @@ public class BlockPackStorage implements PackStorage {
     File localCache = getLocalCache(volumeName);
     LOGGER.info("Mount Id {} localCache {}", id, localCache);
     File unixSockFile = getUnixSocketFile(volumeName);
-    LOGGER.info("Mount Id {} localCache {}", id, unixSockFile);
+    LOGGER.info("Mount Id {} unixSockFile {}", id, unixSockFile);
+
+    if (_currentMounts.contains(id)) {
+      throw new IOException("Already mounted " + id);
+    }
 
     localCache.mkdirs();
     localFileSystemMount.mkdirs();
     localDevice.mkdirs();
     localMetrics.mkdirs();
 
+    _currentMounts.add(id);
+
     if (isMounted(unixSockFile)) {
+      // throw new IOException("Already mounted.");
+      incrementMountCount(unixSockFile);
       return localFileSystemMount.getAbsolutePath();
     }
 
@@ -231,6 +250,7 @@ public class BlockPackStorage implements PackStorage {
         logDir.getAbsolutePath(), unixSockFile.getAbsolutePath());
 
     waitForMount(localFileSystemMount, unixSockFile);
+    incrementMountCount(unixSockFile);
     return localFileSystemMount.getAbsolutePath();
   }
 
@@ -253,14 +273,6 @@ public class BlockPackStorage implements PackStorage {
   private File getLocalCache(String volumeName) {
     return new File(_localCacheDir, volumeName);
   }
-
-  // private File touch(File localFileSystemMount, String uuid) throws
-  // IOException {
-  // File file = new File(localFileSystemMount, uuid);
-  // try (OutputStream in = new FileOutputStream(file)) {
-  // return file;
-  // }
-  // }
 
   private File getLocalMetrics(File logDir) {
     File file = new File(logDir, METRICS);
@@ -297,17 +309,32 @@ public class BlockPackStorage implements PackStorage {
 
   protected void umountVolume(String volumeName, String id)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
+    _currentMounts.remove(id);
     LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
     File unixSockFile = getUnixSocketFile(volumeName);
-    try {
-      umountVolume(unixSockFile);
-    } catch (NoFileException e) {
-      LOGGER.info("fuse process seems to be gone {}", unixSockFile);
-      return;
-    } catch (ConnectionRefusedException e) {
-      LOGGER.info("fuse process seems to be gone {}", unixSockFile);
-      return;
+    long count = decrementMountCount(unixSockFile);
+    LOGGER.info("Mount count {}", count);
+    if (count <= 0) {
+      try {
+        umountVolume(unixSockFile);
+      } catch (NoFileException e) {
+        LOGGER.info("fuse process seems to be gone {}", unixSockFile);
+        return;
+      } catch (ConnectionRefusedException e) {
+        LOGGER.info("fuse process seems to be gone {}", unixSockFile);
+        return;
+      }
     }
+  }
+
+  private long decrementMountCount(File unixSockFile) throws IOException {
+    BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
+    return client.decrementCounter(MOUNT_COUNT);
+  }
+
+  private long incrementMountCount(File unixSockFile) throws IOException {
+    BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
+    return client.incrementCounter(MOUNT_COUNT);
   }
 
   private void umountVolume(File unixSockFile) throws IOException, InterruptedException {

@@ -6,7 +6,10 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -184,12 +187,21 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
       Collections.sort(idList);
 
       Path path = getNewTempFile();
+      Map<Long, ByteBuffer> writing = new HashMap<>();
       try (Writer writer = BlockFile.create(_fileSystem, path, _fileSystemBlockSize)) {
         for (Long id : idList) {
-          writer.append(id, toBw(_cache.get(id)));
+          ByteBuffer buffer = _cache.get(id);
+          writer.append(id, toBw(buffer));
+          writing.put(id, buffer);
         }
       }
       commitFile(path);
+      for (Entry<Long, ByteBuffer> e : writing.entrySet()) {
+        Long id = e.getKey();
+        if (!_cache.remove(id, e.getValue())) {
+          LOGGER.info("Did not remove cache key {} during file write.  Value updated.", id);
+        }
+      }
     } finally {
       _fileWriteLock.unlock();
     }
