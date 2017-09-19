@@ -27,4 +27,6 @@ public class BlockPackFuseConfig {
   ZooKeeperClient zooKeeper;
   boolean fileSystemMount;
   BlockStoreFactory blockStoreFactory;
+  String volumeName;
+  int maxVolumeMissingCount;
 }

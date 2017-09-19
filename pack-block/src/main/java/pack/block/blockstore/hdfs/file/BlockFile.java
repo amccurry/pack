@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -27,12 +28,10 @@ import com.google.common.collect.ImmutableList;
 
 public class BlockFile {
 
-  private static final String PACK_STREAM_ONLY = "PACK_STREAM_ONLY";
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFile.class);
   private static final String HDFS_BLOCK_FILE_V1 = "hdfs_block_file_v1";
   private static final String UTF_8 = "UTF-8";
   private static final byte[] MAGIC_STR;
-  private static final boolean STREAM_ONLY;
 
   static {
     try {
@@ -40,22 +39,28 @@ public class BlockFile {
     } catch (UnsupportedEncodingException e) {
       throw new RuntimeException(e);
     }
-    STREAM_ONLY = System.getenv(PACK_STREAM_ONLY) != null;
   }
 
   public static Writer create(FileSystem fileSystem, Path path, int blockSize, List<String> sourceFileList)
       throws IOException {
-    return new Writer(fileSystem, path, blockSize, sourceFileList);
+    return new WriterOrdered(fileSystem, path, blockSize, sourceFileList, null);
+  }
+
+  public static Writer create(FileSystem fileSystem, Path path, int blockSize, List<String> sourceFileList,
+      CommitFile commitFile) throws IOException {
+    return new WriterOrdered(fileSystem, path, blockSize, sourceFileList, commitFile);
+  }
+
+  public static Writer create(FileSystem fileSystem, Path path, int blockSize, CommitFile commitFile)
+      throws IOException {
+    return new WriterOrdered(fileSystem, path, blockSize, ImmutableList.of(), commitFile);
   }
 
   public static Writer create(FileSystem fileSystem, Path path, int blockSize) throws IOException {
-    return new Writer(fileSystem, path, blockSize, ImmutableList.of());
+    return new WriterOrdered(fileSystem, path, blockSize, ImmutableList.of(), null);
   }
 
   public static Reader open(FileSystem fileSystem, Path path) throws IOException {
-    if (STREAM_ONLY) {
-      return openForStreaming(fileSystem, path);
-    }
     return new RandomAccessReader(fileSystem, path);
   }
 
@@ -137,28 +142,126 @@ public class BlockFile {
     return result;
   }
 
-  public static class Writer implements Closeable {
+  public static abstract class Writer implements Closeable {
+
+    public abstract boolean canAppend(long longKey) throws IOException;
+
+    public abstract void appendEmpty(long longKey) throws IOException;
+
+    public abstract void append(long longKey, BytesWritable value) throws IOException;
+
+    public abstract long getLen() throws IOException;
+
+  }
+
+  public static class WriterUnordered extends Writer {
+
+    private final FSDataOutputStream _output;
+    private final AtomicReference<WriterOrdered> _currentWriter = new AtomicReference<>();
+    private int _blockSize;
+
+    private WriterUnordered(FSDataOutputStream output, int blockSize) throws IOException {
+      _output = output;
+      _blockSize = blockSize;
+    }
+
+    private WriterUnordered(FileSystem fileSystem, Path path, int blockSize) throws IOException {
+      this(fileSystem.create(path), blockSize);
+    }
+
+    @Override
+    public boolean canAppend(long longKey) throws IOException {
+      return true;
+    }
+
+    @Override
+    public void appendEmpty(long longKey) throws IOException {
+      WriterOrdered writer = getWriter();
+      if (!writer.canAppend(longKey)) {
+        writer = newWriter();
+      }
+      writer.appendEmpty(longKey);
+    }
+
+    @Override
+    public void append(long longKey, BytesWritable value) throws IOException {
+      WriterOrdered writer = getWriter();
+      if (!writer.canAppend(longKey)) {
+        writer = newWriter();
+      }
+    }
+
+    @Override
+    public long getLen() throws IOException {
+      return _output.getPos();
+    }
+
+    @Override
+    public void close() throws IOException {
+      WriterOrdered writer = getWriter();
+      if (writer != null) {
+        writer.writeFooter();
+      }
+      _output.close();
+    }
+
+    private WriterOrdered newWriter() throws IOException {
+      WriterOrdered writer = _currentWriter.get();
+      if (writer != null) {
+        writer.writeFooter();
+      }
+      writer = new WriterOrdered(_output, _blockSize, ImmutableList.of(), null);
+      _currentWriter.set(writer);
+      return writer;
+    }
+
+    private WriterOrdered getWriter() {
+      return _currentWriter.get();
+    }
+
+  }
+
+  public static class WriterOrdered extends Writer {
 
     private final RoaringBitmap _blocks = new RoaringBitmap();
     private final RoaringBitmap _emptyBlocks = new RoaringBitmap();
     private final FSDataOutputStream _output;
     private final int _blockSize;
     private final List<String> _sourceFiles;
+    private final CommitFile _commitFile;
 
     private long _prevKey = Long.MIN_VALUE;
 
-    private Writer(FileSystem fileSystem, Path path, int blockSize, List<String> sourceFiles) throws IOException {
-      _output = fileSystem.create(path);
+    private WriterOrdered(FSDataOutputStream output, int blockSize, List<String> sourceFiles, CommitFile commitFile)
+        throws IOException {
+      _output = output;
       _blockSize = blockSize;
       _sourceFiles = sourceFiles;
+      _commitFile = commitFile;
     }
 
-    public void appendEmpty(int longKey) throws IOException {
+    private WriterOrdered(FileSystem fileSystem, Path path, int blockSize, List<String> sourceFiles,
+        CommitFile commitFile) throws IOException {
+      this(fileSystem.create(path), blockSize, sourceFiles, commitFile);
+    }
+
+    @Override
+    public boolean canAppend(long longKey) throws IOException {
+      if (longKey <= _prevKey) {
+        return false;
+      }
+      getIntKey(longKey);
+      return true;
+    }
+
+    @Override
+    public void appendEmpty(long longKey) throws IOException {
       int key = checkKey(longKey);
       _emptyBlocks.add(key);
       _prevKey = longKey;
     }
 
+    @Override
     public void append(long longKey, BytesWritable value) throws IOException {
       int key = checkKey(longKey);
       checkValue(value, _blockSize);
@@ -169,6 +272,11 @@ public class BlockFile {
         _output.write(value.getBytes(), 0, value.getLength());
       }
       _prevKey = longKey;
+    }
+
+    @Override
+    public long getLen() throws IOException {
+      return _output.getPos();
     }
 
     private boolean isValueAllZeros(BytesWritable value) {
@@ -191,6 +299,14 @@ public class BlockFile {
 
     @Override
     public void close() throws IOException {
+      writeFooter();
+      _output.close();
+      if (_commitFile != null) {
+        _commitFile.commit();
+      }
+    }
+
+    public void writeFooter() throws IOException {
       long pos = _output.getPos();
       _blocks.serialize(_output);
       _emptyBlocks.serialize(_output);
@@ -199,11 +315,6 @@ public class BlockFile {
       _output.writeInt(MAGIC_STR.length);
       _output.write(MAGIC_STR);
       _output.writeLong(pos);
-      _output.close();
-    }
-
-    public long getLen() throws IOException {
-      return _output.getPos();
     }
 
   }
@@ -295,7 +406,7 @@ public class BlockFile {
               Arrays.fill(requestBatch, null);
               startBlockIndex = storageBlockIndex;
             }
-            
+
             prevBlockIndex = storageBlockIndex;
             requestBatch[storageBlockIndex - startBlockIndex] = readRequest;
           } else {

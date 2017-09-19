@@ -131,15 +131,7 @@ public class BlockPackAdmin {
       LOGGER.info("shutdown being processed");
       new Thread(() -> {
         BlockPackFuse blockPackFuse = _blockPackFuse.get();
-        if (blockPackFuse != null) {
-          Utils.close(LOGGER, blockPackFuse);
-        }
-        try {
-          Thread.sleep(TimeUnit.SECONDS.toMillis(5));
-        } catch (InterruptedException e) {
-          LOGGER.info("Unknown error", e);
-        }
-        System.exit(0);
+        Utils.shutdownProcess(blockPackFuse);
       }).start();
       return ShutdownResponse.builder()
                              .build();

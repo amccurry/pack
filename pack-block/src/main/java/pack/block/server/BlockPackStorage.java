@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -200,8 +199,6 @@ public class BlockPackStorage implements PackStorage {
     fileSystem.delete(volumePath, true);
   }
 
-  private Set<String> _currentMounts = Collections.newSetFromMap(new ConcurrentHashMap<>());
-
   protected String mountVolume(String volumeName, String id)
       throws IOException, FileNotFoundException, InterruptedException, KeeperException {
     createVolume(volumeName, ImmutableMap.of());
@@ -221,19 +218,12 @@ public class BlockPackStorage implements PackStorage {
     File unixSockFile = getUnixSocketFile(volumeName);
     LOGGER.info("Mount Id {} unixSockFile {}", id, unixSockFile);
 
-    if (_currentMounts.contains(id)) {
-      throw new IOException("Already mounted " + id);
-    }
-
     localCache.mkdirs();
     localFileSystemMount.mkdirs();
     localDevice.mkdirs();
     localMetrics.mkdirs();
 
-    _currentMounts.add(id);
-
     if (isMounted(unixSockFile)) {
-      // throw new IOException("Already mounted.");
       incrementMountCount(unixSockFile);
       return localFileSystemMount.getAbsolutePath();
     }
@@ -309,7 +299,6 @@ public class BlockPackStorage implements PackStorage {
 
   protected void umountVolume(String volumeName, String id)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
-    _currentMounts.remove(id);
     LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
     File unixSockFile = getUnixSocketFile(volumeName);
     long count = decrementMountCount(unixSockFile);

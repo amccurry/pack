@@ -27,7 +27,7 @@ public class DockerMonitor extends UnixDomainSocketClient {
   }
 
   public int getContainerCount(String volume) throws IOException {
-    LOGGER.info("getStatus {}", _sockFile);
+    LOGGER.debug("getStatus {}", _sockFile);
     String filter = URLEncoder.encode("{\"volume\":[\"" + volume + "\"]}", UTF_8);
     GetMethod get = new GetMethod(HTTP_LOCALHOST + "/" + DOCKER_V1_29 + "/containers/json?all=1&filters=" + filter);
     int executeMethod = getClient().executeMethod(get);

@@ -10,6 +10,8 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -35,6 +37,7 @@ import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.admin.BlockPackAdmin;
+import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
@@ -43,6 +46,24 @@ import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackFuse implements Closeable {
+
+  private static final String BASH = "bash";
+
+  private static final String PACK_LOG4J_CONFIG = "PACK_LOG4J_CONFIG";
+
+  private static final String EXPORT = "export";
+
+  private static final String SET_E = "set -e";
+
+  private static final String SET_X = "set -x";
+
+  private static final String POLLING_CLOSER = "polling-closer";
+
+  private static final String PACK_LOG_DIR = "pack.log.dir";
+
+  private static final String JAVA_PROPERTY = "-D";
+
+  private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
 
   private static final String LOG4J_FUSE_PROCESS_XML = "log4j-fuse-process.xml";
 
@@ -86,22 +107,24 @@ public class BlockPackFuse implements Closeable {
     String javaHome = System.getProperty(JAVA_HOME);
     String className = System.getProperty(JAVA_CLASS_PATH);
     Builder<String> builder = ImmutableList.builder();
-    
-    also copy libs to new process...
+
+    // also copy libs to new process...
+
+    String dockerUnixSocket = System.getProperty(DOCKER_UNIX_SOCKET);
 
     String zkTimeoutStr = Integer.toString(zkTimeout);
     builder.add(NOHUP)
            .add(javaHome + BIN_JAVA)
            .add(XMX_SWITCH)
            .add(XMS_SWITCH)
-           .add("-Dpack.log.dir=" + logOutput)
-           
-           add docker sock, if needed
-           add docker volume, if needed
-           
-           .add(CLASSPATH_SWITCH)
+           .add(JAVA_PROPERTY + PACK_LOG_DIR + "=" + logOutput);
+    if (dockerUnixSocket != null) {
+      builder.add(JAVA_PROPERTY + DOCKER_UNIX_SOCKET + "=" + dockerUnixSocket);
+    }
+    builder.add(CLASSPATH_SWITCH)
            .add(className)
            .add(BlockPackFuse.class.getName())
+           .add(volumeName)
            .add(fuseMountLocation)
            .add(fsMountLocation)
            .add(fsMetricsLocation)
@@ -121,8 +144,10 @@ public class BlockPackFuse implements Closeable {
     File start = new File(logOutput, START_SH);
     try (PrintWriter output = new PrintWriter(start)) {
       output.println(BIN_BASH);
+      output.println(SET_X);
+      output.println(SET_E);
       output.println(ENV);
-      output.println("export PACK_LOG4J_CONFIG=" + logConfig.getAbsolutePath());
+      output.println(EXPORT + " " + PACK_LOG4J_CONFIG + "=" + logConfig.getAbsolutePath());
       IOUtils.write(cmd, output);
       output.println();
     }
@@ -135,20 +160,22 @@ public class BlockPackFuse implements Closeable {
     }
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
-    return new ProcessBuilder(SUDO, INHERENT_ENV_VAR_SWITCH, "bash", "-x", start.getAbsolutePath()).start();
+    return new ProcessBuilder(SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath()).start();
   }
 
   public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
     Utils.setupLog4j();
     Configuration conf = getConfig();
-    String fuseLocalPath = args[0];
-    String fsLocalPath = args[1];
-    String metricsLocalPath = args[2];
-    String fsLocalCache = args[3];
-    Path path = new Path(args[4]);
-    String zkConnection = args[5];
-    int zkTimeout = Integer.parseInt(args[6]);
-    String unixSock = args[7];
+    String volumeName = args[0];
+    String fuseLocalPath = args[1];
+    String fsLocalPath = args[2];
+    String metricsLocalPath = args[3];
+    String fsLocalCache = args[4];
+    Path path = new Path(args[5]);
+    String zkConnection = args[6];
+    int zkTimeout = Integer.parseInt(args[7]);
+    String unixSock = args[8];
+
     BlockPackAdmin blockPackAdmin = BlockPackAdmin.startAdminServer(unixSock);
     blockPackAdmin.setStatus(Status.INITIALIZATION);
     HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
@@ -157,7 +184,6 @@ public class BlockPackFuse implements Closeable {
       FileSystem fileSystem = FileSystem.get(conf);
       try (Closer closer = autoClose(Closer.create())) {
         ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
-
         BlockPackFuseConfig fuseConfig = BlockPackFuseConfig.builder()
                                                             .blockPackAdmin(blockPackAdmin)
                                                             .ugi(ugi)
@@ -171,6 +197,8 @@ public class BlockPackFuse implements Closeable {
                                                             .zooKeeper(zooKeeper)
                                                             .fileSystemMount(true)
                                                             .blockStoreFactory(BlockStoreFactory.DEFAULT)
+                                                            .volumeName(volumeName)
+                                                            .maxVolumeMissingCount(5)
                                                             .build();
         BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
         blockPackFuse.mount();
@@ -195,6 +223,9 @@ public class BlockPackFuse implements Closeable {
   private final boolean _fileSystemMount;
   private final UserGroupInformation _ugi;
   private final BlockPackAdmin _blockPackAdmin;
+  private final int _maxVolumeMissingCount;
+  private final Timer _timer;
+  private final String _volumeName;
 
   public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws IOException {
     ZkUtils.mkNodesStr(packFuseConfig.getZooKeeper(), MOUNT + LOCK);
@@ -213,6 +244,10 @@ public class BlockPackFuse implements Closeable {
     _fsLocalPath = new File(packFuseConfig.getFsLocalPath());
     _fsLocalPath.mkdirs();
 
+    _volumeName = packFuseConfig.getVolumeName();
+    _maxVolumeMissingCount = packFuseConfig.getMaxVolumeMissingCount();
+    _timer = new Timer(POLLING_CLOSER, true);
+
     BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
     _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _ugi, _registry);
     _linuxFileSystem = _blockStore.getLinuxFileSystem();
@@ -223,6 +258,14 @@ public class BlockPackFuse implements Closeable {
       return null;
     }));
     _fuseMountThread.setName(FUSE_MOUNT_THREAD);
+  }
+
+  private void startDockerMonitorIfNeeded() {
+    if (System.getProperty(DOCKER_UNIX_SOCKET) != null) {
+      DockerMonitor monitor = new DockerMonitor(new File(System.getProperty(DOCKER_UNIX_SOCKET)));
+      long period = TimeUnit.SECONDS.toMillis(5);
+      _timer.schedule(getMonitorTimer(_volumeName, monitor), period, period);
+    }
   }
 
   @Override
@@ -283,6 +326,7 @@ public class BlockPackFuse implements Closeable {
         _blockPackAdmin.setStatus(Status.FS_MOUNT_COMPLETED, "Mounted " + device + " => " + _fsLocalPath);
         LOGGER.info("fs mount {} complete", _fsLocalPath);
       }
+      startDockerMonitorIfNeeded();
       if (blocking) {
         _fuseMountThread.join();
       }
@@ -331,5 +375,37 @@ public class BlockPackFuse implements Closeable {
 
   public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zooKeeper) {
     return new ZooKeeperLockManager(zooKeeper, MOUNT + LOCK);
+  }
+
+  private TimerTask getMonitorTimer(String volumeName, DockerMonitor monitor) {
+    return new TimerTask() {
+      private int count = 0;
+
+      @Override
+      public void run() {
+        try {
+          if (!isVolumeStillInUse(monitor, volumeName)) {
+            count++;
+            if (count >= _maxVolumeMissingCount) {
+              LOGGER.info("Volume {} no longer in use, closing.", _volumeName);
+              Utils.shutdownProcess(BlockPackFuse.this);
+            } else {
+              LOGGER.info("Volume {} no longer in use, current recheck count {} of max {}.", _volumeName, count,
+                  _maxVolumeMissingCount);
+            }
+          } else {
+            count = 0;
+          }
+        } catch (Exception e) {
+          LOGGER.error("Unknown error", e);
+        }
+      }
+
+      private boolean isVolumeStillInUse(DockerMonitor monitor, String volumeName) throws IOException {
+        int containerCount = monitor.getContainerCount(volumeName);
+        LOGGER.debug("Volume still has {} containers using mount", containerCount);
+        return containerCount > 0;
+      }
+    };
   }
 }

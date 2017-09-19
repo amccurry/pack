@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -18,6 +19,7 @@ import org.slf4j.LoggerFactory;
 
 import pack.PackServer;
 import pack.PackServer.Result;
+import pack.block.server.BlockPackFuse;
 
 public class Utils {
 
@@ -201,5 +203,17 @@ public class Utils {
       }
     }
     file.delete();
+  }
+
+  public static void shutdownProcess(BlockPackFuse blockPackFuse) {
+    if (blockPackFuse != null) {
+      close(LOGGER, blockPackFuse);
+    }
+    try {
+      Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+    } catch (InterruptedException e) {
+      LOGGER.info("Unknown error", e);
+    }
+    System.exit(0);
   }
 }
