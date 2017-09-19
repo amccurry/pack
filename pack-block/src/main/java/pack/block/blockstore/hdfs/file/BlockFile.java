@@ -325,11 +325,7 @@ public class BlockFile {
 
     public abstract boolean read(long longKey, BytesWritable value) throws IOException;
 
-    // public abstract RoaringBitmap getBlocks();
-
     public abstract void orDataBlocks(RoaringBitmap bitmap);
-
-    // public abstract RoaringBitmap getEmptyBlocks();
 
     public abstract void orEmptyBlocks(RoaringBitmap bitmap);
 
@@ -345,6 +341,18 @@ public class BlockFile {
 
   }
 
+  public static class ReaderUnordered extends Reader {
+
+    private final FSDataInputStream _inputStream;
+    private final Path _path;
+
+    protected ReaderUnordered(FileSystem fileSystem, Path path) throws IOException {
+      _inputStream = fileSystem.open(path);
+      _path = path;
+      long length = getLength(fileSystem, path);
+    }
+  }
+
   public abstract static class ReaderOrdered extends Reader {
 
     protected final RoaringBitmap _blocks = new RoaringBitmap();
@@ -355,13 +363,14 @@ public class BlockFile {
     protected final List<String> _sourceFiles;
     protected final long _first;
     protected final long _last;
+    protected final long _startOfBlock;
 
-    protected ReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
-      _inputStream = fileSystem.open(path);
+    protected ReaderOrdered(FSDataInputStream inputStream, Path path, long startOfBlock, long endOfBlock)
+        throws IOException {
+      _startOfBlock = startOfBlock;
       _path = path;
-      FileStatus fileStatus = fileSystem.getFileStatus(path);
-      long len = fileStatus.getLen();
-      _inputStream.seek(len - 8);
+      _inputStream = inputStream;
+      _inputStream.seek(endOfBlock - 8);
       long metaDataPosition = _inputStream.readLong();
       _inputStream.seek(metaDataPosition);
       _blocks.deserialize(_inputStream);
@@ -371,6 +380,10 @@ public class BlockFile {
       _first = getFirst();
       _last = getLast();
       // @TODO read and validate the magic string
+    }
+
+    protected ReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
+      this(fileSystem.open(path), path, 0, getLength(fileSystem, path));
     }
 
     private int getFirst() {
@@ -453,7 +466,7 @@ public class BlockFile {
         throws IOException {
       int numberOfContiguousBlock = (prevBlockIndex - startBlockIndex) + 1;
       long position = startBlockIndex * (long) _blockSize;
-      _inputStream.read(position, hdfsBuffer, 0, numberOfContiguousBlock * _blockSize);
+      _inputStream.read(position + _startOfBlock, hdfsBuffer, 0, numberOfContiguousBlock * _blockSize);
       // handle requests...
       for (int i = 0; i < requestBatch.length; i++) {
         ReadRequest batchRequest = requestBatch[i];
@@ -515,7 +528,7 @@ public class BlockFile {
     protected void readBlock(int key, BytesWritable value) throws IOException {
       int storageBlockPosition = _blocks.rank(key) - 1;
       long position = storageBlockPosition * (long) _blockSize;
-      _inputStream.read(position, value.getBytes(), 0, _blockSize);
+      _inputStream.read(position + _startOfBlock, value.getBytes(), 0, _blockSize);
     }
 
     protected void setAllZeros(BytesWritable value) {
@@ -718,5 +731,10 @@ public class BlockFile {
     byte[] bs = s.getBytes(UTF_8);
     output.writeInt(bs.length);
     output.write(bs);
+  }
+
+  private static long getLength(FileSystem fileSystem, Path path) throws IOException {
+    FileStatus fileStatus = fileSystem.getFileStatus(path);
+    return fileStatus.getLen();
   }
 }
