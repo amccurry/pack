@@ -36,6 +36,7 @@ import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.fuse.FuseFileSystemSingleMount;
+import pack.block.server.admin.BlockPackAdminServer;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
@@ -176,7 +177,7 @@ public class BlockPackFuse implements Closeable {
     int zkTimeout = Integer.parseInt(args[7]);
     String unixSock = args[8];
 
-    BlockPackAdmin blockPackAdmin = BlockPackAdmin.startAdminServer(unixSock);
+    BlockPackAdmin blockPackAdmin = BlockPackAdminServer.startAdminServer(unixSock);
     blockPackAdmin.setStatus(Status.INITIALIZATION);
     HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
     UserGroupInformation ugi = Utils.getUserGroupInformation();

@@ -61,11 +61,11 @@ public class BlockFile {
   }
 
   public static Reader open(FileSystem fileSystem, Path path) throws IOException {
-    return new RandomAccessReader(fileSystem, path);
+    return new RandomAccessReaderOrdered(fileSystem, path);
   }
 
   public static Reader openForStreaming(FileSystem fileSystem, Path path) throws IOException {
-    return new StreamReader(fileSystem, path);
+    return new StreamReaderOrdered(fileSystem, path);
   }
 
   public static void merge(List<Reader> readers, Writer writer) {
@@ -136,8 +136,8 @@ public class BlockFile {
   private static RoaringBitmap getAllBlocks(List<Reader> readers) {
     RoaringBitmap result = new RoaringBitmap();
     readers.forEach(reader -> {
-      result.or(reader._blocks);
-      result.or(reader._emptyBlocks);
+      reader.orDataBlocks(result);
+      reader.orEmptyBlocks(result);
     });
     return result;
   }
@@ -321,6 +321,32 @@ public class BlockFile {
 
   public abstract static class Reader implements Iterable<BlockFileEntry>, Closeable {
 
+    public abstract boolean read(List<ReadRequest> requests) throws IOException;
+
+    public abstract boolean read(long longKey, BytesWritable value) throws IOException;
+
+    // public abstract RoaringBitmap getBlocks();
+
+    public abstract void orDataBlocks(RoaringBitmap bitmap);
+
+    // public abstract RoaringBitmap getEmptyBlocks();
+
+    public abstract void orEmptyBlocks(RoaringBitmap bitmap);
+
+    public abstract boolean hasEmptyBlock(int blockId);
+
+    public abstract boolean hasBlock(int blockId);
+
+    public abstract Path getPath();
+
+    public abstract int getBlockSize();
+
+    public abstract List<String> getSourceBlockFiles();
+
+  }
+
+  public abstract static class ReaderOrdered extends Reader {
+
     protected final RoaringBitmap _blocks = new RoaringBitmap();
     protected final RoaringBitmap _emptyBlocks = new RoaringBitmap();
     protected final FSDataInputStream _inputStream;
@@ -330,7 +356,7 @@ public class BlockFile {
     protected final long _first;
     protected final long _last;
 
-    protected Reader(FileSystem fileSystem, Path path) throws IOException {
+    protected ReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
       _inputStream = fileSystem.open(path);
       _path = path;
       FileStatus fileStatus = fileSystem.getFileStatus(path);
@@ -380,6 +406,7 @@ public class BlockFile {
      * @return
      * @throws IOException
      */
+    @Override
     public boolean read(List<ReadRequest> requests) throws IOException {
       Collections.sort(requests, (o1, o2) -> Long.compare(o1.getBlockId(), o2.getBlockId()));
       // @TODO, combine requests???
@@ -437,6 +464,7 @@ public class BlockFile {
       }
     }
 
+    @Override
     public boolean read(long longKey, BytesWritable value) throws IOException {
       if (longKey < _first) {
         return false;
@@ -456,26 +484,30 @@ public class BlockFile {
       return true;
     }
 
-    public RoaringBitmap getBlocks() {
-      return _blocks;
+    public void orDataBlocks(RoaringBitmap bitmap) {
+      bitmap.or(_blocks);
     }
 
-    public RoaringBitmap getEmptyBlocks() {
-      return _emptyBlocks;
+    public void orEmptyBlocks(RoaringBitmap bitmap) {
+      bitmap.or(_emptyBlocks);
     }
 
+    @Override
     public boolean hasEmptyBlock(int blockId) {
       return _emptyBlocks.contains(blockId);
     }
 
+    @Override
     public boolean hasBlock(int blockId) {
       return _blocks.contains(blockId);
     }
 
+    @Override
     public Path getPath() {
       return _path;
     }
 
+    @Override
     public int getBlockSize() {
       return _blockSize;
     }
@@ -571,14 +603,15 @@ public class BlockFile {
       };
     }
 
+    @Override
     public List<String> getSourceBlockFiles() {
       return _sourceFiles;
     }
 
   }
 
-  public static class RandomAccessReader extends Reader {
-    public RandomAccessReader(FileSystem fileSystem, Path path) throws IOException {
+  public static class RandomAccessReaderOrdered extends ReaderOrdered {
+    public RandomAccessReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
       super(fileSystem, path);
       try {
         _inputStream.setReadahead(0l);
@@ -588,12 +621,12 @@ public class BlockFile {
     }
   }
 
-  public static class StreamReader extends Reader {
+  public static class StreamReaderOrdered extends ReaderOrdered {
 
     private final long _maxSkip = 128 * 1024 * 1024;
     private final Object _lock = new Object();
 
-    public StreamReader(FileSystem fileSystem, Path path) throws IOException {
+    public StreamReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
       super(fileSystem, path);
     }
 

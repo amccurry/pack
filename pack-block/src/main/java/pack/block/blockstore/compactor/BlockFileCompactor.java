@@ -155,8 +155,8 @@ public class BlockFileCompactor implements Closeable {
     void addCurrentBlocksForThisCompaction(RoaringBitmap bitSet) throws IOException {
       for (Path p : _pathList) {
         Reader reader = getReader(p);
-        bitSet.or(reader.getBlocks());
-        bitSet.or(reader.getEmptyBlocks());
+        reader.orDataBlocks(bitSet);
+        reader.orEmptyBlocks(bitSet);
       }
     }
 
@@ -187,8 +187,8 @@ public class BlockFileCompactor implements Closeable {
 
   private void addCurrentBlocks(RoaringBitmap blocksToIgnore, Path path) throws IOException {
     Reader reader = getReader(path);
-    blocksToIgnore.or(reader.getBlocks());
-    blocksToIgnore.or(reader.getEmptyBlocks());
+    reader.orDataBlocks(blocksToIgnore);
+    reader.orEmptyBlocks(blocksToIgnore);
   }
 
   private void finishSetup(Builder<CompactionJob> builder, CompactionJob compactionJob, RoaringBitmap blocksToIgnore) {

@@ -22,9 +22,9 @@ import spark.Service;
 import spark.SparkJava;
 import spark.SparkJavaIdentifier;
 
-public class BlockPackAdmin {
+public class BlockPackAdminServer implements BlockPackAdmin {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackAdmin.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackAdminServer.class);
 
   public static final String PID = "/pid";
   public static final String STATUS = "/status";
@@ -43,7 +43,7 @@ public class BlockPackAdmin {
   };
 
   public static BlockPackAdmin startAdminServer(String sockFile) {
-    return new BlockPackAdmin(sockFile);
+    return new BlockPackAdminServer(sockFile);
   }
 
   private final AtomicReference<Status> _currentStatus = new AtomicReference<Status>(Status.UNKNOWN);
@@ -53,7 +53,7 @@ public class BlockPackAdmin {
   private final AtomicBoolean _shutDown = new AtomicBoolean(false);
   private final Map<String, AtomicLong> _counter = new ConcurrentHashMap<>();
 
-  private BlockPackAdmin(String sockFile) {
+  private BlockPackAdminServer(String sockFile) {
     _pid = getPid();
 
     SparkJava.init();
@@ -159,15 +159,18 @@ public class BlockPackAdmin {
     return list.get(0);
   }
 
+  @Override
   public void setStatus(Status status) {
     setStatus(status, null);
   }
 
+  @Override
   public void setStatus(Status status, String message) {
     _currentStatus.set(status);
     _currentStatusMessage.set(message);
   }
 
+  @Override
   public BlockPackFuse register(BlockPackFuse blockPackFuse) {
     _blockPackFuse.set(blockPackFuse);
     return blockPackFuse;

@@ -17,7 +17,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import pack.block.server.admin.BlockPackAdmin;
+import pack.block.server.admin.BlockPackAdminServer;
 import pack.block.server.admin.CounterAction;
 import pack.block.server.admin.CounterRequest;
 import pack.block.server.admin.CounterResponse;
@@ -67,7 +67,7 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
 
   public Status getStatus() throws IOException {
     LOGGER.info("getStatus {}", _sockFile);
-    GetMethod get = new GetMethod(HTTP_LOCALHOST + BlockPackAdmin.STATUS);
+    GetMethod get = new GetMethod(HTTP_LOCALHOST + BlockPackAdminServer.STATUS);
     int executeMethod = getClient().executeMethod(get);
     String body = getBodyAsString(get);
     if (executeMethod == 200) {
@@ -80,7 +80,7 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
 
   public String getPid() throws IOException {
     LOGGER.info("getPid {}", _sockFile);
-    GetMethod get = new GetMethod(HTTP_LOCALHOST + BlockPackAdmin.PID);
+    GetMethod get = new GetMethod(HTTP_LOCALHOST + BlockPackAdminServer.PID);
     int executeMethod = getClient().executeMethod(get);
     String body = getBodyAsString(get);
     if (executeMethod == 200) {
@@ -99,7 +99,7 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
 
   private long execCounter(String name, CounterAction action, long value)
       throws JsonProcessingException, IOException, HttpException, JsonParseException, JsonMappingException {
-    PostMethod post = new PostMethod(HTTP_LOCALHOST + BlockPackAdmin.COUNTER);
+    PostMethod post = new PostMethod(HTTP_LOCALHOST + BlockPackAdminServer.COUNTER);
     CounterRequest request = CounterRequest.builder()
                                            .name(name)
                                            .action(action)
@@ -126,7 +126,7 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
 
   public void umount() throws IOException {
     LOGGER.info("umount {}", _sockFile);
-    PostMethod post = new PostMethod(HTTP_LOCALHOST + BlockPackAdmin.UMOUNT);
+    PostMethod post = new PostMethod(HTTP_LOCALHOST + BlockPackAdminServer.UMOUNT);
     int executeMethod = getClient().executeMethod(post);
     if (executeMethod != 200) {
       throw new IOException(getBodyAsString(post));
@@ -135,7 +135,7 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
 
   public void shutdown() throws IOException {
     LOGGER.info("shutdown {}", _sockFile);
-    PostMethod post = new PostMethod(HTTP_LOCALHOST + BlockPackAdmin.SHUTDOWN);
+    PostMethod post = new PostMethod(HTTP_LOCALHOST + BlockPackAdminServer.SHUTDOWN);
     int executeMethod = getClient().executeMethod(post);
     if (executeMethod != 200) {
       throw new IOException(getBodyAsString(post));
@@ -146,12 +146,12 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
     SparkJava.init();
     Service service = Service.ignite();
     SparkJava.configureService(SparkJavaIdentifier.UNIX_SOCKET, service);
-    String pid = BlockPackAdmin.getPid();
+    String pid = BlockPackAdminServer.getPid();
     service.ipAddress(sockFile.getAbsolutePath());
-    service.get(BlockPackAdmin.PID, (request, response) -> PidResponse.builder()
+    service.get(BlockPackAdminServer.PID, (request, response) -> PidResponse.builder()
                                                                       .pid(pid)
                                                                       .build(),
-        BlockPackAdmin.TRANSFORMER);
+        BlockPackAdminServer.TRANSFORMER);
     return service;
   }
 

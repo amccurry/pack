@@ -90,7 +90,8 @@ public class BlockPackFuseTest {
     String metricsLocalPath = mkdir(new File(fuse, METRICS)).getAbsolutePath();
     ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnection, zkTimeout);
 
-    BlockPackAdmin blockPackAdmin = null;
+    BlockPackAdmin blockPackAdmin = new BlockPackAdmin() {
+    };
     BlockPackFuseConfig fuseConfig = BlockPackFuseConfig.builder()
                                                         .blockPackAdmin(blockPackAdmin)
                                                         .ugi(UserGroupInformation.getCurrentUser())
