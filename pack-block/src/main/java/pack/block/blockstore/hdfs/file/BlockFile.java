@@ -341,15 +341,95 @@ public class BlockFile {
 
   }
 
-  public static class ReaderUnordered extends Reader {
+  public static class ReaderMultiOrdered extends Reader {
 
     private final FSDataInputStream _inputStream;
     private final Path _path;
+    private final List<ReaderOrdered> _orderedReaders;
 
-    protected ReaderUnordered(FileSystem fileSystem, Path path) throws IOException {
+    protected ReaderMultiOrdered(FileSystem fileSystem, Path path) throws IOException {
       _inputStream = fileSystem.open(path);
       _path = path;
+      _orderedReaders = ImmutableList.of();
       long length = getLength(fileSystem, path);
+    }
+
+    @Override
+    public Iterator<BlockFileEntry> iterator() {
+      // TODO Auto-generated method stub
+      return null;
+    }
+
+    @Override
+    public void close() throws IOException {
+      // TODO Auto-generated method stub
+
+    }
+
+    /**
+     * Returns boolean true if more requests needed, false if all requests are
+     * fulfilled.
+     */
+    @Override
+    public boolean read(List<ReadRequest> requests) throws IOException {
+      for (ReaderOrdered readerOrdered : _orderedReaders) {
+        if (!readerOrdered.read(requests)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    @Override
+    public boolean read(long longKey, BytesWritable value) throws IOException {
+      for (ReaderOrdered readerOrdered : _orderedReaders) {
+        if (readerOrdered.read(longKey, value)) {
+
+        }
+      }
+      return false;
+    }
+
+    @Override
+    public void orDataBlocks(RoaringBitmap bitmap) {
+      // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public void orEmptyBlocks(RoaringBitmap bitmap) {
+      // TODO Auto-generated method stub
+
+    }
+
+    @Override
+    public boolean hasEmptyBlock(int blockId) {
+      // TODO Auto-generated method stub
+      return false;
+    }
+
+    @Override
+    public boolean hasBlock(int blockId) {
+      // TODO Auto-generated method stub
+      return false;
+    }
+
+    @Override
+    public Path getPath() {
+      // TODO Auto-generated method stub
+      return null;
+    }
+
+    @Override
+    public int getBlockSize() {
+      // TODO Auto-generated method stub
+      return 0;
+    }
+
+    @Override
+    public List<String> getSourceBlockFiles() {
+      // TODO Auto-generated method stub
+      return null;
     }
   }
 
