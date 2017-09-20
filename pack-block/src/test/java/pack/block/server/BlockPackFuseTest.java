@@ -61,7 +61,7 @@ public class BlockPackFuseTest {
 
     File zk = mkdir(new File(root, ZK));
     zkMiniCluster = new ZkMiniCluster();
-    zkMiniCluster.startZooKeeper(zk.getAbsolutePath());
+    zkMiniCluster.startZooKeeper(zk.getAbsolutePath(), true);
     zkConnection = zkMiniCluster.getZkConnectionString();
     zkTimeout = 10000;
     seed = new Random().nextLong();

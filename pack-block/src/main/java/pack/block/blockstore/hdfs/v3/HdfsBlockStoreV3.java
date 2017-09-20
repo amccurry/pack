@@ -6,16 +6,10 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
@@ -26,7 +20,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
-import org.apache.hadoop.io.BytesWritable;
+import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,6 +42,7 @@ import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.block.util.Utils;
 
 public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
@@ -67,9 +62,10 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   private final com.codahale.metrics.Timer _readTimer;
   private final Meter _writeMeter;
   private final Meter _readMeter;
-  private final ConcurrentMap<Long, ByteBuffer> _cache = new ConcurrentHashMap<>();
   private final Lock _fileWriteLock = new ReentrantReadWriteLock().writeLock();
-  private final Lock _blockFileLock = new ReentrantReadWriteLock().writeLock();
+  private final ReentrantReadWriteLock _blockFileLock = new ReentrantReadWriteLock();
+  private final Lock _blockFileWriteLock = _blockFileLock.writeLock();
+  private final Lock _blockFileReadLock = _blockFileLock.readLock();
 
   public HdfsBlockStoreV3(MetricRegistry registry, FileSystem fileSystem, Path path) throws IOException {
     this(registry, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -77,6 +73,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
   public HdfsBlockStoreV3(MetricRegistry registry, FileSystem fileSystem, Path path, HdfsBlockStoreConfig config)
       throws IOException {
+
     _registry = registry;
 
     _writeTimer = _registry.timer("writeTimer");
@@ -98,6 +95,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     _readerCache = CacheBuilder.newBuilder()
                                .removalListener(listener)
                                .build();
+
     List<Path> pathList = getBlockFilePathListFromStorage();
     _blockFiles.set(ImmutableList.copyOf(pathList));
     // create background thread that removes orphaned block files and checks for
@@ -107,7 +105,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
         true);
     long period = config.getBlockFileUnit()
                         .toMillis(config.getBlockFilePeriod());
-    _blockFileTimer.scheduleAtFixedRate(getBlockFileTask(), period, period);
+    _blockFileTimer.schedule(getBlockFileTask(), period, period);
   }
 
   public int getFileSystemBlockSize() {
@@ -116,6 +114,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
   @Override
   public void close() throws IOException {
+    fsync();
     _blockFileTimer.cancel();
     _blockFileTimer.purge();
     _readerCache.invalidateAll();
@@ -136,6 +135,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     return System.currentTimeMillis();
   }
 
+  private final AtomicReference<ActiveWriter> _currentActive = new AtomicReference<>();
+
   @Override
   public int write(long position, byte[] buffer, int offset, int len) throws IOException {
     _fileWriteLock.lock();
@@ -144,7 +145,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
       try (Context context = _writeTimer.time()) {
         int blockOffset = getBlockOffset(position);
         long blockId = getBlockId(position);
-        LOGGER.info("write blockId {} blockOffset {} position {}", blockId, blockOffset, position);
+        LOGGER.debug("write blockId {} blockOffset {} position {}", blockId, blockOffset, position);
         ByteBuffer byteBuffer;
         if (blockOffset == 0 && len == blockSize) {
           // no reads needed
@@ -158,7 +159,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
           System.arraycopy(buffer, offset, buf, blockOffset, len);
           byteBuffer = ByteBuffer.wrap(buf, 0, blockSize);
         }
-        _cache.put(blockId, copy(byteBuffer));
+        ActiveWriter writer = createWriterIfNeeded();
+        writer.append(blockId, byteBuffer);
         _writeMeter.mark(len);
         return len;
       }
@@ -172,10 +174,11 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     int blockSize = _fileSystemBlockSize;
     try (Context context = _readTimer.time()) {
       long blockId = getBlockId(position);
-      LOGGER.info("read blockId {} len {} position {}", blockId, len, position);
+      LOGGER.debug("read blockId {} len {} position {}", blockId, len, position);
       ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
       List<ReadRequest> requests = createRequests(position, byteBuffer, blockSize);
-      checkCache(requests);
+      checkActiveWriterCache(requests);
+      commitActiveWriterIfNeeded(requests);
       readBlocks(requests);
       _readMeter.mark(len);
       return len;
@@ -184,40 +187,23 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     }
   }
 
+  private void checkActiveWriterCache(List<ReadRequest> requests) {
+    ActiveWriter activeWriter = _currentActive.get();
+    if (activeWriter == null) {
+      return;
+    }
+    activeWriter.checkCache(requests);
+  }
+
   @Override
   public void fsync() throws IOException {
-    LOGGER.info("fsync");
-    _fileWriteLock.lock();
-    try {
-      if (_cache.isEmpty()) {
-        return;
-      }
-      Set<Long> set = _cache.keySet();
-      List<Long> idList = new ArrayList<>(set);
-      Collections.sort(idList);
-
-      Path path = getNewTempFile();
-      Map<Long, ByteBuffer> writing = new HashMap<>();
-      try (Writer writer = BlockFile.create(true, _fileSystem, path, _fileSystemBlockSize, () -> commitFile(path))) {
-        for (Long id : idList) {
-          ByteBuffer buffer = _cache.get(id);
-          writer.append(id, toBw(buffer));
-          writing.put(id, buffer);
-        }
-      }
-      for (Entry<Long, ByteBuffer> e : writing.entrySet()) {
-        Long id = e.getKey();
-        if (!_cache.remove(id, e.getValue())) {
-          LOGGER.info("Did not remove cache key {} during file write.  Value updated.", id);
-        }
-      }
-    } finally {
-      _fileWriteLock.unlock();
-    }
+    LOGGER.debug("fsync");
+    commitActiveWriter();
   }
 
   @Override
   public void delete(long position, long length) throws IOException {
+    LOGGER.debug("delete position {} length {}", position, length);
     long startingBlockId = getBlockId(position);
     if (getBlockOffset(position) != 0) {
       // move to next full block
@@ -230,38 +216,88 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     // Delete all block from start (inclusive) to end (exclusive)
     _fileWriteLock.lock();
     try {
+      ActiveWriter writer = createWriterIfNeeded();
+      for (long blockId = startingBlockId; blockId < endingBlockId; blockId++) {
+        writer.appendEmpty(blockId);
+      }
+    } finally {
+      _fileWriteLock.unlock();
+    }
+  }
+
+  private ActiveWriter createWriterIfNeeded() throws IOException {
+    _fileWriteLock.lock();
+    try {
+      LOGGER.debug("createWriterIfNeeded");
+      ActiveWriter activeWriter = _currentActive.get();
+      if (activeWriter != null) {
+        return activeWriter;
+      }
       Path path = getNewTempFile();
-      try (Writer writer = BlockFile.create(true, _fileSystem, path, _fileSystemBlockSize)) {
-        for (long blockId = startingBlockId; blockId < endingBlockId; blockId++) {
-          writer.appendEmpty((int) blockId);
+      LOGGER.debug("created Writer {}", path);
+      Writer writer = BlockFile.create(false, _fileSystem, path, _fileSystemBlockSize, () -> commitFile(path));
+      RoaringBitmap index = new RoaringBitmap();
+      activeWriter = new ActiveWriter(writer, index);
+      _currentActive.set(activeWriter);
+      return activeWriter;
+    } finally {
+      _fileWriteLock.unlock();
+    }
+  }
+
+  private void commitActiveWriterIfNeeded(List<ReadRequest> requests) throws IOException {
+    _fileWriteLock.lock();
+    LOGGER.debug("commitActiveWriterIfNeeded");
+    try {
+      ActiveWriter activeWriter = _currentActive.get();
+      if (activeWriter == null) {
+        return;
+      }
+      for (ReadRequest readRequest : requests) {
+        if (!readRequest.isCompleted() && activeWriter.contains(Utils.getIntKey(readRequest.getBlockId()))) {
+          commitActiveWriter();
+          return;
         }
       }
-      commitFile(path);
+    } finally {
+      _fileWriteLock.unlock();
+    }
+  }
+
+  private void commitActiveWriter() throws IOException {
+    _fileWriteLock.lock();
+    try {
+      LOGGER.debug("commitActiveWriter");
+      ActiveWriter activeWriter = _currentActive.get();
+      if (activeWriter == null) {
+        return;
+      }
+      activeWriter.close();
+      _currentActive.set(null);
     } finally {
       _fileWriteLock.unlock();
     }
   }
 
   private void commitFile(Path path) throws IOException {
-    _blockFileLock.lock();
+    _blockFileWriteLock.lock();
     try {
       Path blockPath = getNewBlockFilePath();
+      LOGGER.debug("commitFile {} to {}", path, blockPath);
       if (_fileSystem.rename(path, blockPath)) {
         getReader(blockPath);// open file ahead of time
         Builder<Path> builder = ImmutableList.builder();
         builder.add(blockPath);
-        synchronized (_blockFiles) {
-          List<Path> list = _blockFiles.get();
-          if (list != null) {
-            builder.addAll(list);
-          }
-          _blockFiles.set(builder.build());
+        List<Path> list = _blockFiles.get();
+        if (list != null) {
+          builder.addAll(list);
         }
+        _blockFiles.set(builder.build());
       } else {
         throw new IOException("Could not commit tmp block " + path + " to " + blockPath);
       }
     } finally {
-      _blockFileLock.unlock();
+      _blockFileWriteLock.unlock();
     }
   }
 
@@ -273,33 +309,20 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     return path;
   }
 
-  private ByteBuffer copy(ByteBuffer byteBuffer) {
-    // this method may be over kill.
-    ByteBuffer buffer = ByteBuffer.allocate(byteBuffer.remaining());
-    buffer.put(byteBuffer);
-    buffer.flip();
-    return buffer;
-  }
-
-  private void checkCache(List<ReadRequest> requests) {
-    for (ReadRequest request : requests) {
-      long blockId = request.getBlockId();
-      ByteBuffer byteBuffer = _cache.get(blockId);
-      if (byteBuffer != null) {
-        request.handleResult(byteBuffer.duplicate());
-      }
-    }
-  }
-
   private void readBlocks(List<ReadRequest> requests) throws IOException {
-    List<Path> list = _blockFiles.get();
-    if (list != null) {
-      for (Path path : list) {
-        Reader reader = getReader(path);
-        if (!reader.read(requests)) {
-          return;
+    _blockFileReadLock.lock();
+    try {
+      List<Path> list = _blockFiles.get();
+      if (list != null) {
+        for (Path path : list) {
+          Reader reader = getReader(path);
+          if (!reader.read(requests)) {
+            return;
+          }
         }
       }
+    } finally {
+      _blockFileReadLock.unlock();
     }
   }
 
@@ -325,13 +348,6 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     return result;
   }
 
-  private BytesWritable toBw(ByteBuffer byteBuffer) {
-    ByteBuffer dup = byteBuffer.duplicate();
-    byte[] buf = new byte[dup.remaining()];
-    dup.get(buf);
-    return new BytesWritable(buf);
-  }
-
   protected Path getHdfsBlockPath(long hdfsBlock) {
     return qualify(new Path(_path, "block." + Long.toString(hdfsBlock)));
   }
@@ -342,6 +358,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
   private Reader getReader(Path path) throws IOException {
     try {
+      LOGGER.debug("getReader {}", path);
       return _readerCache.get(path, () -> BlockFile.open(_fileSystem, path));
     } catch (ExecutionException e) {
       Throwable cause = e.getCause();
@@ -423,21 +440,19 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   }
 
   private void removeBlockFile(Path path) throws IOException {
-    _blockFileLock.lock();
+    _blockFileWriteLock.lock();
     try {
       if (!_fileSystem.exists(path)) {
         return;
       }
       LOGGER.info("Removing old block file {}", path);
-      synchronized (_blockFiles) {
-        List<Path> list = new ArrayList<>(_blockFiles.get());
-        list.remove(path);
-        _blockFiles.set(ImmutableList.copyOf(list));
-      }
+      List<Path> list = new ArrayList<>(_blockFiles.get());
+      list.remove(path);
+      _blockFiles.set(ImmutableList.copyOf(list));
       _readerCache.invalidate(path);
       _fileSystem.delete(path, true);
     } finally {
-      _blockFileLock.unlock();
+      _blockFileWriteLock.unlock();
     }
   }
 
@@ -451,7 +466,9 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   private void loadAnyMissingBlockFiles() throws IOException {
     List<Path> storageList;
     List<Path> cacheList;
-    synchronized (_blockFiles) {
+
+    _blockFileWriteLock.lock();
+    try {
       cacheList = new ArrayList<>(_blockFiles.get());
       storageList = getBlockFilePathListFromStorage();
       if (LOGGER.isDebugEnabled()) {
@@ -469,6 +486,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
         throw new IOException("Missing files error.");
       }
       _blockFiles.set(ImmutableList.copyOf(storageList));
+    } finally {
+      _blockFileWriteLock.unlock();
     }
 
     List<Path> newFiles = new ArrayList<>(storageList);

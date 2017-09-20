@@ -55,7 +55,7 @@ public class HdfsBlockStoreV3Test {
     Random random = new Random(1);
 
     try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
-      for (int i = 0; i < 10000; i++) {
+      for (int i = 0; i < 50; i++) {
         int blockSize = store.getFileSystemBlockSize();
         int pos = random.nextInt(1000) * blockSize;
         {
@@ -92,7 +92,7 @@ public class HdfsBlockStoreV3Test {
 
     try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
       long position = 0;
-      for (int j = 0; j < 10000; j++) {
+      for (int j = 0; j < 1000; j++) {
         if (j % 123 == 0) {
           store.fsync();
         }
@@ -133,7 +133,7 @@ public class HdfsBlockStoreV3Test {
     int maxOffset = 100;
 
     try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
-      for (int j = 0; j < 10000; j++) {
+      for (int j = 0; j < 50; j++) {
         int length = random.nextInt(maxLength);
         int offset = random.nextInt(maxOffset);
         byte[] buf1 = new byte[offset + length];

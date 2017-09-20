@@ -216,4 +216,11 @@ public class Utils {
     }
     System.exit(0);
   }
+  
+  public static int getIntKey(long key) throws IOException {
+    if (key < Integer.MAX_VALUE) {
+      return (int) key;
+    }
+    throw new IOException("Key " + key + " is too large >= " + Integer.MAX_VALUE);
+  }
 }

@@ -50,7 +50,10 @@ public class BlockFile {
     if (ordered) {
       return new WriterOrdered(fileSystem, path, blockSize, sourceFileList, commitFile);
     } else {
-      return new WriterMultiOrdered(fileSystem, path, blockSize);
+      if (!sourceFileList.isEmpty()) {
+        throw new IOException("source files should be empty");
+      }
+      return new WriterMultiOrdered(fileSystem, path, blockSize, commitFile);
     }
   }
 
@@ -193,15 +196,18 @@ public class BlockFile {
 
     private final FSDataOutputStream _output;
     private final AtomicReference<WriterOrdered> _currentWriter = new AtomicReference<>();
-    private int _blockSize;
+    private final int _blockSize;
+    private final CommitFile _commitFile;
 
-    private WriterMultiOrdered(FSDataOutputStream output, int blockSize) throws IOException {
+    private WriterMultiOrdered(FSDataOutputStream output, int blockSize, CommitFile commitFile) throws IOException {
       _output = output;
       _blockSize = blockSize;
+      _commitFile = commitFile;
     }
 
-    private WriterMultiOrdered(FileSystem fileSystem, Path path, int blockSize) throws IOException {
-      this(fileSystem.create(path), blockSize);
+    private WriterMultiOrdered(FileSystem fileSystem, Path path, int blockSize, CommitFile commitFile)
+        throws IOException {
+      this(fileSystem.create(path), blockSize, commitFile);
     }
 
     @Override
@@ -239,6 +245,9 @@ public class BlockFile {
         writer.writeFooter();
       }
       _output.close();
+      if (_commitFile != null) {
+        _commitFile.commit();
+      }
     }
 
     private WriterOrdered newWriter() throws IOException {
@@ -292,7 +301,7 @@ public class BlockFile {
       if (longKey <= _prevKey) {
         return false;
       }
-      getIntKey(longKey);
+      Utils.getIntKey(longKey);
       return true;
     }
 
@@ -336,7 +345,7 @@ public class BlockFile {
       if (key <= _prevKey) {
         throw new IOException("Key " + key + " is less then or equal to prevkey " + _prevKey);
       }
-      return getIntKey(key);
+      return Utils.getIntKey(key);
     }
 
     @Override
@@ -588,7 +597,7 @@ public class BlockFile {
       for (ReadRequest readRequest : requests) {
         if (!readRequest.isCompleted()) {
           long blockId = readRequest.getBlockId();
-          int key = getIntKey(blockId);
+          int key = Utils.getIntKey(blockId);
           if (_emptyBlocks.contains(key)) {
             readRequest.handleEmptyResult();
           } else if (_blocks.contains(key)) {
@@ -641,7 +650,7 @@ public class BlockFile {
       } else if (longKey > _last) {
         return false;
       }
-      int key = getIntKey(longKey);
+      int key = Utils.getIntKey(longKey);
       value.setSize(_blockSize);
       if (_emptyBlocks.contains(key)) {
         setAllZeros(value);
@@ -828,13 +837,6 @@ public class BlockFile {
       }
     }
 
-  }
-
-  private static int getIntKey(long key) throws IOException {
-    if (key < Integer.MAX_VALUE) {
-      return (int) key;
-    }
-    throw new IOException("Key " + key + " is too large >= " + Integer.MAX_VALUE);
   }
 
   private static void checkValue(BytesWritable value, int blockSize) throws IOException {
