@@ -314,7 +314,7 @@ public class BlockFileCompactorTest {
   private Path generatBlockFile(List<byte[]> data, Path blockPath, Random random, int blockSize, int maxBlockIdsIncr,
       int numberOfBlocksToWrite, long minLength) throws IOException {
     Path file = new Path(blockPath, System.currentTimeMillis() + ".block");
-    try (Writer writer = BlockFile.create(fileSystem, file, blockSize)) {
+    try (Writer writer = BlockFile.create(true, fileSystem, file, blockSize)) {
       int blockId = random.nextInt(maxBlockIdsIncr);
       for (int b = 0; b < numberOfBlocksToWrite || writer.getLen() < minLength; b++) {
         growIfNeeded(data, blockId);

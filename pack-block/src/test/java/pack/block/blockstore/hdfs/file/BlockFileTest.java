@@ -65,7 +65,7 @@ public class BlockFileTest {
     int valueLength = 100;
     int checkCount = 1000;
     System.out.println("Writing");
-    try (Writer writer = BlockFile.create(fileSystem, path, valueLength)) {
+    try (Writer writer = BlockFile.create(true, fileSystem, path, valueLength)) {
       Random random = new Random(4);
       long longKey = random.nextInt(1000000);
       for (int i = 0; i < checkCount; i++) {
@@ -107,7 +107,7 @@ public class BlockFileTest {
     int startingPoint = 1000000;
     long seed = 4;
     System.out.println("Writing");
-    try (Writer writer = BlockFile.create(fileSystem, path, valueLength)) {
+    try (Writer writer = BlockFile.create(true, fileSystem, path, valueLength)) {
       Random random = new Random(seed);
       long longKey = random.nextInt(startingPoint);
       for (int i = 0; i < checkCount; i++) {
@@ -170,7 +170,7 @@ public class BlockFileTest {
     FileSystem fileSystem = _cluster.getFileSystem();
     int valueLength = 100;
     System.out.println("Writing");
-    try (Writer writer = BlockFile.create(fileSystem, path, valueLength)) {
+    try (Writer writer = BlockFile.create(true, fileSystem, path, valueLength)) {
       writer.append(10, getValue(10, valueLength));
       try {
         writer.append(0, getValue(0, valueLength));
@@ -186,7 +186,7 @@ public class BlockFileTest {
     FileSystem fileSystem = _cluster.getFileSystem();
     int valueLength = 100;
     System.out.println("Writing");
-    try (Writer writer = BlockFile.create(fileSystem, path, valueLength)) {
+    try (Writer writer = BlockFile.create(true, fileSystem, path, valueLength)) {
       writer.append(10, new BytesWritable(new byte[valueLength]));
       writer.append(11, new BytesWritable(new byte[0]));
     }
@@ -221,7 +221,7 @@ public class BlockFileTest {
     readers.add(BlockFile.open(fileSystem, path1));
     readers.add(BlockFile.open(fileSystem, path2));
 
-    try (Writer writer = BlockFile.create(fileSystem, path, vl)) {
+    try (Writer writer = BlockFile.create(true, fileSystem, path, vl)) {
       BlockFile.merge(readers, writer);
     }
     readers.forEach(reader -> IOUtils.closeQuietly(reader));
@@ -267,6 +267,69 @@ public class BlockFileTest {
     }
   }
 
+  @Test
+  public void testReadRequestsFromMultiOrderedWriter() throws IOException {
+    Path path = new Path("/testReadRequestsFromMultiOrderedWriter");
+    FileSystem fileSystem = _cluster.getFileSystem();
+    int valueLength = 100;
+    int checkCount = 1000;
+    int maxSkip = 10;
+    int startingPoint = 1000000;
+    long seed = 4;
+    System.out.println("Writing");
+    try (Writer writer = BlockFile.create(false, fileSystem, path, valueLength)) {
+      Random random = new Random(seed);
+      long longKey = random.nextInt(startingPoint);
+      for (int i = 0; i < checkCount; i++) {
+        BytesWritable value = getValue(longKey, valueLength);
+        writer.append(longKey, value);
+        System.out.println("======================");
+        System.out.println(longKey);
+        System.out.println(value);
+        longKey = random.nextInt(maxSkip - 1) + 1;
+      }
+    }
+
+    System.out.println("Reading Requests");
+    try (Reader reader = BlockFile.open(fileSystem, path)) {
+
+      List<BytesWritable> expectedList = new ArrayList<>();
+      List<ByteBuffer> actualList = new ArrayList<>();
+      List<ReadRequest> requests = new ArrayList<>();
+
+      {
+        Random random = new Random(seed);
+        long longKey = random.nextInt(startingPoint);
+
+        for (int i = 0; i < checkCount; i++) {
+          expectedList.add(getValue(longKey, valueLength));
+          ByteBuffer dest = ByteBuffer.allocate(valueLength);
+          actualList.add(dest);
+          requests.add(new ReadRequest(longKey, 0, dest));
+          longKey = random.nextInt(maxSkip - 1) + 1;
+        }
+      }
+      reader.read(requests);
+      {
+        Random random = new Random(seed);
+        long longKey = random.nextInt(startingPoint);
+
+        for (int i = 0; i < checkCount; i++) {
+          BytesWritable actual = toBw(actualList.get(i));
+          BytesWritable expected = expectedList.get(i);
+          assertTrue(requests.get(i)
+                             .isCompleted());
+          System.out.println("======================");
+          System.out.println(longKey);
+          System.out.println(expected);
+          System.out.println(actual);
+          assertTrue(expected.compareTo(actual) == 0);
+          longKey = random.nextInt(maxSkip - 1) + 1;
+        }
+      }
+    }
+  }
+
   private KeyValue kv(int key) {
     return new KeyValue(key);
   }
@@ -277,7 +340,7 @@ public class BlockFileTest {
 
   private void writeBlockFile(Path path, int valueLength, KeyValue... keyValues) throws IOException {
     FileSystem fileSystem = _cluster.getFileSystem();
-    try (Writer writer = BlockFile.create(fileSystem, path, valueLength)) {
+    try (Writer writer = BlockFile.create(true, fileSystem, path, valueLength)) {
       for (KeyValue kv : keyValues) {
         if (kv.value == null) {
           writer.appendEmpty(kv.key);

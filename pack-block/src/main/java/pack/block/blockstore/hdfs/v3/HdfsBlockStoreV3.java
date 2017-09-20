@@ -198,7 +198,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
       Path path = getNewTempFile();
       Map<Long, ByteBuffer> writing = new HashMap<>();
-      try (Writer writer = BlockFile.create(_fileSystem, path, _fileSystemBlockSize, () -> commitFile(path))) {
+      try (Writer writer = BlockFile.create(true, _fileSystem, path, _fileSystemBlockSize, () -> commitFile(path))) {
         for (Long id : idList) {
           ByteBuffer buffer = _cache.get(id);
           writer.append(id, toBw(buffer));
@@ -231,7 +231,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     _fileWriteLock.lock();
     try {
       Path path = getNewTempFile();
-      try (Writer writer = BlockFile.create(_fileSystem, path, _fileSystemBlockSize)) {
+      try (Writer writer = BlockFile.create(true, _fileSystem, path, _fileSystemBlockSize)) {
         for (long blockId = startingBlockId; blockId < endingBlockId; blockId++) {
           writer.appendEmpty((int) blockId);
         }
@@ -337,7 +337,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   }
 
   private Path getNewBlockFilePath() {
-    return qualify(new Path(_blockPath, System.currentTimeMillis() + "." + HdfsBlockStoreConfig.BLOCK));
+    return qualify(BlockFile.getNewPathFile(_blockPath));
   }
 
   private Reader getReader(Path path) throws IOException {
@@ -374,9 +374,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
   private List<Path> getBlockFilePathListFromStorage() throws FileNotFoundException, IOException {
     List<Path> pathList = new ArrayList<>();
-    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> p.getName()
-                                                                                    .endsWith("."
-                                                                                        + HdfsBlockStoreConfig.BLOCK));
+    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> BlockFile.isOrderedBlock(p));
     Arrays.sort(listStatus, Collections.reverseOrder());
 
     for (FileStatus fileStatus : listStatus) {

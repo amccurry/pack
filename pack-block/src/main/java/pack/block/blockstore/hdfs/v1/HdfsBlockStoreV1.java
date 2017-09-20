@@ -118,9 +118,7 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
 
   private List<Path> getBlockFilePathListFromStorage() throws FileNotFoundException, IOException {
     List<Path> pathList = new ArrayList<>();
-    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> p.getName()
-                                                                                    .endsWith("."
-                                                                                        + HdfsBlockStoreConfig.BLOCK));
+    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> BlockFile.isOrderedBlock(p));
     Arrays.sort(listStatus, Collections.reverseOrder());
 
     for (FileStatus fileStatus : listStatus) {
@@ -408,7 +406,7 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
     Path path = qualify(new Path(_blockPath, UUID.randomUUID()
                                                  .toString()
         + ".tmp"));
-    Writer writer = BlockFile.create(_fileSystem, path, _fileSystemBlockSize);
+    Writer writer = BlockFile.create(true, _fileSystem, path, _fileSystemBlockSize);
     return new ExternalWriter() {
       @Override
       public void write(long key, BytesWritable writable) throws IOException {
@@ -445,7 +443,7 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
   }
 
   private Path getNewBlockFilePath() {
-    return qualify(new Path(_blockPath, System.currentTimeMillis() + "." + HdfsBlockStoreConfig.BLOCK));
+    return qualify(BlockFile.getNewPathFile(_blockPath));
   }
 
   private Reader getReader(Path path) throws IOException {

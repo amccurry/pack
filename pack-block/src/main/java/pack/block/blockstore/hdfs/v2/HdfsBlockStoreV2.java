@@ -412,7 +412,7 @@ public class HdfsBlockStoreV2 implements HdfsBlockStore {
                                                  .toString()
         + ".tmp"));
     synchronized (_writeLock) {
-      try (Writer writer = BlockFile.create(_fileSystem, path, _fileSystemBlockSize)) {
+      try (Writer writer = BlockFile.create(true, _fileSystem, path, _fileSystemBlockSize)) {
         Set<Long> keySet = _blockLookup.keySet();
         List<Long> blockIds = new ArrayList<>(keySet);
         Collections.sort(blockIds);

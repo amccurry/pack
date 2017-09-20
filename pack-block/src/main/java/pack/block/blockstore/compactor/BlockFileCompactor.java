@@ -113,7 +113,7 @@ public class BlockFileCompactor implements Closeable {
     RoaringBitmap blocksToIgnore = job.getBlocksToIgnore();
 
     LOGGER.info("New merged output path {}", tmpPath);
-    try (Writer writer = BlockFile.create(_fileSystem, tmpPath, reader.getBlockSize(), sourceFileList)) {
+    try (Writer writer = BlockFile.create(true, _fileSystem, tmpPath, reader.getBlockSize(), sourceFileList)) {
       BlockFile.merge(readers, writer, blocksToIgnore);
     }
 
@@ -261,8 +261,7 @@ public class BlockFileCompactor implements Closeable {
   }
 
   private FileStatus[] getBlockFiles() throws FileNotFoundException, IOException {
-    return _fileSystem.listStatus(_blockPath, (PathFilter) p -> p.getName()
-                                                                 .endsWith("." + HdfsBlockStoreConfig.BLOCK));
+    return _fileSystem.listStatus(_blockPath, (PathFilter) p -> BlockFile.isOrderedBlock(p));
   }
 
   private Path getNewPath(Path path) throws IOException {
