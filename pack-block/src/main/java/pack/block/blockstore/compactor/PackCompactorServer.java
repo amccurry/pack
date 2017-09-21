@@ -105,8 +105,9 @@ public class PackCompactorServer implements Closeable {
       try {
         HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
         long maxBlockFileSize = metaData.getMaxBlockFileSize();
+        double maxObsoleteRatio = metaData.getMaxObsoleteRatio();
         try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, maxBlockFileSize,
-            _mountLockManager)) {
+            maxObsoleteRatio, _mountLockManager)) {
           compactor.runCompaction();
         }
       } finally {

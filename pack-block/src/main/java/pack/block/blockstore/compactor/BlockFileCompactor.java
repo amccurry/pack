@@ -49,9 +49,11 @@ public class BlockFileCompactor implements Closeable {
   private final Cache<Path, Reader> _readerCache;
   private final ZooKeeperLockManager _inUseLockManager;
   private final String _lockName;
+  private final double _maxObsoleteRatio;
 
-  public BlockFileCompactor(FileSystem fileSystem, Path path, long maxBlockFileSize,
+  public BlockFileCompactor(FileSystem fileSystem, Path path, long maxBlockFileSize, double maxObsoleteRatio,
       ZooKeeperLockManager inUseLockManager) {
+    _maxObsoleteRatio = maxObsoleteRatio;
     _inUseLockManager = inUseLockManager;
     _maxBlockFileSize = maxBlockFileSize;
     _fileSystem = fileSystem;
@@ -166,23 +168,78 @@ public class BlockFileCompactor implements Closeable {
     List<FileStatus> liveFiles = removeOrphanedBlockFiles(listStatus);
     Builder<CompactionJob> builder = ImmutableList.builder();
     CompactionJob compactionJob = new CompactionJob();
-    RoaringBitmap blocksToIgnore = new RoaringBitmap();
+    RoaringBitmap currentCompactionBlocksToIgnore = new RoaringBitmap();
     for (FileStatus status : liveFiles) {
-      if (status.getLen() < _maxBlockFileSize) {
+      if (shouldCompactFile(status, getNewerBlocksToIgnore(status, listStatus))) {
         compactionJob.add(status.getPath());
       } else {
-        finishSetup(builder, compactionJob, blocksToIgnore);
-        compactionJob.addCurrentBlocksForThisCompaction(blocksToIgnore);
+        finishSetup(builder, compactionJob, currentCompactionBlocksToIgnore);
+        compactionJob.addCurrentBlocksForThisCompaction(currentCompactionBlocksToIgnore);
 
         // add current block file to the ignore list because we are skipping
         // over this segment
-        addCurrentBlocks(blocksToIgnore, status.getPath());
+        addCurrentBlocks(currentCompactionBlocksToIgnore, status.getPath());
         // new compaction job
         compactionJob = new CompactionJob();
       }
     }
-    finishSetup(builder, compactionJob, blocksToIgnore);
+    finishSetup(builder, compactionJob, currentCompactionBlocksToIgnore);
     return builder.build();
+  }
+
+  private RoaringBitmap getNewerBlocksToIgnore(FileStatus status, FileStatus[] listStatus) throws IOException {
+    FileStatus[] copy = new FileStatus[listStatus.length];
+    System.arraycopy(listStatus, 0, copy, 0, listStatus.length);
+
+    Arrays.sort(copy);
+
+    RoaringBitmap overallBlocksToIgnore = new RoaringBitmap();
+    boolean cumulate = false;
+    for (FileStatus fileStatus : copy) {
+      if (cumulate) {
+        Reader reader = getReader(fileStatus.getPath());
+        reader.orDataBlocks(overallBlocksToIgnore);
+        reader.orEmptyBlocks(overallBlocksToIgnore);
+      }
+      if (status.equals(fileStatus)) {
+        cumulate = true;
+      }
+    }
+    return overallBlocksToIgnore;
+  }
+
+  private boolean shouldCompactFile(FileStatus status, RoaringBitmap overallBlocksToIgnore) throws IOException {
+    Path path = status.getPath();
+    if (status.getLen() < _maxBlockFileSize) {
+      LOGGER.info("Adding path {} to compaction, because length {} < max length {}", path, status.getLen(),
+          _maxBlockFileSize);
+      return true;
+    }
+
+    Reader reader = getReader(path);
+    RoaringBitmap currentReaderBlocks = new RoaringBitmap();
+    reader.orDataBlocks(currentReaderBlocks);
+    reader.orEmptyBlocks(currentReaderBlocks);
+
+    int currentCardinality = currentReaderBlocks.getCardinality();
+    LOGGER.info("Cardinality {} of path {}", currentCardinality, path);
+
+    int cardinality = overallBlocksToIgnore.getCardinality();
+    LOGGER.info("Cardinality {} of block to ignore", cardinality);
+
+    currentReaderBlocks.and(overallBlocksToIgnore);
+    int obsoleteCardinality = currentReaderBlocks.getCardinality();
+    LOGGER.info("Obsolete cardinality {} of path {}", obsoleteCardinality, path);
+
+    double obsoleteRatio = ((double) obsoleteCardinality / (double) currentCardinality);
+    LOGGER.info("Obsolete ratio {} of path {}", obsoleteRatio, path);
+
+    if (obsoleteRatio >= _maxObsoleteRatio) {
+      LOGGER.info("Adding path {} to compaction, because obsolete ratio {} < max obsolete ratio {}", path,
+          obsoleteRatio, _maxObsoleteRatio);
+      return true;
+    }
+    return false;
   }
 
   private void addCurrentBlocks(RoaringBitmap blocksToIgnore, Path path) throws IOException {

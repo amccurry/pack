@@ -106,7 +106,7 @@ public class HdfsBlockStoreV3Test {
       store.delete(0, 10000 * blockSize);
     }
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, Long.MAX_VALUE, null)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, Long.MAX_VALUE, -0.1, null)) {
       compactor.runCompaction();
     }
 

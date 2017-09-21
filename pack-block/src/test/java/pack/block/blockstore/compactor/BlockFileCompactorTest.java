@@ -56,13 +56,24 @@ public class BlockFileCompactorTest {
   private int maxPases = 2;
 
   @Test
-  public void testCompactorSingleResult() throws IOException {
-    Path path = new Path("/testCompactorSingleResult");
+  public void testCompactorSingleResultBlockSize() throws IOException {
+    Path path = new Path("/testCompactorSingleResultBlockSize");
     Random random = new Random(seed);
     for (int pass = 0; pass < maxPases; pass++) {
       Path basePath = new Path(path, Integer.toString(pass));
       fileSystem.mkdirs(basePath);
-      runCompactorSingleResult(basePath, random);
+      runCompactorSingleResultBlockSize(basePath, random);
+    }
+  }
+
+  @Test
+  public void testCompactorSingleResultObsoleteRatio() throws IOException {
+    Path path = new Path("/testCompactorSingleResultObsoleteRatio");
+    Random random = new Random(seed);
+    for (int pass = 0; pass < maxPases; pass++) {
+      Path basePath = new Path(path, Integer.toString(pass));
+      fileSystem.mkdirs(basePath);
+      runCompactorSingleResultObsoleteRatio(basePath, random);
     }
   }
 
@@ -77,7 +88,7 @@ public class BlockFileCompactorTest {
     }
   }
 
-  private void runCompactorSingleResult(Path path, Random random) throws IOException {
+  private void runCompactorSingleResultObsoleteRatio(Path path, Random random) throws IOException {
     int blockSize = 10;
     List<byte[]> data = new ArrayList<>();
 
@@ -86,7 +97,26 @@ public class BlockFileCompactorTest {
     int maxNumberOfBlocksToWrite = 100;
     generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, Long.MAX_VALUE, null)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, 0, 0.0, null)) {
+      compactor.runCompaction();
+    }
+
+    dropOldBlockFiles(path);
+
+    Path blockFile = getSingleBlockFile(path);
+    logicallyAssertEquals(data, Arrays.asList(blockFile));
+  }
+
+  private void runCompactorSingleResultBlockSize(Path path, Random random) throws IOException {
+    int blockSize = 10;
+    List<byte[]> data = new ArrayList<>();
+
+    int maxFiles = 30;
+    int maxBlockIdsIncr = 100;
+    int maxNumberOfBlocksToWrite = 100;
+    generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, Long.MAX_VALUE, 10.0, null)) {
       compactor.runCompaction();
     }
 
@@ -108,7 +138,7 @@ public class BlockFileCompactorTest {
     generatBlockFilesNotConsidered(data, path, random, blockSize, maxFilesUnderBlockFileSize, maxFilesOverBlockFileSize,
         maxBlockIdsIncr, maxNumberOfBlocksToWrite, maxBlockFileSize);
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize, null)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize, 10.0, null)) {
       compactor.runCompaction();
     }
 
