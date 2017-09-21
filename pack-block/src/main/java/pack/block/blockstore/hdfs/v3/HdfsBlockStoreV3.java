@@ -46,7 +46,14 @@ import pack.block.util.Utils;
 
 public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
+  private static final String TMP = ".tmp";
+
   private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreV3.class);
+
+  private static final String READ_METER = "readMeter";
+  private static final String WRITE_METER = "writeMeter";
+  private static final String READ_TIMER = "readTimer";
+  private static final String WRITE_TIMER = "writeTimer";
 
   private final FileSystem _fileSystem;
   private final Path _path;
@@ -76,11 +83,11 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
     _registry = registry;
 
-    _writeTimer = _registry.timer("writeTimer");
-    _readTimer = _registry.timer("readTimer");
+    _writeTimer = _registry.timer(WRITE_TIMER);
+    _readTimer = _registry.timer(READ_TIMER);
 
-    _writeMeter = _registry.meter("writeMeter");
-    _readMeter = _registry.meter("readMeter");
+    _writeMeter = _registry.meter(WRITE_METER);
+    _readMeter = _registry.meter(READ_METER);
 
     _fileSystem = fileSystem;
     _path = qualify(path);
@@ -91,6 +98,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     _length = _metaData.getLength();
     _blockPath = qualify(new Path(_path, HdfsBlockStoreConfig.BLOCK));
     _fileSystem.mkdirs(_blockPath);
+    cleanupBlocks();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
                                .removalListener(listener)
@@ -106,6 +114,31 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     long period = config.getBlockFileUnit()
                         .toMillis(config.getBlockFilePeriod());
     _blockFileTimer.schedule(getBlockFileTask(), period, period);
+  }
+
+  private void cleanupBlocks() throws IOException {
+    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath);
+    for (FileStatus fileStatus : listStatus) {
+      if (shouldCleanupFile(fileStatus.getPath())) {
+        _fileSystem.delete(fileStatus.getPath(), false);
+      } else if (shouldTryToRecover(fileStatus.getPath())) {
+        recoverBlock(fileStatus.getPath());
+      }
+    }
+  }
+
+  private void recoverBlock(Path path) {
+    LOGGER.info("Recover block {}", path);
+
+  }
+
+  private boolean shouldTryToRecover(Path path) {
+    return false;
+  }
+
+  private boolean shouldCleanupFile(Path path) {
+    return path.getName()
+               .endsWith(TMP);
   }
 
   public int getFileSystemBlockSize() {
@@ -304,7 +337,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   private Path getNewTempFile() {
     String uuid = UUID.randomUUID()
                       .toString()
-        + ".tmp";
+        + TMP;
     Path path = qualify(new Path(_blockPath, uuid));
     return path;
   }

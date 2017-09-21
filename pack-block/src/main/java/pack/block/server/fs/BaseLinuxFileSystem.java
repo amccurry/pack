@@ -25,8 +25,9 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
   private static final String DEFAULT_MOUNT_OPTIONS = "noatime";
 
   @Override
-  public void mount(File device, File mountLocation) throws IOException {
-    Utils.exec(LOGGER, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, DEFAULT_MOUNT_OPTIONS, device.getAbsolutePath(),
+  public void mount(File device, File mountLocation, String options) throws IOException {
+    options = options == null ? DEFAULT_MOUNT_OPTIONS : options;
+    Utils.exec(LOGGER, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options, device.getAbsolutePath(),
         mountLocation.getAbsolutePath());
   }
 

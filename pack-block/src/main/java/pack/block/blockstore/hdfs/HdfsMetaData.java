@@ -39,4 +39,7 @@ public class HdfsMetaData {
 
   @JsonProperty
   long maxBlockFileSize;
+  
+  @JsonProperty
+  String mountOptions;
 }

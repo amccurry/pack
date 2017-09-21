@@ -5,7 +5,7 @@ import java.io.IOException;
 
 public interface LinuxFileSystem {
 
-  void mount(File device, File mountLocation) throws IOException;
+  void mount(File device, File mountLocation, String options) throws IOException;
 
   void umount(File mountLocation) throws IOException;
 
@@ -38,4 +38,5 @@ public interface LinuxFileSystem {
   default void fstrim(File mountLocation) throws IOException {
 
   }
+
 }

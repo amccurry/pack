@@ -28,14 +28,26 @@ import com.google.common.io.Closer;
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.HdfsMetaData.HdfsMetaDataBuilder;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
+import pack.block.server.fs.FileSystemType;
 import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
+
+  private static final String FILE_SYSTEM_TYPE = "fileSystemType";
+
+  private static final String MOUNT_OPTIONS = "mountOptions";
+
+  private static final String MAX_BLOCK_FILE_SIZE = "maxBlockFileSize";
+
+  private static final String LENGTH = "length";
+
+  private static final String FILE_SYSTEM_BLOCK_SIZE = "fileSystemBlockSize";
 
   private static final String MOUNT_COUNT = "mountCount";
 
@@ -54,6 +66,7 @@ public class BlockPackStorage implements PackStorage {
   protected final File _localLogDir;
   protected final File _localCacheDir;
   protected final File _localUnixSocketDir;
+  protected final File _localLibDir;
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
   protected final String _zkConnection;
   protected final int _zkTimeout;
@@ -83,6 +96,8 @@ public class BlockPackStorage implements PackStorage {
     LOGGER.info("Creating hdfs root path {}", _root);
     _ugi.doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
 
+    _localLibDir = new File(localFile, "lib");
+    _localLibDir.mkdirs();
     _localFileSystemDir = new File(localFile, "fs");
     _localFileSystemDir.mkdirs();
     _localMountCountDir = new File(localFile, "counts");
@@ -178,17 +193,36 @@ public class BlockPackStorage implements PackStorage {
     if (!fileSystem.exists(volumePath)) {
       if (fileSystem.mkdirs(volumePath)) {
         LOGGER.info("Create volume {}", volumeName);
-        HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA;
+        HdfsMetaData defaultmetaData = HdfsMetaData.DEFAULT_META_DATA;
+
+        HdfsMetaDataBuilder builder = defaultmetaData.toBuilder();
+        if (options.containsKey(FILE_SYSTEM_BLOCK_SIZE)) {
+          builder.fileSystemBlockSize(toInt(options.get(FILE_SYSTEM_BLOCK_SIZE)));
+        }
+
+        if (options.containsKey(LENGTH)) {
+          builder.length(toLong(options.get(LENGTH)));
+        }
+
+        if (options.containsKey(MAX_BLOCK_FILE_SIZE)) {
+          builder.maxBlockFileSize(toLong(options.get(MAX_BLOCK_FILE_SIZE)));
+        }
+
+        if (options.containsKey(MOUNT_OPTIONS)) {
+          builder.mountOptions(toString(options.get(MOUNT_OPTIONS)));
+        }
+
+        if (options.containsKey(FILE_SYSTEM_TYPE)) {
+          builder.fileSystemType(toFileSystemType(options.get(FILE_SYSTEM_TYPE)));
+        }
+
+        HdfsMetaData metaData = builder.build();
         LOGGER.info("HdfsMetaData volume {} {}", volumeName, metaData);
         HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
       } else {
         LOGGER.info("Create not created volume {}", volumeName);
       }
     }
-  }
-
-  private Path getVolumePath(String volumeName) {
-    return new Path(_root, volumeName);
   }
 
   protected void removeVolume(String volumeName) throws IOException {
@@ -217,7 +251,10 @@ public class BlockPackStorage implements PackStorage {
     LOGGER.info("Mount Id {} localCache {}", id, localCache);
     File unixSockFile = getUnixSocketFile(volumeName);
     LOGGER.info("Mount Id {} unixSockFile {}", id, unixSockFile);
+    File libDir = getLibDir(volumeName);
+    LOGGER.info("Mount Id {} libDir {}", id, libDir);
 
+    libDir.mkdirs();
     localCache.mkdirs();
     localFileSystemMount.mkdirs();
     localDevice.mkdirs();
@@ -237,11 +274,15 @@ public class BlockPackStorage implements PackStorage {
 
     BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(),
         localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path, _zkConnection, _zkTimeout, volumeName,
-        logDir.getAbsolutePath(), unixSockFile.getAbsolutePath());
+        logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(), libDir.getAbsolutePath());
 
     waitForMount(localFileSystemMount, unixSockFile);
     incrementMountCount(unixSockFile);
     return localFileSystemMount.getAbsolutePath();
+  }
+
+  private File getLibDir(String volumeName) {
+    return new File(_localLibDir, volumeName);
   }
 
   private boolean isMounted(File unixSockFile) throws IOException {
@@ -388,5 +429,32 @@ public class BlockPackStorage implements PackStorage {
 
   static interface Exec {
     void exec() throws Exception;
+  }
+
+  private FileSystemType toFileSystemType(Object object) {
+    if (object == null) {
+      return null;
+    }
+    String s = object.toString();
+    return FileSystemType.valueOf(s);
+  }
+
+  public static String toString(Object object) {
+    if (object == null) {
+      return null;
+    }
+    return object.toString();
+  }
+
+  public static long toLong(Object object) {
+    return Long.parseLong(object.toString());
+  }
+
+  public static int toInt(Object object) {
+    return Integer.parseInt(object.toString());
+  }
+
+  private Path getVolumePath(String volumeName) {
+    return new Path(_root, volumeName);
   }
 }

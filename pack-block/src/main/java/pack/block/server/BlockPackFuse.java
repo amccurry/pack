@@ -1,5 +1,7 @@
 package pack.block.server;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -7,9 +9,11 @@ import java.io.FileOutputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import com.codahale.metrics.CsvReporter;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.io.Closer;
@@ -36,8 +41,8 @@ import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.fuse.FuseFileSystemSingleMount;
-import pack.block.server.admin.BlockPackAdminServer;
 import pack.block.server.admin.BlockPackAdmin;
+import pack.block.server.admin.BlockPackAdminServer;
 import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
 import pack.block.server.fs.LinuxFileSystem;
@@ -104,9 +109,10 @@ public class BlockPackFuse implements Closeable {
 
   public static Process startProcess(String fuseMountLocation, String fsMountLocation, String fsMetricsLocation,
       String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout, String volumeName,
-      String logOutput, String unixSock) throws IOException {
+      String logOutput, String unixSock, String libDir) throws IOException {
     String javaHome = System.getProperty(JAVA_HOME);
-    String className = System.getProperty(JAVA_CLASS_PATH);
+
+    String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir);
     Builder<String> builder = ImmutableList.builder();
 
     // also copy libs to new process...
@@ -123,7 +129,7 @@ public class BlockPackFuse implements Closeable {
       builder.add(JAVA_PROPERTY + DOCKER_UNIX_SOCKET + "=" + dockerUnixSocket);
     }
     builder.add(CLASSPATH_SWITCH)
-           .add(className)
+           .add(classPath)
            .add(BlockPackFuse.class.getName())
            .add(volumeName)
            .add(fuseMountLocation)
@@ -162,6 +168,37 @@ public class BlockPackFuse implements Closeable {
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
     return new ProcessBuilder(SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath()).start();
+  }
+
+  private static String buildClassPath(String classPathProperty, String libDir) throws IOException {
+    List<String> classPath = Splitter.on(':')
+                                     .splitToList(classPathProperty);
+    Builder<String> builder = ImmutableList.builder();
+    for (String file : classPath) {
+      File src = new File(file);
+      File dest = new File(libDir, src.getName());
+      if (src.exists()) {
+        copy(src, dest);
+        builder.add(dest.getAbsolutePath());
+      }
+    }
+    return Joiner.on(':')
+                 .join(builder.build());
+  }
+
+  private static void copy(File src, File dest) throws IOException {
+    if (src.isDirectory()) {
+      dest.mkdirs();
+      for (File f : src.listFiles()) {
+        copy(f, new File(dest, f.getName()));
+      }
+    } else {
+      try (InputStream input = new BufferedInputStream(new FileInputStream(src))) {
+        try (OutputStream output = new BufferedOutputStream(new FileOutputStream(dest))) {
+          IOUtils.copy(input, output);
+        }
+      }
+    }
   }
 
   public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
@@ -318,12 +355,14 @@ public class BlockPackFuse implements Closeable {
         if (!_linuxFileSystem.isFileSystemExists(device)) {
           LOGGER.info("file system does not exist on mount {} visible", _fuseLocalPath);
           int blockSize = _metaData.getFileSystemBlockSize();
+
           LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, device);
           _blockPackAdmin.setStatus(Status.FS_MKFS, "Creating " + _linuxFileSystem.getType() + " @ " + device);
           _linuxFileSystem.mkfs(device, blockSize);
         }
+        String mountOptions = _metaData.getMountOptions();
         _blockPackAdmin.setStatus(Status.FS_MOUNT_STARTED, "Mounting " + device + " => " + _fsLocalPath);
-        _linuxFileSystem.mount(device, _fsLocalPath);
+        _linuxFileSystem.mount(device, _fsLocalPath, mountOptions);
         _blockPackAdmin.setStatus(Status.FS_MOUNT_COMPLETED, "Mounted " + device + " => " + _fsLocalPath);
         LOGGER.info("fs mount {} complete", _fsLocalPath);
       }
