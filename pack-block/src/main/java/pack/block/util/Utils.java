@@ -23,6 +23,12 @@ import pack.block.server.BlockPackFuse;
 
 public class Utils {
 
+  public interface TimerWithException<T, E extends Throwable> {
+
+    T time() throws E;
+
+  }
+
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
 
   private static final int PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT = 30000;
@@ -216,11 +222,23 @@ public class Utils {
     }
     System.exit(0);
   }
-  
+
   public static int getIntKey(long key) throws IOException {
     if (key < Integer.MAX_VALUE) {
       return (int) key;
     }
     throw new IOException("Key " + key + " is too large >= " + Integer.MAX_VALUE);
+  }
+
+  public static <T, E extends Throwable> T time(Logger logger, String name, TimerWithException<T, E> timerWithException)
+      throws E {
+    long start = System.nanoTime();
+    try {
+      return timerWithException.time();
+    } finally {
+      long end = System.nanoTime();
+      LOGGER.info("Timer name {} took {} ms", name, (end - start) / 1_000_000.0);
+    }
+
   }
 }

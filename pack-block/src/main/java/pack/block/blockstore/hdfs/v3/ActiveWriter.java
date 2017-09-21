@@ -12,12 +12,16 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.io.BytesWritable;
 import org.roaringbitmap.RoaringBitmap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.util.Utils;
 
 public class ActiveWriter implements Closeable {
+
+  private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreV3.class);
 
   private static final ByteBuffer EMPTY_BLOCK = ByteBuffer.allocate(0);
 
@@ -48,6 +52,10 @@ public class ActiveWriter implements Closeable {
   }
 
   public void flush() throws IOException {
+    if (_cache.isEmpty()) {
+      return;
+    }
+    LOGGER.info("flush size {} count {}", _cacheSize.get(), _cache.size());
     List<Long> blockIds = new ArrayList<>(_cache.keySet());
     Collections.sort(blockIds);
     for (Long blockId : blockIds) {
@@ -65,12 +73,16 @@ public class ActiveWriter implements Closeable {
   public void appendEmpty(long blockId) throws IOException {
     _index.add(Utils.getIntKey(blockId));
     _cache.put(blockId, EMPTY_BLOCK);
+    flushIfNeeded();
   }
 
   @Override
   public void close() throws IOException {
     flush();
-    _writer.close();
+    Utils.time(LOGGER, "activeWriter.close", () -> {
+      _writer.close();
+      return null;
+    });
   }
 
   public static BytesWritable toBw(ByteBuffer byteBuffer) {

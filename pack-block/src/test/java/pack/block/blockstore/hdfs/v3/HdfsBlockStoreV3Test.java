@@ -55,7 +55,8 @@ public class HdfsBlockStoreV3Test {
     Random random = new Random(1);
 
     try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
-      for (int i = 0; i < 50; i++) {
+      long s = System.nanoTime();
+      for (int i = 0; i < 10000; i++) {
         int blockSize = store.getFileSystemBlockSize();
         int pos = random.nextInt(1000) * blockSize;
         {
@@ -70,10 +71,12 @@ public class HdfsBlockStoreV3Test {
         {
           byte[] buf = new byte[blockSize];
           store.read(pos, buf, 0, blockSize);
-          System.out.println(pos);
+          // System.out.println(pos);
           assertTrue(Arrays.equals(data, buf));
         }
       }
+      long e = System.nanoTime();
+      System.out.println("Run time " + (e - s) / 1_000_000.0 + " ms");
     }
   }
 
@@ -133,7 +136,7 @@ public class HdfsBlockStoreV3Test {
     int maxOffset = 100;
 
     try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
-      for (int j = 0; j < 50; j++) {
+      for (int j = 0; j < 10000; j++) {
         int length = random.nextInt(maxLength);
         int offset = random.nextInt(maxOffset);
         byte[] buf1 = new byte[offset + length];
