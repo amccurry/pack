@@ -39,10 +39,9 @@ import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
-import pack.block.blockstore.hdfs.file.BlockFile.Writer;
+import pack.block.blockstore.hdfs.file.BlockFile.WriterMultiOrdered;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.server.fs.LinuxFileSystem;
-import pack.block.util.Utils;
 
 public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
@@ -73,6 +72,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   private final ReentrantReadWriteLock _blockFileLock = new ReentrantReadWriteLock();
   private final Lock _blockFileWriteLock = _blockFileLock.writeLock();
   private final Lock _blockFileReadLock = _blockFileLock.readLock();
+  private final AtomicReference<ActiveWriter> _currentActive = new AtomicReference<>();
+  private final int _maxCommitsPerActiveFile;
 
   public HdfsBlockStoreV3(MetricRegistry registry, FileSystem fileSystem, Path path) throws IOException {
     this(registry, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -92,6 +93,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     _fileSystem = fileSystem;
     _path = qualify(path);
     _metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
+    _maxCommitsPerActiveFile = _metaData.getMaxCommitsPerActiveFile();
 
     _fileSystemBlockSize = _metaData.getFileSystemBlockSize();
 
@@ -162,8 +164,6 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     return System.currentTimeMillis();
   }
 
-  private final AtomicReference<ActiveWriter> _currentActive = new AtomicReference<>();
-
   @Override
   public int write(long position, byte[] buffer, int offset, int len) throws IOException {
     _fileWriteLock.lock();
@@ -204,9 +204,10 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
       LOGGER.debug("read blockId {} len {} position {}", blockId, len, position);
       ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
       List<ReadRequest> requests = createRequests(position, byteBuffer, blockSize);
-      checkActiveWriterCache(requests);
-      commitActiveWriterIfNeeded(requests);
-      readBlocks(requests);
+      if (checkActiveWriter(requests)) {
+        // commitActiveWriterIfNeeded(requests);
+        readBlocks(requests);
+      }
       _readMeter.mark(len);
       return len;
     } finally {
@@ -214,12 +215,16 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     }
   }
 
-  private void checkActiveWriterCache(List<ReadRequest> requests) {
+  private boolean checkActiveWriter(List<ReadRequest> requests) throws IOException {
     ActiveWriter activeWriter = _currentActive.get();
     if (activeWriter == null) {
-      return;
+      return true;
     }
-    activeWriter.checkCache(requests);
+    if (activeWriter.checkCache(requests)) {
+      return activeWriter.checkCurrentWriteLog(requests);
+    } else {
+      return false;
+    }
   }
 
   @Override
@@ -262,30 +267,12 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
       }
       Path path = getNewTempFile();
       LOGGER.debug("created Writer {}", path);
-      Writer writer = BlockFile.create(false, _fileSystem, path, _fileSystemBlockSize, () -> commitFile(path));
+      WriterMultiOrdered writer = (WriterMultiOrdered) BlockFile.create(false, _fileSystem, path, _fileSystemBlockSize,
+          () -> commitFile(path));
       RoaringBitmap index = new RoaringBitmap();
-      activeWriter = new ActiveWriter(writer, index);
+      activeWriter = new ActiveWriter(_fileSystem, writer, index, path, _maxCommitsPerActiveFile);
       _currentActive.set(activeWriter);
       return activeWriter;
-    } finally {
-      _fileWriteLock.unlock();
-    }
-  }
-
-  private void commitActiveWriterIfNeeded(List<ReadRequest> requests) throws IOException {
-    _fileWriteLock.lock();
-    LOGGER.debug("commitActiveWriterIfNeeded");
-    try {
-      ActiveWriter activeWriter = _currentActive.get();
-      if (activeWriter == null) {
-        return;
-      }
-      for (ReadRequest readRequest : requests) {
-        if (!readRequest.isCompleted() && activeWriter.contains(Utils.getIntKey(readRequest.getBlockId()))) {
-          commitActiveWriter();
-          return;
-        }
-      }
     } finally {
       _fileWriteLock.unlock();
     }
@@ -299,8 +286,10 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
       if (activeWriter == null) {
         return;
       }
-      activeWriter.close();
-      _currentActive.set(null);
+      if (activeWriter.commit()) {
+        activeWriter.close();
+        _currentActive.set(null);
+      }
     } finally {
       _fileWriteLock.unlock();
     }

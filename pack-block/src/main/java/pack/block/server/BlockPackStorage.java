@@ -39,6 +39,8 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
 
+  private static final String MAX_COMMITS_PER_ACTIVE_FILE = "maxCommitsPerActiveFile";
+
   private static final String FILE_SYSTEM_TYPE = "fileSystemType";
 
   private static final String MOUNT_OPTIONS = "mountOptions";
@@ -215,6 +217,10 @@ public class BlockPackStorage implements PackStorage {
 
         if (options.containsKey(FILE_SYSTEM_TYPE)) {
           builder.fileSystemType(toFileSystemType(options.get(FILE_SYSTEM_TYPE)));
+        }
+
+        if (options.containsKey(MAX_COMMITS_PER_ACTIVE_FILE)) {
+          builder.maxCommitsPerActiveFile(toInt(options.get(MAX_COMMITS_PER_ACTIVE_FILE)));
         }
 
         HdfsMetaData metaData = builder.build();

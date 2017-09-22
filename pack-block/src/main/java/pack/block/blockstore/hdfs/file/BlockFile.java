@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.block.blockstore.hdfs.kvs.HdfsUtils;
 import pack.block.util.Utils;
 
 public class BlockFile {
@@ -81,6 +82,11 @@ public class BlockFile {
       return new ReaderMultiOrdered(inputStream, path, length);
     }
     return new RandomAccessReaderOrdered(inputStream, path, length);
+  }
+
+  public static ReaderMultiOrdered openMultiOrdered(FileSystem fileSystem, Path path, long length) throws IOException {
+    FSDataInputStream inputStream = getInputStream(fileSystem, path, length);
+    return new ReaderMultiOrdered(inputStream, path, length);
   }
 
   public static Reader openForStreaming(FileSystem fileSystem, Path path) throws IOException {
@@ -296,14 +302,23 @@ public class BlockFile {
 
     @Override
     public void close() throws IOException {
-      WriterOrdered writer = getWriter();
-      if (writer != null) {
-        writer.writeFooter();
-      }
+      writeFooter();
       _output.close();
       if (_commitFile != null) {
         _commitFile.commit();
       }
+    }
+
+    public void writeFooter() throws IOException {
+      WriterOrdered writer = _currentWriter.getAndSet(null);
+      if (writer != null) {
+        writer.writeFooter();
+      }
+    }
+
+    public long sync() throws IOException {
+      _output.hflush();
+      return _output.getPos();
     }
 
     private WriterOrdered newWriter() throws IOException {
@@ -453,13 +468,18 @@ public class BlockFile {
 
     private final FSDataInputStream _inputStream;
     private final Path _path;
-    private final List<ReaderOrdered> _orderedReaders;
+    private final List<RandomAccessReaderOrdered> _orderedReaders;
     private final int _blockSize;
 
     protected ReaderMultiOrdered(FSDataInputStream inputStream, Path path, long length) throws IOException {
+      this(inputStream, path, length, ImmutableList.of());
+    }
+
+    protected ReaderMultiOrdered(FSDataInputStream inputStream, Path path, long length,
+        List<RandomAccessReaderOrdered> existingReaders) throws IOException {
       _inputStream = inputStream;
       _path = path;
-      _orderedReaders = openOrderedReaders(length);
+      _orderedReaders = openOrderedReaders(length, existingReaders);
       _blockSize = _orderedReaders.get(0)
                                   .getBlockSize();
     }
@@ -468,11 +488,12 @@ public class BlockFile {
       this(fileSystem.open(path), path, getLength(fileSystem, path));
     }
 
-    private List<ReaderOrdered> openOrderedReaders(long length) throws IOException {
+    private List<RandomAccessReaderOrdered> openOrderedReaders(long length,
+        List<RandomAccessReaderOrdered> existingReaders) throws IOException {
       long endingPosition = length;
-      Builder<ReaderOrdered> builder = ImmutableList.builder();
+      Builder<RandomAccessReaderOrdered> builder = ImmutableList.builder();
       while (endingPosition >= 0) {
-        RandomAccessReaderOrdered readerOrdered = new RandomAccessReaderOrdered(_inputStream, _path, endingPosition);
+        RandomAccessReaderOrdered readerOrdered = openOrderedReader(existingReaders, endingPosition);
         builder.add(readerOrdered);
         long startingPosition = readerOrdered.getStartingPosition();
         if (startingPosition == 0) {
@@ -482,6 +503,21 @@ public class BlockFile {
       }
       // this should never be reached.
       throw new IOException("Malformed file " + _path);
+    }
+
+    private RandomAccessReaderOrdered openOrderedReader(List<RandomAccessReaderOrdered> existingReaders,
+        long endingPosition) throws IOException {
+      for (RandomAccessReaderOrdered readerOrdered : existingReaders) {
+        if (readerOrdered._endingPosition == endingPosition) {
+          return new RandomAccessReaderOrdered(readerOrdered, _inputStream);
+        }
+      }
+      return new RandomAccessReaderOrdered(_inputStream, _path, endingPosition);
+    }
+
+    public ReaderMultiOrdered reopen(FileSystem fileSystem, long newLength) throws IOException {
+      FSDataInputStream newInputStream = getInputStream(fileSystem, _path, newLength);
+      return new ReaderMultiOrdered(newInputStream, _path, newLength, _orderedReaders);
     }
 
     @Override
@@ -574,8 +610,8 @@ public class BlockFile {
 
   public abstract static class ReaderOrdered extends Reader {
 
-    protected final RoaringBitmap _blocks = new RoaringBitmap();
-    protected final RoaringBitmap _emptyBlocks = new RoaringBitmap();
+    protected final RoaringBitmap _blocks;
+    protected final RoaringBitmap _emptyBlocks;
     protected final FSDataInputStream _inputStream;
     protected final int _blockSize;
     protected final Path _path;
@@ -583,8 +619,25 @@ public class BlockFile {
     protected final long _first;
     protected final long _last;
     protected final long _startingPosition;
+    protected final long _endingPosition;
+
+    protected ReaderOrdered(ReaderOrdered reader, FSDataInputStream inputStream) throws IOException {
+      _blocks = reader._blocks;
+      _emptyBlocks = reader._emptyBlocks;
+      _inputStream = inputStream;
+      _blockSize = reader._blockSize;
+      _path = reader._path;
+      _sourceFiles = reader._sourceFiles;
+      _first = reader._first;
+      _last = reader._last;
+      _startingPosition = reader._startingPosition;
+      _endingPosition = reader._endingPosition;
+    }
 
     protected ReaderOrdered(FSDataInputStream inputStream, Path path, long endingPosition) throws IOException {
+      _blocks = new RoaringBitmap();
+      _emptyBlocks = new RoaringBitmap();
+      _endingPosition = endingPosition;
       _path = path;
       _inputStream = inputStream;
       _inputStream.seek(endingPosition - 16);
@@ -846,6 +899,7 @@ public class BlockFile {
   }
 
   public static class RandomAccessReaderOrdered extends ReaderOrdered {
+
     public RandomAccessReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
       super(fileSystem, path);
       try {
@@ -863,6 +917,11 @@ public class BlockFile {
         LOGGER.debug("Can not set readahead for path {}", path);
       }
     }
+
+    public RandomAccessReaderOrdered(ReaderOrdered reader, FSDataInputStream inputStream) throws IOException {
+      super(reader, inputStream);
+    }
+
   }
 
   public static class StreamReaderOrdered extends ReaderOrdered {
@@ -969,4 +1028,21 @@ public class BlockFile {
   public static Path getNewPathFile(Path dir) {
     return new Path(dir, System.currentTimeMillis() + BlockFile.BLOCK);
   }
+
+  public static FSDataInputStream getInputStream(FileSystem fileSystem, Path path, long newLength) throws IOException {
+    while (true) {
+      FSDataInputStream inputStream = fileSystem.open(path);
+      long fileLength = HdfsUtils.getFileLength(fileSystem, path, inputStream);
+      if (newLength <= fileLength) {
+        return inputStream;
+      }
+      Utils.close(LOGGER, inputStream);
+      try {
+        Thread.sleep(400);
+      } catch (InterruptedException e) {
+        throw new IOException(e);
+      }
+    }
+  }
+
 }

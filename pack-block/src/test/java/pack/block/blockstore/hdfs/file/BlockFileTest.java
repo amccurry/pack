@@ -1,6 +1,9 @@
 package pack.block.blockstore.hdfs.file;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.File;
 import java.io.IOException;
@@ -19,14 +22,15 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.io.BytesWritable;
 import org.junit.AfterClass;
-import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import pack.block.blockstore.hdfs.HdfsMiniClusterUtil;
 import pack.block.blockstore.hdfs.file.BlockFile.BlockFileEntry;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
+import pack.block.blockstore.hdfs.file.BlockFile.ReaderMultiOrdered;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
+import pack.block.blockstore.hdfs.file.BlockFile.WriterMultiOrdered;
 
 public class BlockFileTest {
 
@@ -36,7 +40,6 @@ public class BlockFileTest {
   private static MiniDFSCluster _cluster;
 
   private static Timer _timer;
-  private Path _path;
 
   @BeforeClass
   public static void startCluster() {
@@ -49,13 +52,6 @@ public class BlockFileTest {
     _timer.cancel();
     _timer.purge();
     HdfsMiniClusterUtil.shutdownDfs(_cluster);
-  }
-
-  @Before
-  public void setup() throws IOException {
-    FileSystem fileSystem = _cluster.getFileSystem();
-    _path = new Path("/test").makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
-    fileSystem.delete(_path, true);
   }
 
   @Test
@@ -328,6 +324,52 @@ public class BlockFileTest {
         }
       }
     }
+  }
+
+  @Test
+  public void testReaderMultiOrdered() throws IOException {
+    Path path = new Path("/testReaderMultiOrdered");
+    FileSystem fileSystem = _cluster.getFileSystem();
+    int valueLength = 100;
+    byte[] buf = new byte[valueLength];
+    Random random = new Random();
+    random.nextBytes(buf);
+
+    BytesWritable value = new BytesWritable(new byte[valueLength]);
+    Path file = new Path(path, "testfile");
+
+    WriterMultiOrdered writer = (WriterMultiOrdered) BlockFile.create(false, fileSystem, file, valueLength);
+    writer.append(1, new BytesWritable(buf));
+    writer.append(2, new BytesWritable(buf));
+    writer.writeFooter();
+    long sync1 = writer.sync();
+
+    ReaderMultiOrdered reader = BlockFile.openMultiOrdered(fileSystem, file, sync1);
+
+    assertTrue(reader.hasBlock(1));
+    assertTrue(reader.hasBlock(2));
+
+    reader.read(1, value);
+    assertTrue(Arrays.equals(value.getBytes(), buf));
+    reader.read(2, value);
+    assertTrue(Arrays.equals(value.getBytes(), buf));
+
+    writer.append(0, new BytesWritable(buf));
+    writer.writeFooter();
+    long sync2 = writer.sync();
+    ReaderMultiOrdered reopen = reader.reopen(fileSystem, sync2);
+    reader.close();
+
+    assertTrue(reopen.hasBlock(0));
+    assertTrue(reopen.hasBlock(1));
+    assertTrue(reopen.hasBlock(2));
+
+    reopen.read(1, value);
+    assertTrue(Arrays.equals(value.getBytes(), buf));
+    reopen.read(2, value);
+    assertTrue(Arrays.equals(value.getBytes(), buf));
+    reopen.read(3, value);
+    assertTrue(Arrays.equals(value.getBytes(), buf));
   }
 
   private KeyValue kv(int key) {
