@@ -10,7 +10,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.hadoop.io.BytesWritable;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,7 +62,7 @@ public class ActiveWriter implements Closeable {
       if (byteBuffer == EMPTY_BLOCK) {
         _writer.appendEmpty(blockId);
       } else {
-        _writer.append(blockId, toBw(byteBuffer));
+        _writer.append(blockId, Utils.toBw(byteBuffer));
       }
     }
     _cache.clear();
@@ -83,13 +82,6 @@ public class ActiveWriter implements Closeable {
       _writer.close();
       return null;
     });
-  }
-
-  public static BytesWritable toBw(ByteBuffer byteBuffer) {
-    ByteBuffer dup = byteBuffer.duplicate();
-    byte[] buf = new byte[dup.remaining()];
-    dup.get(buf);
-    return new BytesWritable(buf);
   }
 
   public boolean contains(int key) {

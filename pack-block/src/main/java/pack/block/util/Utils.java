@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.log4j.xml.DOMConfigurator;
@@ -239,6 +241,12 @@ public class Utils {
       long end = System.nanoTime();
       LOGGER.info("Timer name {} took {} ms", name, (end - start) / 1_000_000.0);
     }
+  }
 
+  public static BytesWritable toBw(ByteBuffer byteBuffer) {
+    ByteBuffer dup = byteBuffer.duplicate();
+    byte[] buf = new byte[dup.remaining()];
+    dup.get(buf);
+    return new BytesWritable(buf);
   }
 }
