@@ -39,6 +39,8 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockFileCompactor implements Closeable {
 
+  private static final String MERGE = "merge";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFileCompactor.class);
 
   private static final Joiner JOINER = Joiner.on('.');
@@ -52,17 +54,19 @@ public class BlockFileCompactor implements Closeable {
   private final double _maxObsoleteRatio;
 
   public BlockFileCompactor(FileSystem fileSystem, Path path, long maxBlockFileSize, double maxObsoleteRatio,
-      ZooKeeperLockManager inUseLockManager) {
+      ZooKeeperLockManager inUseLockManager) throws IOException {
     _maxObsoleteRatio = maxObsoleteRatio;
     _inUseLockManager = inUseLockManager;
     _maxBlockFileSize = maxBlockFileSize;
     _fileSystem = fileSystem;
     _lockName = Utils.getLockName(path);
     _blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
+    cleanupBlocks();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
                                .removalListener(listener)
                                .build();
+
   }
 
   @Override
@@ -130,7 +134,7 @@ public class BlockFileCompactor implements Closeable {
   private String getRandomTmpName() {
     String uuid = UUID.randomUUID()
                       .toString();
-    return JOINER.join(uuid, "tmp");
+    return JOINER.join(uuid, MERGE);
   }
 
   class CompactionJob {
@@ -336,4 +340,19 @@ public class BlockFileCompactor implements Closeable {
     return new Path(path.getParent(), newName);
   }
 
+  private void cleanupBlocks() throws IOException {
+    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath);
+    for (FileStatus fileStatus : listStatus) {
+      Path path = fileStatus.getPath();
+      if (shouldCleanupFile(path)) {
+        LOGGER.info("Deleting old temp merge file {}", path);
+        _fileSystem.delete(path, false);
+      }
+    }
+  }
+
+  private boolean shouldCleanupFile(Path path) {
+    return path.getName()
+               .endsWith(MERGE);
+  }
 }

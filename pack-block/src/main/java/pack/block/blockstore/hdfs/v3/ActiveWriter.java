@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,5 +110,9 @@ public class ActiveWriter implements Closeable {
     buffer.put(byteBuffer);
     buffer.flip();
     return buffer;
+  }
+
+  public static void recoverBlock(FileSystem fileSystem, Path path) {
+
   }
 }

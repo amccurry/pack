@@ -46,7 +46,7 @@ import pack.block.util.Utils;
 
 public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
-  private static final String TMP = ".tmp";
+  private static final String ACTIVE = ".active";
 
   private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreV3.class);
 
@@ -119,9 +119,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   private void cleanupBlocks() throws IOException {
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath);
     for (FileStatus fileStatus : listStatus) {
-      if (shouldCleanupFile(fileStatus.getPath())) {
-        _fileSystem.delete(fileStatus.getPath(), false);
-      } else if (shouldTryToRecover(fileStatus.getPath())) {
+      if (shouldTryToRecover(fileStatus.getPath())) {
         recoverBlock(fileStatus.getPath());
       }
     }
@@ -129,16 +127,12 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
   private void recoverBlock(Path path) {
     LOGGER.info("Recover block {}", path);
-
+    ActiveWriter.recoverBlock(_fileSystem, path);
   }
 
   private boolean shouldTryToRecover(Path path) {
-    return false;
-  }
-
-  private boolean shouldCleanupFile(Path path) {
     return path.getName()
-               .endsWith(TMP);
+               .endsWith(ACTIVE);
   }
 
   public int getFileSystemBlockSize() {
@@ -336,10 +330,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
   private Path getNewTempFile() {
     String uuid = UUID.randomUUID()
-                      .toString()
-        + TMP;
-    Path path = qualify(new Path(_blockPath, uuid));
-    return path;
+                      .toString();
+    return qualify(new Path(_blockPath, uuid + ACTIVE));
   }
 
   private void readBlocks(List<ReadRequest> requests) throws IOException {
