@@ -71,8 +71,8 @@ public class BlockPackStorage implements PackStorage {
   protected final String _zkConnection;
   protected final int _zkTimeout;
 
-  public BlockPackStorage(File localFile, Configuration configuration, Path remotePath, UserGroupInformation ugi,
-      String zkConnection, int zkTimeout) throws IOException, InterruptedException {
+  public BlockPackStorage(File workingDir, File logDir, Configuration configuration, Path remotePath,
+      UserGroupInformation ugi, String zkConnection, int zkTimeout) throws IOException, InterruptedException {
     Closer closer = Closer.create();
     closer.register((Closeable) () -> {
       for (String volumeName : _currentMountedVolumes) {
@@ -96,19 +96,20 @@ public class BlockPackStorage implements PackStorage {
     LOGGER.info("Creating hdfs root path {}", _root);
     _ugi.doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
 
-    _localLibDir = new File(localFile, "lib");
-    _localLibDir.mkdirs();
-    _localFileSystemDir = new File(localFile, "fs");
-    _localFileSystemDir.mkdirs();
-    _localMountCountDir = new File(localFile, "counts");
-    _localMountCountDir.mkdirs();
-    _localDeviceDir = new File(localFile, "devices");
-    _localDeviceDir.mkdirs();
-    _localLogDir = new File(localFile, "logs");
+    _localLogDir = logDir;
     _localLogDir.mkdirs();
-    _localCacheDir = new File(localFile, "cache");
+
+    _localLibDir = new File(workingDir, "lib");
+    _localLibDir.mkdirs();
+    _localFileSystemDir = new File(workingDir, "fs");
+    _localFileSystemDir.mkdirs();
+    _localMountCountDir = new File(workingDir, "counts");
+    _localMountCountDir.mkdirs();
+    _localDeviceDir = new File(workingDir, "devices");
+    _localDeviceDir.mkdirs();
+    _localCacheDir = new File(workingDir, "cache");
     _localCacheDir.mkdirs();
-    _localUnixSocketDir = new File(localFile, "sock");
+    _localUnixSocketDir = new File(workingDir, "sock");
     _localUnixSocketDir.mkdirs();
   }
 

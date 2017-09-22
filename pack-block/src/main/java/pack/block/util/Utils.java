@@ -26,17 +26,16 @@ import pack.block.server.BlockPackFuse;
 public class Utils {
 
   public interface TimerWithException<T, E extends Throwable> {
-
     T time() throws E;
-
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
 
-  private static final int PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT = 30000;
-  private static final String PACK_ZOOKEEPER_CONNECTION_TIMEOUT = "PACK_ZOOKEEPER_CONNECTION_TIMEOUT";
-  private static final String PACK_ZOOKEEPER_CONNECTION_STR = "PACK_ZOOKEEPER_CONNECTION_STR";
-  public static final String VAR_LIB_PACK = "/var/lib/pack";
+  public static final int PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT = 30000;
+  public static final String PACK_ZOOKEEPER_CONNECTION_TIMEOUT = "PACK_ZOOKEEPER_CONNECTION_TIMEOUT";
+  public static final String PACK_ZOOKEEPER_CONNECTION_STR = "PACK_ZOOKEEPER_CONNECTION_STR";
+
+  public static final String PACK_LOG = "PACK_LOG";
   public static final String PACK_HDFS_PATH = "PACK_HDFS_PATH";
   public static final String PACK_LOCAL = "PACK_LOCAL";
   public static final String PACK_LOG4J_CONFIG = "PACK_LOG4J_CONFIG";
@@ -44,6 +43,8 @@ public class Utils {
   public static final String PACK_HDFS_KERBEROS_KEYTAB = "PACK_HDFS_KERBEROS_KEYTAB";
   public static final String PACK_HDFS_KERBEROS_PRINCIPAL_NAME = "PACK_HDFS_KERBEROS_PRINCIPAL_NAME";
   public static final String PACK_HDFS_USER = "PACK_HDFS_USER";
+  public static final String VAR_LOG_PACK = "/var/log/pack";
+  public static final String VAR_LIB_PACK = "/var/lib/pack";
 
   public static void closeQuietly(final Closeable closeable) {
     try {
@@ -137,10 +138,18 @@ public class Utils {
     return v;
   }
 
-  public static String getLocalCachePath() {
+  public static String getLocalWorkingPath() {
     String v = System.getenv(PACK_LOCAL);
     if (v == null) {
       return VAR_LIB_PACK;
+    }
+    return v;
+  }
+
+  public static String getLocalLogPath() {
+    String v = System.getenv(PACK_LOG);
+    if (v == null) {
+      return VAR_LOG_PACK;
     }
     return v;
   }
@@ -249,4 +258,5 @@ public class Utils {
     dup.get(buf);
     return new BytesWritable(buf);
   }
+
 }

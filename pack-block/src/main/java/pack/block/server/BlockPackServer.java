@@ -17,38 +17,42 @@ public class BlockPackServer extends PackServer {
 
   public static void main(String[] args) throws Exception {
     Utils.setupLog4j();
-    File localFile = new File(Utils.getLocalCachePath());
+    File localWorkingDir = new File(Utils.getLocalWorkingPath());
+    File localLogDir = new File(Utils.getLocalLogPath());
     Path remotePath = new Path(Utils.getHdfsPath());
     UserGroupInformation ugi = Utils.getUserGroupInformation();
     String zkConnectionString = Utils.getZooKeeperConnectionString();
     int sessionTimeout = Utils.getZooKeeperConnectionTimeout();
     String sockerFile = "/run/docker/plugins/pack.sock";
-    BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localFile, remotePath, ugi,
-        zkConnectionString, sessionTimeout);
+    BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localWorkingDir, localLogDir, remotePath,
+        ugi, zkConnectionString, sessionTimeout);
     packServer.runServer();
   }
 
-  private final File localFile;
+  private final File localWorkingDir;
+  private final File localLogDir;
   private final Path remotePath;
   private final UserGroupInformation ugi;
   private final Configuration configuration = new Configuration();
   private final String zkConnection;
   private final int zkTimeout;
 
-  public BlockPackServer(boolean global, String sockFile, File localFile, Path remotePath, UserGroupInformation ugi,
-      String zkConnection, int zkTimeout) {
+  public BlockPackServer(boolean global, String sockFile, File localWorkingDir, File localLogDir, Path remotePath,
+      UserGroupInformation ugi, String zkConnection, int zkTimeout) {
     super(global, sockFile);
-    this.localFile = localFile;
+    this.localWorkingDir = localWorkingDir;
+    this.localLogDir = localLogDir;
     this.remotePath = remotePath;
     this.ugi = ugi;
     this.zkConnection = zkConnection;
     this.zkTimeout = zkTimeout;
-    localFile.mkdirs();
+    localWorkingDir.mkdirs();
+    localLogDir.mkdirs();
   }
 
   @Override
   protected PackStorage getPackStorage() throws Exception {
-    return new BlockPackStorage(localFile, configuration, remotePath, ugi, zkConnection, zkTimeout);
+    return new BlockPackStorage(localWorkingDir, localLogDir, configuration, remotePath, ugi, zkConnection, zkTimeout);
   }
 
   private static boolean isGlobal() {

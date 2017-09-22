@@ -53,26 +53,6 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackFuse implements Closeable {
 
-  private static final String BASH = "bash";
-
-  private static final String PACK_LOG4J_CONFIG = "PACK_LOG4J_CONFIG";
-
-  private static final String EXPORT = "export";
-
-  private static final String SET_E = "set -e";
-
-  private static final String SET_X = "set -x";
-
-  private static final String POLLING_CLOSER = "polling-closer";
-
-  private static final String PACK_LOG_DIR = "pack.log.dir";
-
-  private static final String JAVA_PROPERTY = "-D";
-
-  private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
-
-  private static final String LOG4J_FUSE_PROCESS_XML = "log4j-fuse-process.xml";
-
   private static <T extends Closeable> T autoClose(T t) {
     ShutdownHookManager.get()
                        .addShutdownHook(() -> {
@@ -84,6 +64,16 @@ public class BlockPackFuse implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuse.class);
 
+  private static final String BASH = "bash";
+  private static final String PACK_LOG4J_CONFIG = "PACK_LOG4J_CONFIG";
+  private static final String EXPORT = "export";
+  private static final String SET_E = "set -e";
+  private static final String SET_X = "set -x";
+  private static final String POLLING_CLOSER = "polling-closer";
+  private static final String PACK_LOG_DIR = "pack.log.dir";
+  private static final String JAVA_PROPERTY = "-D";
+  private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
+  private static final String LOG4J_FUSE_PROCESS_XML = "log4j-fuse-process.xml";
   private static final String LOCK = "/lock";
   private static final String BACKGROUND = "&";
   private static final String STDERR_REDIRECT = "2>";
