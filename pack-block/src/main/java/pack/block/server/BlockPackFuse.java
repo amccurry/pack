@@ -115,8 +115,6 @@ public class BlockPackFuse implements Closeable {
     String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir);
     Builder<String> builder = ImmutableList.builder();
 
-    // also copy libs to new process...
-
     String dockerUnixSocket = System.getProperty(DOCKER_UNIX_SOCKET);
 
     String zkTimeoutStr = Integer.toString(zkTimeout);
@@ -194,6 +192,7 @@ public class BlockPackFuse implements Closeable {
       }
     } else {
       try (InputStream input = new BufferedInputStream(new FileInputStream(src))) {
+        dest.delete();
         try (OutputStream output = new BufferedOutputStream(new FileOutputStream(dest))) {
           IOUtils.copy(input, output);
         }

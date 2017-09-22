@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -123,18 +124,23 @@ public class BlockFile {
     Reader reader = readers.get(0);
     int blockSize = reader.getBlockSize();
 
+    AtomicLong dataBlockWriteCount = new AtomicLong();
+    AtomicLong emptyBlockWriteCount = new AtomicLong();
+
     ByteBuffer buffer = ByteBuffer.allocate(blockSize * batchSize);
     List<ReadRequest> requests = new ArrayList<>();
-    allBlocks.forEach(getBlockIdConsumer(readers, writer, longCardinality, blockSize, batchSize, buffer, requests));
+    allBlocks.forEach(getBlockIdConsumer(readers, writer, longCardinality, blockSize, batchSize, buffer, requests,
+        dataBlockWriteCount, emptyBlockWriteCount));
     try {
-      flushBatch(readers, buffer, requests, writer);
+      flushBatch(readers, buffer, requests, writer, dataBlockWriteCount, emptyBlockWriteCount);
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
   }
 
   private static IntConsumer getBlockIdConsumer(List<Reader> readers, Writer writer, long longCardinality,
-      int blockSize, int batchSize, ByteBuffer buffer, List<ReadRequest> requests) {
+      int blockSize, int batchSize, ByteBuffer buffer, List<ReadRequest> requests, AtomicLong dataBlockWriteCount,
+      AtomicLong emptyBlockWriteCount) {
     return new IntConsumer() {
       private long count = 0;
       private long last;
@@ -144,12 +150,16 @@ public class BlockFile {
       public void accept(int blockId) {
         long now = System.currentTimeMillis();
         if (last + delay < now) {
-          LOGGER.info("merge {}% complete, count {} total {}",
-              ((long) (((double) count / (double) longCardinality) * 1000) / 10.0), count, longCardinality);
+          LOGGER.info("merge {}% complete, count {} total {} dataBlocks {} emptyBlocks {}",
+              ((long) (((double) count / (double) longCardinality) * 1000) / 10.0), count, longCardinality,
+              dataBlockWriteCount.get(), emptyBlockWriteCount.get());
           last = System.currentTimeMillis();
+          dataBlockWriteCount.set(0);
+          emptyBlockWriteCount.set(0);
         }
         try {
-          processBlockId(readers, blockSize, batchSize, buffer, requests, blockId, writer);
+          processBlockId(readers, blockSize, batchSize, buffer, requests, blockId, writer, dataBlockWriteCount,
+              emptyBlockWriteCount);
         } catch (IOException e) {
           throw new RuntimeException(e);
         }
@@ -159,7 +169,8 @@ public class BlockFile {
   }
 
   private static void processBlockId(List<Reader> readers, int blockSize, int batchSize, ByteBuffer buffer,
-      List<ReadRequest> requests, int blockId, Writer writer) throws IOException {
+      List<ReadRequest> requests, int blockId, Writer writer, AtomicLong dataBlockWriteCount,
+      AtomicLong emptyBlockWriteCount) throws IOException {
     int bufferPosition = requests.size() * blockSize;
     buffer.position(bufferPosition);
     buffer.limit(bufferPosition + blockSize);
@@ -167,23 +178,24 @@ public class BlockFile {
     requests.add(new ReadRequest(blockId, 0, slice));
 
     if (requests.size() >= batchSize) {
-      flushBatch(readers, buffer, requests, writer);
+      flushBatch(readers, buffer, requests, writer, dataBlockWriteCount, emptyBlockWriteCount);
     }
   }
 
-  private static void flushBatch(List<Reader> readers, ByteBuffer buffer, List<ReadRequest> requests, Writer writer)
-      throws IOException {
+  private static void flushBatch(List<Reader> readers, ByteBuffer buffer, List<ReadRequest> requests, Writer writer,
+      AtomicLong dataBlockWriteCount, AtomicLong emptyBlockWriteCount) throws IOException {
     for (Reader reader : readers) {
       if (!reader.read(requests)) {
         break;
       }
     }
-    writeReadRequests(requests, writer);
+    writeReadRequests(requests, writer, dataBlockWriteCount, emptyBlockWriteCount);
     buffer.clear();
     requests.clear();
   }
 
-  private static void writeReadRequests(List<ReadRequest> requests, Writer writer) throws IOException {
+  private static void writeReadRequests(List<ReadRequest> requests, Writer writer, AtomicLong dataBlockWriteCount,
+      AtomicLong emptyBlockWriteCount) throws IOException {
     for (ReadRequest request : requests) {
       long blockId = request.getBlockId();
       if (!request.isCompleted()) {
@@ -191,10 +203,12 @@ public class BlockFile {
       }
       if (request.isEmpty()) {
         writer.appendEmpty(blockId);
+        emptyBlockWriteCount.incrementAndGet();
       } else {
         ByteBuffer byteBuffer = request.getByteBuffer();
         byteBuffer.flip();
         writer.append(blockId, Utils.toBw(byteBuffer));
+        dataBlockWriteCount.incrementAndGet();
       }
     }
   }
