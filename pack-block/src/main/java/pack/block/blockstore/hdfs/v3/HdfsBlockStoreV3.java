@@ -143,7 +143,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
   @Override
   public void close() throws IOException {
-    fsync();
+    closeActiveWriter();
     _blockFileTimer.cancel();
     _blockFileTimer.purge();
     _readerCache.invalidateAll();
@@ -204,7 +204,7 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
       LOGGER.debug("read blockId {} len {} position {}", blockId, len, position);
       ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
       List<ReadRequest> requests = createRequests(position, byteBuffer, blockSize);
-      if (checkActiveWriter(requests)) {
+      if (readActiveWriter(requests)) {
         // commitActiveWriterIfNeeded(requests);
         readBlocks(requests);
       }
@@ -215,13 +215,16 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     }
   }
 
-  private boolean checkActiveWriter(List<ReadRequest> requests) throws IOException {
+  private boolean readActiveWriter(List<ReadRequest> requests) throws IOException {
     ActiveWriter activeWriter = _currentActive.get();
     if (activeWriter == null) {
       return true;
     }
-    if (activeWriter.checkCache(requests)) {
-      return activeWriter.checkCurrentWriteLog(requests);
+    if (activeWriter.readCache(requests)) {
+      if (activeWriter.hasFlushedCacheBlocks()) {
+        commitActiveWriter();
+      }
+      return activeWriter.readCurrentWriteLog(requests);
     } else {
       return false;
     }
@@ -287,12 +290,16 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
         return;
       }
       if (activeWriter.commit()) {
-        activeWriter.close();
-        _currentActive.set(null);
+        closeActiveWriter();
       }
     } finally {
       _fileWriteLock.unlock();
     }
+  }
+
+  private void closeActiveWriter() throws IOException {
+    ActiveWriter activeWriter = _currentActive.getAndSet(null);
+    activeWriter.close();
   }
 
   private void commitFile(Path path) throws IOException {

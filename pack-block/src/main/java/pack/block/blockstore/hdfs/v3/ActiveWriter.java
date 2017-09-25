@@ -40,7 +40,7 @@ public class ActiveWriter implements Closeable {
   private final Map<Long, ByteBuffer> _cache = new ConcurrentHashMap<>();
   private final long _maxSize = 10_000_000;
   private final int _maxCap = 10_000;
-  // private final Thread _readerThread;
+  private final Thread _readerThread;
   private final Path _path;
   private final AtomicBoolean _running = new AtomicBoolean(true);
   private final AtomicReference<ReaderMultiOrdered> _reader = new AtomicReference<>();
@@ -48,9 +48,8 @@ public class ActiveWriter implements Closeable {
   private final Object _readLock = new Object();
   private final AtomicInteger _commitCount = new AtomicInteger();
   private final int _maxCommitCount;
-
-  // private final BlockingQueue<SyncIndex> _readPositionQueue = new
-  // ArrayBlockingQueue<>(1);
+  private final AtomicBoolean _flushedBlocks = new AtomicBoolean();
+  private final BlockingQueue<SyncIndex> _readPositionQueue = new ArrayBlockingQueue<>(1);
 
   public ActiveWriter(FileSystem fileSystem, WriterMultiOrdered writer, RoaringBitmap index, Path path,
       int maxCommitCount) {
@@ -59,8 +58,12 @@ public class ActiveWriter implements Closeable {
     _writer = writer;
     _index = index;
     _path = path;
-    // _readerThread = createReaderThread();
-    // _readerThread.start();
+    _readerThread = createReaderThread();
+    _readerThread.start();
+  }
+
+  public boolean hasFlushedCacheBlocks() {
+    return _flushedBlocks.get();
   }
 
   public static void recoverBlock(FileSystem fileSystem, Path path) {
@@ -109,6 +112,7 @@ public class ActiveWriter implements Closeable {
         _writer.append(blockId, Utils.toBw(byteBuffer));
       }
     }
+    _flushedBlocks.set(true);
     _cache.clear();
     _cacheSize.set(0);
   }
@@ -122,12 +126,12 @@ public class ActiveWriter implements Closeable {
   @Override
   public void close() throws IOException {
     _running.set(false);
-    // _readerThread.interrupt();
-    // try {
-    // _readerThread.join();
-    // } catch (InterruptedException e) {
-    // LOGGER.error("Unknown error", e);
-    // }
+    _readerThread.interrupt();
+    try {
+      _readerThread.join();
+    } catch (InterruptedException e) {
+      LOGGER.error("Unknown error", e);
+    }
     flush();
     Utils.time(LOGGER, "activeWriter.close", () -> {
       _writer.close();
@@ -139,7 +143,7 @@ public class ActiveWriter implements Closeable {
     return _index.contains(key);
   }
 
-  public boolean checkCurrentWriteLog(List<ReadRequest> requests) throws IOException {
+  public boolean readCurrentWriteLog(List<ReadRequest> requests) throws IOException {
     if (waitUntilDataIsVisible(requests)) {
       synchronized (_readLock) {
         ReaderMultiOrdered reader = _reader.get();
@@ -151,32 +155,28 @@ public class ActiveWriter implements Closeable {
     return true;
   }
 
-  private boolean waitUntilDataIsVisible(List<ReadRequest> requests) {
-    return true;
+  private boolean waitUntilDataIsVisible(List<ReadRequest> requests) throws IOException {
+    SyncIndex syncIndex = _readPositionQueue.peek();
+    if (syncIndex == null) {
+      return false;
+    }
+    RoaringBitmap index = syncIndex._index;
+    for (ReadRequest request : requests) {
+      if (index.contains(Utils.getIntKey(request.getBlockId()))) {
+        while (true) {
+          LOGGER.info("waitUntilDataIsVisible");
+          SyncIndex peek = _readPositionQueue.peek();
+          if (peek == null || peek != syncIndex) {
+            return true;
+          }
+          sleep();
+        }
+      }
+    }
+    return false;
   }
 
-  // private boolean waitUntilDataIsVisible(List<ReadRequest> requests) throws
-  // IOException {
-  // SyncIndex syncIndex = _readPositionQueue.peek();
-  // if (syncIndex == null) {
-  // return false;
-  // }
-  // RoaringBitmap index = syncIndex._index;
-  // for (ReadRequest request : requests) {
-  // if (index.contains(Utils.getIntKey(request.getBlockId()))) {
-  // while (true) {
-  // SyncIndex peek = _readPositionQueue.peek();
-  // if (peek == null || peek != syncIndex) {
-  // return true;
-  // }
-  // sleep();
-  // }
-  // }
-  // }
-  // return false;
-  // }
-
-  public boolean checkCache(List<ReadRequest> requests) {
+  public boolean readCache(List<ReadRequest> requests) {
     boolean more = false;
     for (ReadRequest request : requests) {
       long blockId = request.getBlockId();
@@ -207,8 +207,60 @@ public class ActiveWriter implements Closeable {
     flush();
     _writer.writeFooter();
     long syncPosition = _writer.sync();
+    _flushedBlocks.set(false);
     reopenReaderToNewPosition(syncPosition, index);
     return _commitCount.incrementAndGet() >= _maxCommitCount;
+  }
+
+  private void reopenReaderToNewPosition(long syncPosition, RoaringBitmap index) throws IOException {
+    SyncIndex syncIndex = new SyncIndex(syncPosition, index);
+    try {
+      _readPositionQueue.put(syncIndex);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
+  }
+
+  private Runnable getRunnable() {
+    return () -> {
+      while (_running.get()) {
+        tryToSyncIndex();
+      }
+    };
+  }
+
+  private void tryToSyncIndex() {
+    LOGGER.info("tryToSyncIndex");
+    SyncIndex syncIndex = _readPositionQueue.peek();
+    if (syncIndex != null) {
+      try {
+        doReaderReOpen(syncIndex);
+        try {
+          _readPositionQueue.take();
+        } catch (InterruptedException e) {
+          return;
+        }
+      } catch (IOException e) {
+        LOGGER.error("Unknown error while trying to reopen write log.", e);
+      }
+    } else {
+      sleep();
+    }
+  }
+
+  private static void sleep() {
+    try {
+      Thread.sleep(TimeUnit.MILLISECONDS.toMillis(400));
+    } catch (InterruptedException e) {
+      return;
+    }
+  }
+
+  private Thread createReaderThread() {
+    Thread thread = new Thread(getRunnable());
+    thread.setDaemon(true);
+    thread.setName("reader-reopen-" + _path);
+    return thread;
   }
 
   static class SyncIndex {
@@ -220,51 +272,4 @@ public class ActiveWriter implements Closeable {
       _index = index;
     }
   }
-
-  private void reopenReaderToNewPosition(long syncPosition, RoaringBitmap index) throws IOException {
-    // try {
-    // _readPositionQueue.put(new SyncIndex(syncPosition, index));
-    // } catch (InterruptedException e) {
-    // throw new IOException(e);
-    // }
-    doReaderReOpen(new SyncIndex(syncPosition, index));
-  }
-
-  // private Runnable getRunnable() {
-  // return () -> {
-  // while (_running.get()) {
-  // SyncIndex syncIndex = _readPositionQueue.peek();
-  // if (syncIndex != null) {
-  // try {
-  // doReaderReOpen(syncIndex);
-  // try {
-  // _readPositionQueue.take();
-  // } catch (InterruptedException e) {
-  // return;
-  // }
-  // } catch (IOException e) {
-  // LOGGER.error("Unknown error while trying to reopen write log.", e);
-  // }
-  // } else {
-  // sleep();
-  // }
-  // }
-  // };
-  // }
-  //
-  // private static void sleep() {
-  // try {
-  // Thread.sleep(TimeUnit.SECONDS.toMillis(400));
-  // } catch (InterruptedException e) {
-  // return;
-  // }
-  // }
-  //
-  // private Thread createReaderThread() {
-  // Thread thread = new Thread(getRunnable());
-  // thread.setDaemon(true);
-  // thread.setName("reader-reopen-" + _path);
-  // return thread;
-  // }
-
 }
