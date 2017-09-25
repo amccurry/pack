@@ -259,4 +259,8 @@ public class Utils {
     return new BytesWritable(buf);
   }
 
+  public static File mkdir(File file) {
+    file.mkdirs();
+    return file;
+  }
 }

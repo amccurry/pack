@@ -128,6 +128,7 @@ public class HdfsBlockStoreV3Test {
 
     Random randomSeed = new Random();
     long seed = randomSeed.nextLong();
+
     Random random = new Random(seed);
 
     int blockSize = metaData.getFileSystemBlockSize();

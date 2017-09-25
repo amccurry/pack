@@ -20,7 +20,6 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
-import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,6 +73,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   private final Lock _blockFileReadLock = _blockFileLock.readLock();
   private final AtomicReference<ActiveWriter> _currentActive = new AtomicReference<>();
   private final int _maxCommitsPerActiveFile;
+  private final long _maxCacheSizePerActiveFile;
+  private final int _maxCacheCapPerActiveFile;
 
   public HdfsBlockStoreV3(MetricRegistry registry, FileSystem fileSystem, Path path) throws IOException {
     this(registry, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -94,6 +95,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     _path = qualify(path);
     _metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
     _maxCommitsPerActiveFile = _metaData.getMaxCommitsPerActiveFile();
+    _maxCacheSizePerActiveFile = 10_000_000;
+    _maxCacheCapPerActiveFile = 10_000;
 
     _fileSystemBlockSize = _metaData.getFileSystemBlockSize();
 
@@ -272,8 +275,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
       LOGGER.debug("created Writer {}", path);
       WriterMultiOrdered writer = (WriterMultiOrdered) BlockFile.create(false, _fileSystem, path, _fileSystemBlockSize,
           () -> commitFile(path));
-      RoaringBitmap index = new RoaringBitmap();
-      activeWriter = new ActiveWriter(_fileSystem, writer, index, path, _maxCommitsPerActiveFile);
+      activeWriter = new ActiveWriter(_fileSystem, writer, path, _maxCommitsPerActiveFile, _maxCacheSizePerActiveFile,
+          _maxCacheCapPerActiveFile);
       _currentActive.set(activeWriter);
       return activeWriter;
     } finally {
@@ -299,7 +302,9 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
   private void closeActiveWriter() throws IOException {
     ActiveWriter activeWriter = _currentActive.getAndSet(null);
-    activeWriter.close();
+    if (activeWriter != null) {
+      activeWriter.close();
+    }
   }
 
   private void commitFile(Path path) throws IOException {

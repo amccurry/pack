@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.UUID;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -22,6 +23,7 @@ import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.server.admin.BlockPackAdmin;
+import pack.block.util.Utils;
 import pack.zk.utils.ZkMiniCluster;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
@@ -51,20 +53,22 @@ public class BlockPackFuseTest {
 
   @BeforeClass
   public static void setup() throws IOException {
-    rmr(root);
-    File storePathDir = mkdir(new File(root, HDFS));
+    Utils.rmr(root);
+    File storePathDir = Utils.mkdir(new File(root, HDFS));
     Configuration configuration = new Configuration();
     String storePath = storePathDir.getAbsolutePath();
     configuration.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, storePath);
     cluster = new MiniDFSCluster.Builder(configuration).build();
     fileSystem = cluster.getFileSystem();
 
-    File zk = mkdir(new File(root, ZK));
+    File zk = Utils.mkdir(new File(root, ZK));
     zkMiniCluster = new ZkMiniCluster();
     zkMiniCluster.startZooKeeper(zk.getAbsolutePath(), true);
     zkConnection = zkMiniCluster.getZkConnectionString();
     zkTimeout = 10000;
     seed = new Random().nextLong();
+    seed = -8664257428250746912L;
+
   }
 
   @AfterClass
@@ -84,10 +88,14 @@ public class BlockPackFuseTest {
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
     HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
     File fuseDir = new File(fuse, FUSE);
-    String fuseLocalPath = mkdir(fuseDir).getAbsolutePath();
-    String fsLocalPath = mkdir(new File(fuse, MOUNT)).getAbsolutePath();
-    String fsLocalCachePath = mkdir(new File(fuse, CACHE)).getAbsolutePath();
-    String metricsLocalPath = mkdir(new File(fuse, METRICS)).getAbsolutePath();
+    String fuseLocalPath = Utils.mkdir(fuseDir)
+                                .getAbsolutePath();
+    String fsLocalPath = Utils.mkdir(new File(fuse, MOUNT))
+                              .getAbsolutePath();
+    String fsLocalCachePath = Utils.mkdir(new File(fuse, CACHE))
+                                   .getAbsolutePath();
+    String metricsLocalPath = Utils.mkdir(new File(fuse, METRICS))
+                                   .getAbsolutePath();
     ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnection, zkTimeout);
 
     BlockPackAdmin blockPackAdmin = new BlockPackAdmin() {
@@ -115,8 +123,9 @@ public class BlockPackFuseTest {
 
   private void testFuseMount(File fuseDir) throws IOException {
     File block = new File(fuseDir, BRICK);
-    File mirrorFile = new File(root, BRICK);
-    rmr(mirrorFile);
+    File mirrorFile = new File(root, BRICK + "." + UUID.randomUUID()
+                                                       .toString());
+    Utils.rmr(mirrorFile);
     int fileLength = (int) block.length();
 
     Random random = new Random(seed);
@@ -146,8 +155,10 @@ public class BlockPackFuseTest {
         random.nextBytes(buf);
         randBlock.seek(pos);
         randBlock.write(buf);
+
         mirrorBlock.seek(pos);
         mirrorBlock.write(buf);
+
       } else {
         byte[] buf1 = new byte[len];
         randBlock.seek(pos);
@@ -161,30 +172,9 @@ public class BlockPackFuseTest {
           System.out.println(Arrays.toString(buf1));
           System.out.println(Arrays.toString(buf2));
         }
-
         assertTrue("seed [" + seed + "]", Arrays.equals(buf1, buf2));
       }
     }
-  }
-
-  private static File mkdir(File file) {
-    file.mkdirs();
-    return file;
-  }
-
-  private static void rmr(File file) {
-    if (!file.exists()) {
-      return;
-    }
-    if (file.isDirectory()) {
-      File[] listFiles = file.listFiles();
-      if (listFiles != null) {
-        for (File f : listFiles) {
-          rmr(f);
-        }
-      }
-    }
-    file.delete();
   }
 
 }
