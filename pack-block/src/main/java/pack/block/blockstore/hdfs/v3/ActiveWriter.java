@@ -99,7 +99,7 @@ public class ActiveWriter implements Closeable {
     if (_cache.isEmpty()) {
       return;
     }
-    LOGGER.info("flush size {} count {}", _cacheSize.get(), _cache.size());
+    LOGGER.debug("flush size {} count {}", _cacheSize.get(), _cache.size());
     List<Long> blockIds = new ArrayList<>(_cache.keySet());
     Collections.sort(blockIds);
     for (Long blockId : blockIds) {
@@ -215,7 +215,7 @@ public class ActiveWriter implements Closeable {
             if (index.isVisible()) {
               return;
             }
-            LOGGER.info("checkAndWaitForDataToBeVisible - Got syncIndex lock");
+            LOGGER.debug("checkAndWaitForDataToBeVisible - Got syncIndex lock");
             index.wait();
           }
         }
@@ -249,7 +249,7 @@ public class ActiveWriter implements Closeable {
 
   private void makeVisible(SyncIndex syncIndex) throws IOException {
     synchronized (syncIndex) {
-      LOGGER.info("makeVisible - Got syncIndex lock");
+      LOGGER.debug("makeVisible - Got syncIndex lock");
       doReaderReOpen(syncIndex);
       syncIndex.setVisible(true);
       syncIndex.notifyAll();

@@ -19,7 +19,11 @@ import pack.block.server.fs.FileSystemType;
 @Builder(toBuilder = true)
 public class HdfsMetaData {
 
-  private static final int DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE = 16;
+  public static final int DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE = 10_000;
+
+  public static final long DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE = 10_000_000L;
+
+  public static final int DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE = 16;
 
   public static final int DEFAULT_FILESYSTEM_BLOCKSIZE = 4096;
 
@@ -39,6 +43,10 @@ public class HdfsMetaData {
                                                                    .maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
                                                                    .maxCommitsPerActiveFile(
                                                                        DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE)
+                                                                   .maxCacheCapPerActiveFile(
+                                                                       DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE)
+                                                                   .maxCacheSizePerActiveFile(
+                                                                       DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE)
                                                                    .build();
 
   @JsonProperty
@@ -61,6 +69,12 @@ public class HdfsMetaData {
 
   @JsonProperty
   int maxCommitsPerActiveFile = DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE;
+
+  @JsonProperty
+  long maxCacheSizePerActiveFile = DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE;
+
+  @JsonProperty
+  int maxCacheCapPerActiveFile = DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE;
 
   public static void main(String[] args) {
     System.out.println(DEFAULT_META_DATA);
