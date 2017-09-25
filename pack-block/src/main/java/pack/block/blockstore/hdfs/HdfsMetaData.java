@@ -23,7 +23,7 @@ public class HdfsMetaData {
 
   public static final long DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE = 10_000_000L;
 
-  public static final int DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE = 16;
+  public static final int DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE = 128;
 
   public static final int DEFAULT_FILESYSTEM_BLOCKSIZE = 4096;
 

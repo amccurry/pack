@@ -41,6 +41,7 @@ import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterMultiOrdered;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.block.util.Utils;
 
 public class HdfsBlockStoreV3 implements HdfsBlockStore {
 
@@ -95,8 +96,8 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     _path = qualify(path);
     _metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
     _maxCommitsPerActiveFile = _metaData.getMaxCommitsPerActiveFile();
-    _maxCacheSizePerActiveFile = 10_000_000;
-    _maxCacheCapPerActiveFile = 10_000;
+    _maxCacheSizePerActiveFile = _metaData.getMaxCacheSizePerActiveFile();
+    _maxCacheCapPerActiveFile = _metaData.getMaxCacheCapPerActiveFile();
 
     _fileSystemBlockSize = _metaData.getFileSystemBlockSize();
 
@@ -225,7 +226,10 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
     }
     if (activeWriter.readCache(requests)) {
       if (activeWriter.hasFlushedCacheBlocks()) {
-        commitActiveWriter();
+        Utils.time(LOGGER, "commitActiveWriter - readActiveWriter", () -> {
+          commitActiveWriter();
+          return null;
+        });
       }
       return activeWriter.readCurrentWriteLog(requests);
     } else {
@@ -236,7 +240,10 @@ public class HdfsBlockStoreV3 implements HdfsBlockStore {
   @Override
   public void fsync() throws IOException {
     LOGGER.debug("fsync");
-    commitActiveWriter();
+    Utils.time(LOGGER, "commitActiveWriter - fsync", () -> {
+      commitActiveWriter();
+      return null;
+    });
   }
 
   @Override

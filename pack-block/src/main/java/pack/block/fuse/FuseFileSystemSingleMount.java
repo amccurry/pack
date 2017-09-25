@@ -125,7 +125,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     switch (path) {
     case BRICK_FILENAME:
       try {
-        _logger.debug("read {} position {} length {}", path, offset, size);
+        _logger.info("read {} position {} length {}", path, offset, size);
         return readBlockStore(_blockStore, buf, size, offset);
       } catch (Throwable t) {
         _logger.error("Unknown error.", t);
@@ -146,7 +146,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     switch (path) {
     case BRICK_FILENAME:
       try {
-        _logger.debug("write {} position {} length {}", path, offset, size);
+        _logger.info("write {} position {} length {}", path, offset, size);
         return writeBlockStore(_blockStore, buf, size, offset);
       } catch (Throwable t) {
         _logger.error("Unknown error.", t);
@@ -163,6 +163,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int fsync(String path, int isdatasync, FuseFileInfo fi) {
+    _logger.info("fsync {} {} {}", path, isdatasync, fi);
     switch (path) {
     case BRICK_FILENAME:
       try {
@@ -183,6 +184,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int fallocate(String path, int mode, long off, long length, FuseFileInfo fi) {
+    _logger.info("fallocate {} {} {} {} {}", path, mode, off, length, fi);
     Set<FallocFlags> lookup = FallocFlags.lookup(mode);
     switch (path) {
     case BRICK_FILENAME:
@@ -207,7 +209,20 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   }
 
   @Override
+  public int open(String path, FuseFileInfo fi) {
+    _logger.info("open {} {}", path, fi);
+    return 0;
+  }
+
+  @Override
+  public int release(String path, FuseFileInfo fi) {
+    _logger.info("release {} {}", path, fi);
+    return 0;
+  }
+
+  @Override
   public int flush(String path, FuseFileInfo fi) {
+    _logger.info("flush {} {}", path, fi);
     return 0;
   }
 
