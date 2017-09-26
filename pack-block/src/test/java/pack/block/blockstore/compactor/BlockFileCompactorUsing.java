@@ -1,5 +1,6 @@
 package pack.block.blockstore.compactor;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
@@ -12,6 +13,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.HdfsMetaData;
 
 public class BlockFileCompactorUsing {
 
@@ -46,7 +48,14 @@ public class BlockFileCompactorUsing {
         System.out.println(contentSummary.getLength());
 
         long maxBlockFileSize = 1_000_000_000;
-        try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize, -0.1, null)) {
+
+        HdfsMetaData newMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                                 .maxBlockFileSize(maxBlockFileSize)
+                                                                 .maxObsoleteRatio(-0.1)
+                                                                 .build();
+
+        File cacheDir = new File("./target/tmp/BlockFileCompactorUsing");
+        try (BlockFileCompactor compactor = new BlockFileCompactor(cacheDir, fileSystem, path, newMetaData, null)) {
           compactor.runCompaction();
         }
         return null;

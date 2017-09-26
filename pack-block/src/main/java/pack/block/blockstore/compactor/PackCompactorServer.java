@@ -1,17 +1,20 @@
 package pack.block.blockstore.compactor;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.hadoop.util.ShutdownHookManager;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +32,8 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class PackCompactorServer implements Closeable {
 
+  private static final String CACHE = "cache";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(PackCompactorServer.class);
 
   private static final String COMPACTION = "/compaction";
@@ -39,6 +44,12 @@ public class PackCompactorServer implements Closeable {
     String zkConnectionString = Utils.getZooKeeperConnectionString();
     int sessionTimeout = Utils.getZooKeeperConnectionTimeout();
     String hdfsPath = Utils.getHdfsPath();
+    String localWorkingPath = Utils.getLocalWorkingPath();
+    File cacheDir = new File(localWorkingPath, CACHE);
+    cacheDir.mkdirs();
+    AtomicBoolean running = new AtomicBoolean(true);
+    ShutdownHookManager.get()
+                       .addShutdownHook(() -> running.set(false), Integer.MAX_VALUE);
 
     Configuration configuration = new Configuration();
     FileSystem fileSystem = FileSystem.get(configuration);
@@ -46,8 +57,8 @@ public class PackCompactorServer implements Closeable {
     ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout);
     List<Path> pathList = getPathList(fileSystem, hdfsPath);
 
-    try (PackCompactorServer packCompactorServer = new PackCompactorServer(fileSystem, pathList, zooKeeper)) {
-      while (true) {
+    try (PackCompactorServer packCompactorServer = new PackCompactorServer(cacheDir, fileSystem, pathList, zooKeeper)) {
+      while (running.get()) {
         ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
           try {
             packCompactorServer.executeCompaction();
@@ -66,12 +77,13 @@ public class PackCompactorServer implements Closeable {
   private final ZooKeeperLockManager _compactionLockManager;
   private final Closer _closer;
   private final ZooKeeperLockManager _mountLockManager;
+  private final File _cacheDir;
 
-  public PackCompactorServer(FileSystem fileSystem, List<Path> pathList, ZooKeeperClient zooKeeper) {
+  public PackCompactorServer(File cacheDir, FileSystem fileSystem, List<Path> pathList, ZooKeeperClient zooKeeper) {
     // coord with zookeeper
     // use zookeeper to know if the block store is mount (to know whether
     // cleanup can be done)
-
+    _cacheDir = cacheDir;
     _closer = Closer.create();
     _fileSystem = fileSystem;
     _pathList = pathList;
@@ -104,10 +116,9 @@ public class PackCompactorServer implements Closeable {
     if (_compactionLockManager.tryToLock(lockName)) {
       try {
         HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
-        long maxBlockFileSize = metaData.getMaxBlockFileSize();
-        double maxObsoleteRatio = metaData.getMaxObsoleteRatio();
-        try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, maxBlockFileSize,
-            maxObsoleteRatio, _mountLockManager)) {
+
+        try (BlockFileCompactor compactor = new BlockFileCompactor(_cacheDir, _fileSystem, volumePath, metaData,
+            _mountLockManager)) {
           compactor.runCompaction();
         }
       } finally {

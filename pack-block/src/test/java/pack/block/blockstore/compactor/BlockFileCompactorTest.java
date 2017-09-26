@@ -27,6 +27,7 @@ import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.io.Closer;
 
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
@@ -35,6 +36,7 @@ public class BlockFileCompactorTest {
 
   private static MiniDFSCluster cluster;
   private static File storePathDir = new File("./test");
+  private static File cacheDir = new File(storePathDir, "cache");
   private static FileSystem fileSystem;
   private static long seed;
 
@@ -97,7 +99,12 @@ public class BlockFileCompactorTest {
     int maxNumberOfBlocksToWrite = 100;
     generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, 0, 0.0, null)) {
+    HdfsMetaData newMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                             .maxBlockFileSize(0)
+                                                             .maxObsoleteRatio(0.0)
+                                                             .build();
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(cacheDir, fileSystem, path, newMetaData, null)) {
       compactor.runCompaction();
     }
 
@@ -116,7 +123,12 @@ public class BlockFileCompactorTest {
     int maxNumberOfBlocksToWrite = 100;
     generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, Long.MAX_VALUE, 10.0, null)) {
+    HdfsMetaData newMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                             .maxBlockFileSize(Long.MAX_VALUE)
+                                                             .maxObsoleteRatio(10.0)
+                                                             .build();
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(cacheDir, fileSystem, path, newMetaData, null)) {
       compactor.runCompaction();
     }
 
@@ -138,7 +150,12 @@ public class BlockFileCompactorTest {
     generatBlockFilesNotConsidered(data, path, random, blockSize, maxFilesUnderBlockFileSize, maxFilesOverBlockFileSize,
         maxBlockIdsIncr, maxNumberOfBlocksToWrite, maxBlockFileSize);
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, maxBlockFileSize, 10.0, null)) {
+    HdfsMetaData newMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                             .maxBlockFileSize(maxBlockFileSize)
+                                                             .maxObsoleteRatio(10.0)
+                                                             .build();
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(cacheDir, fileSystem, path, newMetaData, null)) {
       compactor.runCompaction();
     }
 

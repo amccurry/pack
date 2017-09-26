@@ -1,5 +1,6 @@
 package pack.block.blockstore.compactor;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.Arrays;
@@ -26,7 +27,8 @@ public class BlockFileCompactorServerUsing {
     List<Path> pathList = Arrays.asList(new Path("/block"));
     int sessionTimeout = 30000;
     try (ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper("localhost/localtestpack", sessionTimeout)) {
-      try (PackCompactorServer packCompactorServer = new PackCompactorServer(fileSystem, pathList, zooKeeper)) {
+      try (PackCompactorServer packCompactorServer = new PackCompactorServer(new File("./tmp"), fileSystem, pathList,
+          zooKeeper)) {
         while (true) {
           packCompactorServer.executeCompaction();
           Thread.sleep(TimeUnit.SECONDS.toMillis(10));

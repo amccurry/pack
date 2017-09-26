@@ -6,21 +6,36 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import pack.block.blockstore.BlockStore;
 import pack.block.server.fs.Ext4LinuxFileSystem;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.block.util.Utils;
 
 public class FileBlockStore implements BlockStore {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(FileBlockStore.class);
+  private static final String RW = "rw";
 
   private final File _file;
   private final RandomAccessFile _rand;
   private final FileChannel _channel;
   private final long _length;
+  private final boolean _enableSync;
 
-  public FileBlockStore(File file) throws IOException {
+  public FileBlockStore(File file, long length, boolean enableSync) throws IOException {
+    file.getParentFile()
+        .mkdirs();
+    _enableSync = enableSync;
+    boolean exists = file.exists();
     _file = file;
     _length = file.length();
-    _rand = new RandomAccessFile(_file, "rw");
+    _rand = new RandomAccessFile(_file, RW);
+    if (!exists) {
+      _rand.setLength(length);
+    }
     _channel = _rand.getChannel();
   }
 
@@ -47,19 +62,19 @@ public class FileBlockStore implements BlockStore {
 
   @Override
   public int write(long position, byte[] buffer, int offset, int len) throws IOException {
-    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
-    return _channel.write(byteBuffer, position);
+    return _channel.write(ByteBuffer.wrap(buffer, offset, len), position);
   }
 
   @Override
   public int read(long position, byte[] buffer, int offset, int len) throws IOException {
-    ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
-    return _channel.read(byteBuffer, position);
+    return _channel.read(ByteBuffer.wrap(buffer, offset, len), position);
   }
 
   @Override
   public void fsync() throws IOException {
-    _channel.force(true);
+    if (_enableSync) {
+      _channel.force(true);
+    }
   }
 
   @Override
@@ -68,8 +83,12 @@ public class FileBlockStore implements BlockStore {
   }
 
   @Override
-  public void delete(long position, long length) {
+  public void delete(long position, long length) throws IOException {
+    Utils.punchHole(LOGGER, _file, position, length);
+  }
 
+  public long getNumberOfBlocksOnDisk() throws IOException {
+    return Utils.getNumberOfBlocksOnDisk(LOGGER, _file);
   }
 
 }

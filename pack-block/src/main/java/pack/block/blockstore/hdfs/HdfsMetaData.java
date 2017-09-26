@@ -35,6 +35,8 @@ public class HdfsMetaData {
 
   public static final double DEFAULT_MAX_OBSOLETE_RATIO = 0.5;
 
+  public static final long DEFAULT_MAX_WAL_FILE_SIZE = 1024L * 1024L;
+
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
                                                                    .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
                                                                    .fileSystemType(FileSystemType.XFS)
@@ -47,6 +49,7 @@ public class HdfsMetaData {
                                                                        DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE)
                                                                    .maxCacheSizePerActiveFile(
                                                                        DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE)
+                                                                   .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
                                                                    .build();
 
   @JsonProperty
@@ -75,6 +78,9 @@ public class HdfsMetaData {
 
   @JsonProperty
   int maxCacheCapPerActiveFile = DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE;
+
+  @JsonProperty
+  long maxWalFileSize = DEFAULT_MAX_WAL_FILE_SIZE;
 
   public static void main(String[] args) {
     System.out.println(DEFAULT_META_DATA);

@@ -5,6 +5,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -236,14 +238,16 @@ public abstract class PackServer {
       throws IOException, InterruptedException {
     ProcessBuilder builder = new ProcessBuilder(command);
     Process process = builder.start();
-    Thread t1 = captureOutput(cmdId, "stdout", toBuffer(process.getInputStream()), logger);
-    Thread t2 = captureOutput(cmdId, "stderr", toBuffer(process.getErrorStream()), logger);
+    StringWriter stdout = new StringWriter();
+    StringWriter stderr = new StringWriter();
+    Thread t1 = captureOutput(cmdId, "stdout", toBuffer(process.getInputStream()), logger, stdout);
+    Thread t2 = captureOutput(cmdId, "stderr", toBuffer(process.getErrorStream()), logger, stderr);
     t1.start();
     t2.start();
     int exitCode = process.waitFor();
     t1.join();
     t2.join();
-    return new Result(exitCode);
+    return new Result(exitCode, stdout.toString(), stderr.toString());
   }
 
   private static BufferedReader toBuffer(InputStream inputStream) {
@@ -252,13 +256,17 @@ public abstract class PackServer {
 
   public static class Result {
     public final int exitCode;
+    public final String stdout;
+    public final String stderr;
 
-    public Result(int exitCode) {
+    public Result(int exitCode, String stdout, String stderr) {
       this.exitCode = exitCode;
+      this.stdout = stdout;
+      this.stderr = stderr;
     }
   }
 
-  private static Thread captureOutput(String cmdId, String type, BufferedReader reader, Logger logger) {
+  private static Thread captureOutput(String cmdId, String type, BufferedReader reader, Logger logger, Writer writer) {
     return new Thread(new Runnable() {
       @Override
       public void run() {
@@ -266,9 +274,16 @@ public abstract class PackServer {
           String s;
           while ((s = reader.readLine()) != null) {
             logger.info("Command {} Type {} Message {}", cmdId, type, s.trim());
+            writer.write(s);
           }
         } catch (IOException e) {
           LOG.error("Unknown error", e);
+        } finally {
+          try {
+            writer.close();
+          } catch (IOException e) {
+            LOG.error("Error trying to close output writer", e);
+          }
         }
       }
     });

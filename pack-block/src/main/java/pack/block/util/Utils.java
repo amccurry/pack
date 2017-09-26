@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -18,6 +19,8 @@ import org.apache.log4j.PropertyConfigurator;
 import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.base.Splitter;
 
 import pack.PackServer;
 import pack.PackServer.Result;
@@ -45,6 +48,18 @@ public class Utils {
   public static final String PACK_HDFS_USER = "PACK_HDFS_USER";
   public static final String VAR_LOG_PACK = "/var/log/pack";
   public static final String VAR_LIB_PACK = "/var/lib/pack";
+  private static final Splitter SPACE_SPLITTER = Splitter.on(' ');
+  private static final String LS = "ls";
+  private static final String ALLOCATED_SIZE_SWITCH = "-s";
+  private static final String LENGTH_SWTICH = "--length";
+  private static final String OFFSET_SWITCH = "--offset";
+  private static final String PUNCH_HOLE_SWITCH = "--punch-hole";
+  private static final String KEEP_SIZE_SWITCH = "--keep-size";
+  private static final String FALLOCATE = "fallocate";
+
+  public static Path qualify(FileSystem fileSystem, Path path) {
+    return path.makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
+  }
 
   public static void closeQuietly(final Closeable closeable) {
     try {
@@ -194,6 +209,20 @@ public class Utils {
     }
   }
 
+  public static Result execAsResult(Logger logger, String... command) throws IOException {
+    String uuid = UUID.randomUUID()
+                      .toString();
+    List<String> list = Arrays.asList(command);
+    logger.info("Executing command id {} cmd {}", uuid, list);
+    try {
+      return PackServer.exec(uuid, list, logger);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    } finally {
+      logger.info("Command id {} complete", uuid);
+    }
+  }
+
   public static int execReturnExitCode(Logger logger, String... command) throws IOException {
     String uuid = UUID.randomUUID()
                       .toString();
@@ -262,5 +291,19 @@ public class Utils {
   public static File mkdir(File file) {
     file.mkdirs();
     return file;
+  }
+
+  public static void punchHole(Logger logger, File file, long offset, long length) throws IOException {
+    Utils.exec(logger, FALLOCATE, KEEP_SIZE_SWITCH, PUNCH_HOLE_SWITCH, OFFSET_SWITCH, Long.toString(offset),
+        LENGTH_SWTICH, Long.toString(length), file.getAbsolutePath());
+  }
+
+  public static long getNumberOfBlocksOnDisk(Logger logger, File file) throws IOException {
+    Result result = Utils.execAsResult(logger, LS, ALLOCATED_SIZE_SWITCH, file.getAbsolutePath());
+    if (result.exitCode == 0) {
+      List<String> list = SPACE_SPLITTER.splitToList(result.stdout);
+      return Long.parseLong(list.get(0));
+    }
+    throw new IOException("Error " + result.stderr);
   }
 }
