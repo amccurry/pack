@@ -40,7 +40,8 @@ import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
 import pack.block.blockstore.hdfs.file.ReadRequest;
-import pack.block.blockstore.hdfs.v4.LocalContext;
+import pack.block.blockstore.hdfs.v4.LocalWalCache;
+import pack.block.blockstore.hdfs.v4.WalFileFactory;
 import pack.block.util.Utils;
 import pack.zk.utils.ZooKeeperLockManager;
 
@@ -62,6 +63,7 @@ public class BlockFileCompactor implements Closeable {
   private final int _blockSize;
   private final long _length;
   private final File _cacheDir;
+  private final WalFileFactory _walFactory;
 
   public BlockFileCompactor(File cacheDir, FileSystem fileSystem, Path path, HdfsMetaData metaData,
       ZooKeeperLockManager inUseLockManager) throws IOException {
@@ -74,6 +76,7 @@ public class BlockFileCompactor implements Closeable {
     _fileSystem = fileSystem;
     _lockName = Utils.getLockName(path);
     _blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
+    _walFactory = WalFileFactory.create(_fileSystem, metaData);
     cleanupBlocks();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
@@ -91,20 +94,22 @@ public class BlockFileCompactor implements Closeable {
       LOGGER.info("Path {} does not exist, exiting", _blockPath);
       return;
     }
-    LOGGER.info("Path {} size {}", _blockPath, _fileSystem.getContentSummary(_blockPath)
-                                                          .getLength());
+
     convertWalFiles();
 
     FileStatus[] listStatus = getBlockFiles();
     if (listStatus.length < 2) {
-      LOGGER.info("Path {} contains less than 2 block files, exiting", _blockPath);
+      LOGGER.debug("Path {} contains less than 2 block files, exiting", _blockPath);
       return;
     }
+
     Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
     List<CompactionJob> compactionJobs = getCompactionJobs(listStatus);
     if (compactionJobs.isEmpty()) {
       return;
     }
+    LOGGER.info("Starting compaction - path {} size {}", _blockPath, _fileSystem.getContentSummary(_blockPath)
+                                                                                .getLength());
     LOGGER.info("Compaction job count {} for path {}", compactionJobs.size(), _blockPath);
     for (CompactionJob job : compactionJobs) {
       runJob(job);
@@ -114,6 +119,8 @@ public class BlockFileCompactor implements Closeable {
     } catch (KeeperException | InterruptedException e) {
       LOGGER.error("Unknown error", e);
     }
+    LOGGER.info("Finished compaction - path {} size {}", _blockPath, _fileSystem.getContentSummary(_blockPath)
+                                                                                .getLength());
   }
 
   private void tryToPruneOldFiles() throws IOException, KeeperException, InterruptedException {
@@ -172,8 +179,8 @@ public class BlockFileCompactor implements Closeable {
                                   .toString()
         + ".context");
 
-    try (LocalContext localContext = new LocalContext(file, _length, _blockSize)) {
-      LocalContext.applyWal(_fileSystem, path, localContext);
+    try (LocalWalCache localContext = new LocalWalCache(file, _length, _blockSize)) {
+      LocalWalCache.applyWal(_walFactory, path, localContext);
 
       LOGGER.info("Wal convert - Starting to write block");
 
@@ -204,7 +211,7 @@ public class BlockFileCompactor implements Closeable {
     Utils.rmr(dir);
   }
 
-  private void appendBlock(LocalContext localContext, Writer writer, RoaringBitmap emptyBlocks, int value)
+  private void appendBlock(LocalWalCache localContext, Writer writer, RoaringBitmap emptyBlocks, int value)
       throws IOException {
     if (emptyBlocks.contains(value)) {
       writer.appendEmpty(value);
@@ -213,7 +220,7 @@ public class BlockFileCompactor implements Closeable {
     }
   }
 
-  private BytesWritable getValue(int blockId, LocalContext localContext) throws IOException {
+  private BytesWritable getValue(int blockId, LocalWalCache localContext) throws IOException {
     ByteBuffer dest = ByteBuffer.allocate(_blockSize);
     ReadRequest request = new ReadRequest(blockId, 0, dest);
     if (localContext.readBlock(request)) {

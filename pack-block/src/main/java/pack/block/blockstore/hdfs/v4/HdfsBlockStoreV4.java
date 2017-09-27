@@ -6,11 +6,13 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
-import java.util.UUID;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -21,12 +23,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
-import org.apache.hadoop.io.SequenceFile;
-import org.apache.hadoop.io.SequenceFile.CompressionType;
-import org.apache.hadoop.io.SequenceFile.Writer;
-import org.apache.hadoop.io.SequenceFile.Writer.Option;
-import org.apache.hadoop.io.compress.CompressionCodec;
-import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -82,10 +78,11 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
   private final Lock _blockFileReadLock = _blockFileLock.readLock();
   private final AtomicReference<WriterContext> _writer = new AtomicReference<>();
   private final long _maxWalSize;
-  private final LocalContext _localContext;
-  private final CompressionType _compressionType;
-  private final CompressionCodec _compressCodec;
-  private final CompressionCodecFactory _compressionCodecFactory;
+  private final AtomicReference<List<Path>> _localCacheList = new AtomicReference<List<Path>>(ImmutableList.of());
+  private final Cache<Path, LocalWalCache> _localCache;
+  private final File _cacheDir;
+  private final AtomicLong _genCounter;
+  private final WalFileFactory _walFactory;
 
   public HdfsBlockStoreV4(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path) throws IOException {
     this(registry, cacheDir, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -93,8 +90,6 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
 
   public HdfsBlockStoreV4(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
       HdfsBlockStoreConfig config) throws IOException {
-
-    _compressionCodecFactory = new CompressionCodecFactory(fileSystem.getConf());
 
     _registry = registry;
 
@@ -108,10 +103,14 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     _path = Utils.qualify(fileSystem, path);
     _metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
 
-    _compressionType = getCompressType(_metaData.getWalCompressionType());
-    LOGGER.info("WAL compression type {}", _compressionType);
-    _compressCodec = getCompressCodec(_metaData.getWalCompressionCodec());
-    LOGGER.info("WAL compression codec {}", _compressCodec);
+    _walFactory = WalFileFactory.create(_fileSystem, _metaData);
+
+    _cacheDir = cacheDir;
+    Utils.rmr(_cacheDir);
+    _cacheDir.mkdirs();
+    _localCache = CacheBuilder.newBuilder()
+                              .removalListener(getRemovalListener())
+                              .build();
 
     _maxWalSize = _metaData.getMaxWalFileSize();
 
@@ -120,15 +119,13 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     _length = _metaData.getLength();
     _blockPath = Utils.qualify(fileSystem, new Path(_path, HdfsBlockStoreConfig.BLOCK));
     _fileSystem.mkdirs(_blockPath);
+    _genCounter = new AtomicLong(readGenCounter());
 
-    cacheDir.mkdirs();
-
-    _localContext = new LocalContext(new File(cacheDir, _path.getName()), _length, _metaData.getFileSystemBlockSize());
-
-    cleanupBlocks();
-    RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
+    loadWalFiles();
+    RemovalListener<Path, BlockFile.Reader> readerListener = notification -> IOUtils.closeQuietly(
+        notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
-                               .removalListener(listener)
+                               .removalListener(readerListener)
                                .build();
 
     List<Path> pathList = getBlockFilePathListFromStorage();
@@ -143,33 +140,109 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     _blockFileTimer.schedule(getBlockFileTask(), period, period);
   }
 
-  private CompressionCodec getCompressCodec(String walCompressionCodec) {
-    if (walCompressionCodec == null) {
-      return null;
-    }
-    CompressionCodec codecByName = _compressionCodecFactory.getCodecByName(walCompressionCodec);
-    if (codecByName != null) {
-      return codecByName;
-    }
-    return _compressionCodecFactory.getCodecByClassName(walCompressionCodec);
+  private RemovalListener<Path, LocalWalCache> getRemovalListener() {
+    return notification -> {
+      synchronized (_localCacheList) {
+        List<Path> newList = new ArrayList<>(_localCacheList.get());
+        newList.remove(notification.getKey());
+        _localCacheList.set(ImmutableList.copyOf(newList));
+      }
+      LocalWalCache localWalCache = notification.getValue();
+      LOGGER.info("Closing and removing local wal cache {}", localWalCache);
+      Utils.close(LOGGER, localWalCache);
+    };
   }
 
-  private CompressionType getCompressType(String walCompressionType) {
-    if (walCompressionType == null) {
-      return null;
+  private long readGenCounter() throws IOException {
+    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) path -> {
+      String name = path.getName();
+      return BlockFile.isOrderedBlock(path) || name.endsWith(WAL) || name.endsWith(WAL_TMP);
+    });
+    if (listStatus.length == 0) {
+      return 0;
     }
-    return CompressionType.valueOf(walCompressionType.toUpperCase());
+    Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
+    return readGen(listStatus[0]);
   }
 
-  private void cleanupBlocks() throws IOException {
+  private long readGen(FileStatus fileStatus) throws IOException {
+    return readGen(fileStatus.getPath());
+  }
+
+  private long readGen(Path path) throws IOException {
+    return readGen(path.getName());
+  }
+
+  private long readGen(String name) throws IOException {
+    int indexOf = name.indexOf('.');
+    if (indexOf < 0) {
+      throw new IOException("Malformed file " + name);
+    }
+    return Long.parseLong(name.substring(0, indexOf));
+  }
+
+  private void loadWalFiles() throws IOException {
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath);
+    List<Path> walPathList = new ArrayList<>();
     for (FileStatus fileStatus : listStatus) {
-      if (shouldTryToRecover(fileStatus.getPath())) {
-        recoverBlock(fileStatus.getPath());
-      } else if (shouldTryToPullWal(fileStatus.getPath())) {
-        LocalContext.applyWal(_fileSystem, fileStatus.getPath(), _localContext);
+      Path path = fileStatus.getPath();
+      if (shouldTryToRecover(path)) {
+        recoverBlock(path);
+      } else if (shouldTryToPullWal(path)) {
+        LocalWalCache localWalCache = getLocalWalCache(path);
+        LocalWalCache.applyWal(_walFactory, path, localWalCache);
+        walPathList.add(path);
       }
     }
+    Collections.sort(walPathList, BlockFile.ORDERED_PATH_COMPARATOR);
+    synchronized (_localCacheList) {
+      _localCacheList.set(ImmutableList.copyOf(walPathList));
+    }
+  }
+
+  private LocalWalCache getLocalWalCache(Path path) throws IOException {
+    LocalWalCache localWalCache;
+    try {
+      localWalCache = _localCache.get(path, getValueLoader(path));
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof IOException) {
+        throw (IOException) cause;
+      }
+      throw new IOException(cause);
+    }
+    return localWalCache;
+  }
+
+  private Callable<? extends LocalWalCache> getValueLoader(Path path) {
+    return () -> {
+      LOGGER.info("Loading cache for path {}", path);
+      synchronized (_localCacheList) {
+        List<Path> newList = new ArrayList<>(_localCacheList.get());
+        newList.add(path);
+        Collections.sort(newList, BlockFile.ORDERED_PATH_COMPARATOR);
+        _localCacheList.set(ImmutableList.copyOf(newList));
+      }
+      return new LocalWalCache(new File(_cacheDir, path.getName()), _length, _metaData.getFileSystemBlockSize());
+    };
+  }
+
+  private LocalWalCache getCurrentLocalContext(WriterContext writer) throws IOException {
+    return getLocalWalCache(writer.path);
+  }
+
+  private Path newDataGenerationFile(String ext) {
+    long gen = _genCounter.incrementAndGet();
+    return Utils.qualify(_fileSystem, new Path(_blockPath, Long.toString(gen) + ext));
+  }
+
+  private Path newExtPath(Path path, String ext) throws IOException {
+    String name = path.getName();
+    int lastIndexOf = name.lastIndexOf('.');
+    if (lastIndexOf < 0) {
+      throw new IOException("Path " + path + " has no ext");
+    }
+    return new Path(path.getParent(), name.substring(0, lastIndexOf) + ext);
   }
 
   private boolean shouldTryToPullWal(Path path) {
@@ -237,7 +310,7 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
         }
         WriterContext writer = getWriter();
         writer.append(blockId, getValue(byteBuffer));
-        LocalContext local = getLocalContext();
+        LocalWalCache local = getCurrentLocalContext(writer);
         local.write(blockId, byteBuffer);
         _writeMeter.mark(len);
         return len;
@@ -247,28 +320,12 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     }
   }
 
-  private LocalContext getLocalContext() {
-    return _localContext;
-  }
-
   private WriterContext getWriter() throws IOException {
     synchronized (_writer) {
       WriterContext context = _writer.get();
       if (context == null) {
-        Path tmpPath = getNewTempFile();
-        List<Option> options = new ArrayList<>();
-        options.add(SequenceFile.Writer.file(tmpPath));
-        options.add(SequenceFile.Writer.keyClass(WalKeyWritable.class));
-        options.add(SequenceFile.Writer.valueClass(BytesWritable.class));
-        if (_compressionType != null) {
-          if (_compressCodec != null) {
-            options.add(SequenceFile.Writer.compression(_compressionType, _compressCodec));
-          } else {
-            options.add(SequenceFile.Writer.compression(_compressionType));
-          }
-        }
-        Writer writer = SequenceFile.createWriter(_fileSystem.getConf(), options.toArray(new Option[options.size()]));
-        context = new WriterContext(writer, tmpPath);
+        Path tmpPath = newDataGenerationFile(WAL_TMP);
+        context = new WriterContext(_walFactory.create(tmpPath), tmpPath);
         _writer.set(context);
       }
       return context;
@@ -280,7 +337,7 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
       WriterContext context = _writer.getAndSet(null);
       if (context != null) {
         context.writer.close();
-        _fileSystem.rename(context.path, getNewWalFilePath());
+        _fileSystem.rename(context.path, newExtPath(context.path, WAL));
       }
     }
   }
@@ -300,14 +357,6 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     }
   }
 
-  private Path getNewWalFilePath() {
-    return Utils.qualify(_fileSystem, getNewWalPathFile(_blockPath));
-  }
-
-  public static Path getNewWalPathFile(Path dir) {
-    return new Path(dir, System.currentTimeMillis() + WAL);
-  }
-
   @Override
   public int read(long position, byte[] buffer, int offset, int len) throws IOException {
     int blockSize = _fileSystemBlockSize;
@@ -316,8 +365,7 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
       LOGGER.debug("read blockId {} len {} position {}", blockId, len, position);
       ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
       List<ReadRequest> requests = createRequests(position, byteBuffer, blockSize);
-      LocalContext local = getLocalContext();
-      if (local.readBlocks(requests)) {
+      if (readBlocksFromLocalWalCaches(requests)) {
         readBlocks(requests);
       }
       _readMeter.mark(len);
@@ -327,13 +375,25 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     }
   }
 
+  private boolean readBlocksFromLocalWalCaches(List<ReadRequest> requests) throws IOException {
+    List<Path> walPathList = _localCacheList.get();
+    for (Path walPath : walPathList) {
+      LocalWalCache localWalCache = getLocalWalCache(walPath);
+      if (!localWalCache.readBlocks(requests)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   @Override
   public void fsync() throws IOException {
     LOGGER.debug("fsync");
-    Utils.time(LOGGER, "fsync", () -> {
-      flushWriter();
-      return null;
-    });
+    // Utils.time(LOGGER, "fsync", () -> {
+    // flushWriter();
+    // return null;
+    // });
+    flushWriter();
   }
 
   @Override
@@ -352,18 +412,12 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     _fileWriteLock.lock();
     try {
       WriterContext writer = getWriter();
-      LocalContext localContext = getLocalContext();
+      LocalWalCache localContext = getCurrentLocalContext(writer);
       writer.delete(startingBlockId, endingBlockId);
       localContext.delete(startingBlockId, endingBlockId);
     } finally {
       _fileWriteLock.unlock();
     }
-  }
-
-  private Path getNewTempFile() {
-    String uuid = UUID.randomUUID()
-                      .toString();
-    return Utils.qualify(_fileSystem, new Path(_blockPath, uuid + WAL_TMP));
   }
 
   private void readBlocks(List<ReadRequest> requests) throws IOException {
@@ -484,6 +538,7 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
 
   private void removeBlockFiles(List<String> sourceBlockFiles) throws IOException {
     for (String name : sourceBlockFiles) {
+      invalidateLocalCache(name);
       Path path = Utils.qualify(_fileSystem, new Path(_blockPath, name));
       if (path.getName()
               .endsWith(HdfsBlockStoreConfig.BLOCK)
@@ -492,6 +547,14 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
         removeBlockFiles(reader.getSourceBlockFiles());
       }
       removeBlockFile(path);
+    }
+  }
+
+  private void invalidateLocalCache(String name) throws IOException {
+    if (name.endsWith(WAL) || name.endsWith(WAL_TMP)) {
+      Path path = Utils.qualify(_fileSystem, new Path(_blockPath, name));
+      _localCache.invalidate(newExtPath(path, WAL));
+      _localCache.invalidate(newExtPath(path, WAL_TMP));
     }
   }
 
@@ -564,10 +627,10 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
   }
 
   private static class WriterContext {
-    final Writer writer;
+    final WalFile.Writer writer;
     final Path path;
 
-    WriterContext(Writer writer, Path path) {
+    WriterContext(WalFile.Writer writer, Path path) {
       this.writer = writer;
       this.path = path;
     }
@@ -587,7 +650,7 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     }
 
     void flush() throws IOException {
-      writer.hflush();
+      writer.flush();
     }
   }
 }

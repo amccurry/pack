@@ -8,10 +8,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.List;
 
-import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
-import org.apache.hadoop.io.SequenceFile;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,13 +17,14 @@ import org.slf4j.LoggerFactory;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.blockstore.hdfs.file.WalKeyWritable.Type;
+import pack.block.blockstore.hdfs.v4.WalFile.Reader;
 import pack.block.util.Utils;
 
-public class LocalContext implements Closeable {
+public class LocalWalCache implements Closeable {
 
   private static final String RW = "rw";
 
-  private final static Logger LOGGER = LoggerFactory.getLogger(LocalContext.class);
+  private final static Logger LOGGER = LoggerFactory.getLogger(LocalWalCache.class);
 
   private final RoaringBitmap _dataIndex = new RoaringBitmap();
   private final RoaringBitmap _emptyIndex = new RoaringBitmap();
@@ -34,8 +33,8 @@ public class LocalContext implements Closeable {
   private final int _blockSize;
   private final FileChannel _channel;
 
-  public static void applyWal(FileSystem fileSystem, Path path, LocalContext localContext) throws IOException {
-    try (SequenceFile.Reader reader = new SequenceFile.Reader(fileSystem.getConf(), SequenceFile.Reader.file(path))) {
+  public static void applyWal(WalFileFactory walFactory, Path path, LocalWalCache localContext) throws IOException {
+    try (Reader reader = walFactory.open(path)) {
       WalKeyWritable key = new WalKeyWritable();
       BytesWritable value = new BytesWritable();
       while (reader.next(key, value)) {
@@ -54,7 +53,7 @@ public class LocalContext implements Closeable {
     }
   }
 
-  public LocalContext(File file, long length, int blockSize) throws IOException {
+  public LocalWalCache(File file, long length, int blockSize) throws IOException {
     _blockSize = blockSize;
     _file = file;
     if (_file.exists()) {
@@ -118,6 +117,7 @@ public class LocalContext implements Closeable {
   public void close() throws IOException {
     Utils.close(LOGGER, _channel);
     Utils.close(LOGGER, _rnd);
+    _file.delete();
   }
 
   public static ByteBuffer toBuffer(BytesWritable value) {
@@ -130,5 +130,10 @@ public class LocalContext implements Closeable {
 
   public RoaringBitmap getEmptyBlocks() {
     return _emptyIndex;
+  }
+
+  @Override
+  public String toString() {
+    return "LocalWalCache [file=" + _file + "]";
   }
 }

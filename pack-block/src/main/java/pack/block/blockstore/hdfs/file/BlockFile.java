@@ -215,6 +215,9 @@ public class BlockFile {
       }
       RoaringBitmap emptyBlocksInternal = writer.getEmptyBlocksInternal();
       emptyBlocksInternal.or(_emptyBlocks);
+      LOGGER.info("merge {}% complete, count {} total {} dataBlocks {}",
+          ((long) (((double) countWriteCount / (double) dataBlockTotal) * 1000) / 10.0), countWriteCount,
+          dataBlockTotal, dataBlockWriteCount);
     }
 
     private long getDataBlockTotal() {

@@ -35,7 +35,7 @@ public class HdfsMetaData {
 
   public static final double DEFAULT_MAX_OBSOLETE_RATIO = 0.5;
 
-  public static final long DEFAULT_MAX_WAL_FILE_SIZE = 1024L * 1024L;
+  public static final long DEFAULT_MAX_WAL_FILE_SIZE = 128 * 1024L * 1024L;
 
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
                                                                    .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
