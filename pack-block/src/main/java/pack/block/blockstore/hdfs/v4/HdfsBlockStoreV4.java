@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -23,7 +22,11 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.SequenceFile.CompressionType;
 import org.apache.hadoop.io.SequenceFile.Writer;
+import org.apache.hadoop.io.SequenceFile.Writer.Option;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,7 +82,10 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
   private final Lock _blockFileReadLock = _blockFileLock.readLock();
   private final AtomicReference<WriterContext> _writer = new AtomicReference<>();
   private final long _maxWalSize;
-  private LocalContext _localContext;
+  private final LocalContext _localContext;
+  private final CompressionType _compressionType;
+  private final CompressionCodec _compressCodec;
+  private final CompressionCodecFactory _compressionCodecFactory;
 
   public HdfsBlockStoreV4(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path) throws IOException {
     this(registry, cacheDir, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
@@ -87,6 +93,8 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
 
   public HdfsBlockStoreV4(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
       HdfsBlockStoreConfig config) throws IOException {
+
+    _compressionCodecFactory = new CompressionCodecFactory(fileSystem.getConf());
 
     _registry = registry;
 
@@ -99,6 +107,12 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     _fileSystem = fileSystem;
     _path = Utils.qualify(fileSystem, path);
     _metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
+
+    _compressionType = getCompressType(_metaData.getWalCompressionType());
+    LOGGER.info("WAL compression type {}", _compressionType);
+    _compressCodec = getCompressCodec(_metaData.getWalCompressionCodec());
+    LOGGER.info("WAL compression codec {}", _compressCodec);
+
     _maxWalSize = _metaData.getMaxWalFileSize();
 
     _fileSystemBlockSize = _metaData.getFileSystemBlockSize();
@@ -127,6 +141,24 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
     long period = config.getBlockFileUnit()
                         .toMillis(config.getBlockFilePeriod());
     _blockFileTimer.schedule(getBlockFileTask(), period, period);
+  }
+
+  private CompressionCodec getCompressCodec(String walCompressionCodec) {
+    if (walCompressionCodec == null) {
+      return null;
+    }
+    CompressionCodec codecByName = _compressionCodecFactory.getCodecByName(walCompressionCodec);
+    if (codecByName != null) {
+      return codecByName;
+    }
+    return _compressionCodecFactory.getCodecByClassName(walCompressionCodec);
+  }
+
+  private CompressionType getCompressType(String walCompressionType) {
+    if (walCompressionType == null) {
+      return null;
+    }
+    return CompressionType.valueOf(walCompressionType.toUpperCase());
   }
 
   private void cleanupBlocks() throws IOException {
@@ -224,8 +256,18 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
       WriterContext context = _writer.get();
       if (context == null) {
         Path tmpPath = getNewTempFile();
-        Writer writer = SequenceFile.createWriter(_fileSystem.getConf(), SequenceFile.Writer.file(tmpPath),
-            SequenceFile.Writer.keyClass(WalKeyWritable.class), SequenceFile.Writer.valueClass(BytesWritable.class));
+        List<Option> options = new ArrayList<>();
+        options.add(SequenceFile.Writer.file(tmpPath));
+        options.add(SequenceFile.Writer.keyClass(WalKeyWritable.class));
+        options.add(SequenceFile.Writer.valueClass(BytesWritable.class));
+        if (_compressionType != null) {
+          if (_compressCodec != null) {
+            options.add(SequenceFile.Writer.compression(_compressionType, _compressCodec));
+          } else {
+            options.add(SequenceFile.Writer.compression(_compressionType));
+          }
+        }
+        Writer writer = SequenceFile.createWriter(_fileSystem.getConf(), options.toArray(new Option[options.size()]));
         context = new WriterContext(writer, tmpPath);
         _writer.set(context);
       }
@@ -399,7 +441,7 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
   private List<Path> getBlockFilePathListFromStorage() throws FileNotFoundException, IOException {
     List<Path> pathList = new ArrayList<>();
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> BlockFile.isOrderedBlock(p));
-    Arrays.sort(listStatus, Collections.reverseOrder());
+    Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
 
     for (FileStatus fileStatus : listStatus) {
       pathList.add(Utils.qualify(_fileSystem, fileStatus.getPath()));

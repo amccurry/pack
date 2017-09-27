@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -39,6 +38,7 @@ import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
+import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.v4.LocalContext;
 import pack.block.util.Utils;
@@ -93,7 +93,6 @@ public class BlockFileCompactor implements Closeable {
     }
     LOGGER.info("Path {} size {}", _blockPath, _fileSystem.getContentSummary(_blockPath)
                                                           .getLength());
-
     convertWalFiles();
 
     FileStatus[] listStatus = getBlockFiles();
@@ -101,7 +100,7 @@ public class BlockFileCompactor implements Closeable {
       LOGGER.info("Path {} contains less than 2 block files, exiting", _blockPath);
       return;
     }
-    Arrays.sort(listStatus, Collections.reverseOrder());
+    Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
     List<CompactionJob> compactionJobs = getCompactionJobs(listStatus);
     if (compactionJobs.isEmpty()) {
       return;
@@ -110,12 +109,48 @@ public class BlockFileCompactor implements Closeable {
     for (CompactionJob job : compactionJobs) {
       runJob(job);
     }
+    try {
+      tryToPruneOldFiles();
+    } catch (KeeperException | InterruptedException e) {
+      LOGGER.error("Unknown error", e);
+    }
+  }
+
+  private void tryToPruneOldFiles() throws IOException, KeeperException, InterruptedException {
+    if (_inUseLockManager == null) {
+      LOGGER.info("No lock manager defined, can not prune old files from {}", _blockPath);
+      return;
+    }
+    if (_inUseLockManager.tryToLock(_lockName)) {
+      LOGGER.info("Locking to prune files from {}", _blockPath);
+      try {
+        FileStatus[] listStatus = _fileSystem.listStatus(_blockPath,
+            (PathFilter) path -> BlockFile.isOrderedBlock(path));
+        Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
+        Set<String> toBeDeleted = new HashSet<>();
+        for (FileStatus fileStatus : listStatus) {
+          Reader reader = getReader(fileStatus.getPath());
+          toBeDeleted.addAll(reader.getSourceBlockFiles());
+        }
+        _readerCache.invalidateAll();
+        for (String name : toBeDeleted) {
+          Path path = new Path(_blockPath, name);
+          LOGGER.info("Removing orphaned file {}", path);
+          _fileSystem.delete(path, false);
+        }
+      } finally {
+        _inUseLockManager.unlock(_lockName);
+      }
+    } else {
+      LOGGER.info("Currently in use can not prune files from {}", _blockPath);
+    }
   }
 
   private void convertWalFiles() throws IOException {
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) path -> path.getName()
                                                                                           .endsWith(".wal"));
     for (FileStatus fileStatus : listStatus) {
+      // add logging and check on wal file....
       convertWalFile(fileStatus.getPath());
     }
   }
@@ -129,7 +164,6 @@ public class BlockFileCompactor implements Closeable {
     Path newPath = Utils.qualify(_fileSystem, new Path(path.getParent(), blockName));
     Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpName()));
     if (_fileSystem.exists(newPath)) {
-      tryToRemovePath(path);
       return;
     }
     File dir = new File(_cacheDir, "convertWal-" + path.getName());
@@ -148,7 +182,6 @@ public class BlockFileCompactor implements Closeable {
             LOGGER.info("Wal convert complete path {}", tmpPath);
             if (_fileSystem.rename(tmpPath, newPath)) {
               LOGGER.info("Wal convert commit path {}", newPath);
-              tryToRemovePath(path);
             } else {
               throw new IOException("Wal convert commit failed");
             }
@@ -212,14 +245,15 @@ public class BlockFileCompactor implements Closeable {
     RoaringBitmap blocksToIgnore = job.getBlocksToIgnore();
 
     LOGGER.info("New merged output path {}", tmpPath);
-    try (Writer writer = BlockFile.create(true, _fileSystem, tmpPath, reader.getBlockSize(), sourceFileList, () -> {
-      LOGGER.info("Merged complete path {}", tmpPath);
-      if (_fileSystem.rename(tmpPath, newPath)) {
-        LOGGER.info("Merged commit path {}", newPath);
-      } else {
-        throw new IOException("Merge failed");
-      }
-    })) {
+    try (WriterOrdered writer = BlockFile.createOrdered(_fileSystem, tmpPath, reader.getBlockSize(), sourceFileList,
+        () -> {
+          LOGGER.info("Merged complete path {}", tmpPath);
+          if (_fileSystem.rename(tmpPath, newPath)) {
+            LOGGER.info("Merged commit path {}", newPath);
+          } else {
+            throw new IOException("Merge failed");
+          }
+        })) {
       BlockFile.merge(readers, writer, blocksToIgnore);
     }
   }
@@ -372,36 +406,10 @@ public class BlockFileCompactor implements Closeable {
         toBeDeleted.add(fileStatus);
       }
     }
-    tryToRemove(toBeDeleted.build());
+    for (FileStatus fileStatus : toBeDeleted.build()) {
+      LOGGER.info("File should be deleted, ignoring {}", fileStatus.getPath());
+    }
     return builder.build();
-  }
-
-  private void tryToRemove(List<FileStatus> filesToBeDeleted) {
-    for (FileStatus fileStatus : filesToBeDeleted) {
-      tryToRemovePath(fileStatus.getPath());
-    }
-  }
-
-  private void tryToRemovePath(Path path) {
-    try {
-      tryToRemove(path);
-    } catch (KeeperException | InterruptedException | IOException e) {
-      LOGGER.error("Unknown error", e);
-    }
-  }
-
-  private void tryToRemove(Path path) throws KeeperException, InterruptedException, IOException {
-    if (_inUseLockManager == null) {
-      return;
-    }
-    if (_inUseLockManager.tryToLock(_lockName)) {
-      try {
-        LOGGER.info("Removing orphaned file {}", path);
-        _fileSystem.delete(path, false);
-      } finally {
-        _inUseLockManager.unlock(_lockName);
-      }
-    }
   }
 
   private Reader getReader(Path path) throws IOException {

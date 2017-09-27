@@ -55,4 +55,10 @@ public class ReadRequest implements Comparable<ReadRequest> {
     return Long.compare(_blockId, o._blockId);
   }
 
+  @Override
+  public String toString() {
+    return "ReadRequest [completed=" + isCompleted() + ", blockId=" + _blockId + ", dest=" + _dest + ", blockOffset="
+        + _blockOffset + ", empty=" + _empty + "]";
+  }
+
 }

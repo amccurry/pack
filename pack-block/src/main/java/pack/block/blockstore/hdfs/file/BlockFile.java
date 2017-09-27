@@ -8,11 +8,14 @@ import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -21,7 +24,6 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
-import org.roaringbitmap.IntConsumer;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -75,6 +77,25 @@ public class BlockFile {
     return create(ordered, fileSystem, path, blockSize, ImmutableList.of(), null);
   }
 
+  public static WriterOrdered createOrdered(FileSystem fileSystem, Path path, int blockSize,
+      List<String> sourceFileList, CommitFile commitFile) throws IOException {
+    return new WriterOrdered(fileSystem, path, blockSize, sourceFileList, commitFile);
+  }
+
+  public static WriterOrdered createOrdered(FileSystem fileSystem, Path path, int blockSize,
+      List<String> sourceFileList) throws IOException {
+    return createOrdered(fileSystem, path, blockSize, sourceFileList, null);
+  }
+
+  public static WriterOrdered createOrdered(FileSystem fileSystem, Path path, int blockSize, CommitFile commitFile)
+      throws IOException {
+    return createOrdered(fileSystem, path, blockSize, ImmutableList.of(), commitFile);
+  }
+
+  public static WriterOrdered createOrdered(FileSystem fileSystem, Path path, int blockSize) throws IOException {
+    return createOrdered(fileSystem, path, blockSize, ImmutableList.of(), null);
+  }
+
   public static Reader open(FileSystem fileSystem, Path path) throws IOException {
     FSDataInputStream inputStream = fileSystem.open(path);
     long length = getLength(fileSystem, path);
@@ -115,131 +136,207 @@ public class BlockFile {
                .endsWith(BLOCK);
   }
 
-  public static void merge(List<Reader> readers, Writer writer) {
+  public static void merge(List<Reader> readers, WriterOrdered writer) throws IOException {
     merge(readers, writer, null);
   }
 
-  public static void merge(List<Reader> readers, Writer writer, RoaringBitmap blocksToIgnore) {
+  public static void merge(List<Reader> readers, WriterOrdered writer, RoaringBitmap blocksToIgnore)
+      throws IOException {
     merge(readers, writer, blocksToIgnore, DEFAULT_MERGE_READ_BATCH_SIZE);
   }
 
-  public static void merge(List<Reader> readers, Writer writer, RoaringBitmap blocksToIgnore, int batchSize) {
-    RoaringBitmap allBlocks = getAllBlocks(readers);
-    long longCardinality = applyIgnoreBlocks(blocksToIgnore, allBlocks);
-
-    Reader reader = readers.get(0);
-    int blockSize = reader.getBlockSize();
-
-    AtomicLong dataBlockWriteCount = new AtomicLong();
-    AtomicLong emptyBlockWriteCount = new AtomicLong();
-
-    ByteBuffer buffer = ByteBuffer.allocate(blockSize * batchSize);
-    List<ReadRequest> requests = new ArrayList<>();
-    allBlocks.forEach(getBlockIdConsumer(readers, writer, longCardinality, blockSize, batchSize, buffer, requests,
-        dataBlockWriteCount, emptyBlockWriteCount));
-    try {
-      flushBatch(readers, buffer, requests, writer, dataBlockWriteCount, emptyBlockWriteCount);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
+  public static void merge(List<Reader> readers, WriterOrdered writer, RoaringBitmap blocksToIgnore, int batchSize)
+      throws IOException {
+    MergePlan mergePlan = new MergePlan(readers, blocksToIgnore, batchSize);
+    mergePlan.runMerge(writer);
   }
 
-  private static IntConsumer getBlockIdConsumer(List<Reader> readers, Writer writer, long longCardinality,
-      int blockSize, int batchSize, ByteBuffer buffer, List<ReadRequest> requests, AtomicLong dataBlockWriteCount,
-      AtomicLong emptyBlockWriteCount) {
-    return new IntConsumer() {
-      private long count = 0;
-      private long last;
-      private long delay = TimeUnit.SECONDS.toMillis(5);
+  public static class MergePlan {
 
-      @Override
-      public void accept(int blockId) {
+    private final List<Reader> _readers;
+    private final RoaringBitmap _blocksToIgnore;
+    private final List<RoaringBitmap> _dataBlocksToFetch;
+    private final RoaringBitmap _emptyBlocks;
+    private final int _blockSize;
+    private final int _requestsPerBlock;
+
+    public MergePlan(List<Reader> readers, RoaringBitmap blocksToIgnore, int requestsPerBlock) {
+      _requestsPerBlock = requestsPerBlock;
+      _readers = orderReaders(readers);
+      _blockSize = _readers.get(0)
+                           .getBlockSize();
+      _blocksToIgnore = blocksToIgnore;
+      _dataBlocksToFetch = calculateDataBlocksPerReader();
+      _emptyBlocks = calculateFinalEmptyBlocks();
+
+    }
+
+    public void runMerge(WriterOrdered writer) throws IOException {
+      List<PeekableIterator<Integer>> blockItList = new ArrayList<>();
+      for (RoaringBitmap dataBlock : _dataBlocksToFetch) {
+        blockItList.add(PeekableIterator.wrap(dataBlock.iterator()));
+      }
+
+      List<Queue<ReadRequest>> requestsList = new ArrayList<>();
+      for (int i = 0; i < _readers.size(); i++) {
+        requestsList.add(new LinkedList<>());
+      }
+
+      long last = 0;
+      final long delay = TimeUnit.SECONDS.toMillis(5);
+      long dataBlockTotal = getDataBlockTotal();
+      long dataBlockWriteCount = 0;
+      long countWriteCount = 0;
+
+      while (!isFinished(blockItList, requestsList)) {
         long now = System.currentTimeMillis();
         if (last + delay < now) {
-          LOGGER.info("merge {}% complete, count {} total {} dataBlocks {} emptyBlocks {}",
-              ((long) (((double) count / (double) longCardinality) * 1000) / 10.0), count, longCardinality,
-              dataBlockWriteCount.get(), emptyBlockWriteCount.get());
+          LOGGER.info("merge {}% complete, count {} total {} dataBlocks {}",
+              ((long) (((double) countWriteCount / (double) dataBlockTotal) * 1000) / 10.0), countWriteCount,
+              dataBlockTotal, dataBlockWriteCount);
           last = System.currentTimeMillis();
-          dataBlockWriteCount.set(0);
-          emptyBlockWriteCount.set(0);
+          dataBlockWriteCount = 0;
         }
-        try {
-          processBlockId(readers, blockSize, batchSize, buffer, requests, blockId, writer, dataBlockWriteCount,
-              emptyBlockWriteCount);
-        } catch (IOException e) {
-          throw new RuntimeException(e);
-        }
-        count++;
-      }
-    };
-  }
 
-  private static void processBlockId(List<Reader> readers, int blockSize, int batchSize, ByteBuffer buffer,
-      List<ReadRequest> requests, int blockId, Writer writer, AtomicLong dataBlockWriteCount,
-      AtomicLong emptyBlockWriteCount) throws IOException {
-    int bufferPosition = requests.size() * blockSize;
-    buffer.position(bufferPosition);
-    buffer.limit(bufferPosition + blockSize);
-    ByteBuffer slice = buffer.slice();
-    requests.add(new ReadRequest(blockId, 0, slice));
-
-    if (requests.size() >= batchSize) {
-      flushBatch(readers, buffer, requests, writer, dataBlockWriteCount, emptyBlockWriteCount);
-    }
-  }
-
-  private static void flushBatch(List<Reader> readers, ByteBuffer buffer, List<ReadRequest> requests, Writer writer,
-      AtomicLong dataBlockWriteCount, AtomicLong emptyBlockWriteCount) throws IOException {
-    for (Reader reader : readers) {
-      if (!reader.read(requests)) {
-        break;
-      }
-    }
-    writeReadRequests(requests, writer, dataBlockWriteCount, emptyBlockWriteCount);
-    buffer.clear();
-    requests.clear();
-  }
-
-  private static void writeReadRequests(List<ReadRequest> requests, Writer writer, AtomicLong dataBlockWriteCount,
-      AtomicLong emptyBlockWriteCount) throws IOException {
-    for (ReadRequest request : requests) {
-      long blockId = request.getBlockId();
-      if (!request.isCompleted()) {
-        throw new IOException("BlockId was requested but not completed " + blockId);
-      }
-      if (request.isEmpty()) {
-        writer.appendEmpty(blockId);
-        emptyBlockWriteCount.incrementAndGet();
-      } else {
-        ByteBuffer byteBuffer = request.getByteBuffer();
+        populateRequests(_requestsPerBlock, blockItList, requestsList);
+        ReadRequest readRequest = findNextReadRequest(requestsList);
+        ByteBuffer byteBuffer = readRequest.getByteBuffer();
         byteBuffer.flip();
-        writer.append(blockId, Utils.toBw(byteBuffer));
-        dataBlockWriteCount.incrementAndGet();
+        writer.append(readRequest.getBlockId(), Utils.toBw(byteBuffer));
+        dataBlockWriteCount++;
+        countWriteCount++;
+      }
+
+      RoaringBitmap dataBlocksInternal = writer.getDataBlocksInternal();
+      RoaringBitmap clone = dataBlocksInternal.clone();
+      clone.and(_emptyBlocks);
+      if (clone.getCardinality() != 0) {
+        throw new IOException("Cardinality check failed for merged output.");
+      }
+      RoaringBitmap emptyBlocksInternal = writer.getEmptyBlocksInternal();
+      emptyBlocksInternal.or(_emptyBlocks);
+    }
+
+    private long getDataBlockTotal() {
+      long total = 0;
+      for (RoaringBitmap bitmap : _dataBlocksToFetch) {
+        total += bitmap.getLongCardinality();
+      }
+      return total;
+    }
+
+    private ReadRequest findNextReadRequest(List<Queue<ReadRequest>> requestsList) throws IOException {
+      ReadRequest readRequest = null;
+      int index = -1;
+      for (int i = 0; i < requestsList.size(); i++) {
+        Queue<ReadRequest> requests = requestsList.get(i);
+        if (requests.isEmpty()) {
+          continue;
+        }
+        if (readRequest == null) {
+          readRequest = requests.peek();
+          index = i;
+        } else {
+          ReadRequest rr = requests.peek();
+          int compareTo = rr.compareTo(readRequest);
+          if (compareTo < 0) {
+            readRequest = requests.peek();
+            index = i;
+          } else if (compareTo == 0) {
+            throw new IOException("This should not happen!!! ReadRequests have same id.");
+          }
+        }
+      }
+      if (index < 0) {
+        throw new IOException("No ReadRequest found.");
+      }
+      Queue<ReadRequest> queue = requestsList.get(index);
+      if (!readRequest.isCompleted()) {
+        Reader reader = _readers.get(index);
+        reader.read(queue);
+      }
+      ReadRequest request = queue.remove();
+      LOGGER.debug("Found ReadRequest {} from block {}", readRequest, _readers.get(index));
+      return request;
+    }
+
+    private boolean isFinished(List<PeekableIterator<Integer>> blockItList, List<Queue<ReadRequest>> requestsList) {
+      for (PeekableIterator<Integer> blockIt : blockItList) {
+        if (blockIt.hasNext()) {
+          return false;
+        }
+      }
+      for (Queue<ReadRequest> requests : requestsList) {
+        if (!requests.isEmpty()) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    private void populateRequests(int requestsPerBlock, List<PeekableIterator<Integer>> blockItList,
+        List<Queue<ReadRequest>> requestsList) {
+      for (int i = 0; i < blockItList.size(); i++) {
+        Queue<ReadRequest> requests = requestsList.get(i);
+        PeekableIterator<Integer> blockIt = blockItList.get(i);
+        while (requests.size() < requestsPerBlock && blockIt.hasNext()) {
+          int blockId = blockIt.next();
+          ByteBuffer dest = ByteBuffer.allocate(_blockSize);
+          requests.add(new ReadRequest(blockId, 0, dest));
+        }
       }
     }
-  }
 
-  private static long applyIgnoreBlocks(RoaringBitmap blocksToIgnore, RoaringBitmap allBlocks) {
-    long longCardinality;
-    if (blocksToIgnore != null) {
-      long longCardinalityBeforeIgnore = allBlocks.getLongCardinality();
-      LOGGER.info("All blocks cardinality before ignore {}", longCardinalityBeforeIgnore);
-      allBlocks.andNot(blocksToIgnore);
-      longCardinality = allBlocks.getLongCardinality();
-      LOGGER.info("All blocks cardinality after ignore {}", longCardinality);
-    } else {
-      longCardinality = allBlocks.getLongCardinality();
+    private RoaringBitmap calculateFinalEmptyBlocks() {
+      RoaringBitmap emptyBlocks = new RoaringBitmap();
+      List<Reader> prevReaders = new ArrayList<>();
+      for (int i = 0; i < _readers.size(); i++) {
+        Reader reader = _readers.get(i);
+        calculateEmptyBlocks(reader, prevReaders, emptyBlocks);
+        prevReaders.add(reader);
+      }
+      if (_blocksToIgnore != null) {
+        emptyBlocks.andNot(_blocksToIgnore);
+      }
+      return emptyBlocks;
     }
-    return longCardinality;
-  }
 
-  private static RoaringBitmap getAllBlocks(List<Reader> readers) {
-    RoaringBitmap result = new RoaringBitmap();
-    readers.forEach(reader -> {
-      reader.orDataBlocks(result);
-      reader.orEmptyBlocks(result);
-    });
-    return result;
+    private void calculateEmptyBlocks(Reader reader, List<Reader> prevReaders, RoaringBitmap finalEmptyBlocks) {
+      RoaringBitmap emptyBlocks = new RoaringBitmap();
+      reader.orEmptyBlocks(emptyBlocks);
+      for (Reader r : prevReaders) {
+        RoaringBitmap blocks = new RoaringBitmap();
+        r.orDataBlocks(blocks);
+        emptyBlocks.andNot(blocks);
+      }
+      finalEmptyBlocks.or(emptyBlocks);
+    }
+
+    private List<RoaringBitmap> calculateDataBlocksPerReader() {
+      List<RoaringBitmap> dataBlocksToFetch = new ArrayList<>();
+      List<Reader> prevReaders = new ArrayList<>();
+      for (int i = 0; i < _readers.size(); i++) {
+        Reader reader = _readers.get(i);
+        dataBlocksToFetch.add(calculateDataBlocks(reader, prevReaders));
+        prevReaders.add(reader);
+      }
+      return dataBlocksToFetch;
+    }
+
+    private RoaringBitmap calculateDataBlocks(Reader reader, List<Reader> prevReaders) {
+      RoaringBitmap dataBlocks = new RoaringBitmap();
+      reader.orDataBlocks(dataBlocks);
+      for (Reader r : prevReaders) {
+        RoaringBitmap blocks = new RoaringBitmap();
+        r.orDataBlocks(blocks);
+        r.orEmptyBlocks(blocks);
+        dataBlocks.andNot(blocks);
+      }
+      if (_blocksToIgnore != null) {
+        dataBlocks.andNot(_blocksToIgnore);
+      }
+      return dataBlocks;
+    }
   }
 
   public static abstract class Writer implements Closeable {
@@ -440,11 +537,18 @@ public class BlockFile {
       _output.writeLong(pos);
     }
 
+    public RoaringBitmap getEmptyBlocksInternal() {
+      return _emptyBlocks;
+    }
+
+    public RoaringBitmap getDataBlocksInternal() {
+      return _blocks;
+    }
   }
 
   public abstract static class Reader implements Iterable<BlockFileEntry>, Closeable {
 
-    public abstract boolean read(List<ReadRequest> requests) throws IOException;
+    public abstract boolean read(Collection<ReadRequest> requests) throws IOException;
 
     public abstract boolean read(long longKey, BytesWritable value) throws IOException;
 
@@ -461,6 +565,14 @@ public class BlockFile {
     public abstract int getBlockSize();
 
     public abstract List<String> getSourceBlockFiles();
+
+    @Override
+    public String toString() {
+      Path path = getPath();
+      return "Reader " + path.getParent()
+                             .getName()
+          + "/" + path.getName();
+    }
 
   }
 
@@ -535,7 +647,7 @@ public class BlockFile {
      * fulfilled.
      */
     @Override
-    public boolean read(List<ReadRequest> requests) throws IOException {
+    public boolean read(Collection<ReadRequest> requests) throws IOException {
       for (ReaderOrdered readerOrdered : _orderedReaders) {
         if (!readerOrdered.read(requests)) {
           return false;
@@ -695,7 +807,8 @@ public class BlockFile {
      * @throws IOException
      */
     @Override
-    public boolean read(List<ReadRequest> requests) throws IOException {
+    public boolean read(Collection<ReadRequest> requestsCollection) throws IOException {
+      List<ReadRequest> requests = new ArrayList<>(requestsCollection);
       Collections.sort(requests, (o1, o2) -> Long.compare(o1.getBlockId(), o2.getBlockId()));
       // @TODO, combine requests???
       boolean moreRequestsNeeded = false;
@@ -1045,4 +1158,43 @@ public class BlockFile {
     }
   }
 
+  public static Comparator<Long> ORDERED_LAYER_COMPARATOR = new Comparator<Long>() {
+    @Override
+    public int compare(Long o1, Long o2) {
+      return Long.compare(o2, o1);
+    }
+  };
+
+  public static Comparator<Path> ORDERED_PATH_COMPARATOR = new Comparator<Path>() {
+    @Override
+    public int compare(Path o1, Path o2) {
+      return ORDERED_LAYER_COMPARATOR.compare(getLayer(o1), getLayer(o2));
+    }
+  };
+
+  public static Comparator<FileStatus> ORDERED_FILESTATUS_COMPARATOR = new Comparator<FileStatus>() {
+    @Override
+    public int compare(FileStatus o1, FileStatus o2) {
+      return ORDERED_PATH_COMPARATOR.compare(o1.getPath(), o2.getPath());
+    }
+  };
+
+  public static Comparator<Reader> ORDERED_READER_COMPARATOR = new Comparator<Reader>() {
+    @Override
+    public int compare(Reader o1, Reader o2) {
+      return ORDERED_PATH_COMPARATOR.compare(o1.getPath(), o2.getPath());
+    }
+  };
+
+  public static List<Reader> orderReaders(List<Reader> readers) {
+    List<Reader> ordered = new ArrayList<>(readers);
+    Collections.sort(ordered, ORDERED_READER_COMPARATOR);
+    return ordered;
+  }
+
+  public static Long getLayer(Path p) {
+    String name = p.getName();
+    int indexOf = name.indexOf('.');
+    return Long.parseLong(name.substring(0, indexOf));
+  }
 }

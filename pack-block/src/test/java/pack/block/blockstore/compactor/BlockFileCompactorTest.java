@@ -169,7 +169,7 @@ public class BlockFileCompactorTest {
     try (Closer closer = Closer.create()) {
       List<Reader> readers = new ArrayList<>();
       ArrayList<Path> sortedList = new ArrayList<>(blockFiles);
-      Collections.sort(sortedList, Collections.reverseOrder());
+      Collections.sort(sortedList, BlockFile.ORDERED_PATH_COMPARATOR);
       for (Path blockFile : sortedList) {
         readers.add(closer.register(BlockFile.open(fileSystem, blockFile)));
       }
@@ -315,39 +315,6 @@ public class BlockFileCompactorTest {
       generatBlockFile(data, blockPath, random, blockSize, maxBlockIdsIncr, numberOfBlocksToWrite, -1L);
     }
   }
-
-  // private void logicallyAssertEquals(List<byte[]> data, Path blockFile)
-  // throws IOException {
-  // try (Reader reader = BlockFile.open(fileSystem, blockFile)) {
-  // RoaringBitmap blocks = reader.getBlocks();
-  // RoaringBitmap emptyBlocks = reader.getEmptyBlocks();
-  // for (int i = 0; i < data.size(); i++) {
-  //
-  // byte[] bs = data.get(i);
-  // if (bs == null) {
-  // // System.out.println("Checking - missing block " + i);
-  // // Missing block, no empty writes or data writes
-  // assertFalse(blocks.contains(i));
-  // assertFalse(emptyBlocks.contains(i));
-  // } else {
-  // if (isAllZeros(bs)) {
-  // // System.out.println("Checking - all zeros block " + i);
-  // assertFalse(blocks.contains(i));
-  // assertTrue(emptyBlocks.contains(i));
-  // } else {
-  // // System.out.println("Checking - data block " + i);
-  // assertTrue(blocks.contains(i));
-  // assertFalse(emptyBlocks.contains(i));
-  //
-  // BytesWritable value = new BytesWritable();
-  // reader.read(i, value);
-  // assertEquals(value.getLength(), bs.length);
-  // assertTrue(Arrays.equals(value.copyBytes(), bs));
-  // }
-  // }
-  // }
-  // }
-  // }
 
   private boolean isAllZeros(byte[] bs) {
     for (int i = 0; i < bs.length; i++) {

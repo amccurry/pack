@@ -82,6 +82,12 @@ public class HdfsMetaData {
   @JsonProperty
   long maxWalFileSize = DEFAULT_MAX_WAL_FILE_SIZE;
 
+  @JsonProperty
+  String walCompressionType;
+
+  @JsonProperty
+  String walCompressionCodec;
+
   public static void main(String[] args) {
     System.out.println(DEFAULT_META_DATA);
   }

@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -119,7 +118,7 @@ public class HdfsBlockStoreV1 implements HdfsBlockStore {
   private List<Path> getBlockFilePathListFromStorage() throws FileNotFoundException, IOException {
     List<Path> pathList = new ArrayList<>();
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> BlockFile.isOrderedBlock(p));
-    Arrays.sort(listStatus, Collections.reverseOrder());
+    Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
 
     for (FileStatus fileStatus : listStatus) {
       pathList.add(qualify(fileStatus.getPath()));

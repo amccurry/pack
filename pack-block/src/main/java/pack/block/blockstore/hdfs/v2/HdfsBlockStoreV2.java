@@ -116,7 +116,7 @@ public class HdfsBlockStoreV2 implements HdfsBlockStore {
     List<Path> pathList = new ArrayList<>();
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> p.getName()
                                                                                     .endsWith("." + BLOCK));
-    Arrays.sort(listStatus, Collections.reverseOrder());
+    Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
 
     for (FileStatus fileStatus : listStatus) {
       pathList.add(qualify(fileStatus.getPath()));

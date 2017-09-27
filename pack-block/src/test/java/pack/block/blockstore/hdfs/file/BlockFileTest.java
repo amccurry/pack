@@ -31,6 +31,7 @@ import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.ReaderMultiOrdered;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterMultiOrdered;
+import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
 
 public class BlockFileTest {
 
@@ -200,24 +201,33 @@ public class BlockFileTest {
   public void testBlockFileMerge() throws IOException {
     int vl = 10;
 
-    Path path0 = new Path("/testBlockFileMerge0");
-    writeBlockFile(path0, vl, kv(1));
+    // Path path0 = new Path("/0.block");
+    // writeBlockFile(path0, vl, kv(1));
+    //
+    // Path path1 = new Path("/1.block");
+    // writeBlockFile(path1, vl, kv(1, vl), kv(3), kv(5, vl));
+    //
+    // Path path2 = new Path("/2.block");
+    // writeBlockFile(path2, vl, kv(1, vl), kv(2), kv(4, vl));
 
-    Path path1 = new Path("/testBlockFileMerge1");
+    Path path2 = new Path("/2.block");
+    writeBlockFile(path2, vl, kv(1));
+
+    Path path1 = new Path("/1.block");
     writeBlockFile(path1, vl, kv(1, vl), kv(3), kv(5, vl));
 
-    Path path2 = new Path("/testBlockFileMerge2");
-    writeBlockFile(path2, vl, kv(1, vl), kv(2), kv(4, vl));
+    Path path0 = new Path("/0.block");
+    writeBlockFile(path0, vl, kv(1, vl), kv(2), kv(4, vl));
 
     Path path = new Path("/testBlockFileMergeOutput");
     FileSystem fileSystem = _cluster.getFileSystem();
 
     List<Reader> readers = new ArrayList<>();
-    readers.add(BlockFile.open(fileSystem, path0));
-    readers.add(BlockFile.open(fileSystem, path1));
     readers.add(BlockFile.open(fileSystem, path2));
+    readers.add(BlockFile.open(fileSystem, path1));
+    readers.add(BlockFile.open(fileSystem, path0));
 
-    try (Writer writer = BlockFile.create(true, fileSystem, path, vl)) {
+    try (WriterOrdered writer = BlockFile.createOrdered(fileSystem, path, vl)) {
       BlockFile.merge(readers, writer);
     }
     readers.forEach(reader -> IOUtils.closeQuietly(reader));
