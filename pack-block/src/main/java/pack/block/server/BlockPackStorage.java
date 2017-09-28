@@ -28,7 +28,6 @@ import com.google.common.io.Closer;
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.blockstore.hdfs.HdfsMetaData.HdfsMetaDataBuilder;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
@@ -38,18 +37,6 @@ import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
-
-  private static final String MAX_COMMITS_PER_ACTIVE_FILE = "maxCommitsPerActiveFile";
-
-  private static final String FILE_SYSTEM_TYPE = "fileSystemType";
-
-  private static final String MOUNT_OPTIONS = "mountOptions";
-
-  private static final String MAX_BLOCK_FILE_SIZE = "maxBlockFileSize";
-
-  private static final String LENGTH = "length";
-
-  private static final String FILE_SYSTEM_BLOCK_SIZE = "fileSystemBlockSize";
 
   private static final String MOUNT_COUNT = "mountCount";
 
@@ -197,33 +184,7 @@ public class BlockPackStorage implements PackStorage {
       if (fileSystem.mkdirs(volumePath)) {
         LOGGER.info("Create volume {}", volumeName);
         HdfsMetaData defaultmetaData = HdfsMetaData.DEFAULT_META_DATA;
-
-        HdfsMetaDataBuilder builder = defaultmetaData.toBuilder();
-        if (options.containsKey(FILE_SYSTEM_BLOCK_SIZE)) {
-          builder.fileSystemBlockSize(toInt(options.get(FILE_SYSTEM_BLOCK_SIZE)));
-        }
-
-        if (options.containsKey(LENGTH)) {
-          builder.length(toLong(options.get(LENGTH)));
-        }
-
-        if (options.containsKey(MAX_BLOCK_FILE_SIZE)) {
-          builder.maxBlockFileSize(toLong(options.get(MAX_BLOCK_FILE_SIZE)));
-        }
-
-        if (options.containsKey(MOUNT_OPTIONS)) {
-          builder.mountOptions(toString(options.get(MOUNT_OPTIONS)));
-        }
-
-        if (options.containsKey(FILE_SYSTEM_TYPE)) {
-          builder.fileSystemType(toFileSystemType(options.get(FILE_SYSTEM_TYPE)));
-        }
-
-        if (options.containsKey(MAX_COMMITS_PER_ACTIVE_FILE)) {
-          builder.maxCommitsPerActiveFile(toInt(options.get(MAX_COMMITS_PER_ACTIVE_FILE)));
-        }
-
-        HdfsMetaData metaData = builder.build();
+        HdfsMetaData metaData = HdfsMetaData.setupOptions(defaultmetaData, options);
         LOGGER.info("HdfsMetaData volume {} {}", volumeName, metaData);
         HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
       } else {
@@ -436,29 +397,6 @@ public class BlockPackStorage implements PackStorage {
 
   static interface Exec {
     void exec() throws Exception;
-  }
-
-  private FileSystemType toFileSystemType(Object object) {
-    if (object == null) {
-      return null;
-    }
-    String s = object.toString();
-    return FileSystemType.valueOf(s);
-  }
-
-  public static String toString(Object object) {
-    if (object == null) {
-      return null;
-    }
-    return object.toString();
-  }
-
-  public static long toLong(Object object) {
-    return Long.parseLong(object.toString());
-  }
-
-  public static int toInt(Object object) {
-    return Integer.parseInt(object.toString());
   }
 
   private Path getVolumePath(String volumeName) {
