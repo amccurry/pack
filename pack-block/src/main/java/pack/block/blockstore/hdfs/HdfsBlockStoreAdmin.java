@@ -5,13 +5,21 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class HdfsBlockStoreAdmin {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreAdmin.class);
 
   public static final String METADATA = ".metadata";
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -32,6 +40,49 @@ public class HdfsBlockStoreAdmin {
 
     writeHdfsMetaData(newMetaData, fileSystem, volumePath);
 
+  }
+
+  public static boolean createVolume(FileSystem fileSystem, CreateVolumeRequest request) throws IOException {
+    Path volumePath = request.getVolumePath();
+    String volumeName = request.getVolumeName();
+    if (!fileSystem.exists(volumePath)) {
+      if (fileSystem.mkdirs(volumePath)) {
+        clonePath(fileSystem, request.getClonePath(), request.getVolumePath(), request.isSymlinkClone());
+        LOGGER.info("Create volume {}", volumeName);
+        HdfsMetaData metaData = request.getMetaData();
+        LOGGER.info("HdfsMetaData volume {} {}", volumeName, metaData);
+        HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
+        return true;
+      } else {
+        LOGGER.info("Create not created volume {}", volumeName);
+      }
+    }
+    return false;
+  }
+
+  public static void clonePath(FileSystem fileSystem, Path srcPath, Path volumePath, boolean symlinkClone)
+      throws IOException {
+    if (srcPath == null) {
+      return;
+    }
+    Path srcBlocks = new Path(srcPath, HdfsBlockStoreConfig.BLOCK);
+    Path volumeBlocks = new Path(volumePath, HdfsBlockStoreConfig.BLOCK);
+    if (fileSystem.exists(srcBlocks)) {
+      FileStatus[] listStatus = fileSystem.listStatus(srcBlocks);
+      for (FileStatus fileStatus : listStatus) {
+        Path src = fileStatus.getPath();
+        Path dst = new Path(volumeBlocks, src.getName());
+        if (symlinkClone) {
+          fileSystem.createSymlink(src, dst, true);
+        } else {
+          try (FSDataInputStream inputStream = fileSystem.open(src)) {
+            try (FSDataOutputStream outputStream = fileSystem.create(dst)) {
+              IOUtils.copy(inputStream, outputStream);
+            }
+          }
+        }
+      }
+    }
   }
 
   public static void writeHdfsMetaData(HdfsMetaData metaData, FileSystem fileSystem, Path volumePath)

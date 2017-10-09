@@ -26,17 +26,21 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Closer;
 
 import pack.PackStorage;
+import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
-import pack.block.server.fs.FileSystemType;
 import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
+
+  private static final String CLONE_PATH = "clonePath";
+
+  private static final String SYMLINK_CLONE = "symlinkClone";
 
   private static final String MOUNT_COUNT = "mountCount";
 
@@ -178,19 +182,38 @@ public class BlockPackStorage implements PackStorage {
   }
 
   protected void createVolume(String volumeName, Map<String, Object> options) throws IOException {
+    LOGGER.info("Create volume {}", volumeName);
+    HdfsMetaData defaultmetaData = HdfsMetaData.DEFAULT_META_DATA;
+    HdfsMetaData metaData = HdfsMetaData.setupOptions(defaultmetaData, options);
+
     Path volumePath = getVolumePath(volumeName);
     FileSystem fileSystem = getFileSystem(volumePath);
-    if (!fileSystem.exists(volumePath)) {
-      if (fileSystem.mkdirs(volumePath)) {
-        LOGGER.info("Create volume {}", volumeName);
-        HdfsMetaData defaultmetaData = HdfsMetaData.DEFAULT_META_DATA;
-        HdfsMetaData metaData = HdfsMetaData.setupOptions(defaultmetaData, options);
-        LOGGER.info("HdfsMetaData volume {} {}", volumeName, metaData);
-        HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
-      } else {
-        LOGGER.info("Create not created volume {}", volumeName);
-      }
+
+    CreateVolumeRequest request = CreateVolumeRequest.builder()
+                                                     .metaData(metaData)
+                                                     .volumeName(volumeName)
+                                                     .volumePath(volumePath)
+                                                     .clonePath(getClonePath(options))
+                                                     .symlinkClone(getSymlinkClone(options))
+                                                     .build();
+    HdfsBlockStoreAdmin.createVolume(fileSystem, request);
+  }
+
+  private boolean getSymlinkClone(Map<String, Object> options) {
+    Object object = options.get(SYMLINK_CLONE);
+    if (object == null) {
+      return false;
     }
+    return Boolean.parseBoolean(object.toString()
+                                      .toLowerCase());
+  }
+
+  private Path getClonePath(Map<String, Object> options) {
+    Object object = options.get(CLONE_PATH);
+    if (object == null) {
+      return null;
+    }
+    return new Path(object.toString());
   }
 
   protected void removeVolume(String volumeName) throws IOException {

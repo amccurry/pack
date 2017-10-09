@@ -246,4 +246,79 @@ public class HdfsBlockStoreV4Test {
     return Math.min(len, length);
   }
 
+  @Test
+  public void testBlockStoreClone() throws Exception {
+    Path path = new Path("/testBlockStoreClone");
+    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                          .length(100000000)
+                                                          .build();
+    HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
+    Random random = new Random(1);
+
+    long pos = 0;
+    int passes = 1000;
+    try (HdfsBlockStoreV4 store = new HdfsBlockStoreV4(metrics, getCacheDir(), fileSystem, path)) {
+      long s = System.nanoTime();
+      for (int i = 0; i < passes; i++) {
+        int blockSize = store.getFileSystemBlockSize();
+        pos += (random.nextInt(9) + 1) * blockSize;
+        {
+          byte[] buf = new byte[blockSize];
+          store.read(pos, buf, 0, blockSize);
+        }
+        byte[] data = new byte[blockSize];
+        random.nextBytes(data);
+        {
+          store.write(pos, data, 0, blockSize);
+        }
+        {
+          byte[] buf = new byte[blockSize];
+          store.read(pos, buf, 0, blockSize);
+          // System.out.println(pos);
+          assertTrue(Arrays.equals(data, buf));
+        }
+      }
+      long e = System.nanoTime();
+      System.out.println("Run time " + (e - s) / 1_000_000.0 + " ms");
+    }
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(getCacheDir(), fileSystem, path, metaData, null)) {
+      compactor.runCompaction();
+    }
+
+    Path clonePath = new Path("/testBlockStoreClone2");
+    HdfsMetaData cloneMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                               .length(100000000)
+                                                               .build();
+    HdfsBlockStoreAdmin.writeHdfsMetaData(cloneMetaData, fileSystem, clonePath);
+    HdfsBlockStoreAdmin.clonePath(fileSystem, path, clonePath, true);
+
+    pos = 0;
+    random = new Random(1);
+    try (HdfsBlockStoreV4 store = new HdfsBlockStoreV4(metrics, getCacheDir(), fileSystem, clonePath)) {
+      long s = System.nanoTime();
+      for (int i = 0; i < passes; i++) {
+        int blockSize = store.getFileSystemBlockSize();
+        pos += (random.nextInt(9) + 1) * blockSize;
+        {
+          byte[] buf = new byte[blockSize];
+          store.read(pos, buf, 0, blockSize);
+        }
+        byte[] data = new byte[blockSize];
+        random.nextBytes(data);
+        {
+          // store.write(pos, data, 0, blockSize);
+        }
+        {
+          byte[] buf = new byte[blockSize];
+          store.read(pos, buf, 0, blockSize);
+          // System.out.println(pos);
+          assertTrue(Arrays.equals(data, buf));
+        }
+      }
+      long e = System.nanoTime();
+      System.out.println("Run time " + (e - s) / 1_000_000.0 + " ms");
+    }
+  }
+
 }
