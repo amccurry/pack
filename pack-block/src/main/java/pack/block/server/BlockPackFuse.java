@@ -40,6 +40,7 @@ import com.google.common.io.Closer;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.BlockPackAdminServer;
@@ -226,7 +227,9 @@ public class BlockPackFuse implements Closeable {
                                                             .blockStoreFactory(BlockStoreFactory.DEFAULT)
                                                             .volumeName(volumeName)
                                                             .maxVolumeMissingCount(5)
+                                                            .maxNumberOfMountSnapshots(5)
                                                             .build();
+        HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
         BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
         blockPackFuse.mount();
       }
@@ -253,9 +256,12 @@ public class BlockPackFuse implements Closeable {
   private final int _maxVolumeMissingCount;
   private final Timer _timer;
   private final String _volumeName;
+  private final FileSystem _fileSystem;
+  private final int _maxNumberOfMountSnapshots;
 
   public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws IOException {
     ZkUtils.mkNodesStr(packFuseConfig.getZooKeeper(), MOUNT + LOCK);
+    _maxNumberOfMountSnapshots = packFuseConfig.getMaxNumberOfMountSnapshots();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
     _ugi = packFuseConfig.getUgi();
     _fileSystemMount = packFuseConfig.isFileSystemMount();
@@ -274,6 +280,7 @@ public class BlockPackFuse implements Closeable {
     _volumeName = packFuseConfig.getVolumeName();
     _maxVolumeMissingCount = packFuseConfig.getMaxVolumeMissingCount();
     _timer = new Timer(POLLING_CLOSER, true);
+    _fileSystem = packFuseConfig.getFileSystem();
 
     BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
     _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _ugi, _registry);
@@ -354,6 +361,7 @@ public class BlockPackFuse implements Closeable {
         _linuxFileSystem.mount(device, _fsLocalPath, mountOptions);
         _blockPackAdmin.setStatus(Status.FS_MOUNT_COMPLETED, "Mounted " + device + " => " + _fsLocalPath);
         LOGGER.info("fs mount {} complete", _fsLocalPath);
+        HdfsSnapshotUtil.cleanupOldMountSnapshots(_fileSystem, _path, _maxNumberOfMountSnapshots);
       }
       startDockerMonitorIfNeeded();
       if (blocking) {

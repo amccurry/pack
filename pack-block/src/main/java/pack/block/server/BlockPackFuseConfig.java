@@ -29,4 +29,5 @@ public class BlockPackFuseConfig {
   BlockStoreFactory blockStoreFactory;
   String volumeName;
   int maxVolumeMissingCount;
+  int maxNumberOfMountSnapshots;
 }
