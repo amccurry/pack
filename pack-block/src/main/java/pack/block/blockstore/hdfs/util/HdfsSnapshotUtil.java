@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 
 public class HdfsSnapshotUtil {
 
-  private static final String HDFS = "hdfs";
   private static final String YYYYMMDDKKMMSS = "yyyyMMddkkmmssSSS";
   private static final Logger LOGGER = LoggerFactory.getLogger(HdfsSnapshotUtil.class);
 
@@ -27,7 +26,7 @@ public class HdfsSnapshotUtil {
 
   public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName)
       throws IOException, InterruptedException {
-    createSnapshot(fileSystem, path, snapshotName, getHdfsProxy());
+    createSnapshot(fileSystem, path, snapshotName, getUgi());
   }
 
   public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName, UserGroupInformation ugi)
@@ -47,11 +46,11 @@ public class HdfsSnapshotUtil {
 
   public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, int maxNumberOfMountSnapshots)
       throws IOException, InterruptedException {
-    cleanupOldMountSnapshots(fileSystem, path, maxNumberOfMountSnapshots, getHdfsProxy());
+    cleanupOldMountSnapshots(fileSystem, path, maxNumberOfMountSnapshots, getUgi());
   }
 
-  private static UserGroupInformation getHdfsProxy() throws IOException {
-    return UserGroupInformation.createProxyUser(HDFS, UserGroupInformation.getCurrentUser());
+  private static UserGroupInformation getUgi() throws IOException {
+    return UserGroupInformation.getCurrentUser();
   }
 
   public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, int maxNumberOfMountSnapshots,
