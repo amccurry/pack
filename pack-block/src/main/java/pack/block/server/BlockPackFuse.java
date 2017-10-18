@@ -259,7 +259,7 @@ public class BlockPackFuse implements Closeable {
   private final FileSystem _fileSystem;
   private final int _maxNumberOfMountSnapshots;
 
-  public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws IOException {
+  public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws Exception {
     ZkUtils.mkNodesStr(packFuseConfig.getZooKeeper(), MOUNT + LOCK);
     _maxNumberOfMountSnapshots = packFuseConfig.getMaxNumberOfMountSnapshots();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
@@ -268,30 +268,35 @@ public class BlockPackFuse implements Closeable {
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
     _lockManager = createLockmanager(packFuseConfig.getZooKeeper());
-    _closer = Closer.create();
-    _reporter = _closer.register(CsvReporter.forRegistry(_registry)
-                                            .build(new File(packFuseConfig.getMetricsLocalPath())));
-    _reporter.start(1, TimeUnit.MINUTES);
-    _fuseLocalPath = new File(packFuseConfig.getFuseLocalPath());
-    _fuseLocalPath.mkdirs();
-    _fsLocalPath = new File(packFuseConfig.getFsLocalPath());
-    _fsLocalPath.mkdirs();
+    if (_lockManager.tryToLock(Utils.getLockName(_path))) {
+      _closer = Closer.create();
+      _reporter = _closer.register(CsvReporter.forRegistry(_registry)
+                                              .build(new File(packFuseConfig.getMetricsLocalPath())));
+      _reporter.start(1, TimeUnit.MINUTES);
+      _fuseLocalPath = new File(packFuseConfig.getFuseLocalPath());
+      _fuseLocalPath.mkdirs();
+      _fsLocalPath = new File(packFuseConfig.getFsLocalPath());
+      _fsLocalPath.mkdirs();
 
-    _volumeName = packFuseConfig.getVolumeName();
-    _maxVolumeMissingCount = packFuseConfig.getMaxVolumeMissingCount();
-    _timer = new Timer(POLLING_CLOSER, true);
-    _fileSystem = packFuseConfig.getFileSystem();
+      _volumeName = packFuseConfig.getVolumeName();
+      _maxVolumeMissingCount = packFuseConfig.getMaxVolumeMissingCount();
+      _timer = new Timer(POLLING_CLOSER, true);
+      _fileSystem = packFuseConfig.getFileSystem();
 
-    BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
-    _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _ugi, _registry);
-    _linuxFileSystem = _blockStore.getLinuxFileSystem();
-    _metaData = _blockStore.getMetaData();
-    _fuse = _closer.register(new FuseFileSystemSingleMount(packFuseConfig.getFuseLocalPath(), _blockStore));
-    _fuseMountThread = new Thread(() -> _ugi.doAs((PrivilegedAction<Void>) () -> {
-      _fuse.localMount();
-      return null;
-    }));
-    _fuseMountThread.setName(FUSE_MOUNT_THREAD);
+      BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
+      _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _ugi, _registry);
+      _linuxFileSystem = _blockStore.getLinuxFileSystem();
+      _metaData = _blockStore.getMetaData();
+      _fuse = _closer.register(new FuseFileSystemSingleMount(packFuseConfig.getFuseLocalPath(), _blockStore));
+      _fuseMountThread = new Thread(() -> _ugi.doAs((PrivilegedAction<Void>) () -> {
+        _fuse.localMount();
+        return null;
+      }));
+      _fuseMountThread.setName(FUSE_MOUNT_THREAD);
+    } else {
+      LOGGER.error("volume {} already is use.", _path);
+      throw new IOException("volume " + _path + " already is use.");
+    }
   }
 
   private void startDockerMonitorIfNeeded() {
@@ -338,37 +343,33 @@ public class BlockPackFuse implements Closeable {
   }
 
   public void mount(boolean blocking) throws IOException, InterruptedException, KeeperException {
-    if (_lockManager.tryToLock(Utils.getLockName(_path))) {
-      _closed.set(false);
-      startFuseMount();
-      _blockPackAdmin.setStatus(Status.FUSE_MOUNT_STARTED, "Mounting FUSE @ " + _fuseLocalPath);
-      LOGGER.info("fuse mount {} complete", _fuseLocalPath);
-      waitUntilFuseIsMounted();
-      _blockPackAdmin.setStatus(Status.FUSE_MOUNT_COMPLETE, "Mounting FUSE @ " + _fuseLocalPath);
-      LOGGER.info("fuse mount {} visible", _fuseLocalPath);
-      if (_fileSystemMount) {
-        File device = new File(_fuseLocalPath, FuseFileSystemSingleMount.BRICK);
-        if (!_linuxFileSystem.isFileSystemExists(device)) {
-          LOGGER.info("file system does not exist on mount {} visible", _fuseLocalPath);
-          int blockSize = _metaData.getFileSystemBlockSize();
+    _closed.set(false);
+    startFuseMount();
+    _blockPackAdmin.setStatus(Status.FUSE_MOUNT_STARTED, "Mounting FUSE @ " + _fuseLocalPath);
+    LOGGER.info("fuse mount {} complete", _fuseLocalPath);
+    waitUntilFuseIsMounted();
+    _blockPackAdmin.setStatus(Status.FUSE_MOUNT_COMPLETE, "Mounting FUSE @ " + _fuseLocalPath);
+    LOGGER.info("fuse mount {} visible", _fuseLocalPath);
+    if (_fileSystemMount) {
+      File device = new File(_fuseLocalPath, FuseFileSystemSingleMount.BRICK);
+      if (!_linuxFileSystem.isFileSystemExists(device)) {
+        LOGGER.info("file system does not exist on mount {} visible", _fuseLocalPath);
+        int blockSize = _metaData.getFileSystemBlockSize();
 
-          LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, device);
-          _blockPackAdmin.setStatus(Status.FS_MKFS, "Creating " + _linuxFileSystem.getType() + " @ " + device);
-          _linuxFileSystem.mkfs(device, blockSize);
-        }
-        String mountOptions = _metaData.getMountOptions();
-        _blockPackAdmin.setStatus(Status.FS_MOUNT_STARTED, "Mounting " + device + " => " + _fsLocalPath);
-        _linuxFileSystem.mount(device, _fsLocalPath, mountOptions);
-        _blockPackAdmin.setStatus(Status.FS_MOUNT_COMPLETED, "Mounted " + device + " => " + _fsLocalPath);
-        LOGGER.info("fs mount {} complete", _fsLocalPath);
-        HdfsSnapshotUtil.cleanupOldMountSnapshots(_fileSystem, _path, _maxNumberOfMountSnapshots);
+        LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, device);
+        _blockPackAdmin.setStatus(Status.FS_MKFS, "Creating " + _linuxFileSystem.getType() + " @ " + device);
+        _linuxFileSystem.mkfs(device, blockSize);
       }
-      startDockerMonitorIfNeeded();
-      if (blocking) {
-        _fuseMountThread.join();
-      }
-    } else {
-      LOGGER.error("volume {} already is use.", _path);
+      String mountOptions = _metaData.getMountOptions();
+      _blockPackAdmin.setStatus(Status.FS_MOUNT_STARTED, "Mounting " + device + " => " + _fsLocalPath);
+      _linuxFileSystem.mount(device, _fsLocalPath, mountOptions);
+      _blockPackAdmin.setStatus(Status.FS_MOUNT_COMPLETED, "Mounted " + device + " => " + _fsLocalPath);
+      LOGGER.info("fs mount {} complete", _fsLocalPath);
+      HdfsSnapshotUtil.cleanupOldMountSnapshots(_fileSystem, _path, _maxNumberOfMountSnapshots);
+    }
+    startDockerMonitorIfNeeded();
+    if (blocking) {
+      _fuseMountThread.join();
     }
   }
 

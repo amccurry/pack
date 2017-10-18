@@ -14,7 +14,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.security.UserGroupInformation;
-import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -78,7 +77,7 @@ public class BlockPackFuseTest {
   }
 
   @Test
-  public void testBlockPackFuse() throws IOException, InterruptedException, KeeperException {
+  public void testBlockPackFuse() throws Exception {
     File fuse = new File(root, TEST_BLOCK_PACK_FUSE);
     Path volumePath = new Path("/BlockPackFuseTest/" + TEST_BLOCK_PACK_FUSE);
     fileSystem.delete(volumePath, true);
