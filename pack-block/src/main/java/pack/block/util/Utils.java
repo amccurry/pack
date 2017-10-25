@@ -37,7 +37,6 @@ public class Utils {
   public static final int PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT = 30000;
   public static final String PACK_ZOOKEEPER_CONNECTION_TIMEOUT = "PACK_ZOOKEEPER_CONNECTION_TIMEOUT";
   public static final String PACK_ZOOKEEPER_CONNECTION_STR = "PACK_ZOOKEEPER_CONNECTION_STR";
-
   public static final String PACK_LOG = "PACK_LOG";
   public static final String PACK_HDFS_PATH = "PACK_HDFS_PATH";
   public static final String PACK_LOCAL = "PACK_LOCAL";
@@ -48,6 +47,15 @@ public class Utils {
   public static final String PACK_HDFS_USER = "PACK_HDFS_USER";
   public static final String VAR_LOG_PACK = "/var/log/pack";
   public static final String VAR_LIB_PACK = "/var/lib/pack";
+  public static final String PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN = "PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN";
+  public static final String PACK_VOLUME_MISSING_POLLING_PERIOD = "PACK_VOLUME_MISSING_POLLING_PERIOD";
+  public static final String PACK_NUMBER_OF_MOUNT_SNAPSHOTS = "PACK_NUMBER_OF_MOUNT_SNAPSHOTS";
+  public static final String PACK_COUNT_DOCKER_DOWN_AS_MISSING = "PACK_COUNT_DOCKER_DOWN_AS_MISSING";
+  public static final boolean PACK_COUNT_DOCKER_DOWN_AS_MISSING_DEFAULT = true;
+  public static final int PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN_DEFAULT = 2;
+  public static final long PACK_VOLUME_MISSING_POLLING_PERIOD_DEFAULT = TimeUnit.SECONDS.toMillis(2);
+  public static final int PACK_NUMBER_OF_MOUNT_SNAPSHOTS_DEFAULT = 5;
+
   private static final Splitter SPACE_SPLITTER = Splitter.on(' ');
   private static final String LS = "ls";
   private static final String ALLOCATED_SIZE_SWITCH = "-s";
@@ -143,6 +151,38 @@ public class Utils {
         configuration.addResource(new FileInputStream(hdfs));
       }
     }
+  }
+
+  public static int getNumberOfMountSnapshots() {
+    String v = System.getenv(PACK_NUMBER_OF_MOUNT_SNAPSHOTS);
+    if (v == null) {
+      return PACK_NUMBER_OF_MOUNT_SNAPSHOTS_DEFAULT;
+    }
+    return Integer.parseInt(v);
+  }
+
+  public static long getVolumeMissingPollingPeriod() {
+    String v = System.getenv(PACK_VOLUME_MISSING_POLLING_PERIOD);
+    if (v == null) {
+      return PACK_VOLUME_MISSING_POLLING_PERIOD_DEFAULT;
+    }
+    return Long.parseLong(v);
+  }
+
+  public static int getVolumeMissingCountBeforeAutoShutdown() {
+    String v = System.getenv(PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN);
+    if (v == null) {
+      return PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN_DEFAULT;
+    }
+    return Integer.parseInt(v);
+  }
+
+  public static boolean getCountDockerDownAsMissing() {
+    String v = System.getenv(PACK_COUNT_DOCKER_DOWN_AS_MISSING);
+    if (v == null) {
+      return PACK_COUNT_DOCKER_DOWN_AS_MISSING_DEFAULT;
+    }
+    return Boolean.parseBoolean(v);
   }
 
   public static String getHdfsPath() {
@@ -306,4 +346,5 @@ public class Utils {
     }
     throw new IOException("Error " + result.stderr);
   }
+
 }

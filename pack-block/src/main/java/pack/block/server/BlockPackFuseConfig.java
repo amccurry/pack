@@ -30,4 +30,6 @@ public class BlockPackFuseConfig {
   String volumeName;
   int maxVolumeMissingCount;
   int maxNumberOfMountSnapshots;
+  long volumeMissingPollingPeriod;
+  boolean countDockerDownAsMissing;
 }

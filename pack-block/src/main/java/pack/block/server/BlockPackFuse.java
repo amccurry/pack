@@ -46,6 +46,7 @@ import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.BlockPackAdminServer;
 import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
+import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
@@ -100,7 +101,8 @@ public class BlockPackFuse implements Closeable {
 
   public static Process startProcess(String fuseMountLocation, String fsMountLocation, String fsMetricsLocation,
       String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout, String volumeName,
-      String logOutput, String unixSock, String libDir) throws IOException {
+      String logOutput, String unixSock, String libDir, int numberOfMountSnapshots, long volumeMissingPollingPeriod,
+      int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing) throws IOException {
     String javaHome = System.getProperty(JAVA_HOME);
 
     String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir);
@@ -129,6 +131,10 @@ public class BlockPackFuse implements Closeable {
            .add(zkConnection)
            .add(zkTimeoutStr)
            .add(unixSock)
+           .add(Integer.toString(numberOfMountSnapshots))
+           .add(Long.toString(volumeMissingPollingPeriod))
+           .add(Integer.toString(volumeMissingCountBeforeAutoShutdown))
+           .add(Boolean.toString(countDockerDownAsMissing))
            .add(STDOUT_REDIRECT + logOutput + STDOUT)
            .add(STDERR_REDIRECT + logOutput + STDERR)
            .add(BACKGROUND)
@@ -203,6 +209,10 @@ public class BlockPackFuse implements Closeable {
     String zkConnection = args[6];
     int zkTimeout = Integer.parseInt(args[7]);
     String unixSock = args[8];
+    int numberOfMountSnapshots = Integer.parseInt(args[9]);
+    long volumeMissingPollingPeriod = Long.parseLong(args[10]);
+    int volumeMissingCountBeforeAutoShutdown = Integer.parseInt(args[11]);
+    boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
 
     BlockPackAdmin blockPackAdmin = BlockPackAdminServer.startAdminServer(unixSock);
     blockPackAdmin.setStatus(Status.INITIALIZATION);
@@ -226,8 +236,10 @@ public class BlockPackFuse implements Closeable {
                                                             .fileSystemMount(true)
                                                             .blockStoreFactory(BlockStoreFactory.DEFAULT)
                                                             .volumeName(volumeName)
-                                                            .maxVolumeMissingCount(5)
-                                                            .maxNumberOfMountSnapshots(5)
+                                                            .maxVolumeMissingCount(volumeMissingCountBeforeAutoShutdown)
+                                                            .volumeMissingPollingPeriod(volumeMissingPollingPeriod)
+                                                            .maxNumberOfMountSnapshots(numberOfMountSnapshots)
+                                                            .countDockerDownAsMissing(countDockerDownAsMissing)
                                                             .build();
         HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
         BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
@@ -258,9 +270,13 @@ public class BlockPackFuse implements Closeable {
   private final String _volumeName;
   private final FileSystem _fileSystem;
   private final int _maxNumberOfMountSnapshots;
+  private final long _period;
+  private final boolean _countDockerDownAsMissing;
 
   public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws Exception {
     ZkUtils.mkNodesStr(packFuseConfig.getZooKeeper(), MOUNT + LOCK);
+    _countDockerDownAsMissing = packFuseConfig.isCountDockerDownAsMissing();
+    _period = packFuseConfig.getVolumeMissingPollingPeriod();
     _maxNumberOfMountSnapshots = packFuseConfig.getMaxNumberOfMountSnapshots();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
     _ugi = packFuseConfig.getUgi();
@@ -299,10 +315,9 @@ public class BlockPackFuse implements Closeable {
     }
   }
 
-  private void startDockerMonitorIfNeeded() {
+  private void startDockerMonitorIfNeeded(long period) {
     if (System.getProperty(DOCKER_UNIX_SOCKET) != null) {
       DockerMonitor monitor = new DockerMonitor(new File(System.getProperty(DOCKER_UNIX_SOCKET)));
-      long period = TimeUnit.SECONDS.toMillis(5);
       _timer.schedule(getMonitorTimer(_volumeName, monitor), period, period);
     }
   }
@@ -367,7 +382,7 @@ public class BlockPackFuse implements Closeable {
       LOGGER.info("fs mount {} complete", _fsLocalPath);
       HdfsSnapshotUtil.cleanupOldMountSnapshots(_fileSystem, _path, _maxNumberOfMountSnapshots);
     }
-    startDockerMonitorIfNeeded();
+    startDockerMonitorIfNeeded(_period);
     if (blocking) {
       _fuseMountThread.join();
     }
@@ -424,18 +439,27 @@ public class BlockPackFuse implements Closeable {
         try {
           if (!isVolumeStillInUse(monitor, volumeName)) {
             count++;
-            if (count >= _maxVolumeMissingCount) {
-              LOGGER.info("Volume {} no longer in use, closing.", _volumeName);
-              Utils.shutdownProcess(BlockPackFuse.this);
-            } else {
-              LOGGER.info("Volume {} no longer in use, current recheck count {} of max {}.", _volumeName, count,
-                  _maxVolumeMissingCount);
-            }
+            checkMissingCount();
           } else {
             count = 0;
           }
         } catch (Exception e) {
-          LOGGER.error("Unknown error", e);
+          if (_countDockerDownAsMissing && e instanceof NoFileException) {
+            count++;
+            checkMissingCount();
+          } else {
+            LOGGER.error("Unknown error", e);
+          }
+        }
+      }
+
+      private void checkMissingCount() {
+        if (count >= _maxVolumeMissingCount) {
+          LOGGER.info("Volume {} no longer in use, closing.", _volumeName);
+          Utils.shutdownProcess(BlockPackFuse.this);
+        } else {
+          LOGGER.info("Volume {} no longer in use, current recheck count {} of max {}.", _volumeName, count,
+              _maxVolumeMissingCount);
         }
       }
 

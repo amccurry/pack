@@ -63,9 +63,20 @@ public class BlockPackStorage implements PackStorage {
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
   protected final String _zkConnection;
   protected final int _zkTimeout;
+  protected final int _numberOfMountSnapshots;
+  protected final long _volumeMissingPollingPeriod;
+  protected final int _volumeMissingCountBeforeAutoShutdown;
+  protected final boolean _countDockerDownAsMissing;
 
   public BlockPackStorage(File workingDir, File logDir, Configuration configuration, Path remotePath,
-      UserGroupInformation ugi, String zkConnection, int zkTimeout) throws IOException, InterruptedException {
+      UserGroupInformation ugi, String zkConnection, int zkTimeout, int numberOfMountSnapshots,
+      long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing)
+      throws IOException, InterruptedException {
+    _numberOfMountSnapshots = numberOfMountSnapshots;
+    _volumeMissingPollingPeriod = volumeMissingPollingPeriod;
+    _volumeMissingCountBeforeAutoShutdown = volumeMissingCountBeforeAutoShutdown;
+    _countDockerDownAsMissing = countDockerDownAsMissing;
+
     Closer closer = Closer.create();
     closer.register((Closeable) () -> {
       for (String volumeName : _currentMountedVolumes) {
@@ -265,7 +276,8 @@ public class BlockPackStorage implements PackStorage {
 
     BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(),
         localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path, _zkConnection, _zkTimeout, volumeName,
-        logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(), libDir.getAbsolutePath());
+        logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(), libDir.getAbsolutePath(), _numberOfMountSnapshots,
+        _volumeMissingPollingPeriod, _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing);
 
     waitForMount(localFileSystemMount, unixSockFile);
     incrementMountCount(unixSockFile);
