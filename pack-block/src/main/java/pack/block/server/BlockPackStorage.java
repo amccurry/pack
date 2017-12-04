@@ -33,8 +33,6 @@ import pack.block.server.admin.Status;
 import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
-import pack.zk.utils.ZooKeeperClient;
-import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackStorage implements PackStorage {
 
@@ -115,10 +113,6 @@ public class BlockPackStorage implements PackStorage {
     _localCacheDir.mkdirs();
     _localUnixSocketDir = new File(workingDir, "sock");
     _localUnixSocketDir.mkdirs();
-  }
-
-  public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zooKeeper) {
-    return new ZooKeeperLockManager(zooKeeper, MOUNT + "/lock");
   }
 
   private void addShutdownHook(Closer closer) {

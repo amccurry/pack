@@ -9,7 +9,6 @@ import lombok.Builder;
 import lombok.Value;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.server.admin.BlockPackAdmin;
-import pack.zk.utils.ZooKeeperClient;
 
 @Value
 @AllArgsConstructor
@@ -24,7 +23,8 @@ public class BlockPackFuseConfig {
   String fsLocalPath;
   String metricsLocalPath;
   String fsLocalCache;
-  ZooKeeperClient zooKeeper;
+  String zkConnectionString;
+  int zkSessionTimeout;
   boolean fileSystemMount;
   BlockStoreFactory blockStoreFactory;
   String volumeName;

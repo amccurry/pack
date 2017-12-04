@@ -1,5 +1,7 @@
 package pack.zk.utils;
 
+import java.io.Closeable;
+import java.io.IOException;
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,9 +20,9 @@ package pack.zk.utils;
  */
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.zookeeper.CreateMode;
@@ -28,17 +30,15 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs.Ids;
-import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class ZooKeeperLockManager {
+public class ZooKeeperLockManager implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ZooKeeperLockManager.class);
 
-  protected final Map<String, String> _lockMap = new HashMap<String, String>();
+  protected final Map<String, LockSession> _lockMap = new ConcurrentHashMap<>();
   protected final String _lockPath;
-  protected final ZooKeeper _zooKeeper;
   protected final Object _lock = new Object();
   protected final long _timeout;
   protected final Watcher _watcher = new Watcher() {
@@ -49,81 +49,123 @@ public class ZooKeeperLockManager {
       }
     }
   };
+  protected final String _zkConnectionString;
+  protected final int _zkSessionTimeout;
 
-  public ZooKeeperLockManager(ZooKeeper zooKeeper, String lockPath) {
-    _zooKeeper = zooKeeper;
+  private static class LockSession implements Closeable {
+    private String _lockPath;
+    private ZooKeeperClient _zk;
+
+    LockSession(String lockPath, ZooKeeperClient zk) {
+      _lockPath = lockPath;
+      _zk = zk;
+    }
+
+    @Override
+    public void close() {
+      _zk.close();
+    }
+
+  }
+
+  public ZooKeeperLockManager(String zkConnectionString, int zkSessionTimeout, String lockPath) {
+    _zkConnectionString = zkConnectionString;
+    _zkSessionTimeout = zkSessionTimeout;
     _lockPath = lockPath;
     _timeout = TimeUnit.SECONDS.toMillis(1);
   }
 
   public int getNumberOfLockNodesPresent(String name) throws KeeperException, InterruptedException {
-    List<String> children = _zooKeeper.getChildren(_lockPath, false);
-    int count = 0;
-    for (String s : children) {
-      if (s.startsWith(name + "_")) {
-        count++;
+    try (ZooKeeperClient zooKeeper = getZk()) {
+      List<String> children = zooKeeper.getChildren(_lockPath, false);
+      int count = 0;
+      for (String s : children) {
+        if (s.startsWith(name + "_")) {
+          count++;
+        }
       }
+      return count;
     }
-    return count;
   }
 
-  public void unlock(String name) throws InterruptedException, KeeperException {
+  private ZooKeeperClient getZk() {
+    try {
+      return ZkUtils.newZooKeeper(_zkConnectionString, _zkSessionTimeout);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  public synchronized void unlock(String name) throws InterruptedException, KeeperException {
     if (!_lockMap.containsKey(name)) {
       throw new RuntimeException("Lock [" + name + "] has not be created.");
     }
-    String lockPath = _lockMap.remove(name);
-    LOGGER.debug("Unlocking on path {} with name {}", lockPath, name);
-    _zooKeeper.delete(lockPath, -1);
+    try (LockSession lockSession = _lockMap.remove(name)) {
+      LOGGER.debug("Unlocking on path {} with name {}", lockSession._lockPath, name);
+      lockSession._zk.delete(lockSession._lockPath, -1);
+    }
   }
 
-  public boolean tryToLock(String name) throws KeeperException, InterruptedException {
+  public synchronized boolean tryToLock(String name) throws KeeperException, InterruptedException {
     if (_lockMap.containsKey(name)) {
       return false;
     }
-    String newPath = _zooKeeper.create(_lockPath + "/" + name + "_", null, Ids.OPEN_ACL_UNSAFE,
-        CreateMode.EPHEMERAL_SEQUENTIAL);
-    _lockMap.put(name, newPath);
-    while (true) {
-      synchronized (_lock) {
-        List<String> children = getOnlyThisLocksChildren(name, _zooKeeper.getChildren(_lockPath, _watcher));
-        Collections.sort(children);
-        String firstElement = children.get(0);
-        if ((_lockPath + "/" + firstElement).equals(newPath)) {
-          // yay!, we got the lock
-          LOGGER.debug("Lock on path {} with name {}", _lockPath, name);
-          return true;
-        } else {
-          LOGGER.debug("Waiting for lock on path {} with name {}", _lockPath, name);
-          _lock.wait(_timeout);
-          _zooKeeper.delete(newPath, -1);
-          _lockMap.remove(name);
-          return false;
+    ZooKeeperClient zooKeeper = getZk();
+    try {
+      String newPath = zooKeeper.create(_lockPath + "/" + name + "_", null, Ids.OPEN_ACL_UNSAFE,
+          CreateMode.EPHEMERAL_SEQUENTIAL);
+      _lockMap.put(name, new LockSession(newPath, zooKeeper));
+      while (true) {
+        synchronized (_lock) {
+          List<String> children = getOnlyThisLocksChildren(name, zooKeeper.getChildren(_lockPath, _watcher));
+          Collections.sort(children);
+          String firstElement = children.get(0);
+          if ((_lockPath + "/" + firstElement).equals(newPath)) {
+            // yay!, we got the lock
+            LOGGER.debug("Lock on path {} with name {}", _lockPath, name);
+            return true;
+          } else {
+            LOGGER.debug("Waiting for lock on path {} with name {}", _lockPath, name);
+            _lock.wait(_timeout);
+            zooKeeper.delete(newPath, -1);
+            LockSession lockSession = _lockMap.remove(name);
+            if (lockSession != null) {
+              lockSession.close();
+            }
+            return false;
+          }
         }
       }
+    } catch (KeeperException | InterruptedException e) {
+      zooKeeper.close();
+      throw e;
     }
   }
 
-  public void lock(String name) throws KeeperException, InterruptedException {
-    if (_lockMap.containsKey(name)) {
-      throw new RuntimeException("Lock [" + name + "] already created.");
-    }
-    String newPath = _zooKeeper.create(_lockPath + "/" + name + "_", null, Ids.OPEN_ACL_UNSAFE,
-        CreateMode.EPHEMERAL_SEQUENTIAL);
-    _lockMap.put(name, newPath);
-    while (true) {
-      synchronized (_lock) {
-        List<String> children = getOnlyThisLocksChildren(name, _zooKeeper.getChildren(_lockPath, _watcher));
-        Collections.sort(children);
-        String firstElement = children.get(0);
-        if ((_lockPath + "/" + firstElement).equals(newPath)) {
-          // yay!, we got the lock
-          LOGGER.debug("Lock on path {} with name {}", _lockPath, name);
-          return;
-        } else {
-          LOGGER.debug("Waiting for lock on path {} with name {}", _lockPath, name);
-          _lock.wait(_timeout);
+  public synchronized void lock(String name) throws KeeperException, InterruptedException {
+    ZooKeeperClient zooKeeper = getZk();
+    try {
+      String newPath = zooKeeper.create(_lockPath + "/" + name + "_", null, Ids.OPEN_ACL_UNSAFE,
+          CreateMode.EPHEMERAL_SEQUENTIAL);
+      _lockMap.put(name, new LockSession(newPath, zooKeeper));
+      while (true) {
+        synchronized (_lock) {
+          List<String> children = getOnlyThisLocksChildren(name, zooKeeper.getChildren(_lockPath, _watcher));
+          Collections.sort(children);
+          String firstElement = children.get(0);
+          if ((_lockPath + "/" + firstElement).equals(newPath)) {
+            // yay!, we got the lock
+            LOGGER.debug("Lock on path {} with name {}", _lockPath, name);
+            return;
+          } else {
+            LOGGER.debug("Waiting for lock on path {} with name {}", _lockPath, name);
+            _lock.wait(_timeout);
+          }
         }
       }
+    } catch (KeeperException | InterruptedException e) {
+      zooKeeper.close();
+      throw e;
     }
   }
 
@@ -135,5 +177,12 @@ public class ZooKeeperLockManager {
       }
     }
     return result;
+  }
+
+  @Override
+  public void close() {
+    for (LockSession lockSession : _lockMap.values()) {
+      lockSession.close();
+    }
   }
 }

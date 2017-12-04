@@ -24,8 +24,6 @@ import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkMiniCluster;
-import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClient;
 
 public class BlockPackFuseTest {
 
@@ -95,7 +93,6 @@ public class BlockPackFuseTest {
                                    .getAbsolutePath();
     String metricsLocalPath = Utils.mkdir(new File(fuse, METRICS))
                                    .getAbsolutePath();
-    ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnection, zkTimeout);
 
     BlockPackAdmin blockPackAdmin = new BlockPackAdmin() {
     };
@@ -109,7 +106,8 @@ public class BlockPackFuseTest {
                                                         .fsLocalPath(fsLocalPath)
                                                         .metricsLocalPath(metricsLocalPath)
                                                         .fsLocalCache(fsLocalCachePath)
-                                                        .zooKeeper(zooKeeper)
+                                                        .zkConnectionString(zkConnection)
+                                                        .zkSessionTimeout(zkTimeout)
                                                         .fileSystemMount(false)
                                                         .blockStoreFactory(BlockStoreFactory.DEFAULT)
                                                         .build();

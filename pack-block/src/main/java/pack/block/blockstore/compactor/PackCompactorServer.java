@@ -24,7 +24,7 @@ import com.google.common.io.Closer;
 
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.server.BlockPackStorage;
+import pack.block.server.BlockPackFuse;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
@@ -54,10 +54,10 @@ public class PackCompactorServer implements Closeable {
     Configuration configuration = new Configuration();
     FileSystem fileSystem = FileSystem.get(configuration);
 
-    ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout);
     List<Path> pathList = getPathList(fileSystem, hdfsPath);
 
-    try (PackCompactorServer packCompactorServer = new PackCompactorServer(cacheDir, fileSystem, pathList, zooKeeper)) {
+    try (PackCompactorServer packCompactorServer = new PackCompactorServer(cacheDir, fileSystem, pathList,
+        zkConnectionString, sessionTimeout)) {
       while (running.get()) {
         ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
           try {
@@ -74,23 +74,37 @@ public class PackCompactorServer implements Closeable {
 
   private final FileSystem _fileSystem;
   private final List<Path> _pathList;
-  private final ZooKeeperLockManager _compactionLockManager;
   private final Closer _closer;
+  private final ZooKeeperLockManager _compactionLockManager;
   private final ZooKeeperLockManager _mountLockManager;
   private final File _cacheDir;
+  private final String _zkConnectionString;
+  private final int _sessionTimeout;
 
-  public PackCompactorServer(File cacheDir, FileSystem fileSystem, List<Path> pathList, ZooKeeperClient zooKeeper) {
+  public PackCompactorServer(File cacheDir, FileSystem fileSystem, List<Path> pathList, String zkConnectionString,
+      int sessionTimeout) throws IOException {
     // coord with zookeeper
     // use zookeeper to know if the block store is mount (to know whether
     // cleanup can be done)
+    _zkConnectionString = zkConnectionString;
+    _sessionTimeout = sessionTimeout;
     _cacheDir = cacheDir;
     _closer = Closer.create();
     _fileSystem = fileSystem;
     _pathList = pathList;
-    _closer.register(zooKeeper);
-    ZkUtils.mkNodesStr(zooKeeper, COMPACTION + "/lock");
-    _mountLockManager = BlockPackStorage.createLockmanager(zooKeeper);
-    _compactionLockManager = new ZooKeeperLockManager(zooKeeper, COMPACTION + "/lock");
+    try (ZooKeeperClient zooKeeper = getZk()) {
+      ZkUtils.mkNodesStr(zooKeeper, COMPACTION + "/lock");
+    }
+    _mountLockManager = BlockPackFuse.createLockmanager(_zkConnectionString, _sessionTimeout);
+    _compactionLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout, COMPACTION + "/lock");
+  }
+
+  private ZooKeeperClient getZk() {
+    try {
+      return ZkUtils.newZooKeeper(_zkConnectionString, _sessionTimeout);
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @Override

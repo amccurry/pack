@@ -222,7 +222,6 @@ public class BlockPackFuse implements Closeable {
         try (Closer closer = autoClose(Closer.create())) {
           BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdminServer.startAdminServer(unixSock));
           blockPackAdmin.setStatus(Status.INITIALIZATION);
-          ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
           BlockPackFuseConfig fuseConfig = BlockPackFuseConfig.builder()
                                                               .blockPackAdmin(blockPackAdmin)
                                                               .ugi(ugi)
@@ -233,7 +232,8 @@ public class BlockPackFuse implements Closeable {
                                                               .fsLocalPath(fsLocalPath)
                                                               .metricsLocalPath(metricsLocalPath)
                                                               .fsLocalCache(fsLocalCache)
-                                                              .zooKeeper(zooKeeper)
+                                                              .zkConnectionString(zkConnection)
+                                                              .zkSessionTimeout(zkTimeout)
                                                               .fileSystemMount(true)
                                                               .blockStoreFactory(BlockStoreFactory.DEFAULT)
                                                               .volumeName(volumeName)
@@ -277,9 +277,15 @@ public class BlockPackFuse implements Closeable {
   private final int _maxNumberOfMountSnapshots;
   private final long _period;
   private final boolean _countDockerDownAsMissing;
+  private final String _zkConnectionString;
+  private final int _zkSessionTimeout;
 
   public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws Exception {
-    ZkUtils.mkNodesStr(packFuseConfig.getZooKeeper(), MOUNT + LOCK);
+    _zkConnectionString = packFuseConfig.getZkConnectionString();
+    _zkSessionTimeout = packFuseConfig.getZkSessionTimeout();
+    try (ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(_zkConnectionString, _zkSessionTimeout)) {
+      ZkUtils.mkNodesStr(zooKeeper, MOUNT + LOCK);
+    }
     _countDockerDownAsMissing = packFuseConfig.isCountDockerDownAsMissing();
     _period = packFuseConfig.getVolumeMissingPollingPeriod();
     _maxNumberOfMountSnapshots = packFuseConfig.getMaxNumberOfMountSnapshots();
@@ -288,7 +294,7 @@ public class BlockPackFuse implements Closeable {
     _fileSystemMount = packFuseConfig.isFileSystemMount();
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
-    _lockManager = createLockmanager(packFuseConfig.getZooKeeper());
+    _lockManager = createLockmanager(_zkConnectionString, _zkSessionTimeout);
     if (_lockManager.tryToLock(Utils.getLockName(_path))) {
       _closer = Closer.create();
       _reporter = _closer.register(CsvReporter.forRegistry(_registry)
@@ -318,6 +324,11 @@ public class BlockPackFuse implements Closeable {
       LOGGER.error("volume {} already is use.", _path);
       throw new IOException("volume " + _path + " already is use.");
     }
+  }
+
+  public static ZooKeeperLockManager createLockmanager(String zkConnectionString, int sessionTimeout)
+      throws IOException {
+    return ZkUtils.newZooKeeperLockManager(zkConnectionString, sessionTimeout, MOUNT + LOCK);
   }
 
   private void startDockerMonitorIfNeeded(long period) {
@@ -429,10 +440,6 @@ public class BlockPackFuse implements Closeable {
       }
       return configuration;
     }
-  }
-
-  public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zooKeeper) {
-    return new ZooKeeperLockManager(zooKeeper, MOUNT + LOCK);
   }
 
   private TimerTask getMonitorTimer(String volumeName, DockerMonitor monitor) {

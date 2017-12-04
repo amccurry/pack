@@ -12,9 +12,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.zookeeper.KeeperException;
 
-import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClient;
-
 public class BlockFileCompactorServerUsing {
 
   public static void main(String[] args) throws IOException, KeeperException, InterruptedException {
@@ -26,13 +23,11 @@ public class BlockFileCompactorServerUsing {
 
     List<Path> pathList = Arrays.asList(new Path("/block"));
     int sessionTimeout = 30000;
-    try (ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper("localhost/localtestpack", sessionTimeout)) {
-      try (PackCompactorServer packCompactorServer = new PackCompactorServer(new File("./tmp"), fileSystem, pathList,
-          zooKeeper)) {
-        while (true) {
-          packCompactorServer.executeCompaction();
-          Thread.sleep(TimeUnit.SECONDS.toMillis(10));
-        }
+    try (PackCompactorServer packCompactorServer = new PackCompactorServer(new File("./tmp"), fileSystem, pathList,
+        "localhost/localtestpack", sessionTimeout)) {
+      while (true) {
+        packCompactorServer.executeCompaction();
+        Thread.sleep(TimeUnit.SECONDS.toMillis(10));
       }
     }
   }
