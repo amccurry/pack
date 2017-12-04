@@ -1,5 +1,6 @@
 package pack.block.server.admin;
 
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.util.List;
 import java.util.Map;
@@ -52,26 +53,27 @@ public class BlockPackAdminServer implements BlockPackAdmin {
   private final String _pid;
   private final AtomicBoolean _shutDown = new AtomicBoolean(false);
   private final Map<String, AtomicLong> _counter = new ConcurrentHashMap<>();
+  private final Service _service;
 
   private BlockPackAdminServer(String sockFile) {
     _pid = getPid();
 
     SparkJava.init();
-    Service service = Service.ignite();
-    SparkJava.configureService(SparkJavaIdentifier.UNIX_SOCKET, service);
-    service.ipAddress(sockFile);
+    _service = Service.ignite();
+    SparkJava.configureService(SparkJavaIdentifier.UNIX_SOCKET, _service);
+    _service.ipAddress(sockFile);
 
-    service.get(PID, (request, response) -> PidResponse.builder()
-                                                       .pid(_pid)
-                                                       .build(),
+    _service.get(PID, (request, response) -> PidResponse.builder()
+                                                        .pid(_pid)
+                                                        .build(),
         TRANSFORMER);
 
-    service.get(STATUS, (request, response) -> StatusResponse.builder()
-                                                             .status(_currentStatus.get())
-                                                             .build(),
+    _service.get(STATUS, (request, response) -> StatusResponse.builder()
+                                                              .status(_currentStatus.get())
+                                                              .build(),
         TRANSFORMER);
 
-    service.post(UMOUNT, (request, response) -> {
+    _service.post(UMOUNT, (request, response) -> {
       LOGGER.info("umount request");
       BlockPackFuse blockPackFuse = _blockPackFuse.get();
       if (blockPackFuse != null) {
@@ -84,7 +86,7 @@ public class BlockPackAdminServer implements BlockPackAdmin {
                             .build();
     }, TRANSFORMER);
 
-    service.post(COUNTER, (request, response) -> {
+    _service.post(COUNTER, (request, response) -> {
       LOGGER.info("counter request");
       LOGGER.info("current counters {}", _counter);
       CounterRequest counterRequest = OBJECT_MAPPER.readValue(request.bodyAsBytes(), CounterRequest.class);
@@ -119,7 +121,7 @@ public class BlockPackAdminServer implements BlockPackAdmin {
       return counterResponse;
     }, TRANSFORMER);
 
-    service.post(SHUTDOWN, (request, response) -> {
+    _service.post(SHUTDOWN, (request, response) -> {
       LOGGER.info("shutdown request");
       synchronized (_shutDown) {
         if (_shutDown.get()) {
@@ -174,6 +176,11 @@ public class BlockPackAdminServer implements BlockPackAdmin {
   public BlockPackFuse register(BlockPackFuse blockPackFuse) {
     _blockPackFuse.set(blockPackFuse);
     return blockPackFuse;
+  }
+
+  @Override
+  public void close() throws IOException {
+    _service.stop();
   }
 
 }

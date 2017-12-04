@@ -197,56 +197,61 @@ public class BlockPackFuse implements Closeable {
     }
   }
 
-  public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
-    Utils.setupLog4j();
-    Configuration conf = getConfig();
-    String volumeName = args[0];
-    String fuseLocalPath = args[1];
-    String fsLocalPath = args[2];
-    String metricsLocalPath = args[3];
-    String fsLocalCache = args[4];
-    Path path = new Path(args[5]);
-    String zkConnection = args[6];
-    int zkTimeout = Integer.parseInt(args[7]);
-    String unixSock = args[8];
-    int numberOfMountSnapshots = Integer.parseInt(args[9]);
-    long volumeMissingPollingPeriod = Long.parseLong(args[10]);
-    int volumeMissingCountBeforeAutoShutdown = Integer.parseInt(args[11]);
-    boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
+  public static void main(String[] args) throws Exception {
+    try {
+      Utils.setupLog4j();
+      Configuration conf = getConfig();
+      String volumeName = args[0];
+      String fuseLocalPath = args[1];
+      String fsLocalPath = args[2];
+      String metricsLocalPath = args[3];
+      String fsLocalCache = args[4];
+      Path path = new Path(args[5]);
+      String zkConnection = args[6];
+      int zkTimeout = Integer.parseInt(args[7]);
+      String unixSock = args[8];
+      int numberOfMountSnapshots = Integer.parseInt(args[9]);
+      long volumeMissingPollingPeriod = Long.parseLong(args[10]);
+      int volumeMissingCountBeforeAutoShutdown = Integer.parseInt(args[11]);
+      boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
 
-    BlockPackAdmin blockPackAdmin = BlockPackAdminServer.startAdminServer(unixSock);
-    blockPackAdmin.setStatus(Status.INITIALIZATION);
-    HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
-    UserGroupInformation ugi = Utils.getUserGroupInformation();
-    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-      FileSystem fileSystem = FileSystem.get(conf);
-      try (Closer closer = autoClose(Closer.create())) {
-        ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
-        BlockPackFuseConfig fuseConfig = BlockPackFuseConfig.builder()
-                                                            .blockPackAdmin(blockPackAdmin)
-                                                            .ugi(ugi)
-                                                            .fileSystem(fileSystem)
-                                                            .path(path)
-                                                            .config(config)
-                                                            .fuseLocalPath(fuseLocalPath)
-                                                            .fsLocalPath(fsLocalPath)
-                                                            .metricsLocalPath(metricsLocalPath)
-                                                            .fsLocalCache(fsLocalCache)
-                                                            .zooKeeper(zooKeeper)
-                                                            .fileSystemMount(true)
-                                                            .blockStoreFactory(BlockStoreFactory.DEFAULT)
-                                                            .volumeName(volumeName)
-                                                            .maxVolumeMissingCount(volumeMissingCountBeforeAutoShutdown)
-                                                            .volumeMissingPollingPeriod(volumeMissingPollingPeriod)
-                                                            .maxNumberOfMountSnapshots(numberOfMountSnapshots)
-                                                            .countDockerDownAsMissing(countDockerDownAsMissing)
-                                                            .build();
-        HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
-        BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
-        blockPackFuse.mount();
-      }
-      return null;
-    });
+      HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
+      UserGroupInformation ugi = Utils.getUserGroupInformation();
+      ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+        FileSystem fileSystem = FileSystem.get(conf);
+        try (Closer closer = autoClose(Closer.create())) {
+          BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdminServer.startAdminServer(unixSock));
+          blockPackAdmin.setStatus(Status.INITIALIZATION);
+          ZooKeeperClient zooKeeper = closer.register(ZkUtils.newZooKeeper(zkConnection, zkTimeout));
+          BlockPackFuseConfig fuseConfig = BlockPackFuseConfig.builder()
+                                                              .blockPackAdmin(blockPackAdmin)
+                                                              .ugi(ugi)
+                                                              .fileSystem(fileSystem)
+                                                              .path(path)
+                                                              .config(config)
+                                                              .fuseLocalPath(fuseLocalPath)
+                                                              .fsLocalPath(fsLocalPath)
+                                                              .metricsLocalPath(metricsLocalPath)
+                                                              .fsLocalCache(fsLocalCache)
+                                                              .zooKeeper(zooKeeper)
+                                                              .fileSystemMount(true)
+                                                              .blockStoreFactory(BlockStoreFactory.DEFAULT)
+                                                              .volumeName(volumeName)
+                                                              .maxVolumeMissingCount(
+                                                                  volumeMissingCountBeforeAutoShutdown)
+                                                              .volumeMissingPollingPeriod(volumeMissingPollingPeriod)
+                                                              .maxNumberOfMountSnapshots(numberOfMountSnapshots)
+                                                              .countDockerDownAsMissing(countDockerDownAsMissing)
+                                                              .build();
+          HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
+          BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
+          blockPackFuse.mount();
+        }
+        return null;
+      });
+    } catch (Exception e) {
+      LOGGER.error("Unknown error", e);
+    }
   }
 
   private final HdfsBlockStore _blockStore;

@@ -331,13 +331,18 @@ public class BlockPackStorage implements PackStorage {
     }
     BlockPackAdminClient client = BlockPackAdminClient.create(sockFile);
     while (true) {
-      Status status = client.getStatus();
-      if (status == Status.FS_MOUNT_COMPLETED) {
-        LOGGER.info("mount complete {}", localFileSystemMount);
-        return;
+      try {
+        Status status = client.getStatus();
+
+        if (status == Status.FS_MOUNT_COMPLETED) {
+          LOGGER.info("mount complete {}", localFileSystemMount);
+          return;
+        }
+        LOGGER.info("Waiting for mount {} status {}", localFileSystemMount, status);
+        Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+      } catch (NoFileException e) {
+        throw new IOException("Unknown error while waiting on mount " + localFileSystemMount, e);
       }
-      LOGGER.info("Waiting for mount {} status {}", localFileSystemMount, status);
-      Thread.sleep(TimeUnit.SECONDS.toMillis(1));
     }
   }
 
@@ -345,17 +350,19 @@ public class BlockPackStorage implements PackStorage {
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
     LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
     File unixSockFile = getUnixSocketFile(volumeName);
-    long count = decrementMountCount(unixSockFile);
-    LOGGER.info("Mount count {}", count);
-    if (count <= 0) {
-      try {
-        umountVolume(unixSockFile);
-      } catch (NoFileException e) {
-        LOGGER.info("fuse process seems to be gone {}", unixSockFile);
-        return;
-      } catch (ConnectionRefusedException e) {
-        LOGGER.info("fuse process seems to be gone {}", unixSockFile);
-        return;
+    if (unixSockFile.exists()) {
+      long count = decrementMountCount(unixSockFile);
+      LOGGER.info("Mount count {}", count);
+      if (count <= 0) {
+        try {
+          umountVolume(unixSockFile);
+        } catch (NoFileException e) {
+          LOGGER.info("fuse process seems to be gone {}", unixSockFile);
+          return;
+        } catch (ConnectionRefusedException e) {
+          LOGGER.info("fuse process seems to be gone {}", unixSockFile);
+          return;
+        }
       }
     }
   }
