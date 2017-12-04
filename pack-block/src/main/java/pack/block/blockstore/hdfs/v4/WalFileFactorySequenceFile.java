@@ -37,18 +37,7 @@ public class WalFileFactorySequenceFile extends WalFileFactory {
   }
 
   public WalFile.Writer create(Path path) throws IOException {
-    List<Option> options = new ArrayList<>();
-    options.add(SequenceFile.Writer.file(path));
-    options.add(SequenceFile.Writer.keyClass(WalKeyWritable.class));
-    options.add(SequenceFile.Writer.valueClass(BytesWritable.class));
-    if (_compressionType != null) {
-      if (_compressCodec != null) {
-        options.add(SequenceFile.Writer.compression(_compressionType, _compressCodec));
-      } else {
-        options.add(SequenceFile.Writer.compression(_compressionType));
-      }
-    }
-    Writer writer = SequenceFile.createWriter(_fileSystem.getConf(), options.toArray(new Option[options.size()]));
+    Writer writer = createWriter(path);
     return new WalFile.Writer() {
 
       @Override
@@ -71,6 +60,21 @@ public class WalFileFactorySequenceFile extends WalFileFactory {
         writer.append(key, value);
       }
     };
+  }
+
+  private Writer createWriter(Path path) throws IOException {
+    List<Option> options = new ArrayList<>();
+    options.add(SequenceFile.Writer.file(path));
+    options.add(SequenceFile.Writer.keyClass(WalKeyWritable.class));
+    options.add(SequenceFile.Writer.valueClass(BytesWritable.class));
+    if (_compressionType != null) {
+      if (_compressCodec != null) {
+        options.add(SequenceFile.Writer.compression(_compressionType, _compressCodec));
+      } else {
+        options.add(SequenceFile.Writer.compression(_compressionType));
+      }
+    }
+    return SequenceFile.createWriter(_fileSystem.getConf(), options.toArray(new Option[options.size()]));
   }
 
   public WalFile.Reader open(Path path) throws IOException {
@@ -105,5 +109,20 @@ public class WalFileFactorySequenceFile extends WalFileFactory {
       return null;
     }
     return CompressionType.valueOf(walCompressionType.toUpperCase());
+  }
+
+  @Override
+  public void recover(Path src, Path dst) throws IOException {
+    WalKeyWritable key = new WalKeyWritable();
+    BytesWritable value = new BytesWritable();
+    try (SequenceFile.Reader reader = new SequenceFile.Reader(_fileSystem.getConf(), SequenceFile.Reader.file(src))) {
+      try (Writer writer = createWriter(dst)) {
+        while (reader.next(key, value)) {
+          writer.append(key, value);
+        }
+      }
+    } catch (IOException e) {
+      LOGGER.info("Reached error, assuming end of file");
+    }
   }
 }

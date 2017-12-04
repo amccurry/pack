@@ -24,4 +24,6 @@ public abstract class WalFileFactory {
   public static WalFileFactory create(FileSystem fileSystem, HdfsMetaData metaData) {
     return new WalFileFactoryPackFile(fileSystem, metaData);
   }
+
+  public abstract void recover(Path src, Path dst) throws IOException;
 }

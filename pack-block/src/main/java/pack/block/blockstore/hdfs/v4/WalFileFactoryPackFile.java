@@ -1,5 +1,6 @@
 package pack.block.blockstore.hdfs.v4;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -18,6 +19,7 @@ import org.slf4j.LoggerFactory;
 
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
+import pack.block.blockstore.hdfs.v4.WalFile.Reader;
 
 public class WalFileFactoryPackFile extends WalFileFactory {
 
@@ -112,6 +114,25 @@ public class WalFileFactoryPackFile extends WalFileFactory {
         return true;
       }
     };
+  }
+
+  @Override
+  public void recover(Path src, Path dst) throws IOException {
+    try (FSDataOutputStream outputStream = _fileSystem.create(dst, true)) {
+      try (Reader reader = open(src)) {
+        WalKeyWritable key = new WalKeyWritable();
+        BytesWritable value = new BytesWritable();
+        try {
+          while (reader.next(key, value)) {
+            key.write(outputStream);
+            value.write(outputStream);
+          }
+        } catch (EOFException e) {
+          LOGGER.info("EOF reached for {}", src);
+          return;
+        }
+      }
+    }
   }
 
 }

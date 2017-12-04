@@ -188,7 +188,11 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
       Path path = fileStatus.getPath();
       if (shouldTryToRecover(path)) {
         recoverBlock(path);
-      } else if (shouldTryToPullWal(path)) {
+      }
+    }
+    for (FileStatus fileStatus : listStatus) {
+      Path path = fileStatus.getPath();
+      if (shouldTryToPullWal(path)) {
         LocalWalCache localWalCache = getLocalWalCache(path);
         LocalWalCache.applyWal(_walFactory, path, localWalCache);
         walPathList.add(path);
@@ -250,8 +254,14 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
                .endsWith(WAL);
   }
 
-  private void recoverBlock(Path path) {
-    LOGGER.info("Recover block {}", path);
+  private void recoverBlock(Path src) throws IOException {
+    LOGGER.info("Recover block {}", src);
+    Path dst = newDataGenerationFile(WAL_TMP);
+    _walFactory.recover(src, dst);
+    if (_fileSystem.rename(dst, newExtPath(dst, WAL))) {
+      LOGGER.info("Recovery of block {} complete", src);
+      _fileSystem.delete(src, false);
+    }
   }
 
   private boolean shouldTryToRecover(Path path) {

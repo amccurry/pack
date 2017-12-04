@@ -61,4 +61,4 @@ buildHttpDir $BASE_PROJECT_DIR
 
 echo "]}" >> $MANIFEST
 cd ${HTTP_DIR}
-python -m SimpleHTTPServer
+python -m SimpleHTTPServer 8001
