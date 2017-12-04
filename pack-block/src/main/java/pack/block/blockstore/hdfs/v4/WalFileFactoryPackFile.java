@@ -7,6 +7,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -24,73 +25,126 @@ import pack.block.blockstore.hdfs.v4.WalFile.Reader;
 public class WalFileFactoryPackFile extends WalFileFactory {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(WalFileFactoryPackFile.class);
+  private final long _maxIdleWriterTime;
 
   public WalFileFactoryPackFile(FileSystem fileSystem, HdfsMetaData metaData) {
     super(fileSystem, metaData);
+    long maxIdleWriterTime = metaData.getMaxIdleWriterTime();
+    _maxIdleWriterTime = maxIdleWriterTime == 0 ? HdfsMetaData.DEFAULT_MAX_IDLE_WRITER_TIME : maxIdleWriterTime;
   }
 
   public WalFile.Writer create(Path path) throws IOException {
-    FSDataOutputStream outputStream = _fileSystem.create(path, true);
+    return new InternalWriter(_fileSystem, path, _maxIdleWriterTime);
+  }
 
-    AtomicLong flushPoint = new AtomicLong();
-    AtomicBoolean running = new AtomicBoolean(true);
-    ExecutorService executor = Executors.newSingleThreadExecutor();
-    executor.submit(new Runnable() {
-      private long lastFlush = 0;
+  private static class InternalWriter extends WalFile.Writer {
 
-      @Override
-      public void run() {
-        while (running.get()) {
-          if (lastFlush < flushPoint.get()) {
+    private final AtomicLong flushPoint = new AtomicLong();
+    private final AtomicBoolean running = new AtomicBoolean(true);
+    private final AtomicReference<FSDataOutputStream> outputStream = new AtomicReference<FSDataOutputStream>();
+    private final AtomicLong lastFlush = new AtomicLong();
+    private final AtomicLong lastFlushTime = new AtomicLong(System.nanoTime());
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final FileSystem _fileSystem;
+    private final Path _path;
+    private final long _maxIdleWriterTime;
+
+    public InternalWriter(FileSystem fileSystem, Path path, long maxIdleWriterTime) throws IOException {
+      _maxIdleWriterTime = maxIdleWriterTime;
+      _fileSystem = fileSystem;
+      _path = path;
+      executor.submit(() -> {
+        flushLoop(path);
+      });
+    }
+
+    private void flushLoop(Path path) {
+      while (running.get()) {
+        if (lastFlush.get() < flushPoint.get()) {
+          try {
+            FSDataOutputStream output = getOutputStream();
+            long pos = output.getPos();
+            output.hflush();
+            lastFlush.set(pos);
+            lastFlushTime.set(System.nanoTime());
+          } catch (IOException e1) {
+            LOGGER.error("Error during flush of " + path, e1);
+          }
+        }
+
+        long time = System.nanoTime() - lastFlushTime.get();
+        if (outputStream.get() != null) {
+          if (time >= _maxIdleWriterTime) {
             try {
-              long pos = outputStream.getPos();
-              outputStream.hflush();
-              lastFlush = pos;
+              closeWriter();
             } catch (IOException e) {
-              LOGGER.error("Error during flush of " + path, e);
-            }
-          } else {
-            try {
-              Thread.sleep(TimeUnit.MILLISECONDS.toMillis(10));
-            } catch (InterruptedException e) {
-              if (running.get()) {
-                LOGGER.error("Unknown error", e);
-              } else {
-                return;
-              }
+              LOGGER.error("Error during closing of idle writer " + path, e);
             }
           }
         }
+        try {
+          Thread.sleep(TimeUnit.MILLISECONDS.toMillis(10));
+        } catch (InterruptedException e2) {
+          if (running.get()) {
+            LOGGER.error("Unknown error", e2);
+          } else {
+            return;
+          }
+        }
       }
-    });
+    }
 
-    return new WalFile.Writer() {
-
-      @Override
-      public void close() throws IOException {
-        running.set(false);
-        outputStream.close();
-        executor.shutdownNow();
+    private synchronized void closeWriter() throws IOException {
+      FSDataOutputStream output = outputStream.getAndSet(null);
+      if (output != null) {
+        LOGGER.info("Closing idle writer.");
+        output.close();
       }
+    }
 
-      @Override
-      public void append(WalKeyWritable key, BytesWritable value) throws IOException {
-        key.write(outputStream);
-        value.write(outputStream);
+    private synchronized FSDataOutputStream getOutputStream() throws IOException {
+      FSDataOutputStream output = outputStream.get();
+      if (output == null) {
+        if (_fileSystem.exists(_path)) {
+          output = _fileSystem.append(_path);
+          lastFlushTime.set(System.nanoTime());
+        } else {
+          output = _fileSystem.create(_path, true);
+          lastFlushTime.set(System.nanoTime());
+        }
+        outputStream.set(output);
       }
+      return output;
+    }
 
-      @Override
-      public long getLength() throws IOException {
-        return outputStream.getPos();
+    @Override
+    public void close() throws IOException {
+      running.set(false);
+      FSDataOutputStream output = outputStream.getAndSet(null);
+      if (output != null) {
+        output.close();
       }
+      executor.shutdownNow();
+    }
 
-      @Override
-      public void flush() throws IOException {
-        long pos = outputStream.getPos();
-        flushPoint.set(pos);
-      }
+    @Override
+    public void append(WalKeyWritable key, BytesWritable value) throws IOException {
+      FSDataOutputStream output = getOutputStream();
+      key.write(output);
+      value.write(output);
+    }
 
-    };
+    @Override
+    public long getLength() throws IOException {
+      return getOutputStream().getPos();
+    }
+
+    @Override
+    public void flush() throws IOException {
+      long pos = getOutputStream().getPos();
+      flushPoint.set(pos);
+    }
+
   }
 
   public WalFile.Reader open(Path path) throws IOException {

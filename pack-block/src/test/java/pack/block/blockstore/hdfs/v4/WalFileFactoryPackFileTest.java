@@ -20,6 +20,7 @@ import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.blockstore.hdfs.file.WalKeyWritable.Type;
 import pack.block.blockstore.hdfs.v4.WalFile.Reader;
+import pack.block.blockstore.hdfs.v4.WalFile.Writer;
 
 public class WalFileFactoryPackFileTest {
 
@@ -42,10 +43,11 @@ public class WalFileFactoryPackFileTest {
   }
 
   @Test
-  public void testServer() throws Exception {
+  public void testWalFile() throws Exception {
+    Path dir = new Path("/testWalFile");
     HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA;
     WalFileFactoryPackFile file = new WalFileFactoryPackFile(fileSystem, metaData);
-    Path src = new Path("/wal.tmp");
+    Path src = new Path(dir, "wal.tmp");
     FSDataOutputStream out = fileSystem.create(src, false);
 
     WalKeyWritable key = new WalKeyWritable();
@@ -58,10 +60,48 @@ public class WalFileFactoryPackFileTest {
 
     Thread.sleep(TimeUnit.SECONDS.toMillis(1));
 
-    Path dst = new Path("/wal.dst");
+    Path dst = new Path(dir, "wal.dst");
     file.recover(src, dst);
 
     Reader reader = file.open(dst);
+    if (!reader.next(key, value)) {
+      fail();
+    }
+    if (reader.next(key, value)) {
+      fail();
+    }
+  }
+
+  @Test
+  public void testWalFileWithTimeout() throws Exception {
+    Path dir = new Path("/testWalFileWithTimeout");
+    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                          .maxIdleWriterTime(TimeUnit.SECONDS.toNanos(1))
+                                                          .build();
+
+    WalFileFactoryPackFile file = new WalFileFactoryPackFile(fileSystem, metaData);
+    Path src = new Path(dir, "wal.tmp");
+    try (Writer writer = file.create(src)) {
+      WalKeyWritable key = new WalKeyWritable();
+      key.setType(Type.DATA);
+      key.setStartingBlockId(1);
+      key.setEtartingBlockId(2);
+      BytesWritable value = new BytesWritable();
+
+      writer.append(key, value);
+      Thread.sleep(TimeUnit.SECONDS.toMillis(2));
+
+      key.setStartingBlockId(2);
+      key.setEtartingBlockId(3);
+      writer.append(key, value);
+    }
+
+    WalKeyWritable key = new WalKeyWritable();
+    BytesWritable value = new BytesWritable();
+    Reader reader = file.open(src);
+    if (!reader.next(key, value)) {
+      fail();
+    }
     if (!reader.next(key, value)) {
       fail();
     }

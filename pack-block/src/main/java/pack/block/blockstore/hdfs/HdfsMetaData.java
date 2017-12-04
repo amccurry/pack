@@ -1,8 +1,12 @@
 package pack.block.blockstore.hdfs;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -51,6 +55,8 @@ public class HdfsMetaData {
 
   public static final long DEFAULT_MAX_WAL_FILE_SIZE = 256 * 1024L * 1024L;
 
+  public static final long DEFAULT_MAX_IDLE_WRITER_TIME = TimeUnit.MINUTES.toNanos(10);
+
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
                                                                    .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
                                                                    .fileSystemType(FileSystemType.XFS)
@@ -64,6 +70,7 @@ public class HdfsMetaData {
                                                                    .maxCacheSizePerActiveFile(
                                                                        DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE)
                                                                    .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
+                                                                   .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
                                                                    .build();
 
   @JsonProperty
@@ -102,8 +109,16 @@ public class HdfsMetaData {
   @JsonProperty
   String walCompressionCodec;
 
-  public static void main(String[] args) {
+  @JsonProperty
+  long maxIdleWriterTime = DEFAULT_MAX_IDLE_WRITER_TIME;
+
+  public static void main(String[] args) throws IOException {
     System.out.println(DEFAULT_META_DATA);
+    ObjectMapper mapper = new ObjectMapper();
+    System.out.println(mapper.writeValueAsString(DEFAULT_META_DATA));
+
+    HdfsMetaData hdfsMetaData = mapper.readValue(new File("test.json"), HdfsMetaData.class);
+    System.out.println(hdfsMetaData.getMaxIdleWriterTime());
   }
 
   public static HdfsMetaData setupOptions(HdfsMetaData defaultmetaData, Map<String, Object> options) {
