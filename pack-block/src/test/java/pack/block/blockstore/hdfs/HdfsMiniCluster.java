@@ -33,7 +33,7 @@ public class HdfsMiniCluster {
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
     
-    Thread.sleep(10000000);
+    Thread.sleep(100000000);
   }
 
   private static void writeConfiguration(File file) throws IOException {

@@ -35,13 +35,13 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.blockstore.LocalWalCache;
+import pack.block.blockstore.hdfs.blockstore.WalFileFactory;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
 import pack.block.blockstore.hdfs.file.ReadRequest;
-import pack.block.blockstore.hdfs.v4.LocalWalCache;
-import pack.block.blockstore.hdfs.v4.WalFileFactory;
 import pack.block.util.Utils;
 import pack.zk.utils.ZooKeeperLockManager;
 

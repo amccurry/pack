@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.v4;
+package pack.block.blockstore.hdfs.blockstore;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -45,12 +45,12 @@ import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 
-public class HdfsBlockStoreV4 implements HdfsBlockStore {
+public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   private static final String WAL_TMP = ".waltmp";
   private static final String WAL = ".wal";
 
-  private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreV4.class);
+  private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreImpl.class);
 
   private static final String READ_METER = "readMeter";
   private static final String WRITE_METER = "writeMeter";
@@ -84,11 +84,11 @@ public class HdfsBlockStoreV4 implements HdfsBlockStore {
   private final AtomicLong _genCounter;
   private final WalFileFactory _walFactory;
 
-  public HdfsBlockStoreV4(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path) throws IOException {
+  public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path) throws IOException {
     this(registry, cacheDir, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
   }
 
-  public HdfsBlockStoreV4(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
+  public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
       HdfsBlockStoreConfig config) throws IOException {
 
     _registry = registry;

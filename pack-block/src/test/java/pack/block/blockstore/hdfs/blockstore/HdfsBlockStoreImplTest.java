@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.v3;
+package pack.block.blockstore.hdfs.blockstore;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -23,18 +23,19 @@ import pack.block.blockstore.compactor.BlockFileCompactor;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
 
-public class HdfsBlockStoreV3Test {
+public class HdfsBlockStoreImplTest {
 
   private static MiniDFSCluster cluster;
-  private static File storePathDir = new File("./test");
+  private static File storePathDir = new File("./target/tmp/HdfsBlockStoreV4Test");
   private static FileSystem fileSystem;
   private static MetricRegistry metrics = new MetricRegistry();
 
   @BeforeClass
   public static void beforeClass() throws IOException {
     Configuration configuration = new Configuration();
-    String storePath = storePathDir.getAbsolutePath();
+    String storePath = new File(storePathDir, "hdfs").getAbsolutePath();
     configuration.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, storePath);
     cluster = new MiniDFSCluster.Builder(configuration).build();
     fileSystem = cluster.getFileSystem();
@@ -54,7 +55,7 @@ public class HdfsBlockStoreV3Test {
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
     Random random = new Random(1);
 
-    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
       long s = System.nanoTime();
       for (int i = 0; i < 10000; i++) {
         int blockSize = store.getFileSystemBlockSize();
@@ -80,6 +81,10 @@ public class HdfsBlockStoreV3Test {
     }
   }
 
+  private File getCacheDir() {
+    return new File(storePathDir, "cache");
+  }
+
   @Test
   public void testDeleteBlocks() throws Exception {
 
@@ -89,11 +94,13 @@ public class HdfsBlockStoreV3Test {
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
 
+    new File("");
+
     int blockSize = metaData.getFileSystemBlockSize();
     byte[] buffer = new byte[blockSize];
     Arrays.fill(buffer, (byte) 1);
 
-    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
       long position = 0;
       for (int j = 0; j < 1000; j++) {
         if (j % 123 == 0) {
@@ -116,12 +123,18 @@ public class HdfsBlockStoreV3Test {
       compactor.runCompaction();
     }
 
-    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
       store.processBlockFiles();
     }
 
     FileStatus[] fileStatus = fileSystem.listStatus(new Path(path, HdfsBlockStoreConfig.BLOCK));
     assertEquals(1, fileStatus.length);
+
+    for (FileStatus status : fileStatus) {
+      assertTrue(status.getPath()
+                       .getName()
+                       .endsWith(HdfsBlockStoreConfig.BLOCK));
+    }
   }
 
   @Test
@@ -142,7 +155,7 @@ public class HdfsBlockStoreV3Test {
     int maxPos = blockSize * 100;
     int maxOffset = 100;
 
-    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
       for (int j = 0; j < 10000; j++) {
         int length = random.nextInt(maxLength);
         int offset = random.nextInt(maxOffset);
@@ -182,7 +195,7 @@ public class HdfsBlockStoreV3Test {
     byte[] buf = new byte[122880];
     random.nextBytes(buf);
 
-    try (HdfsBlockStoreV3 store = new HdfsBlockStoreV3(metrics, fileSystem, path)) {
+    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
       {
         long pos = 139264;
         int len = buf.length;
@@ -209,12 +222,104 @@ public class HdfsBlockStoreV3Test {
 
       assertTrue(Arrays.equals(buf, buf2));
     }
+
+    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
+      byte[] buf2 = new byte[buf.length];
+      {
+        long pos = 139264;
+        int len = buf.length;
+        int offset = 0;
+        while (len > 0) {
+          int read = store.read(pos, buf2, offset, len);
+          pos += read;
+          offset += read;
+          len -= read;
+        }
+      }
+
+      assertTrue(Arrays.equals(buf, buf2));
+    }
   }
 
   private int getLength(long pos, int length, int blockSize) {
     int blockOffset = (int) (pos % blockSize);
     int len = blockSize - blockOffset;
     return Math.min(len, length);
+  }
+
+  @Test
+  public void testBlockStoreClone() throws Exception {
+    Path path = new Path("/testBlockStoreClone");
+    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                          .length(100000000)
+                                                          .build();
+    HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
+    Random random = new Random(1);
+
+    long pos = 0;
+    int passes = 1000;
+    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
+      long s = System.nanoTime();
+      for (int i = 0; i < passes; i++) {
+        int blockSize = store.getFileSystemBlockSize();
+        pos += (random.nextInt(9) + 1) * blockSize;
+        {
+          byte[] buf = new byte[blockSize];
+          store.read(pos, buf, 0, blockSize);
+        }
+        byte[] data = new byte[blockSize];
+        random.nextBytes(data);
+        {
+          store.write(pos, data, 0, blockSize);
+        }
+        {
+          byte[] buf = new byte[blockSize];
+          store.read(pos, buf, 0, blockSize);
+          // System.out.println(pos);
+          assertTrue(Arrays.equals(data, buf));
+        }
+      }
+      long e = System.nanoTime();
+      System.out.println("Run time " + (e - s) / 1_000_000.0 + " ms");
+    }
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(getCacheDir(), fileSystem, path, metaData, null)) {
+      compactor.runCompaction();
+    }
+
+    Path clonePath = new Path("/testBlockStoreClone2");
+    HdfsMetaData cloneMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+                                                               .length(100000000)
+                                                               .build();
+    HdfsBlockStoreAdmin.writeHdfsMetaData(cloneMetaData, fileSystem, clonePath);
+    HdfsBlockStoreAdmin.clonePath(fileSystem, path, clonePath, true);
+
+    pos = 0;
+    random = new Random(1);
+    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, clonePath)) {
+      long s = System.nanoTime();
+      for (int i = 0; i < passes; i++) {
+        int blockSize = store.getFileSystemBlockSize();
+        pos += (random.nextInt(9) + 1) * blockSize;
+        {
+          byte[] buf = new byte[blockSize];
+          store.read(pos, buf, 0, blockSize);
+        }
+        byte[] data = new byte[blockSize];
+        random.nextBytes(data);
+        {
+          // store.write(pos, data, 0, blockSize);
+        }
+        {
+          byte[] buf = new byte[blockSize];
+          store.read(pos, buf, 0, blockSize);
+          // System.out.println(pos);
+          assertTrue(Arrays.equals(data, buf));
+        }
+      }
+      long e = System.nanoTime();
+      System.out.println("Run time " + (e - s) / 1_000_000.0 + " ms");
+    }
   }
 
 }

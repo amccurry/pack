@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.v4;
+package pack.block.blockstore.hdfs.blockstore;
 
 import java.io.Closeable;
 import java.io.File;
@@ -14,10 +14,10 @@ import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.block.blockstore.hdfs.blockstore.WalFile.Reader;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.blockstore.hdfs.file.WalKeyWritable.Type;
-import pack.block.blockstore.hdfs.v4.WalFile.Reader;
 import pack.block.util.Utils;
 
 public class LocalWalCache implements Closeable {

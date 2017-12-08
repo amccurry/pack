@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.v4;
+package pack.block.blockstore.hdfs.blockstore;
 
 import java.io.IOException;
 

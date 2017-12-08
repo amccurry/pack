@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.v4;
+package pack.block.blockstore.hdfs.blockstore;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -19,8 +19,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.blockstore.WalFile.Reader;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
-import pack.block.blockstore.hdfs.v4.WalFile.Reader;
 
 public class WalFileFactoryPackFile extends WalFileFactory {
 

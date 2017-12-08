@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.v4;
+package pack.block.blockstore.hdfs.blockstore;
 
 import static org.junit.Assert.fail;
 
@@ -17,10 +17,11 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.blockstore.WalFileFactoryPackFile;
+import pack.block.blockstore.hdfs.blockstore.WalFile.Reader;
+import pack.block.blockstore.hdfs.blockstore.WalFile.Writer;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.blockstore.hdfs.file.WalKeyWritable.Type;
-import pack.block.blockstore.hdfs.v4.WalFile.Reader;
-import pack.block.blockstore.hdfs.v4.WalFile.Writer;
 
 public class WalFileFactoryPackFileTest {
 

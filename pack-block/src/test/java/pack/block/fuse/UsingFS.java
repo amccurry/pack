@@ -4,8 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
-import pack.block.blockstore.file.FileBlockStore;
-
 public class UsingFS {
 
   public static void main(String[] args) throws IOException {
