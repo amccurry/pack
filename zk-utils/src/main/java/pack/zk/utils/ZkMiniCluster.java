@@ -41,6 +41,16 @@ public class ZkMiniCluster {
   private Thread serverThread;
   private volatile ZooKeeperServerMainEmbedded zooKeeperServerMain;
 
+  public static void main(String[] args) throws InterruptedException {
+    File file = new File(args[0]);
+    file.mkdirs();
+    ZkMiniCluster zkMiniCluster = new ZkMiniCluster();
+    zkMiniCluster.startZooKeeper(file.getAbsolutePath(), false);
+    while (true) {
+      Thread.sleep(1000000);
+    }
+  }
+
   public String getZkConnectionString() {
     long s = System.nanoTime();
     while (zooKeeperServerMain == null) {

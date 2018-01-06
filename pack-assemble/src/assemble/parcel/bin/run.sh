@@ -1,5 +1,27 @@
 #!/bin/bash
 set -e
+set -x
+
+if [ ! -z ${TEST_HDFS+x} ]; then
+  set +x
+  for f in /pack/lib-test/*
+  do
+    if [ -z ${HADOOP_CLASSPATH+x} ]; then
+      export HADOOP_CLASSPATH="${f}"
+    else
+      export HADOOP_CLASSPATH="${HADOOP_CLASSPATH}:${f}"
+    fi
+  done
+  set -x
+  echo $HADOOP_CLASSPATH
+  java -Xmx256m -Xms256m -cp ${HADOOP_CLASSPATH} pack.block.blockstore.hdfs.HdfsMiniCluster /test-hdfs >hdfs_stdout 2>hdfs_stderr &
+  while [ ! -f "/test-hdfs/conf/hdfs-site.xml" ] ; do
+    echo "waiting for hdfs to start..."
+    sleep 1
+  done
+  export HDFS_CONF_DIR=/test-hdfs/conf/
+fi
+
 set +x
 export CLASSPATH="${HDFS_CONF_DIR}"
 set +x
@@ -9,6 +31,11 @@ do
 done
 set -x
 echo $CLASSPATH
+
+if [ ! -z ${TEST_ZK+x} ]; then
+  java -Xmx256m -Xms256m -cp ${CLASSPATH} pack.zk.utils.ZkMiniCluster /test-zk >zk_stdout 2>zk_stderr &
+  export PACK_ZOOKEEPER_CONNECTION_STR="127.0.0.1:21810/pack"
+fi
 
 if [ -z ${HDFS_CONF_DIR+x} ]; then
  echo "HDFS_CONF_DIR is not defined";

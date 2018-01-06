@@ -8,6 +8,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 
 import pack.PackServer;
 import pack.PackStorage;
+import pack.block.server.BlockPackStorageConfig.BlockPackStorageConfigBuilder;
 import pack.block.util.Utils;
 
 public class BlockPackServer extends PackServer {
@@ -27,49 +28,66 @@ public class BlockPackServer extends PackServer {
     long volumeMissingPollingPeriod = Utils.getVolumeMissingPollingPeriod();
     int volumeMissingCountBeforeAutoShutdown = Utils.getVolumeMissingCountBeforeAutoShutdown();
     boolean countDockerDownAsMissing = Utils.getCountDockerDownAsMissing();
+    boolean nohupProcess = Utils.getNohupProcess();
 
     String sockerFile = "/run/docker/plugins/pack.sock";
     BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localWorkingDir, localLogDir, remotePath,
         ugi, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
-        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing);
+        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess);
     packServer.runServer();
   }
 
-  private final File localWorkingDir;
-  private final File localLogDir;
-  private final Path remotePath;
-  private final UserGroupInformation ugi;
+  private final File _localWorkingDir;
+  private final File _localLogDir;
+  private final Path _remotePath;
+  private final UserGroupInformation _ugi;
   private final Configuration configuration = new Configuration();
-  private final String zkConnection;
-  private final int zkTimeout;
+  private final String _zkConnection;
+  private final int _zkTimeout;
   private final int _numberOfMountSnapshots;
   private final long _volumeMissingPollingPeriod;
   private final int _volumeMissingCountBeforeAutoShutdown;
   private final boolean _countDockerDownAsMissing;
+  private final boolean _nohupProcess;
 
   public BlockPackServer(boolean global, String sockFile, File localWorkingDir, File localLogDir, Path remotePath,
       UserGroupInformation ugi, String zkConnection, int zkTimeout, int numberOfMountSnapshots,
-      long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing) {
+      long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
+      boolean nohupProcess) {
     super(global, sockFile);
+    _nohupProcess = nohupProcess;
     _numberOfMountSnapshots = numberOfMountSnapshots;
     _volumeMissingPollingPeriod = volumeMissingPollingPeriod;
     _volumeMissingCountBeforeAutoShutdown = volumeMissingCountBeforeAutoShutdown;
     _countDockerDownAsMissing = countDockerDownAsMissing;
-    this.localWorkingDir = localWorkingDir;
-    this.localLogDir = localLogDir;
-    this.remotePath = remotePath;
-    this.ugi = ugi;
-    this.zkConnection = zkConnection;
-    this.zkTimeout = zkTimeout;
+    _localWorkingDir = localWorkingDir;
+    _localLogDir = localLogDir;
+    _remotePath = remotePath;
+    _ugi = ugi;
+    _zkConnection = zkConnection;
+    _zkTimeout = zkTimeout;
     localWorkingDir.mkdirs();
     localLogDir.mkdirs();
   }
 
   @Override
   protected PackStorage getPackStorage() throws Exception {
-    return new BlockPackStorage(localWorkingDir, localLogDir, configuration, remotePath, ugi, zkConnection, zkTimeout,
-        _numberOfMountSnapshots, _volumeMissingPollingPeriod, _volumeMissingCountBeforeAutoShutdown,
-        _countDockerDownAsMissing);
+
+    BlockPackStorageConfigBuilder builder = BlockPackStorageConfig.builder();
+    builder.ugi(_ugi)
+           .configuration(configuration)
+           .remotePath(_remotePath)
+           .zkConnection(_zkConnection)
+           .zkTimeout(_zkTimeout)
+           .logDir(_localLogDir)
+           .workingDir(_localWorkingDir)
+           .numberOfMountSnapshots(_numberOfMountSnapshots)
+           .volumeMissingPollingPeriod(_volumeMissingPollingPeriod)
+           .nohupProcess(_nohupProcess)
+           .countDockerDownAsMissing(_countDockerDownAsMissing)
+           .volumeMissingCountBeforeAutoShutdown(_volumeMissingCountBeforeAutoShutdown)
+           .build();
+    return new BlockPackStorage(builder.build());
   }
 
   private static boolean isGlobal() {

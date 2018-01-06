@@ -35,17 +35,12 @@ import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
 
 public class BlockPackStorage implements PackStorage {
-
-  private static final String CLONE_PATH = "clonePath";
-
-  private static final String SYMLINK_CLONE = "symlinkClone";
-
-  private static final String MOUNT_COUNT = "mountCount";
-
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
+  private static final String CLONE_PATH = "clonePath";
+  private static final String SYMLINK_CLONE = "symlinkClone";
+  private static final String MOUNT_COUNT = "mountCount";
   public static final String MOUNT = "/mount";
-
   private static final String METRICS = "metrics";
 
   protected final Configuration _configuration;
@@ -65,15 +60,14 @@ public class BlockPackStorage implements PackStorage {
   protected final long _volumeMissingPollingPeriod;
   protected final int _volumeMissingCountBeforeAutoShutdown;
   protected final boolean _countDockerDownAsMissing;
+  protected final boolean _nohupProcess;
 
-  public BlockPackStorage(File workingDir, File logDir, Configuration configuration, Path remotePath,
-      UserGroupInformation ugi, String zkConnection, int zkTimeout, int numberOfMountSnapshots,
-      long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing)
-      throws IOException, InterruptedException {
-    _numberOfMountSnapshots = numberOfMountSnapshots;
-    _volumeMissingPollingPeriod = volumeMissingPollingPeriod;
-    _volumeMissingCountBeforeAutoShutdown = volumeMissingCountBeforeAutoShutdown;
-    _countDockerDownAsMissing = countDockerDownAsMissing;
+  public BlockPackStorage(BlockPackStorageConfig config) throws IOException, InterruptedException {
+    _nohupProcess = config.isNohupProcess();
+    _numberOfMountSnapshots = config.getNumberOfMountSnapshots();
+    _volumeMissingPollingPeriod = config.getVolumeMissingPollingPeriod();
+    _volumeMissingCountBeforeAutoShutdown = config.getVolumeMissingCountBeforeAutoShutdown();
+    _countDockerDownAsMissing = config.isCountDockerDownAsMissing();
 
     Closer closer = Closer.create();
     closer.register((Closeable) () -> {
@@ -86,32 +80,33 @@ public class BlockPackStorage implements PackStorage {
       }
     });
     addShutdownHook(closer);
-    _zkConnection = zkConnection;
-    _zkTimeout = zkTimeout;
+    _zkConnection = config.getZkConnection();
+    _zkTimeout = config.getZkTimeout();
 
-    _configuration = configuration;
-    FileSystem fileSystem = getFileSystem(remotePath);
-    remotePath = remotePath.makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
+    _configuration = config.getConfiguration();
+    FileSystem fileSystem = getFileSystem(config.getRemotePath());
+    Path remotePath = config.getRemotePath()
+                            .makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
     _root = remotePath;
-    _ugi = ugi;
+    _ugi = config.getUgi();
 
     LOGGER.info("Creating hdfs root path {}", _root);
     _ugi.doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
 
-    _localLogDir = logDir;
+    _localLogDir = config.getLogDir();
     _localLogDir.mkdirs();
 
-    _localLibDir = new File(workingDir, "lib");
+    _localLibDir = new File(config.getWorkingDir(), "lib");
     _localLibDir.mkdirs();
-    _localFileSystemDir = new File(workingDir, "fs");
+    _localFileSystemDir = new File(config.getWorkingDir(), "fs");
     _localFileSystemDir.mkdirs();
-    _localMountCountDir = new File(workingDir, "counts");
+    _localMountCountDir = new File(config.getWorkingDir(), "counts");
     _localMountCountDir.mkdirs();
-    _localDeviceDir = new File(workingDir, "devices");
+    _localDeviceDir = new File(config.getWorkingDir(), "devices");
     _localDeviceDir.mkdirs();
-    _localCacheDir = new File(workingDir, "cache");
+    _localCacheDir = new File(config.getWorkingDir(), "cache");
     _localCacheDir.mkdirs();
-    _localUnixSocketDir = new File(workingDir, "sock");
+    _localUnixSocketDir = new File(config.getWorkingDir(), "sock");
     _localUnixSocketDir.mkdirs();
   }
 
@@ -268,10 +263,11 @@ public class BlockPackStorage implements PackStorage {
     String path = volumePath.toUri()
                             .getPath();
 
-    BlockPackFuse.startProcess(localDevice.getAbsolutePath(), localFileSystemMount.getAbsolutePath(),
-        localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path, _zkConnection, _zkTimeout, volumeName,
-        logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(), libDir.getAbsolutePath(), _numberOfMountSnapshots,
-        _volumeMissingPollingPeriod, _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing);
+    BlockPackFuseProcessBuilder.startProcess(_nohupProcess, localDevice.getAbsolutePath(),
+        localFileSystemMount.getAbsolutePath(), localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path,
+        _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(),
+        libDir.getAbsolutePath(), _numberOfMountSnapshots, _volumeMissingPollingPeriod,
+        _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing);
 
     waitForMount(localFileSystemMount, unixSockFile);
     incrementMountCount(unixSockFile);

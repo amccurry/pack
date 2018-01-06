@@ -11,14 +11,24 @@ docker build -t pack .
 ~~~~
 docker run -d \
   --name pack \
-  --net host \
-  --privileged \
-  -e pack.hdfs.path="<hdfs path>" \
-  -e pack.hdfs.user=pack \
-  -e pack.scope=global \
+  --cap-add SYS_ADMIN \
+  --device /dev/fuse \
+  -e PACK_ZOOKEEPER_CONNECTION_STR="<zk>/pack" \
+  -e HDFS_CONF_DIR="/pack/hadoop-conf" \
   -v <hdfs config>:/pack/hadoop-conf \
-  -v /var/lib/pack:/var/lib/pack \
-  -v /etc/docker:/etc/docker \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  pack
+  -v /var/run/docker/plugins/:/var/run/docker/plugins/ \
+  pack <[pack|compactor]>
+~~~~
+
+~~~~
+docker run -it --rm \
+  --name pack \
+  --cap-add SYS_ADMIN \
+  --device /dev/fuse \
+  -e TEST_ZK=true \
+  -e TEST_HDFS=true \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v /var/run/docker/plugins/:/var/run/docker/plugins/ \
+  pack pack
 ~~~~

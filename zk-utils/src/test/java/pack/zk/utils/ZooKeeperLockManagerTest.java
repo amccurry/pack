@@ -53,13 +53,13 @@ public class ZooKeeperLockManagerTest {
           return null;
         });
 
-        Thread.sleep(1000);
+        Thread.sleep(3000);
 
         assertFalse(future.isDone());
 
         manager.unlock("test");
 
-        Thread.sleep(1000);
+        Thread.sleep(3000);
 
         assertTrue(future.isDone());
       }

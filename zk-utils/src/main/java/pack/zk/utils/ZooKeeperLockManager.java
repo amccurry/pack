@@ -107,6 +107,11 @@ public class ZooKeeperLockManager implements Closeable {
   }
 
   public synchronized boolean tryToLock(String name) throws KeeperException, InterruptedException {
+    return tryToLock(name, TimeUnit.NANOSECONDS, 0);
+  }
+
+  public synchronized boolean tryToLock(String name, TimeUnit timeUnit, long time)
+      throws KeeperException, InterruptedException {
     if (_lockMap.containsKey(name)) {
       return false;
     }
@@ -115,6 +120,8 @@ public class ZooKeeperLockManager implements Closeable {
       String newPath = zooKeeper.create(_lockPath + "/" + name + "_", null, Ids.OPEN_ACL_UNSAFE,
           CreateMode.EPHEMERAL_SEQUENTIAL);
       _lockMap.put(name, new LockSession(newPath, zooKeeper));
+      long totalWaitTime = timeUnit.toNanos(time);
+      long start = System.nanoTime();
       while (true) {
         synchronized (_lock) {
           List<String> children = getOnlyThisLocksChildren(name, zooKeeper.getChildren(_lockPath, _watcher));
@@ -126,13 +133,15 @@ public class ZooKeeperLockManager implements Closeable {
             return true;
           } else {
             LOGGER.debug("Waiting for lock on path {} with name {}", _lockPath, name);
-            _lock.wait(_timeout);
-            zooKeeper.delete(newPath, -1);
-            LockSession lockSession = _lockMap.remove(name);
-            if (lockSession != null) {
-              lockSession.close();
+            _lock.wait(timeUnit.toMillis(time));
+            if (start + totalWaitTime < System.nanoTime()) {
+              zooKeeper.delete(newPath, -1);
+              LockSession lockSession = _lockMap.remove(name);
+              if (lockSession != null) {
+                lockSession.close();
+              }
+              return false;
             }
-            return false;
           }
         }
       }

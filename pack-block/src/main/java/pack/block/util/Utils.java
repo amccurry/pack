@@ -28,6 +28,8 @@ import pack.block.server.BlockPackFuse;
 
 public class Utils {
 
+  private static final String PACK_NOHUP_PROCESS = "PACK_NOHUP_PROCESS";
+
   public interface TimerWithException<T, E extends Throwable> {
     T time() throws E;
   }
@@ -191,6 +193,14 @@ public class Utils {
       throw new RuntimeException("Hdfs path not configured [" + PACK_HDFS_PATH + "].");
     }
     return v;
+  }
+
+  public static boolean getNohupProcess() {
+    String v = System.getenv(PACK_NOHUP_PROCESS);
+    if (v == null) {
+      return true;
+    }
+    return Boolean.parseBoolean(v.toLowerCase());
   }
 
   public static String getLocalWorkingPath() {

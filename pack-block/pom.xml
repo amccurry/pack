@@ -86,22 +86,13 @@
 	<build>
 		<plugins>
 			<plugin>
-				<artifactId>maven-assembly-plugin</artifactId>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
 				<executions>
 					<execution>
-						<id>distro-assembly-parcel</id>
-						<phase>package</phase>
 						<goals>
-							<goal>single</goal>
+							<goal>test-jar</goal>
 						</goals>
-						<configuration>
-							<descriptors>
-								<descriptor>${parcel.assembly.file}</descriptor>
-							</descriptors>
-							<finalName>${parcel.name}-${parcel.version}</finalName>
-							<appendAssemblyId>false</appendAssemblyId>
-							<ignoreDirFormatExtensions>false</ignoreDirFormatExtensions>
-						</configuration>
 					</execution>
 				</executions>
 			</plugin>

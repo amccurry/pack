@@ -31,8 +31,8 @@
 
 	<modules>
 		<module>pack-core</module>
+		<module>pack-assemble</module>
 		<module>pack-spi</module>
-		<module>pack-tar</module>
 		<module>pack-block</module>
 		<module>jnr-fuse</module>
 		<module>zk-utils</module>
@@ -43,6 +43,17 @@
 			<dependency>
 				<groupId>pack</groupId>
 				<artifactId>pack-core</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-block</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-block</artifactId>
+				<classifier>tests</classifier>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
@@ -133,7 +144,7 @@
 			<dependency>
 				<groupId>org.roaringbitmap</groupId>
 				<artifactId>RoaringBitmap</artifactId>
-				<version>[0.6,)</version>
+				<version>0.6.51</version>
 			</dependency>
 			<dependency>
 				<groupId>io.dropwizard.metrics</groupId>
