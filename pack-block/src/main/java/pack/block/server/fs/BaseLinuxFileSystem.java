@@ -21,11 +21,16 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
   private static final String UMOUNT = "umount";
   private static final String MOUNT = "mount";
   private static final String OPTIONS_SWITCH = "-o";
-  // private static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
-  private static final String DEFAULT_MOUNT_OPTIONS = "noatime";
+  private static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
 
   @Override
   public void mount(File device, File mountLocation, String options) throws IOException {
+    try {
+      umount(mountLocation);
+      LOGGER.info("Old mount was not cleanly umounted {}", mountLocation);
+    } catch (IOException e) {
+
+    }
     options = options == null ? DEFAULT_MOUNT_OPTIONS : options;
     Utils.exec(LOGGER, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options, device.getAbsolutePath(),
         mountLocation.getAbsolutePath());

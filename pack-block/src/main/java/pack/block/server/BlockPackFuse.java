@@ -161,7 +161,14 @@ public class BlockPackFuse implements Closeable {
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
     _lockManager = createLockmanager(_zkConnectionString, _zkSessionTimeout);
-    if (_lockManager.tryToLock(Utils.getLockName(_path))) {
+    boolean lock = _lockManager.tryToLock(Utils.getLockName(_path));
+
+    for (int i = 0; i < 10 && !lock; i++) {
+      Thread.sleep(TimeUnit.SECONDS.toMillis(6));
+      LOGGER.info("trying to lock volume {}", _path);
+      lock = _lockManager.tryToLock(Utils.getLockName(_path));
+    }
+    if (lock) {
       _closer = Closer.create();
       _reporter = _closer.register(CsvReporter.forRegistry(_registry)
                                               .build(new File(packFuseConfig.getMetricsLocalPath())));
@@ -205,26 +212,22 @@ public class BlockPackFuse implements Closeable {
   }
 
   @Override
-  public void close() throws IOException {
+  public void close() {
     synchronized (_closed) {
       if (!_closed.get()) {
         if (_fileSystemMount) {
           if (_linuxFileSystem.isFstrimSupported()) {
             _blockPackAdmin.setStatus(Status.FS_TRIM_STARTED, "Fstrim started " + _fsLocalPath);
-            _linuxFileSystem.fstrim(_fsLocalPath);
+            runQuietly(() -> _linuxFileSystem.fstrim(_fsLocalPath));
             _blockPackAdmin.setStatus(Status.FS_TRIM_COMPLETE, "Fstrim complete " + _fsLocalPath);
           }
           _blockPackAdmin.setStatus(Status.FS_UMOUNT_STARTED, "Unmounting " + _fsLocalPath);
-          _linuxFileSystem.umount(_fsLocalPath);
+          runQuietly(() -> _linuxFileSystem.umount(_fsLocalPath));
           _blockPackAdmin.setStatus(Status.FS_UMOUNT_COMPLETE, "Unmounted " + _fsLocalPath);
         }
-        _closer.close();
+        runQuietly(() -> _closer.close());
         _fuseMountThread.interrupt();
-        try {
-          _fuseMountThread.join();
-        } catch (InterruptedException e) {
-          LOGGER.info("Unknown error", e);
-        }
+        runQuietly(() -> _fuseMountThread.join());
         try {
           _lockManager.unlock(Utils.getLockName(_path));
         } catch (InterruptedException | KeeperException e) {
@@ -232,6 +235,14 @@ public class BlockPackFuse implements Closeable {
         }
         _closed.set(true);
       }
+    }
+  }
+
+  private void runQuietly(RunQuietly runQuietly) {
+    try {
+      runQuietly.run();
+    } catch (Exception e) {
+      LOGGER.error("Unknown error", e);
     }
   }
 
@@ -282,6 +293,7 @@ public class BlockPackFuse implements Closeable {
         throw new IOException(e);
       }
       if (_fuseLocalPath.exists()) {
+        LOGGER.info("fuse mount now exists {}", _fuseLocalPath);
         return;
       }
     }
