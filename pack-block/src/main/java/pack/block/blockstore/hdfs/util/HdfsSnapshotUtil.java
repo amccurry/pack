@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 
 public class HdfsSnapshotUtil {
 
+  private static final String HDFS = "hdfs";
+  private static final String PACK_HDFS_SUPER_USER = "PACK_HDFS_SUPER_USER";
   private static final String YYYYMMDDKKMMSS = "yyyyMMddkkmmssSSS";
   private static final Logger LOGGER = LoggerFactory.getLogger(HdfsSnapshotUtil.class);
 
@@ -32,6 +34,7 @@ public class HdfsSnapshotUtil {
   public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName, UserGroupInformation ugi)
       throws IOException, InterruptedException {
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
+    LOGGER.info("Using ugi {} to create volume snapshots", ugi);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       dfs.allowSnapshot(path);
       dfs.createSnapshot(path, snapshotName);
@@ -49,8 +52,16 @@ public class HdfsSnapshotUtil {
     cleanupOldMountSnapshots(fileSystem, path, maxNumberOfMountSnapshots, getUgi());
   }
 
-  private static UserGroupInformation getUgi() throws IOException {
-    return UserGroupInformation.getCurrentUser();
+  public static UserGroupInformation getUgi() throws IOException {
+    if (UserGroupInformation.isSecurityEnabled()) {
+      return UserGroupInformation.getCurrentUser();
+    } else {
+      String superUser = System.getenv(PACK_HDFS_SUPER_USER);
+      if (superUser == null) {
+        superUser = HDFS;
+      }
+      return UserGroupInformation.createRemoteUser(superUser);
+    }
   }
 
   public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, int maxNumberOfMountSnapshots,
@@ -60,8 +71,7 @@ public class HdfsSnapshotUtil {
       FileStatus[] listStatus = dfs.listStatus(new Path(path, ".snapshot"));
       Arrays.sort(listStatus, Collections.reverseOrder());
       for (int i = maxNumberOfMountSnapshots; i < listStatus.length; i++) {
-        String name = listStatus[i].getPath()
-                                   .getName();
+        String name = listStatus[i].getPath().getName();
         LOGGER.info("Removing old snapshot {} {}", path, name);
         dfs.deleteSnapshot(path, name);
       }

@@ -23,6 +23,8 @@ import pack.block.blockstore.BlockStore;
 
 public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(FuseFileSystemSingleMount.class);
+
   public static final String BRICK = "brick";
   public static final String FUSE_PID = "fuse_pid";
   private static final String PARENT_DIR = "..";
@@ -44,13 +46,15 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     _localPath = localPath;
     _blockStore = blockStore;
     _length = blockStore.getLength();
-    _pidContent = ManagementFactory.getRuntimeMXBean()
-                                   .getName()
-                                   .getBytes();
+    _pidContent = ManagementFactory.getRuntimeMXBean().getName().getBytes();
   }
 
   public void localMount() {
-    localMount(true);
+    try {
+      localMount(true);
+    } catch (Throwable t) {
+      LOGGER.error("Unknown error during fuse mount", t);
+    }
   }
 
   public void localMount(boolean blocking) {

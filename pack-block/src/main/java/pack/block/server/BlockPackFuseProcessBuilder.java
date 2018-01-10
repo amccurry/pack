@@ -21,7 +21,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
 public class BlockPackFuseProcessBuilder {
-  
+
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuseProcessBuilder.class);
 
   private static final String BASH = "bash";
@@ -67,44 +67,32 @@ public class BlockPackFuseProcessBuilder {
     if (nohupProcess) {
       builder.add(NOHUP);
     }
-    builder.add(javaHome + BIN_JAVA)
-           .add(XMX_SWITCH)
-           .add(XMS_SWITCH)
-           .add(JAVA_PROPERTY + PACK_LOG_DIR + "=" + logOutput);
+    builder.add(javaHome + BIN_JAVA).add(XMX_SWITCH).add(XMS_SWITCH)
+        .add(JAVA_PROPERTY + PACK_LOG_DIR + "=" + logOutput);
     if (dockerUnixSocket != null) {
       builder.add(JAVA_PROPERTY + DOCKER_UNIX_SOCKET + "=" + dockerUnixSocket);
     }
-    builder.add(CLASSPATH_SWITCH)
-           .add(classPath)
-           .add(BlockPackFuse.class.getName())
-           .add(volumeName)
-           .add(fuseMountLocation)
-           .add(fsMountLocation)
-           .add(fsMetricsLocation)
-           .add(fsLocalCache)
-           .add(hdfVolumePath)
-           .add(zkConnection)
-           .add(zkTimeoutStr)
-           .add(unixSock)
-           .add(Integer.toString(numberOfMountSnapshots))
-           .add(Long.toString(volumeMissingPollingPeriod))
-           .add(Integer.toString(volumeMissingCountBeforeAutoShutdown))
-           .add(Boolean.toString(countDockerDownAsMissing))
-           .add(STDOUT_REDIRECT + logOutput + STDOUT)
-           .add(STDERR_REDIRECT + logOutput + STDERR);
+    builder.add(CLASSPATH_SWITCH).add(classPath).add(BlockPackFuse.class.getName()).add(volumeName)
+        .add(fuseMountLocation).add(fsMountLocation).add(fsMetricsLocation).add(fsLocalCache).add(hdfVolumePath)
+        .add(zkConnection).add(zkTimeoutStr).add(unixSock).add(Integer.toString(numberOfMountSnapshots))
+        .add(Long.toString(volumeMissingPollingPeriod)).add(Integer.toString(volumeMissingCountBeforeAutoShutdown))
+        .add(Boolean.toString(countDockerDownAsMissing)).add(STDOUT_REDIRECT + logOutput + STDOUT)
+        .add(STDERR_REDIRECT + logOutput + STDERR);
     if (nohupProcess) {
       builder.add(BACKGROUND);
     }
     ImmutableList<String> build = builder.build();
-    String cmd = Joiner.on(' ')
-                       .join(build);
+    String cmd = Joiner.on(' ').join(build);
     File logConfig = new File(logOutput, LOG4J_FUSE_PROCESS_XML);
     File start = new File(logOutput, START_SH);
+    File target = new File(new File(fsLocalCache).getParentFile(), "log");
     try (PrintWriter output = new PrintWriter(start)) {
       output.println(BIN_BASH);
       output.println(SET_X);
       output.println(SET_E);
       output.println(ENV);
+      output.println("rm -f " + target.getAbsolutePath());
+      output.println("ln -s " + logConfig.getParentFile().getAbsolutePath() + " " + target.getAbsolutePath());
       output.println(EXPORT + " " + PACK_LOG4J_CONFIG + "=" + logConfig.getAbsolutePath());
       IOUtils.write(cmd, output);
       output.println();
@@ -122,8 +110,7 @@ public class BlockPackFuseProcessBuilder {
   }
 
   private static String buildClassPath(String classPathProperty, String libDir) throws IOException {
-    List<String> classPath = Splitter.on(':')
-                                     .splitToList(classPathProperty);
+    List<String> classPath = Splitter.on(':').splitToList(classPathProperty);
     Builder<String> builder = ImmutableList.builder();
     for (String file : classPath) {
       File src = new File(file);
@@ -133,8 +120,7 @@ public class BlockPackFuseProcessBuilder {
         builder.add(dest.getAbsolutePath());
       }
     }
-    return Joiner.on(':')
-                 .join(builder.build());
+    return Joiner.on(':').join(builder.build());
   }
 
   private static void copy(File src, File dest) throws IOException {

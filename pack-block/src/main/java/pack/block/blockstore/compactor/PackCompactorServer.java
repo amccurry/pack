@@ -32,7 +32,7 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class PackCompactorServer implements Closeable {
 
-  private static final String CACHE = "cache";
+  private static final String CACHE = "compaction-cache";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackCompactorServer.class);
 

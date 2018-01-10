@@ -82,7 +82,14 @@ public class BlockPackFuse implements Closeable {
       int volumeMissingCountBeforeAutoShutdown = Integer.parseInt(args[11]);
       boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
 
+      
       HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
+      
+//      {
+//        FileSystem fileSystem = FileSystem.get(conf);
+//        HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
+//      }
+      
       UserGroupInformation ugi = Utils.getUserGroupInformation();
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
         FileSystem fileSystem = FileSystem.get(conf);
@@ -109,7 +116,7 @@ public class BlockPackFuse implements Closeable {
                                                   .maxNumberOfMountSnapshots(numberOfMountSnapshots)
                                                   .countDockerDownAsMissing(countDockerDownAsMissing)
                                                   .build();
-          HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
+          
           BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
           blockPackFuse.mount();
         }
@@ -287,6 +294,7 @@ public class BlockPackFuse implements Closeable {
 
   private void waitUntilFuseIsMounted() throws IOException {
     while (true) {
+      LOGGER.info("waiting for fuse mount now exists {}", _fuseLocalPath);
       try {
         Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
       } catch (InterruptedException e) {
