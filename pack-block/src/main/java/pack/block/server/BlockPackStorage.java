@@ -80,7 +80,8 @@ public class BlockPackStorage implements PackStorage {
 
     _configuration = config.getConfiguration();
     FileSystem fileSystem = getFileSystem(config.getRemotePath());
-    Path remotePath = config.getRemotePath().makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
+    Path remotePath = config.getRemotePath()
+                            .makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
     _root = remotePath;
     _ugi = config.getUgi();
 
@@ -96,13 +97,14 @@ public class BlockPackStorage implements PackStorage {
   }
 
   private void addShutdownHook(Closer closer) {
-    Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-      try {
-        closer.close();
-      } catch (IOException e) {
-        LOGGER.error("Unknown error while trying to umount volumes");
-      }
-    }));
+    Runtime.getRuntime()
+           .addShutdownHook(new Thread(() -> {
+             try {
+               closer.close();
+             } catch (IOException e) {
+               LOGGER.error("Unknown error while trying to umount volumes");
+             }
+           }));
   }
 
   @Override
@@ -153,7 +155,8 @@ public class BlockPackStorage implements PackStorage {
     FileStatus[] listStatus = fileSystem.listStatus(_root);
     List<String> result = new ArrayList<>();
     for (FileStatus fileStatus : listStatus) {
-      result.add(fileStatus.getPath().getName());
+      result.add(fileStatus.getPath()
+                           .getName());
     }
     return result;
   }
@@ -172,8 +175,13 @@ public class BlockPackStorage implements PackStorage {
     Path volumePath = getVolumePath(volumeName);
     FileSystem fileSystem = getFileSystem(volumePath);
 
-    CreateVolumeRequest request = CreateVolumeRequest.builder().metaData(metaData).volumeName(volumeName)
-        .volumePath(volumePath).clonePath(getClonePath(options)).symlinkClone(getSymlinkClone(options)).build();
+    CreateVolumeRequest request = CreateVolumeRequest.builder()
+                                                     .metaData(metaData)
+                                                     .volumeName(volumeName)
+                                                     .volumePath(volumePath)
+                                                     .clonePath(getClonePath(options))
+                                                     .symlinkClone(getSymlinkClone(options))
+                                                     .build();
     HdfsBlockStoreAdmin.createVolume(fileSystem, request);
   }
 
@@ -182,7 +190,8 @@ public class BlockPackStorage implements PackStorage {
     if (object == null) {
       return false;
     }
-    return Boolean.parseBoolean(object.toString().toLowerCase());
+    return Boolean.parseBoolean(object.toString()
+                                      .toLowerCase());
   }
 
   private Path getClonePath(Map<String, Object> options) {
@@ -237,13 +246,14 @@ public class BlockPackStorage implements PackStorage {
       unixSockFile.delete();
     }
 
-    String path = volumePath.toUri().getPath();
+    String path = volumePath.toUri()
+                            .getPath();
 
     BlockPackFuseProcessBuilder.startProcess(_nohupProcess, localDevice.getAbsolutePath(),
         localFileSystemMount.getAbsolutePath(), localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path,
         _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(),
         libDir.getAbsolutePath(), _numberOfMountSnapshots, _volumeMissingPollingPeriod,
-        _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing);
+        _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing, null);
 
     waitForMount(localFileSystemMount, unixSockFile);
     incrementMountCount(unixSockFile);
@@ -290,7 +300,7 @@ public class BlockPackStorage implements PackStorage {
     return logDir;
   }
 
-  private void waitForMount(File localFileSystemMount, File sockFile) throws InterruptedException, IOException {
+  public static void waitForMount(File localFileSystemMount, File sockFile) throws InterruptedException, IOException {
     Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
     for (int i = 0; i < 15; i++) {
       if (sockFile.exists()) {
@@ -346,7 +356,7 @@ public class BlockPackStorage implements PackStorage {
     return client.incrementCounter(MOUNT_COUNT);
   }
 
-  private void umountVolume(File unixSockFile) throws IOException, InterruptedException {
+  public static void umountVolume(File unixSockFile) throws IOException, InterruptedException {
     BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
     while (true) {
       Status status = client.getStatus();

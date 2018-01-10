@@ -82,7 +82,6 @@ public class BlockPackFuseFileSystemTest {
     zkConnection = zkMiniCluster.getZkConnectionString();
     zkTimeout = 10000;
     seed = new Random().nextLong();
-
   }
 
   @AfterClass

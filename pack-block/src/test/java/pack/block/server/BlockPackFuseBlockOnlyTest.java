@@ -42,7 +42,7 @@ public class BlockPackFuseBlockOnlyTest {
   private static final int MIN_BUFFER_SIZE = 1000;
   private static MiniDFSCluster cluster;
   private static FileSystem fileSystem;
-  private static File root = new File("./target/tmp/BlockPackFuseTest");
+  private static File root = new File("./target/tmp/" + BlockPackFuseBlockOnlyTest.class.getName());
   private static ZkMiniCluster zkMiniCluster;
   private static String zkConnection;
   private static int zkTimeout;

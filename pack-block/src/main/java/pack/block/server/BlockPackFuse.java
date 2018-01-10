@@ -83,16 +83,19 @@ public class BlockPackFuse implements Closeable {
       boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
 
       HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
-      
-      {
-        FileSystem fileSystem = FileSystem.get(conf);
-        HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
-      }
-      
+
+      // {
+      // FileSystem fileSystem = FileSystem.get(conf);
+      // HdfsSnapshotUtil.createSnapshot(fileSystem, path,
+      // HdfsSnapshotUtil.getMountSnapshotName());
+      // }
+
       UserGroupInformation ugi = Utils.getUserGroupInformation();
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
         FileSystem fileSystem = FileSystem.get(conf);
+        HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
         try (Closer closer = autoClose(Closer.create())) {
+          LOGGER.info("Using {} as unix domain socket", unixSock);
           BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdminServer.startAdminServer(unixSock));
           blockPackAdmin.setStatus(Status.INITIALIZATION);
           BlockPackFuseConfigBuilder builder = BlockPackFuseConfig.builder();
@@ -123,6 +126,7 @@ public class BlockPackFuse implements Closeable {
       });
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
+      e.printStackTrace();
     }
   }
 
