@@ -275,6 +275,7 @@ public abstract class PackServer {
           while ((s = reader.readLine()) != null) {
             logger.info("Command {} Type {} Message {}", cmdId, type, s.trim());
             writer.write(s);
+            writer.write('\n');
           }
         } catch (IOException e) {
           LOG.error("Unknown error", e);

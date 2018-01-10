@@ -452,6 +452,9 @@ public class BlockFileCompactor implements Closeable {
   }
 
   private void cleanupBlocks() throws IOException {
+    if (!_fileSystem.exists(_blockPath)) {
+      return;
+    }
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath);
     for (FileStatus fileStatus : listStatus) {
       Path path = fileStatus.getPath();

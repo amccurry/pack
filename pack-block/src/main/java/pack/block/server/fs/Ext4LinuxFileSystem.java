@@ -21,12 +21,12 @@ public class Ext4LinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void mkfs(File device, int blockSize) throws IOException {
-    Utils.exec(LOGGER, MKFS_EXT4, FORCE_SWITCH, device.getAbsolutePath());
+    Utils.exec(LOGGER, SUDO, MKFS_EXT4, FORCE_SWITCH, device.getAbsolutePath());
   }
 
   @Override
   public void growOffline(File device) throws IOException {
-    Utils.exec(LOGGER, RESIZE2FS, FORCE_SWITCH, device.getAbsolutePath());
+    Utils.exec(LOGGER, SUDO, RESIZE2FS, FORCE_SWITCH, device.getAbsolutePath());
   }
 
   @Override

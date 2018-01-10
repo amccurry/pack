@@ -2,6 +2,7 @@ package pack.block.blockstore.hdfs.blockstore;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -67,8 +68,11 @@ public class WalFileFactoryPackFile extends WalFileFactory {
             output.hflush();
             lastFlush.set(pos);
             lastFlushTime.set(System.nanoTime());
-          } catch (IOException e1) {
-            LOGGER.error("Error during flush of " + path, e1);
+          } catch (IOException e) {
+            if (e instanceof ClosedChannelException && !running.get()) {
+              return;
+            }
+            LOGGER.error("Error during flush of " + path, e);
           }
         }
 
@@ -84,9 +88,9 @@ public class WalFileFactoryPackFile extends WalFileFactory {
         }
         try {
           Thread.sleep(TimeUnit.MILLISECONDS.toMillis(10));
-        } catch (InterruptedException e2) {
+        } catch (InterruptedException e) {
           if (running.get()) {
-            LOGGER.error("Unknown error", e2);
+            LOGGER.error("Unknown error", e);
           } else {
             return;
           }

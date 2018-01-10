@@ -25,7 +25,7 @@ import pack.block.server.admin.BlockPackAdmin;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkMiniCluster;
 
-public class BlockPackFuseTest {
+public class BlockPackFuseBlockOnlyTest {
 
   private static final String CACHE = "cache";
   private static final String BRICK = "brick";
@@ -64,7 +64,6 @@ public class BlockPackFuseTest {
     zkConnection = zkMiniCluster.getZkConnectionString();
     zkTimeout = 10000;
     seed = new Random().nextLong();
-    seed = -8664257428250746912L;
 
   }
 

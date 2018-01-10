@@ -23,12 +23,12 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void mkfs(File device, int blockSize) throws IOException {
-    Utils.exec(LOGGER, MKFS_XFS, device.getAbsolutePath());
+    Utils.exec(LOGGER, SUDO, MKFS_XFS, device.getAbsolutePath());
   }
 
   @Override
   public void growOnline(File device, File mountLocation) throws IOException {
-    Utils.exec(LOGGER, XFS_GROWFS, GROWFS_SWITCH, mountLocation.getAbsolutePath());
+    Utils.exec(LOGGER, SUDO, XFS_GROWFS, GROWFS_SWITCH, mountLocation.getAbsolutePath());
   }
 
   @Override
@@ -48,7 +48,7 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void fstrim(File mountLocation) throws IOException {
-    Utils.exec(LOGGER, FSTRIM, VERBOSE_SWITCH, mountLocation.getAbsolutePath());
+    Utils.exec(LOGGER, SUDO, FSTRIM, VERBOSE_SWITCH, mountLocation.getAbsolutePath());
   }
 
 }

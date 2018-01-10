@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 public class HdfsSnapshotUtil {
 
+  private static final String SNAPSHOT = ".snapshot";
   private static final String HDFS = "hdfs";
   private static final String PACK_HDFS_SUPER_USER = "PACK_HDFS_SUPER_USER";
   private static final String YYYYMMDDKKMMSS = "yyyyMMddkkmmssSSS";
@@ -34,6 +35,9 @@ public class HdfsSnapshotUtil {
   public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName, UserGroupInformation ugi)
       throws IOException, InterruptedException {
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
+    if (dfs.exists(new Path(path, SNAPSHOT))) {
+      return;
+    }
     LOGGER.info("Using ugi {} to create volume snapshots", ugi);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       dfs.allowSnapshot(path);
@@ -68,10 +72,11 @@ public class HdfsSnapshotUtil {
       UserGroupInformation ugi) throws IOException, InterruptedException {
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-      FileStatus[] listStatus = dfs.listStatus(new Path(path, ".snapshot"));
+      FileStatus[] listStatus = dfs.listStatus(new Path(path, SNAPSHOT));
       Arrays.sort(listStatus, Collections.reverseOrder());
       for (int i = maxNumberOfMountSnapshots; i < listStatus.length; i++) {
-        String name = listStatus[i].getPath().getName();
+        String name = listStatus[i].getPath()
+                                   .getName();
         LOGGER.info("Removing old snapshot {} {}", path, name);
         dfs.deleteSnapshot(path, name);
       }
