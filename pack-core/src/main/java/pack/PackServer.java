@@ -78,6 +78,7 @@ public abstract class PackServer {
     if (file.exists()) {
       file.delete();
     }
+    LOG.info("Using sock {}", sockFile);
     service.ipAddress(sockFile);
 
     ResponseTransformer trans = model -> {

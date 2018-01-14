@@ -33,7 +33,7 @@ set -x
 echo $CLASSPATH
 
 if [ ! -z ${TEST_ZK+x} ]; then
-  java -Xmx256m -Xms256m -cp ${CLASSPATH} pack.zk.utils.ZkMiniCluster /test-zk >zk_stdout 2>zk_stderr &
+  java -Xmx256m -Xms256m pack.zk.utils.ZkMiniCluster /test-zk >zk_stdout 2>zk_stderr &
   export PACK_ZOOKEEPER_CONNECTION_STR="127.0.0.1:21810/pack"
 fi
 
@@ -95,10 +95,10 @@ CMD=$1
 
 case $CMD in
   (pack)
-    exec -a pack java -Xmx1g -Xms1g -cp ${CLASSPATH} pack.block.server.BlockPackServer
+    exec -a pack java -Xmx256m -Xms256m pack.block.server.BlockPackServer
     ;;
   (compaction)
-    exec -a pack-compactor java -Xmx1g -Xms1g -cp ${CLASSPATH} pack.block.blockstore.compactor.PackCompactorServer
+    exec -a pack-compactor java -Xmx1g -Xms1g pack.block.blockstore.compactor.PackCompactorServer
     ;;
   (*)
     echo "Don't understand [$CMD]"
