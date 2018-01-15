@@ -1,7 +1,12 @@
 package pack.zk.utils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.lang.management.ManagementFactory;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 /**
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -36,6 +41,8 @@ import org.slf4j.LoggerFactory;
 public class ZooKeeperLockManager implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ZooKeeperLockManager.class);
+  private static final String PID = ManagementFactory.getRuntimeMXBean()
+                                                     .getName();
 
   protected final Map<String, LockSession> _lockMap = new ConcurrentHashMap<>();
   protected final String _lockPath;
@@ -51,6 +58,7 @@ public class ZooKeeperLockManager implements Closeable {
   };
   protected final String _zkConnectionString;
   protected final int _zkSessionTimeout;
+  protected final List<String> _metaData;
 
   private static class LockSession implements Closeable {
     private String _lockPath;
@@ -73,6 +81,16 @@ public class ZooKeeperLockManager implements Closeable {
     _zkSessionTimeout = zkSessionTimeout;
     _lockPath = lockPath;
     _timeout = TimeUnit.SECONDS.toMillis(1);
+    _metaData = new ArrayList<>();
+    try {
+      _metaData.add(PID);
+      _metaData.add(InetAddress.getLocalHost()
+                               .getHostName());
+      _metaData.add(InetAddress.getLocalHost()
+                               .getHostAddress());
+    } catch (UnknownHostException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   public int getNumberOfLockNodesPresent(String name) throws KeeperException, InterruptedException {
@@ -117,7 +135,7 @@ public class ZooKeeperLockManager implements Closeable {
     }
     ZooKeeperClient zooKeeper = getZk();
     try {
-      String newPath = zooKeeper.create(_lockPath + "/" + name + "_", null, Ids.OPEN_ACL_UNSAFE,
+      String newPath = zooKeeper.create(_lockPath + "/" + name + "_", toString(_metaData), Ids.OPEN_ACL_UNSAFE,
           CreateMode.EPHEMERAL_SEQUENTIAL);
       _lockMap.put(name, new LockSession(newPath, zooKeeper));
       long totalWaitTime = timeUnit.toNanos(time);
@@ -149,6 +167,19 @@ public class ZooKeeperLockManager implements Closeable {
       zooKeeper.close();
       throw e;
     }
+  }
+
+  private byte[] toString(List<String> metaData) {
+    if (metaData == null) {
+      return null;
+    }
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    try (PrintWriter printWriter = new PrintWriter(out)) {
+      for (String m : metaData) {
+        printWriter.println(m);
+      }
+    }
+    return out.toByteArray();
   }
 
   public synchronized void lock(String name) throws KeeperException, InterruptedException {
