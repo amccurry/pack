@@ -98,7 +98,7 @@ case $CMD in
     exec -a pack java -Xmx256m -Xms256m pack.block.server.BlockPackServer
     ;;
   (compaction)
-    exec -a pack-compactor java -Xmx1g -Xms1g pack.block.blockstore.compactor.PackCompactorServer
+    exec -a pack-compactor java -Xmx256m -Xms256m pack.block.blockstore.compactor.PackCompactorServer
     ;;
   (*)
     echo "Don't understand [$CMD]"
