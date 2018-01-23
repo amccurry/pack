@@ -133,7 +133,10 @@ public class ZooKeeperLockManager implements Closeable {
             return true;
           } else {
             LOGGER.debug("Waiting for lock on path {} with name {}", _lockPath, name);
-            _lock.wait(timeUnit.toMillis(time));
+            long millis = timeUnit.toMillis(time);
+            if (millis > 0) {
+              _lock.wait(millis);
+            }
             if (start + totalWaitTime < System.nanoTime()) {
               zooKeeper.delete(newPath, -1);
               LockSession lockSession = _lockMap.remove(name);
