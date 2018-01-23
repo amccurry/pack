@@ -53,7 +53,7 @@ public class BlockPackFuseProcessBuilder {
   private static final String CLASSPATH_SWITCH = "-cp";
   private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
 
-  public static Process startProcess(boolean nohupProcess, String fuseMountLocation, String fsMountLocation,
+  public static void startProcess(boolean nohupProcess, String fuseMountLocation, String fsMountLocation,
       String fsMetricsLocation, String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout,
       String volumeName, String logOutput, String unixSock, String libDir, int numberOfMountSnapshots,
       long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
@@ -128,7 +128,7 @@ public class BlockPackFuseProcessBuilder {
     }
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
-    return new ProcessBuilder(SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath()).start();
+    Utils.exec(LOGGER, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
   }
 
   private static String buildClassPath(String classPathProperty, String libDir, List<String> classPathExtras)

@@ -1,0 +1,62 @@
+{
+  "description": "Pack plugin for Docker",
+  "documentation": "https://github.com/amccurry/pack/",
+  "entrypoint": [
+		"/tini", "--", "/pack/bin/run.sh", "pack"
+  ],
+  "env": [
+    {
+      "name": "DEBUG",
+      "settable": [
+        "value"
+      ],
+      "value": "0"
+    }
+  ],
+  "interface": {
+    "socket": "pack.sock",
+    "types": [
+      "docker.volumedriver/1.0"
+    ]
+  },
+  "linux": {
+    "capabilities": [
+      "CAP_SYS_ADMIN"
+    ],
+    "devices": [
+      {
+        "path": "/dev/fuse"
+      }
+    ]
+  },
+  "mounts": [
+    {
+      "destination": "/mnt/state",
+      "options": [
+        "rbind"
+      ],
+      "name": "state",
+      "source": "/var/lib/docker/plugins/",
+      "settable": [
+        "source"
+      ],
+      "type": "bind"
+    },
+    {
+      "destination": "/var/log/pack",
+      "options": [
+        "rbind"
+      ],
+      "name": "pack-log",
+      "source": "",
+      "settable": [
+        "source"
+      ],
+      "type": "bind"
+}
+  ],
+  "network": {
+    "type": "host"
+  },
+  "propagatedmount": "/var/lib/pack"
+}
