@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,15 +26,18 @@ public class WalFileFactoryPackFile extends WalFileFactory {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(WalFileFactoryPackFile.class);
   private final long _maxIdleWriterTime;
+  private final long _minTimeBetweenSyncs;
 
   public WalFileFactoryPackFile(FileSystem fileSystem, HdfsMetaData metaData) {
     super(fileSystem, metaData);
     long maxIdleWriterTime = metaData.getMaxIdleWriterTime();
     _maxIdleWriterTime = maxIdleWriterTime == 0 ? HdfsMetaData.DEFAULT_MAX_IDLE_WRITER_TIME : maxIdleWriterTime;
+    long minTimeBetweenSyncs = metaData.getMinTimeBetweenSyncs();
+    _minTimeBetweenSyncs = minTimeBetweenSyncs == 0 ? HdfsMetaData.DEFAULT_MIN_TIME_BETWEEN_SYNCS : minTimeBetweenSyncs;
   }
 
   public WalFile.Writer create(Path path) throws IOException {
-    return new InternalWriter(_fileSystem, path, _maxIdleWriterTime);
+    return new InternalWriter(_fileSystem, path, _maxIdleWriterTime, _minTimeBetweenSyncs);
   }
 
   private static class InternalWriter extends WalFile.Writer {
@@ -49,9 +51,12 @@ public class WalFileFactoryPackFile extends WalFileFactory {
     private final FileSystem _fileSystem;
     private final Path _path;
     private final long _maxIdleWriterTime;
+    private final long _minTimeBetweenSyncs;
 
-    public InternalWriter(FileSystem fileSystem, Path path, long maxIdleWriterTime) throws IOException {
+    public InternalWriter(FileSystem fileSystem, Path path, long maxIdleWriterTime, long minTimeBetweenSyncs)
+        throws IOException {
       _maxIdleWriterTime = maxIdleWriterTime;
+      _minTimeBetweenSyncs = minTimeBetweenSyncs;
       _fileSystem = fileSystem;
       _path = path;
       executor.submit(() -> {
@@ -75,7 +80,6 @@ public class WalFileFactoryPackFile extends WalFileFactory {
             LOGGER.error("Error during flush of " + path, e);
           }
         }
-
         long time = System.nanoTime() - lastFlushTime.get();
         if (outputStream.get() != null) {
           if (time >= _maxIdleWriterTime) {
@@ -87,7 +91,7 @@ public class WalFileFactoryPackFile extends WalFileFactory {
           }
         }
         try {
-          Thread.sleep(TimeUnit.MILLISECONDS.toMillis(10));
+          Thread.sleep(_minTimeBetweenSyncs);
         } catch (InterruptedException e) {
           if (running.get()) {
             LOGGER.error("Unknown error", e);

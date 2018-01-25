@@ -24,6 +24,8 @@ import pack.block.server.fs.FileSystemType;
 @EqualsAndHashCode
 @Builder(toBuilder = true)
 public class HdfsMetaData {
+  private static final String MAX_IDLE_WRITER_TIME = "maxIdleWriterTime";
+  private static final String MIN_TIME_BETWEEN_SYNCS = "minTimeBetweenSyncs";
   private static final String MAX_COMMITS_PER_ACTIVE_FILE = "maxCommitsPerActiveFile";
   private static final String FILE_SYSTEM_TYPE = "fileSystemType";
   private static final String MOUNT_OPTIONS = "mountOptions";
@@ -57,6 +59,8 @@ public class HdfsMetaData {
 
   public static final long DEFAULT_MAX_IDLE_WRITER_TIME = TimeUnit.MINUTES.toNanos(10);
 
+  public static final long DEFAULT_MIN_TIME_BETWEEN_SYNCS = TimeUnit.SECONDS.toMillis(1);
+
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
                                                                    .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
                                                                    .fileSystemType(FileSystemType.XFS)
@@ -71,6 +75,7 @@ public class HdfsMetaData {
                                                                        DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE)
                                                                    .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
                                                                    .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
+                                                                   .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS)
                                                                    .build();
 
   @JsonProperty
@@ -111,6 +116,9 @@ public class HdfsMetaData {
 
   @JsonProperty
   long maxIdleWriterTime = DEFAULT_MAX_IDLE_WRITER_TIME;
+
+  @JsonProperty
+  long minTimeBetweenSyncs = DEFAULT_MIN_TIME_BETWEEN_SYNCS;
 
   public static void main(String[] args) throws IOException {
     System.out.println(DEFAULT_META_DATA);
@@ -158,6 +166,12 @@ public class HdfsMetaData {
     }
     if (options.containsKey(WAL_COMPRESSION_CODEC)) {
       builder.walCompressionCodec(toString(options.get(WAL_COMPRESSION_CODEC)));
+    }
+    if (options.containsKey(MAX_IDLE_WRITER_TIME)) {
+      builder.maxIdleWriterTime(toLong(options.get(MAX_IDLE_WRITER_TIME)));
+    }
+    if (options.containsKey(MIN_TIME_BETWEEN_SYNCS)) {
+      builder.minTimeBetweenSyncs(toLong(options.get(MIN_TIME_BETWEEN_SYNCS)));
     }
     return builder.build();
   }
