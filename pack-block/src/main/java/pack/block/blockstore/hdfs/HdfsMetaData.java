@@ -62,50 +62,50 @@ public class HdfsMetaData {
   public static final long DEFAULT_MIN_TIME_BETWEEN_SYNCS = TimeUnit.SECONDS.toMillis(1);
 
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
-                                                                   .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
-                                                                   .fileSystemType(FileSystemType.XFS)
-                                                                   .length(DEFAULT_LENGTH_BYTES)
-                                                                   .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE)
-                                                                   .maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
-                                                                   .maxCommitsPerActiveFile(
-                                                                       DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE)
-                                                                   .maxCacheCapPerActiveFile(
-                                                                       DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE)
-                                                                   .maxCacheSizePerActiveFile(
-                                                                       DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE)
-                                                                   .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
-                                                                   .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
-                                                                   .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS)
-                                                                   .build();
+      .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE).fileSystemType(FileSystemType.XFS).length(DEFAULT_LENGTH_BYTES)
+      .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE).maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
+      .maxCommitsPerActiveFile(DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE)
+      .maxCacheCapPerActiveFile(DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE)
+      .maxCacheSizePerActiveFile(DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE).maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
+      .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME).minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS).build();
 
   @JsonProperty
+  @Builder.Default
   long length = DEFAULT_LENGTH_BYTES;
 
   @JsonProperty
+  @Builder.Default
   FileSystemType fileSystemType = FileSystemType.XFS;
 
   @JsonProperty
+  @Builder.Default
   int fileSystemBlockSize = DEFAULT_FILESYSTEM_BLOCKSIZE;
 
   @JsonProperty
+  @Builder.Default
   long maxBlockFileSize = DEFAULT_MAX_BLOCK_FILE_SIZE;
 
   @JsonProperty
   String mountOptions;
 
   @JsonProperty
+  @Builder.Default
   double maxObsoleteRatio = DEFAULT_MAX_OBSOLETE_RATIO;
 
   @JsonProperty
+  @Builder.Default
   int maxCommitsPerActiveFile = DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE;
 
   @JsonProperty
+  @Builder.Default
   long maxCacheSizePerActiveFile = DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE;
 
   @JsonProperty
+  @Builder.Default
   int maxCacheCapPerActiveFile = DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE;
 
   @JsonProperty
+  @Builder.Default
   long maxWalFileSize = DEFAULT_MAX_WAL_FILE_SIZE;
 
   @JsonProperty
@@ -115,9 +115,11 @@ public class HdfsMetaData {
   String walCompressionCodec;
 
   @JsonProperty
+  @Builder.Default
   long maxIdleWriterTime = DEFAULT_MAX_IDLE_WRITER_TIME;
 
   @JsonProperty
+  @Builder.Default
   long minTimeBetweenSyncs = DEFAULT_MIN_TIME_BETWEEN_SYNCS;
 
   public static void main(String[] args) throws IOException {
