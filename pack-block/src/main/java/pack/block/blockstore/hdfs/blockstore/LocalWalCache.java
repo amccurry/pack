@@ -68,12 +68,16 @@ public class LocalWalCache implements Closeable {
     if (_file.exists()) {
       _file.delete();
     }
-    _file.getParentFile().mkdirs();
+    _file.getParentFile()
+         .mkdirs();
     _rnd = new RandomAccessFile(_file, RW);
     _rnd.setLength(length);
     _channel = _rnd.getChannel();
     Weigher<Integer, byte[]> weigher = (key, value) -> value.length;
-    _cache = CacheBuilder.newBuilder().maximumWeight(cacheSize).weigher(weigher).build();
+    _cache = CacheBuilder.newBuilder()
+                         .maximumWeight(cacheSize)
+                         .weigher(weigher)
+                         .build();
   }
 
   public void delete(long startingBlockId, long endingBlockId) throws IOException {
@@ -93,10 +97,12 @@ public class LocalWalCache implements Closeable {
 
   public boolean readBlock(ReadRequest readRequest) throws IOException {
     int id = Utils.getIntKey(readRequest.getBlockId());
-    byte[] bs = _cache.getIfPresent(id);
-    if (bs != null) {
-      readRequest.handleResult(bs);
-      return true;
+    if (_cache != null) {
+      byte[] bs = _cache.getIfPresent(id);
+      if (bs != null) {
+        readRequest.handleResult(bs);
+        return false;
+      }
     }
     if (_dataIndex.contains(id)) {
       ByteBuffer src = ByteBuffer.allocate(_blockSize);
@@ -119,7 +125,9 @@ public class LocalWalCache implements Closeable {
 
   public void write(long blockId, ByteBuffer byteBuffer) throws IOException {
     int id = Utils.getIntKey(blockId);
-    _cache.put(id, toByteArray(byteBuffer));
+    if (_cache != null) {
+      _cache.put(id, toByteArray(byteBuffer));
+    }
     _dataIndex.add(id);
     _emptyIndex.remove(id);
     long pos = blockId * _blockSize;
@@ -130,9 +138,9 @@ public class LocalWalCache implements Closeable {
   }
 
   private byte[] toByteArray(ByteBuffer byteBuffer) {
-    byte[] array = byteBuffer.array();
-    byte[] bs = new byte[array.length];
-    System.arraycopy(array, 0, bs, 0, array.length);
+    ByteBuffer duplicate = byteBuffer.duplicate();
+    byte[] bs = new byte[duplicate.remaining()];
+    duplicate.get(bs);
     return bs;
   }
 
