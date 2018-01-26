@@ -1,0 +1,10 @@
+{
+  "length": 107374182400,
+  "fileSystemType": "XFS",
+  "fileSystemBlockSize": 4096,
+  "maxBlockFileSize": 17179869184,
+  "maxObsoleteRatio": 0.5,
+  "maxWalFileSize": 1073741824,
+  "maxIdleWriterTime": 600000000000,
+  "minTimeBetweenSyncs": 10000
+}

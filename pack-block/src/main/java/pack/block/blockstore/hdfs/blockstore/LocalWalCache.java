@@ -14,6 +14,10 @@ import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.Weigher;
+
 import pack.block.blockstore.hdfs.blockstore.WalFile.Reader;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
@@ -32,6 +36,7 @@ public class LocalWalCache implements Closeable {
   private final RandomAccessFile _rnd;
   private final int _blockSize;
   private final FileChannel _channel;
+  private final Cache<Integer, byte[]> _cache;
 
   public static void applyWal(WalFileFactory walFactory, Path path, LocalWalCache localContext) throws IOException {
     try (Reader reader = walFactory.open(path)) {
@@ -54,16 +59,21 @@ public class LocalWalCache implements Closeable {
   }
 
   public LocalWalCache(File file, long length, int blockSize) throws IOException {
+    this(file, length, blockSize, 1024 * 1024);
+  }
+
+  public LocalWalCache(File file, long length, int blockSize, long cacheSize) throws IOException {
     _blockSize = blockSize;
     _file = file;
     if (_file.exists()) {
       _file.delete();
     }
-    _file.getParentFile()
-         .mkdirs();
+    _file.getParentFile().mkdirs();
     _rnd = new RandomAccessFile(_file, RW);
     _rnd.setLength(length);
     _channel = _rnd.getChannel();
+    Weigher<Integer, byte[]> weigher = (key, value) -> value.length;
+    _cache = CacheBuilder.newBuilder().maximumWeight(cacheSize).weigher(weigher).build();
   }
 
   public void delete(long startingBlockId, long endingBlockId) throws IOException {
@@ -83,6 +93,11 @@ public class LocalWalCache implements Closeable {
 
   public boolean readBlock(ReadRequest readRequest) throws IOException {
     int id = Utils.getIntKey(readRequest.getBlockId());
+    byte[] bs = _cache.getIfPresent(id);
+    if (bs != null) {
+      readRequest.handleResult(bs);
+      return true;
+    }
     if (_dataIndex.contains(id)) {
       ByteBuffer src = ByteBuffer.allocate(_blockSize);
       long blockId = readRequest.getBlockId();
@@ -104,6 +119,7 @@ public class LocalWalCache implements Closeable {
 
   public void write(long blockId, ByteBuffer byteBuffer) throws IOException {
     int id = Utils.getIntKey(blockId);
+    _cache.put(id, toByteArray(byteBuffer));
     _dataIndex.add(id);
     _emptyIndex.remove(id);
     long pos = blockId * _blockSize;
@@ -111,6 +127,13 @@ public class LocalWalCache implements Closeable {
       int write = _channel.write(byteBuffer, pos);
       pos += write;
     }
+  }
+
+  private byte[] toByteArray(ByteBuffer byteBuffer) {
+    byte[] array = byteBuffer.array();
+    byte[] bs = new byte[array.length];
+    System.arraycopy(array, 0, bs, 0, array.length);
+    return bs;
   }
 
   @Override

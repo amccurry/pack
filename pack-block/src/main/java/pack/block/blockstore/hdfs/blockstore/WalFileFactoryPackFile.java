@@ -67,6 +67,10 @@ public class WalFileFactoryPackFile extends WalFileFactory {
     private void flushLoop(Path path) {
       while (running.get()) {
         if (lastFlush.get() < flushPoint.get()) {
+          long lf = lastFlush.get();
+          long lft = lastFlushTime.get();
+          long now = System.nanoTime();
+          LOGGER.info("Last flush {} ago: Last flush pos {} last flush time {}", now - lft, lf, lft);
           try {
             FSDataOutputStream output = getOutputStream();
             long pos = output.getPos();

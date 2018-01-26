@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -23,10 +24,10 @@ import pack.block.server.fs.FileSystemType;
 @ToString
 @EqualsAndHashCode
 @Builder(toBuilder = true)
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class HdfsMetaData {
   private static final String MAX_IDLE_WRITER_TIME = "maxIdleWriterTime";
   private static final String MIN_TIME_BETWEEN_SYNCS = "minTimeBetweenSyncs";
-  private static final String MAX_COMMITS_PER_ACTIVE_FILE = "maxCommitsPerActiveFile";
   private static final String FILE_SYSTEM_TYPE = "fileSystemType";
   private static final String MOUNT_OPTIONS = "mountOptions";
   private static final String MAX_BLOCK_FILE_SIZE = "maxBlockFileSize";
@@ -35,8 +36,6 @@ public class HdfsMetaData {
   private static final String WAL_COMPRESSION_CODEC = "walCompressionCodec";
   private static final String WAL_COMPRESSION_TYPE = "walCompressionType";
   private static final String MAX_WAL_FILE_SIZE = "maxWalFileSize";
-  private static final String MAX_CACHE_CAP_PER_ACTIVE_FILE = "maxCacheCapPerActiveFile";
-  private static final String MAX_CACHE_SIZE_PER_ACTIVE_FILE = "maxCacheSizePerActiveFile";
   private static final String MAX_OBSOLETE_RATIO = "maxObsoleteRatio";
 
   public static final int DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE = 10_000;
@@ -64,10 +63,8 @@ public class HdfsMetaData {
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
       .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE).fileSystemType(FileSystemType.XFS).length(DEFAULT_LENGTH_BYTES)
       .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE).maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
-      .maxCommitsPerActiveFile(DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE)
-      .maxCacheCapPerActiveFile(DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE)
-      .maxCacheSizePerActiveFile(DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE).maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
-      .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME).minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS).build();
+      .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE).maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
+      .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS).build();
 
   @JsonProperty
   @Builder.Default
@@ -91,18 +88,6 @@ public class HdfsMetaData {
   @JsonProperty
   @Builder.Default
   double maxObsoleteRatio = DEFAULT_MAX_OBSOLETE_RATIO;
-
-  @JsonProperty
-  @Builder.Default
-  int maxCommitsPerActiveFile = DEFAULT_MAX_COMMITS_PER_ACTIVE_FILE;
-
-  @JsonProperty
-  @Builder.Default
-  long maxCacheSizePerActiveFile = DEFAULT_MAX_CACHE_SIZE_PER_ACTIVE_FILE;
-
-  @JsonProperty
-  @Builder.Default
-  int maxCacheCapPerActiveFile = DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE;
 
   @JsonProperty
   @Builder.Default
@@ -150,15 +135,6 @@ public class HdfsMetaData {
     }
     if (options.containsKey(MAX_OBSOLETE_RATIO)) {
       builder.maxObsoleteRatio(toDouble(options.get(MAX_OBSOLETE_RATIO)));
-    }
-    if (options.containsKey(MAX_COMMITS_PER_ACTIVE_FILE)) {
-      builder.maxCommitsPerActiveFile(toInt(options.get(MAX_COMMITS_PER_ACTIVE_FILE)));
-    }
-    if (options.containsKey(MAX_CACHE_SIZE_PER_ACTIVE_FILE)) {
-      builder.maxCacheSizePerActiveFile(toLong(options.get(MAX_CACHE_SIZE_PER_ACTIVE_FILE)));
-    }
-    if (options.containsKey(MAX_CACHE_CAP_PER_ACTIVE_FILE)) {
-      builder.maxCacheCapPerActiveFile(toInt(options.get(MAX_CACHE_CAP_PER_ACTIVE_FILE)));
     }
     if (options.containsKey(MAX_WAL_FILE_SIZE)) {
       builder.maxWalFileSize(toLong(options.get(MAX_WAL_FILE_SIZE)));
