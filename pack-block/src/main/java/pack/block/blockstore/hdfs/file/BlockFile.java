@@ -31,7 +31,6 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
-import pack.block.blockstore.hdfs.kvs.HdfsUtils;
 import pack.block.util.Utils;
 
 public class BlockFile {
