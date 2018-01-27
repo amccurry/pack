@@ -47,10 +47,10 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockFileCompactor implements Closeable {
 
-  private static final String MERGE = "merge";
-
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFileCompactor.class);
 
+  private static final String CONVERT = "convert";
+  private static final String MERGE = "merge";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
   private final Path _blockPath;
@@ -169,7 +169,7 @@ public class BlockFileCompactor implements Closeable {
     }
     String blockName = JOINER.join(list.get(0), HdfsBlockStoreConfig.BLOCK);
     Path newPath = Utils.qualify(_fileSystem, new Path(path.getParent(), blockName));
-    Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpName()));
+    Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpNameConvert()));
     if (_fileSystem.exists(newPath)) {
       return;
     }
@@ -247,7 +247,7 @@ public class BlockFileCompactor implements Closeable {
 
     Reader reader = readers.get(0);
     Path newPath = getNewBlockPath(reader.getPath());
-    Path tmpPath = new Path(_blockPath, getRandomTmpName());
+    Path tmpPath = new Path(_blockPath, getRandomTmpNameMerge());
 
     RoaringBitmap blocksToIgnore = job.getBlocksToIgnore();
 
@@ -265,10 +265,16 @@ public class BlockFileCompactor implements Closeable {
     }
   }
 
-  private String getRandomTmpName() {
+  private String getRandomTmpNameMerge() {
     String uuid = UUID.randomUUID()
                       .toString();
-    return JOINER.join(uuid, MERGE);
+    return JOINER.join(MERGE, uuid);
+  }
+
+  private String getRandomTmpNameConvert() {
+    String uuid = UUID.randomUUID()
+                      .toString();
+    return JOINER.join(CONVERT, uuid);
   }
 
   class CompactionJob {
@@ -466,7 +472,8 @@ public class BlockFileCompactor implements Closeable {
   }
 
   private boolean shouldCleanupFile(Path path) {
-    return path.getName()
-               .endsWith(MERGE);
+    String name = path.getName();
+    return name.startsWith(MERGE) || name.startsWith(CONVERT);
+
   }
 }
