@@ -29,6 +29,7 @@ import pack.PackStorage;
 import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
@@ -207,6 +208,12 @@ public class BlockPackStorage implements PackStorage {
     Path volumePath = getVolumePath(volumeName);
 
     FileSystem fileSystem = getFileSystem(volumePath);
+    try {
+      HdfsSnapshotUtil.removeAllSnapshots(fileSystem, volumePath);
+      HdfsSnapshotUtil.disableSnapshots(fileSystem, volumePath);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
     fileSystem.delete(volumePath, true);
   }
 

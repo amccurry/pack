@@ -23,6 +23,8 @@ import pack.block.blockstore.BlockStore;
 
 public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
+  private static final String SYNC = "sync";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(FuseFileSystemSingleMount.class);
 
   public static final String BRICK = "brick";
@@ -66,7 +68,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       break;
     case LINUX:
     default:
-      opts = new String[] { OPTION_SWITCH, ALLOW_ROOT, OPTION_SWITCH, AUTO_UNMOUNT };
+      opts = new String[] { OPTION_SWITCH, ALLOW_ROOT, OPTION_SWITCH, AUTO_UNMOUNT, OPTION_SWITCH, SYNC };
       break;
     }
     mount(Paths.get(_localPath), blocking, false, opts);
