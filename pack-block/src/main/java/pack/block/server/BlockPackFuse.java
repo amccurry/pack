@@ -93,6 +93,7 @@ public class BlockPackFuse implements Closeable {
       UserGroupInformation ugi = Utils.getUserGroupInformation();
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
         FileSystem fileSystem = FileSystem.get(conf);
+        HdfsSnapshotUtil.enableSnapshots(fileSystem, path);
         HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
         try (Closer closer = autoClose(Closer.create())) {
           LOGGER.info("Using {} as unix domain socket", unixSock);

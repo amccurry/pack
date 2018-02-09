@@ -102,8 +102,8 @@ public abstract class PackServer {
                                                                     .capabilities(capabilities)
                                                                     .build();
 
-    service.post(VOLUME_DRIVER_CAPABILITIES, (request, response) -> capabilitiesResponse, trans);
     service.post(PLUGIN_ACTIVATE, (request, response) -> impls, trans);
+    service.post(VOLUME_DRIVER_CAPABILITIES, (request, response) -> capabilitiesResponse, trans);
     service.post(VOLUME_DRIVER_CREATE, (Route) (request, response) -> {
       debugInfo(request);
       CreateRequest createRequest = read(request, CreateRequest.class);

@@ -5,7 +5,11 @@ PACK_VERSION=$(echo ${PARCEL_FILE##*/} | sed 's#PACK-##g' | sed 's#\.tar\.gz##g'
 PROJECT_DIR="./target/http"
 
 PARCEL_FILE_SHA=$PARCEL_FILE.sha
-sha1sum $PARCEL_FILE | awk '{print $1}' > $PARCEL_FILE_SHA
+if command -v sha1sum ; then
+  sha1sum $PARCEL_FILE | awk '{print $1}' > $PARCEL_FILE_SHA
+else
+  shasum $PARCEL_FILE | awk '{print $1}' > $PARCEL_FILE_SHA
+fi
 HASH=`cat $PARCEL_FILE_SHA`
 LAST_UPDATED_SEC=`date +%s`
 LAST_UPDATED="${LAST_UPDATED_SEC}0000"

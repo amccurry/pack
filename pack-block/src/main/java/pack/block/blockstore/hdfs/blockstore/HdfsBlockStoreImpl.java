@@ -12,6 +12,11 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
@@ -77,14 +82,18 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   private final Lock _blockFileWriteLock = _blockFileLock.writeLock();
   private final Lock _blockFileReadLock = _blockFileLock.readLock();
   private final AtomicReference<WriterContext> _writer = new AtomicReference<>();
+  private final Object _writerLock = new Object();
   private final long _maxWalSize;
   private final AtomicReference<List<Path>> _localCacheList = new AtomicReference<List<Path>>(ImmutableList.of());
   private final Cache<Path, LocalWalCache> _localCache;
   private final File _cacheDir;
   private final AtomicLong _genCounter;
   private final WalFileFactory _walFactory;
+  private final AtomicBoolean _rollInProgress = new AtomicBoolean();
+  private final ExecutorService _walRollExecutor;
 
-  public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path) throws IOException {
+  public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path)
+      throws IOException {
     this(registry, cacheDir, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
   }
 
@@ -138,6 +147,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     long period = config.getBlockFileUnit()
                         .toMillis(config.getBlockFilePeriod());
     _blockFileTimer.schedule(getBlockFileTask(), period, period);
+    _walRollExecutor = Executors.newSingleThreadExecutor();
   }
 
   private RemovalListener<Path, LocalWalCache> getRemovalListener() {
@@ -232,7 +242,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   }
 
   private LocalWalCache getCurrentLocalContext(WriterContext writer) throws IOException {
-    return getLocalWalCache(writer.path);
+    return getLocalWalCache(writer._path);
   }
 
   private Path newDataGenerationFile(String ext) {
@@ -275,10 +285,18 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   @Override
   public void close() throws IOException {
-    closeWriter();
+    closeWriter(true);
     _blockFileTimer.cancel();
     _blockFileTimer.purge();
     _readerCache.invalidateAll();
+    _walRollExecutor.shutdown();
+    try {
+      if (!_walRollExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
+        _walRollExecutor.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      LOGGER.error("Unknown error", e);
+    }
   }
 
   @Override
@@ -319,11 +337,15 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
           byteBuffer = ByteBuffer.wrap(buf, 0, blockSize);
         }
         WriterContext writer = getWriter();
-        writer.append(blockId, getValue(byteBuffer));
-        LocalWalCache local = getCurrentLocalContext(writer);
-        local.write(blockId, byteBuffer);
-        _writeMeter.mark(len);
-        return len;
+        try {
+          writer.append(blockId, getValue(byteBuffer));
+          LocalWalCache local = getCurrentLocalContext(writer);
+          local.write(blockId, byteBuffer);
+          _writeMeter.mark(len);
+          return len;
+        } finally {
+          writer.decRef();
+        }
       }
     } finally {
       _fileWriteLock.unlock();
@@ -331,39 +353,64 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   }
 
   private WriterContext getWriter() throws IOException {
-    synchronized (_writer) {
+    synchronized (_writerLock) {
       WriterContext context = _writer.get();
       if (context == null) {
-        Path tmpPath = newDataGenerationFile(WAL_TMP);
-        context = new WriterContext(_walFactory.create(tmpPath), tmpPath);
+        context = creatNewContext();
         _writer.set(context);
       }
+      context.incRef();
       return context;
     }
   }
 
-  private void closeWriter() throws IOException {
-    synchronized (_writer) {
-      WriterContext context = _writer.getAndSet(null);
-      if (context != null) {
-        context.writer.close();
-        _fileSystem.rename(context.path, newExtPath(context.path, WAL));
-      }
+  private void closeWriter(boolean force) throws IOException {
+    synchronized (_writerLock) {
+      commitWriter(_writer.getAndSet(null), force);
     }
   }
 
   private void flushWriter() throws IOException {
-    synchronized (_writer) {
+    synchronized (_writerLock) {
       WriterContext writer = _writer.get();
       if (writer == null) {
         return;
       }
-      if (writer.getLength() >= _maxWalSize) {
-        LOGGER.info("Wal file length too large, closing file");
-        closeWriter();
-      } else {
-        writer.flush();
+      writer.flush();
+      if (writer.getLength() >= _maxWalSize && !_rollInProgress.get()) {
+        _rollInProgress.set(true);
+        LOGGER.info("Wal file length too large, starting wal file roll");
+        _walRollExecutor.submit(() -> {
+          try {
+            rollWriter();
+            _rollInProgress.set(false);
+          } catch (IOException e) {
+            LOGGER.error("Unknown error while trying to roll wal.", e);
+          }
+        });
       }
+    }
+  }
+
+  private void rollWriter() throws IOException {
+    WriterContext context = creatNewContext();
+    WriterContext old;
+    synchronized (_writerLock) {
+      old = _writer.get();
+      _writer.set(context);
+    }
+    commitWriter(old, false);
+  }
+
+  private WriterContext creatNewContext() throws IOException {
+    Path tmpPath = newDataGenerationFile(WAL_TMP);
+    return new WriterContext(_walFactory.create(tmpPath), tmpPath);
+  }
+
+  private void commitWriter(WriterContext context, boolean force) throws IOException {
+    if (context != null) {
+      context.close(force);
+      _fileSystem.rename(context._path, newExtPath(context._path, WAL));
     }
   }
 
@@ -399,10 +446,6 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   @Override
   public void fsync() throws IOException {
     LOGGER.debug("fsync");
-    // Utils.time(LOGGER, "fsync", () -> {
-    // flushWriter();
-    // return null;
-    // });
     flushWriter();
   }
 
@@ -422,9 +465,13 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     _fileWriteLock.lock();
     try {
       WriterContext writer = getWriter();
-      LocalWalCache localContext = getCurrentLocalContext(writer);
-      writer.delete(startingBlockId, endingBlockId);
-      localContext.delete(startingBlockId, endingBlockId);
+      try {
+        LocalWalCache localContext = getCurrentLocalContext(writer);
+        writer.delete(startingBlockId, endingBlockId);
+        localContext.delete(startingBlockId, endingBlockId);
+      } finally {
+        writer.decRef();
+      }
     } finally {
       _fileWriteLock.unlock();
     }
@@ -637,30 +684,52 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   }
 
   private static class WriterContext {
-    final WalFile.Writer writer;
-    final Path path;
+    private final WalFile.Writer _writer;
+    private final Path _path;
+    private final AtomicInteger _refs = new AtomicInteger();
 
     WriterContext(WalFile.Writer writer, Path path) {
-      this.writer = writer;
-      this.path = path;
+      _writer = writer;
+      _path = path;
+    }
+
+    public void close(boolean force) throws IOException {
+      if (!force) {
+        while (_refs.get() > 0) {
+          try {
+            Thread.sleep(TimeUnit.MILLISECONDS.toMillis(10));
+          } catch (InterruptedException e) {
+            throw new IOException(e);
+          }
+        }
+      }
+      _writer.close();
+    }
+
+    public void incRef() {
+      _refs.incrementAndGet();
+    }
+
+    public void decRef() {
+      _refs.decrementAndGet();
     }
 
     void delete(long startingBlockId, long endingBlockId) throws IOException {
       WalKeyWritable key = new WalKeyWritable(startingBlockId, endingBlockId);
-      writer.append(key, EMPTY_BLOCK);
+      _writer.append(key, EMPTY_BLOCK);
     }
 
     void append(long blockId, BytesWritable value) throws IOException {
       WalKeyWritable key = new WalKeyWritable(blockId);
-      writer.append(key, value);
+      _writer.append(key, value);
     }
 
     long getLength() throws IOException {
-      return writer.getLength();
+      return _writer.getLength();
     }
 
     void flush() throws IOException {
-      writer.flush();
+      _writer.flush();
     }
   }
 }

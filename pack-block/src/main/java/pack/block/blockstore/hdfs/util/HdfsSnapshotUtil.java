@@ -27,6 +27,23 @@ public class HdfsSnapshotUtil {
     System.out.println(getMountSnapshotName());
   }
 
+  public static void enableSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
+    enableSnapshots(fileSystem, path, getUgi());
+  }
+
+  public static void enableSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
+      throws IOException, InterruptedException {
+    DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
+    if (dfs.exists(new Path(path, SNAPSHOT))) {
+      return;
+    }
+    LOGGER.info("Using ugi {} to enable volume snapshots", ugi);
+    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      dfs.allowSnapshot(path);
+      return null;
+    });
+  }
+
   public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName)
       throws IOException, InterruptedException {
     createSnapshot(fileSystem, path, snapshotName, getUgi());
@@ -40,7 +57,6 @@ public class HdfsSnapshotUtil {
     }
     LOGGER.info("Using ugi {} to create volume snapshots", ugi);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-      dfs.allowSnapshot(path);
       dfs.createSnapshot(path, snapshotName);
       return null;
     });
@@ -84,4 +100,39 @@ public class HdfsSnapshotUtil {
     });
   }
 
+  public static void removeAllSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
+    removeAllSnapshots(fileSystem, path, getUgi());
+  }
+
+  public static void removeAllSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
+      throws IOException, InterruptedException {
+    DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
+    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      FileStatus[] listStatus = dfs.listStatus(new Path(path, SNAPSHOT));
+      for (FileStatus fileStatus : listStatus) {
+        String name = fileStatus.getPath()
+                                .getName();
+        LOGGER.info("Removing old snapshot {} {}", path, name);
+        dfs.deleteSnapshot(path, name);
+      }
+      return null;
+    });
+  }
+
+  public static void disableSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
+    removeSnapshot(fileSystem, path, getUgi());
+  }
+
+  public static void removeSnapshot(FileSystem fileSystem, Path path, UserGroupInformation ugi)
+      throws IOException, InterruptedException {
+    DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
+    if (dfs.exists(new Path(path, SNAPSHOT))) {
+      return;
+    }
+    LOGGER.info("Using ugi {} to disable volume snapshots", ugi);
+    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      dfs.disallowSnapshot(path);
+      return null;
+    });
+  }
 }
