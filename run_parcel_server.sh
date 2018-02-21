@@ -34,4 +34,4 @@ done
 echo "]}" >> $MANIFEST
 
 cd ${HTTP_DIR}
-exec python -m SimpleHTTPServer
+exec python -m SimpleHTTPServer 8001

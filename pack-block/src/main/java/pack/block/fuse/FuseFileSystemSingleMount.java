@@ -48,7 +48,9 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     _localPath = localPath;
     _blockStore = blockStore;
     _length = blockStore.getLength();
-    _pidContent = ManagementFactory.getRuntimeMXBean().getName().getBytes();
+    _pidContent = ManagementFactory.getRuntimeMXBean()
+                                   .getName()
+                                   .getBytes();
   }
 
   public void localMount() {
