@@ -42,7 +42,6 @@ public class BlockPackStorage implements PackStorage {
   private static final String SYMLINK_CLONE = "symlinkClone";
   private static final String MOUNT_COUNT = "mountCount";
   public static final String MOUNT = "/mount";
-  private static final String METRICS = "metrics";
 
   protected final Configuration _configuration;
   protected final Path _root;
@@ -229,8 +228,6 @@ public class BlockPackStorage implements PackStorage {
     LOGGER.info("Mount Id {} localFileSystemMount {}", id, localFileSystemMount);
     File localDevice = getLocalDevice(volumeName);
     LOGGER.info("Mount Id {} localDevice {}", id, localDevice);
-    File localMetrics = getLocalMetrics(logDir);
-    LOGGER.info("Mount Id {} localMetrics {}", id, localMetrics);
     File localCache = getLocalCache(volumeName);
     LOGGER.info("Mount Id {} localCache {}", id, localCache);
     File unixSockFile = getUnixSocketFile(volumeName);
@@ -242,7 +239,6 @@ public class BlockPackStorage implements PackStorage {
     localCache.mkdirs();
     localFileSystemMount.mkdirs();
     localDevice.mkdirs();
-    localMetrics.mkdirs();
 
     if (isMounted(unixSockFile)) {
       incrementMountCount(unixSockFile);
@@ -257,10 +253,10 @@ public class BlockPackStorage implements PackStorage {
                             .getPath();
 
     BlockPackFuseProcessBuilder.startProcess(_nohupProcess, localDevice.getAbsolutePath(),
-        localFileSystemMount.getAbsolutePath(), localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path,
-        _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(),
-        libDir.getAbsolutePath(), _numberOfMountSnapshots, _volumeMissingPollingPeriod,
-        _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing, null);
+        localFileSystemMount.getAbsolutePath(), localCache.getAbsolutePath(), path, _zkConnection, _zkTimeout,
+        volumeName, logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(), libDir.getAbsolutePath(),
+        _numberOfMountSnapshots, _volumeMissingPollingPeriod, _volumeMissingCountBeforeAutoShutdown,
+        _countDockerDownAsMissing, null);
 
     waitForMount(localFileSystemMount, unixSockFile);
     incrementMountCount(unixSockFile);
@@ -293,12 +289,6 @@ public class BlockPackStorage implements PackStorage {
 
   private File getLocalCache(String volumeName) {
     return new File(getVolumeDir(volumeName), "cache");
-  }
-
-  private File getLocalMetrics(File logDir) {
-    File file = new File(logDir, METRICS);
-    file.mkdirs();
-    return file;
   }
 
   private File getLogDir(String volumeName) {

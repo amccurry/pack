@@ -21,7 +21,6 @@ public class BlockPackFuseConfig {
   HdfsBlockStoreConfig config;
   String fuseLocalPath;
   String fsLocalPath;
-  String metricsLocalPath;
   String fsLocalCache;
   String zkConnectionString;
   int zkSessionTimeout;

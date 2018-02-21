@@ -54,10 +54,10 @@ public class BlockPackFuseProcessBuilder {
   private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
 
   public static void startProcess(boolean nohupProcess, String fuseMountLocation, String fsMountLocation,
-      String fsMetricsLocation, String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout,
-      String volumeName, String logOutput, String unixSock, String libDir, int numberOfMountSnapshots,
-      long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
-      List<String> classPathExtras) throws IOException {
+      String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout, String volumeName,
+      String logOutput, String unixSock, String libDir, int numberOfMountSnapshots, long volumeMissingPollingPeriod,
+      int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing, List<String> classPathExtras)
+      throws IOException {
     String javaHome = System.getProperty(JAVA_HOME);
 
     String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir, classPathExtras);
@@ -85,7 +85,6 @@ public class BlockPackFuseProcessBuilder {
            .add(volumeName)
            .add(fuseMountLocation)
            .add(fsMountLocation)
-           .add(fsMetricsLocation)
            .add(fsLocalCache)
            .add(hdfVolumePath)
            .add(zkConnection)

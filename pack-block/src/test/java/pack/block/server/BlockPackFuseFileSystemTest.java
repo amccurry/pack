@@ -50,7 +50,6 @@ public class BlockPackFuseFileSystemTest {
   private static final String RW = "rw";
   private static final String HDFS = "hdfs";
   private static final String ZK = "zk";
-  private static final String METRICS = "metrics";
   private static final String MOUNT = "mount";
   private static final String FUSE = "fuse";
   private static final int MAX_FILE_SIZE = 100_000;
@@ -108,8 +107,6 @@ public class BlockPackFuseFileSystemTest {
                               .getAbsolutePath();
     String fsLocalCachePath = Utils.mkdir(new File(fuse, CACHE))
                                    .getAbsolutePath();
-    String metricsLocalPath = Utils.mkdir(new File(fuse, METRICS))
-                                   .getAbsolutePath();
 
     BlockPackAdmin blockPackAdmin = new BlockPackAdmin() {
     };
@@ -121,7 +118,6 @@ public class BlockPackFuseFileSystemTest {
                                                         .config(config)
                                                         .fuseLocalPath(fuseLocalPath)
                                                         .fsLocalPath(fsLocalPath)
-                                                        .metricsLocalPath(metricsLocalPath)
                                                         .fsLocalCache(fsLocalCachePath)
                                                         .zkConnectionString(zkConnection)
                                                         .zkSessionTimeout(zkTimeout)

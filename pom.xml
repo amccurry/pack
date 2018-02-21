@@ -34,6 +34,7 @@
 		<module>pack-assemble</module>
 		<module>pack-spi</module>
 		<module>pack-block</module>
+		<module>pack-iscsi</module>
 		<module>jnr-fuse</module>
 		<module>zk-utils</module>
 	</modules>

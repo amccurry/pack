@@ -22,7 +22,6 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.codahale.metrics.CsvReporter;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.io.Closer;
 
@@ -38,6 +37,7 @@ import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.block.server.metrics.JsonReporter;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
@@ -68,19 +68,19 @@ public class BlockPackFuse implements Closeable {
     try {
       Utils.setupLog4j();
       Configuration conf = getConfig();
-      String volumeName = args[0];
-      String fuseLocalPath = args[1];
-      String fsLocalPath = args[2];
-      String metricsLocalPath = args[3];
-      String fsLocalCache = args[4];
-      Path path = new Path(args[5]);
-      String zkConnection = args[6];
-      int zkTimeout = Integer.parseInt(args[7]);
-      String unixSock = args[8];
-      int numberOfMountSnapshots = Integer.parseInt(args[9]);
-      long volumeMissingPollingPeriod = Long.parseLong(args[10]);
-      int volumeMissingCountBeforeAutoShutdown = Integer.parseInt(args[11]);
-      boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
+      int c = 0;
+      String volumeName = args[c++];
+      String fuseLocalPath = args[c++];
+      String fsLocalPath = args[c++];
+      String fsLocalCache = args[c++];
+      Path path = new Path(args[c++]);
+      String zkConnection = args[c++];
+      int zkTimeout = Integer.parseInt(args[c++]);
+      String unixSock = args[c++];
+      int numberOfMountSnapshots = Integer.parseInt(args[c++]);
+      long volumeMissingPollingPeriod = Long.parseLong(args[c++]);
+      int volumeMissingCountBeforeAutoShutdown = Integer.parseInt(args[c++]);
+      boolean countDockerDownAsMissing = Boolean.parseBoolean(args[c++]);
 
       HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
 
@@ -107,7 +107,6 @@ public class BlockPackFuse implements Closeable {
                                                   .config(config)
                                                   .fuseLocalPath(fuseLocalPath)
                                                   .fsLocalPath(fsLocalPath)
-                                                  .metricsLocalPath(metricsLocalPath)
                                                   .fsLocalCache(fsLocalCache)
                                                   .zkConnectionString(zkConnection)
                                                   .zkSessionTimeout(zkTimeout)
@@ -143,7 +142,7 @@ public class BlockPackFuse implements Closeable {
   private final ZooKeeperLockManager _lockManager;
   private final Path _path;
   private final MetricRegistry _registry = new MetricRegistry();
-  private final CsvReporter _reporter;
+  private final JsonReporter _reporter;
   private final boolean _fileSystemMount;
   private final UserGroupInformation _ugi;
   private final BlockPackAdmin _blockPackAdmin;
@@ -181,9 +180,7 @@ public class BlockPackFuse implements Closeable {
     }
     if (lock) {
       _closer = Closer.create();
-      _reporter = _closer.register(CsvReporter.forRegistry(_registry)
-                                              .build(new File(packFuseConfig.getMetricsLocalPath())));
-      _reporter.start(1, TimeUnit.MINUTES);
+
       _fuseLocalPath = new File(packFuseConfig.getFuseLocalPath());
       _fuseLocalPath.mkdirs();
       _fsLocalPath = new File(packFuseConfig.getFsLocalPath());
@@ -193,6 +190,10 @@ public class BlockPackFuse implements Closeable {
       _maxVolumeMissingCount = packFuseConfig.getMaxVolumeMissingCount();
       _timer = new Timer(POLLING_CLOSER, true);
       _fileSystem = packFuseConfig.getFileSystem();
+
+      _reporter = _closer.register(JsonReporter.forRegistry(_registry)
+                                               .build(_fileSystem.getConf(), new Path(_path, "metrics")));
+      _reporter.start(5, TimeUnit.SECONDS);
 
       BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
       _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _ugi, _registry);
