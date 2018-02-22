@@ -12,18 +12,22 @@ public abstract class BaseIStorageModule implements IStorageModule {
 
   @Override
   public final int checkBounds(final long logicalBlockAddress, final int transferLengthInBlocks) {
-    if (logicalBlockAddress < 0 || logicalBlockAddress >= _sizeInBlocks) {
+    if (logicalBlockAddress < 0 || logicalBlockAddress > _sizeInBlocks) {
+      // System.out.println(logicalBlockAddress + " " + sizeInBlocks);
       return 1;
-    }
-    if (transferLengthInBlocks < 0 || logicalBlockAddress + transferLengthInBlocks > _sizeInBlocks) {
+    } else if (transferLengthInBlocks < 0 || logicalBlockAddress + transferLengthInBlocks > _sizeInBlocks) {
+      // System.out.println(transferLengthInBlocks + " < 0 || " +
+      // logicalBlockAddress + " + " + transferLengthInBlocks
+      // + " > " + sizeInBlocks);
       return 2;
+    } else {
+      return 0;
     }
-    return 0;
   }
 
   @Override
   public long getSizeInBlocks() {
-    return _sizeInBlocks;
+    return _sizeInBlocks - 1;
   }
 
 }

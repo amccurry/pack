@@ -14,4 +14,6 @@ public interface TargetManager {
   boolean isValidTarget(String targetName);
 
   void register(String name, String alias, IStorageModule module) throws IOException;
+
+  String getFullName(String name);
 }

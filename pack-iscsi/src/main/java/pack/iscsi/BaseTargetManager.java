@@ -46,7 +46,8 @@ public class BaseTargetManager implements TargetManager {
     _targetMap.put(fullName, target);
   }
 
-  private String getFullName(String name) {
+  @Override
+  public String getFullName(String name) {
     return _targetPrefix + ":" + name;
   }
 

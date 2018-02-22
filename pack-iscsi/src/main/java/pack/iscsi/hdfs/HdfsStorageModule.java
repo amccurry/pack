@@ -1,11 +1,17 @@
 package pack.iscsi.hdfs;
 
 import java.io.IOException;
+import java.net.InetAddress;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import pack.block.blockstore.BlockStore;
 import pack.iscsi.BaseIStorageModule;
 
 public class HdfsStorageModule extends BaseIStorageModule {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(HdfsStorageModule.class);
 
   private final BlockStore _store;
 
@@ -14,17 +20,36 @@ public class HdfsStorageModule extends BaseIStorageModule {
     _store = store;
   }
 
-//  @Override
-//  public void read(ProtocolDataUnit pdu, byte[] bytes, long storageIndex) throws IOException {
-//    System.out.println("read  " + pdu);
-//    super.read(pdu, bytes, storageIndex);
-//  }
-//
-//  @Override
-//  public void write(ProtocolDataUnit pdu, byte[] bytes, long storageIndex) throws IOException {
-//    System.out.println("write " + pdu);
-//    super.write(pdu, bytes, storageIndex);
-//  }
+  @Override
+  public void read(byte[] bytes, long storageIndex, InetAddress address, int port, int initiatorTaskTag,
+      Integer commandSequenceNumber) throws IOException {
+    LOGGER.info("{} {} read initTag {} comSeqNum {} index {} length {} ", address, port, initiatorTaskTag,
+        commandSequenceNumber, storageIndex, bytes.length);
+    try {
+      read(bytes, storageIndex);
+    } catch (IOException e) {
+      LOGGER.error("Unknown error", e);
+      throw e;
+    }
+  }
+
+  @Override
+  public void write(byte[] bytes, long storageIndex, InetAddress address, int port, int initiatorTaskTag,
+      Integer commandSequenceNumber, Integer dataSequenceNumber, Integer targetTransferTag) throws IOException {
+    LOGGER.info("{} {} write initTag {} comSeqNum {} TargetTransTag {} DataDeqNum {} index {} length {}", address, port,
+        initiatorTaskTag, commandSequenceNumber, targetTransferTag, dataSequenceNumber, storageIndex, bytes.length);
+    try {
+      write(bytes, storageIndex);
+    } catch (IOException e) {
+      LOGGER.error("Unknown error", e);
+      throw e;
+    }
+  }
+
+  @Override
+  public void appendCommandSequenceNumber(long initiatorSessionID, int commandSequenceNumber) throws IOException {
+    super.appendCommandSequenceNumber(initiatorSessionID, commandSequenceNumber);
+  }
 
   @Override
   public void read(byte[] bytes, long storageIndex) throws IOException {
