@@ -1,5 +1,6 @@
 package pack.iscsi.hdfs;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 
@@ -78,6 +79,11 @@ public class HdfsStorageModule extends BaseIStorageModule {
   @Override
   public void close() throws IOException {
     _store.close();
+  }
+
+  @Override
+  public Closeable writeTaskStart(int initiatorTaskTag) {
+    return () -> _store.fsync();
   }
 
 }

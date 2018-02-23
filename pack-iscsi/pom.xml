@@ -16,6 +16,11 @@
 			<artifactId>pack-block</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>org.apache.kafka</groupId>
+			<artifactId>kafka-clients</artifactId>
+			<version>1.0.0</version>
+		</dependency>
+		<dependency>
 			<groupId>org.jscsi</groupId>
 			<artifactId>target</artifactId>
 			<version>2.5.2</version>

@@ -1,6 +1,7 @@
 package pack.iscsi;
 
 import java.io.File;
+import java.util.Set;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -15,7 +16,7 @@ import lombok.Value;
 @Builder
 public class IscsiServerConfig {
 
-  String address;
+  Set<String> addresses;
   int port;
   TargetManager iscsiTargetManager;
   MetricRegistry registry;

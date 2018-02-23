@@ -1,5 +1,6 @@
 package org.jscsi.target.storage;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -221,6 +222,12 @@ public class RandomAccessStorageModule implements IStorageModule {
       }
     }
     return pFile.delete();
+  }
+
+  @Override
+  public Closeable writeTaskStart(int initiatorTaskTag) {
+    return () -> {
+    };
   }
 
 }

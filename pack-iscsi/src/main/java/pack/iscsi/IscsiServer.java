@@ -2,18 +2,29 @@ package pack.iscsi;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.security.PrivilegedExceptionAction;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.PosixParser;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -26,6 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.MetricRegistry;
+import com.google.common.collect.ImmutableSet;
 
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.UgiHdfsBlockStore;
@@ -35,12 +47,13 @@ import pack.iscsi.hdfs.HdfsStorageModule;
 public class IscsiServer implements Closeable {
 
   private static final String PACK = "pack";
+  private static final String _2018_02 = "2018-02";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(IscsiServer.class);
 
-  private final TargetServer _targetServer;
+  private final Map<String, TargetServer> _targetServers = new ConcurrentHashMap<>();
   private final ExecutorService _executorService;
-  private Future<Void> _future;
+  private Map<String, Future<Void>> _futures = new ConcurrentHashMap<>();
   private File _cacheDir;
   private Configuration _configuration;
   private TargetManager _iscsiTargetManager;
@@ -51,15 +64,43 @@ public class IscsiServer implements Closeable {
   private Timer _timer;
 
   public IscsiServer(IscsiServerConfig config) throws IOException {
-    _targetServer = new TargetServer(InetAddress.getByName(config.getAddress()), config.getPort(),
-        config.getIscsiTargetManager());
-    _executorService = Executors.newSingleThreadExecutor();
+    for (String address : config.getAddresses()) {
+      _targetServers.put(address,
+          new TargetServer(InetAddress.getByName(address), config.getPort(), config.getIscsiTargetManager()));
+    }
+    _executorService = Executors.newCachedThreadPool();
     _cacheDir = config.getCacheDir();
     _configuration = config.getConfiguration();
     _iscsiTargetManager = config.getIscsiTargetManager();
     _registry = config.getRegistry();
     _root = config.getRoot();
     _ugi = config.getUgi();
+  }
+
+  public void registerTargets() throws IOException, InterruptedException {
+    LOGGER.debug("Registering targets");
+    FileSystem fileSystem = _root.getFileSystem(_configuration);
+    if (fileSystem.exists(_root)) {
+      FileStatus[] listStatus = fileSystem.listStatus(_root);
+      for (FileStatus fileStatus : listStatus) {
+        Path volumePath = fileStatus.getPath();
+        if (fileSystem.isDirectory(volumePath)) {
+          String name = volumePath.getName();
+          if (!_iscsiTargetManager.isValidTarget(_iscsiTargetManager.getFullName(name))) {
+            LOGGER.info("Registering target {}", volumePath);
+            HdfsStorageModule module = new HdfsStorageModule(UgiHdfsBlockStore.wrap(_ugi,
+                getBlockStore(_registry, _configuration, _root, _ugi, _cacheDir, volumePath)));
+            _iscsiTargetManager.register(name, PACK + " " + name, module);
+          }
+        }
+      }
+    }
+  }
+
+  public void start() {
+    for (Entry<String, TargetServer> e : _targetServers.entrySet()) {
+      _futures.put(e.getKey(), _executorService.submit(e.getValue()));
+    }
     _timer = new Timer("register volumes", true);
     _timer.schedule(new TimerTask() {
       @Override
@@ -73,58 +114,120 @@ public class IscsiServer implements Closeable {
     }, TimeUnit.SECONDS.toMillis(10), TimeUnit.SECONDS.toMillis(10));
   }
 
-  public void registerTargets() throws IOException, InterruptedException {
-    LOGGER.info("Registering targets");
-    FileSystem fileSystem = _root.getFileSystem(_configuration);
-    if (fileSystem.exists(_root)) {
-      FileStatus[] listStatus = fileSystem.listStatus(_root);
-      for (FileStatus fileStatus : listStatus) {
-        Path volumePath = fileStatus.getPath();
-        if (fileSystem.isDirectory(volumePath)) {
-          String name = volumePath.getName();
-          if (!_iscsiTargetManager.isValidTarget(_iscsiTargetManager.getFullName(name))) {
-            LOGGER.info("Registering target {}", volumePath);
-            HdfsStorageModule module = new HdfsStorageModule(UgiHdfsBlockStore.wrap(_ugi,
-                getBlockStore(_registry, _configuration, _root, _ugi, _cacheDir, volumePath)));
-            // IStorageModule storageModule = getStorageModule(new
-            // File("./storage/test1"));
-            _iscsiTargetManager.register(name, PACK + " " + name, module);
-          }
-        }
-      }
-    }
-  }
-
-  public void start() {
-    _future = _executorService.submit(_targetServer);
-  }
-
   public void join() throws InterruptedException, ExecutionException {
-    _future.get();
+    for (Future<Void> future : _futures.values()) {
+      future.get();
+    }
   }
 
   @Override
   public void close() throws IOException {
     _timer.purge();
     _timer.cancel();
-    _future.cancel(true);
+    for (Future<Void> future : _futures.values()) {
+      future.cancel(true);
+    }
     _executorService.shutdownNow();
   }
 
   public static void main(String[] args) throws Exception {
-    UserGroupInformation ugi = UserGroupInformation.createRemoteUser(PACK);
-    String address = "192.168.56.1";
-    String date = "2018-02";
-    String domain = "com.fortitudetec";
+    Options options = new Options();
+    options.addOption("a", "address", true, "Listening address.");
+    options.addOption("p", "path", true, "Hdfs path.");
+    options.addOption("C", "cache", true, "Local cache path.");
+    options.addOption("r", "remote", true, "Hdfs ugi remote user.");
+    options.addOption("u", "current", false, "Hdfs ugi use current user.");
+    options.addOption("c", "conf", true, "Hdfs hdfs configuration location.");
+
+    CommandLineParser parser = new PosixParser();
+    CommandLine cmd = parser.parse(options, args);
+    Set<String> addresses;
+    if (cmd.hasOption('a')) {
+      String[] values = cmd.getOptionValues('a');
+      addresses = ImmutableSet.copyOf(values);
+      LOGGER.info("address {}", addresses);
+    } else {
+      System.err.println("address missing");
+      printUsageAndExit(options);
+      return;
+    }
+
+    String path;
+    if (cmd.hasOption('p')) {
+      path = cmd.getOptionValue('p');
+      LOGGER.info("path {}", path);
+    } else {
+      System.err.println("path missing");
+      printUsageAndExit(options);
+      return;
+    }
+
+    String cache;
+    if (cmd.hasOption('C')) {
+      cache = cmd.getOptionValue('C');
+      LOGGER.info("cache {}", cache);
+    } else {
+      System.err.println("cache missing");
+      printUsageAndExit(options);
+      return;
+    }
+
+    String remote = null;
+    if (cmd.hasOption('r')) {
+      remote = cmd.getOptionValue('r');
+      LOGGER.info("remote {}", remote);
+    }
+
+    Boolean current = null;
+    if (cmd.hasOption('u')) {
+      current = true;
+      LOGGER.info("current {}", current);
+    }
+
+    if (current != null && remote != null) {
+      System.err.println("both remote user and current user are not supported together");
+      printUsageAndExit(options);
+      return;
+    }
+
+    String conf = null;
+    if (cmd.hasOption('c')) {
+      conf = cmd.getOptionValue('c');
+      LOGGER.info("conf {}", conf);
+    }
+
+    Configuration configuration = new Configuration();
+    if (conf != null) {
+      File dir = new File(conf);
+      if (!dir.exists()) {
+        System.err.println("conf dir does not exist");
+        printUsageAndExit(options);
+        return;
+      }
+      for (File f : dir.listFiles((FilenameFilter) (dir1, name) -> name.endsWith(".xml"))) {
+        if (f.isFile()) {
+          configuration.addResource(new FileInputStream(f));
+        }
+      }
+    }
+
+    UserGroupInformation.setConfiguration(configuration);
+    UserGroupInformation ugi;
+    if (remote != null) {
+      ugi = UserGroupInformation.createRemoteUser(remote);
+    } else if (current != null) {
+      ugi = UserGroupInformation.getCurrentUser();
+    } else {
+      ugi = UserGroupInformation.getLoginUser();
+    }
 
     MetricRegistry registry = new MetricRegistry();
-    Configuration configuration = new Configuration();
-    Path root = new Path("/pack");
-    File cacheDir = new File("./cache");
-    TargetManager iscsiTargetManager = new BaseTargetManager(date, domain);
+    Path root = new Path(path);
+    File cacheDir = new File(cache);
+    TargetManager iscsiTargetManager = new BaseTargetManager(_2018_02, PACK);
 
     IscsiServerConfig config = IscsiServerConfig.builder()
-                                                .address(address)
+                                                .addresses(addresses)
                                                 .port(3260)
                                                 .registry(registry)
                                                 .ugi(ugi)
@@ -139,6 +242,12 @@ public class IscsiServer implements Closeable {
       iscsiServer.start();
       iscsiServer.join();
     }
+  }
+
+  private static void printUsageAndExit(Options options) {
+    HelpFormatter helpFormatter = new HelpFormatter();
+    helpFormatter.printHelp(PACK, options);
+    System.exit(1);
   }
 
   private static HdfsBlockStore getBlockStore(MetricRegistry registry, Configuration configuration, Path root,

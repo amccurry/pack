@@ -174,7 +174,7 @@ public final class TargetServer implements Callable<Void> {
   }
 
   public Void call() throws Exception {
-
+    LOGGER.info("Starting target server {}", targetAddress);
     // Create a blocking server socket and check for connections
     try {
       // Create a blocking server socket channel on the specified/default

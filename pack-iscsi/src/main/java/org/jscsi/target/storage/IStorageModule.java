@@ -3,6 +3,7 @@
  */
 package org.jscsi.target.storage;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 
@@ -117,7 +118,7 @@ public interface IStorageModule {
   }
 
   default void appendCommandSequenceNumber(long initiatorSessionID, int commandSequenceNumber) throws IOException {
-    
+
   }
 
   /**
@@ -127,5 +128,13 @@ public interface IStorageModule {
    *           to be closed
    */
   void close() throws IOException;
+
+  static Closeable CLOSABLE_DO_NOTHING = () -> {
+
+  };
+
+  default Closeable writeTaskStart(int initiatorTaskTag) {
+    return CLOSABLE_DO_NOTHING;
+  }
 
 }
