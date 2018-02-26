@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.iscsi.BaseIStorageModule;
+import pack.iscsi.storage.utils.IOUtils;
 
 public class PackStorageModule extends BaseIStorageModule {
 
@@ -78,6 +79,7 @@ public class PackStorageModule extends BaseIStorageModule {
   @Override
   public void close() throws IOException {
     flushWrites();
+    IOUtils.closeQuietly(_manager);
   }
 
   private void assertIsValidForWriting(long storageIndex, int length) throws IOException {

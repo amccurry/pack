@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
 import pack.iscsi.kafka.EmbeddedKafkaCluster;
 import pack.iscsi.kafka.EmbeddedZookeeper;
 import pack.iscsi.storage.kafka.PackKafkaManager;
-import utils.IOUtils;
+import pack.iscsi.storage.utils.IOUtils;
 
 public class DataSyncManagerTest implements TestExtras {
 

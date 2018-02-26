@@ -32,7 +32,7 @@ import com.google.common.collect.ImmutableList.Builder;
 import pack.block.util.Utils;
 import pack.iscsi.storage.hdfs.BlockFile;
 import pack.iscsi.storage.hdfs.BlockFile.Reader;
-import utils.IOUtils;
+import pack.iscsi.storage.utils.IOUtils;
 
 public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
 

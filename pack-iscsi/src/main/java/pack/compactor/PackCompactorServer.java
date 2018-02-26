@@ -232,7 +232,6 @@ public class PackCompactorServer implements Closeable {
     if (_compactionLockManager.tryToLock(lockName)) {
       try {
         HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
-
         try (BlockFileCompactor compactor = new BlockFileCompactor(_cacheDir, _fileSystem, volumePath, metaData,
             _mountLockManager)) {
           compactor.runCompaction();

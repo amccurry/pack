@@ -99,7 +99,6 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
       HdfsBlockStoreConfig config) throws IOException {
-
     _registry = registry;
 
     _writeTimer = _registry.timer(WRITE_TIMER);

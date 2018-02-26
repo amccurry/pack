@@ -1,14 +1,15 @@
 package pack.iscsi.storage;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
 
 import org.apache.kafka.clients.producer.KafkaProducer;
 
-import utils.IOUtils;
+import pack.iscsi.storage.utils.IOUtils;
 
-public class StorageManager {
+public class StorageManager implements Closeable {
 
   private final PackStorageMetaData _metaData;
   private final String _topic;
@@ -59,6 +60,12 @@ public class StorageManager {
 
   public void assertIsValidForWriting(long storageIndex, int length) throws IOException {
     IOUtils.assertIsValidForWriting(storageIndex, length, _blockSize);
+  }
+
+  @Override
+  public void close() throws IOException {
+    IOUtils.closeQuietly(_dataSyncManager);
+    IOUtils.closeQuietly(_dataArchiveManager);
   }
 
 }

@@ -3,6 +3,7 @@
  */
 package org.jscsi.target.storage;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 
@@ -18,7 +19,7 @@ import org.jscsi.target.scsi.cdb.CommandDescriptorBlock;
  * 
  * @author Andreas Ergenzinger
  */
-public interface IStorageModule {
+public interface IStorageModule extends Closeable {
 
   /**
    * A fictitious block size.

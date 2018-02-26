@@ -29,7 +29,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 
 import pack.iscsi.storage.kafka.PackKafkaManager;
-import utils.IOUtils;
+import pack.iscsi.storage.utils.IOUtils;
 
 public class DataSyncManager implements DataArchiveManager, Closeable {
 
@@ -61,6 +61,16 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
     _producer = kafkaManager.createProducer(metaData.getKafkaTopic());
     _consumerFuture = _executorService.submit(new ConsumerWriter());
     _walFuture = _executorService.submit(new WalFileGenerator());
+  }
+
+  @Override
+  public void close() throws IOException {
+    _running.set(false);
+    _consumerFuture.cancel(true);
+    _walFuture.cancel(true);
+    _executorService.shutdownNow();
+    IOUtils.closeQuietly(_producer);
+    IOUtils.closeQuietly(_kafkaManager);
   }
 
   public List<WalCache> getPackWalCacheList() {
@@ -98,14 +108,6 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
       }
       return;
     }
-  }
-
-  @Override
-  public void close() throws IOException {
-    _running.set(false);
-    _consumerFuture.cancel(true);
-    _walFuture.cancel(true);
-    _executorService.shutdownNow();
   }
 
   public long commit(WalCache packWalCache) throws IOException {

@@ -24,7 +24,7 @@ import org.jscsi.target.util.SerialArithmeticNumber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import utils.IOUtils;
+import pack.iscsi.storage.utils.IOUtils;
 
 /**
  * A class for objects representing an iSCSI connection with all necessary

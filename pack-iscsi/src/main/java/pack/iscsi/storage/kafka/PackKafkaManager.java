@@ -1,5 +1,7 @@
 package pack.iscsi.storage.kafka;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -18,7 +20,7 @@ import org.apache.kafka.common.serialization.LongSerializer;
 
 import com.google.common.collect.ImmutableList;
 
-public class PackKafkaManager {
+public class PackKafkaManager implements Closeable {
 
   private static final String FALSE = "false";
   private static final String ALL = "all";
@@ -78,6 +80,11 @@ public class PackKafkaManager {
         adminClient.deleteTopics(ImmutableList.of(kafkaTopic));
       }
     }
+  }
+
+  @Override
+  public void close() throws IOException {
+    
   }
 
 }
