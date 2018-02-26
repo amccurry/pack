@@ -2,10 +2,10 @@ package org.jscsi.target.connection.stage.fullfeature;
 
 import static org.jscsi.target.storage.IStorageModule.VIRTUAL_BLOCK_SIZE;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.security.DigestException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.jscsi.exception.InternetSCSIException;
 import org.jscsi.parser.AbstractMessageParser;
@@ -89,6 +89,8 @@ public final class WriteStage extends ReadOrWriteStage {
     int port = session.getTargetServer()
                       .getTargetPort();
 
+    AtomicBoolean needsFlush = new AtomicBoolean(false);
+
     if (LOGGER.isDebugEnabled())
       LOGGER.debug("Entering WRITE STAGE");
 
@@ -108,192 +110,199 @@ public final class WriteStage extends ReadOrWriteStage {
     SCSICommandParser parser = (SCSICommandParser) bhs.getParser();
     final int initiatorTaskTag = bhs.getInitiatorTaskTag();
 
-    try (Closeable close = session.getStorageModule()
-                                  .writeTaskStart(initiatorTaskTag)) {
-      WriteCdb cdb;
-      final ScsiOperationCode scsiOpCode = ScsiOperationCode.valueOf(parser.getCDB()
-                                                                           .get(0));
-      if (scsiOpCode == ScsiOperationCode.WRITE_10)
-        cdb = new Write10Cdb(parser.getCDB());
-      else if (scsiOpCode == ScsiOperationCode.WRITE_6)
-        cdb = new Write6Cdb(parser.getCDB());
-      else {
-        // anything else wouldn't be good (programmer error)
-        // close connection
-        throw new InternetSCSIException("wrong SCSI Operation Code " + scsiOpCode + " in WriteStage");
-      }
-      final int transferLength = cdb.getTransferLength();
-      final long logicalBlockAddress = cdb.getLogicalBlockAddress();
+    WriteCdb cdb;
+    final ScsiOperationCode scsiOpCode = ScsiOperationCode.valueOf(parser.getCDB()
+                                                                         .get(0));
+    if (scsiOpCode == ScsiOperationCode.WRITE_10)
+      cdb = new Write10Cdb(parser.getCDB());
+    else if (scsiOpCode == ScsiOperationCode.WRITE_6)
+      cdb = new Write6Cdb(parser.getCDB());
+    else {
+      // anything else wouldn't be good (programmer error)
+      // close connection
+      throw new InternetSCSIException("wrong SCSI Operation Code " + scsiOpCode + " in WriteStage");
+    }
+    final int transferLength = cdb.getTransferLength();
+    final long logicalBlockAddress = cdb.getLogicalBlockAddress();
 
-      // transform to from block units to byte units
-      final int transferLengthInBytes = transferLength * VIRTUAL_BLOCK_SIZE;
-      long storageIndex = logicalBlockAddress * VIRTUAL_BLOCK_SIZE;
+    // transform to from block units to byte units
+    final int transferLengthInBytes = transferLength * VIRTUAL_BLOCK_SIZE;
+    long storageIndex = logicalBlockAddress * VIRTUAL_BLOCK_SIZE;
 
-      // check if requested blocks are out of bounds
-      // (might add FPSKSD to the CDB's list to be detected in the next step)
-      checkOverAndUnderflow(cdb);
+    // check if requested blocks are out of bounds
+    // (might add FPSKSD to the CDB's list to be detected in the next step)
+    checkOverAndUnderflow(cdb);
 
-      if (cdb.getIllegalFieldPointers() != null) {
-        /*
-         * CDB is invalid, inform initiator by closing the connection. Sending
-         * an error status SCSI Response PDU will not work reliably, since the
-         * initiator may not be expecting a response so soon. Also, if the
-         * WriteStage is simply left early (without closing the connection), the
-         * initiator may send additional unsolicited Data-Out PDUs, which the
-         * jSCSI Target is currently unable to ignore or process properly.
-         */
-        LOGGER.debug("illegal field in Write CDB");
-        LOGGER.debug("CDB:\n" + Debug.byteBufferToString(parser.getCDB()));
+    if (cdb.getIllegalFieldPointers() != null) {
+      /*
+       * CDB is invalid, inform initiator by closing the connection. Sending an
+       * error status SCSI Response PDU will not work reliably, since the
+       * initiator may not be expecting a response so soon. Also, if the
+       * WriteStage is simply left early (without closing the connection), the
+       * initiator may send additional unsolicited Data-Out PDUs, which the
+       * jSCSI Target is currently unable to ignore or process properly.
+       */
+      LOGGER.debug("illegal field in Write CDB");
+      LOGGER.debug("CDB:\n" + Debug.byteBufferToString(parser.getCDB()));
 
-        // Not necessarily close the connection
+      // Not necessarily close the connection
 
-        // create and send error PDU and leave stage
-        final ProtocolDataUnit responsePdu = createFixedFormatErrorPdu(cdb.getIllegalFieldPointers(), // senseKeySpecificData
-            initiatorTaskTag, parser.getExpectedDataTransferLength());
-        connection.sendPdu(responsePdu);
-        return;
-      }
+      // create and send error PDU and leave stage
+      final ProtocolDataUnit responsePdu = createFixedFormatErrorPdu(cdb.getIllegalFieldPointers(), // senseKeySpecificData
+          initiatorTaskTag, parser.getExpectedDataTransferLength());
+      flushIfNeeded(needsFlush);
+      connection.sendPdu(responsePdu);
+      return;
+    }
 
-      // *** start receiving data (or process what has already been sent) ***
-      int bytesReceived = 0;
+    // *** start receiving data (or process what has already been sent) ***
+    int bytesReceived = 0;
 
-      // *** receive immediate data ***
-      if (immediateData && bhs.getDataSegmentLength() > 0) {
-        final byte[] immediateDataArray = pdu.getDataSegment()
-                                             .array();
-        int commandSequenceNumber = parser.getCommandSequenceNumber();
+    // *** receive immediate data ***
+    if (immediateData && bhs.getDataSegmentLength() > 0) {
+      final byte[] immediateDataArray = pdu.getDataSegment()
+                                           .array();
+      int commandSequenceNumber = parser.getCommandSequenceNumber();
+      session.getStorageModule()
+             .write(immediateDataArray, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber, null,
+                 null);
+      needsFlush.set(true);
+      bytesReceived = immediateDataArray.length;
+
+      if (LOGGER.isDebugEnabled())
+        LOGGER.debug("wrote " + immediateDataArray.length + "bytes as immediate data");
+    }
+
+    // *** receive unsolicited data ***
+    if (!initialR2T && !bhs.isFinalFlag()) {
+
+      if (LOGGER.isDebugEnabled())
+        LOGGER.debug("receiving unsolicited data");
+
+      boolean firstBurstOver = false;
+      while (!firstBurstOver && bytesReceived <= firstBurstLength) {
+
+        // receive and check PDU
+        pdu = connection.receivePdu();
+        bhs = pdu.getBasicHeaderSegment();
+
+        checkDataOutParser(bhs.getParser());
+
+        final DataOutParser dataOutParser = (DataOutParser) bhs.getParser();
+        int dataSequenceNumber = dataOutParser.getDataSequenceNumber();
+        int targetTransferTag = dataOutParser.getTargetTransferTag();
+        int commandSequenceNumber = dataOutParser.getCommandSequenceNumber();
         session.getStorageModule()
-               .write(immediateDataArray, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber, null,
-                   null);
-        bytesReceived = immediateDataArray.length;
+               .write(pdu.getDataSegment()
+                         .array(),
+                   storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag,
+                   commandSequenceNumber, dataSequenceNumber, targetTransferTag);
+        needsFlush.set(true);
+        bytesReceived += bhs.getDataSegmentLength();
 
-        if (LOGGER.isDebugEnabled())
-          LOGGER.debug("wrote " + immediateDataArray.length + "bytes as immediate data");
+        if (bhs.isFinalFlag())
+          firstBurstOver = true;
       }
+    }
 
-      // *** receive unsolicited data ***
-      if (!initialR2T && !bhs.isFinalFlag()) {
+    // *** receive solicited data ***
+    if (bytesReceived < transferLengthInBytes) {
+      if (LOGGER.isDebugEnabled())
+        LOGGER.debug(bytesReceived + "<" + transferLengthInBytes);
 
-        if (LOGGER.isDebugEnabled())
-          LOGGER.debug("receiving unsolicited data");
+      int readyToTransferSequenceNumber = 0;
+      int desiredDataTransferLength;
 
-        boolean firstBurstOver = false;
-        while (!firstBurstOver && bytesReceived <= firstBurstLength) {
+      while (bytesReceived < transferLengthInBytes) {
+
+        desiredDataTransferLength = Math.min(maxBurstLength, transferLengthInBytes - bytesReceived);
+
+        // send R2T
+        pdu = TargetPduFactory.createReadyToTransferPdu(0, // logicalUnitNumber
+            initiatorTaskTag, TargetServer.getNextTargetTransferTag(), // targetTransferTag
+            readyToTransferSequenceNumber++, bytesReceived, // bufferOffset
+            desiredDataTransferLength);
+        flushIfNeeded(needsFlush);
+        connection.sendPdu(pdu);
+
+        // receive DataOut PDUs
+        expectedDataSequenceNumber = 0;// reset sequence counter//FIXME
+                                       // fix in jSCSI Initiator
+        boolean solicitedDataCycleOver = false;
+        int bytesReceivedThisCycle = 0;
+        while (!solicitedDataCycleOver) {
 
           // receive and check PDU
           pdu = connection.receivePdu();
           bhs = pdu.getBasicHeaderSegment();
-
           checkDataOutParser(bhs.getParser());
 
-          final DataOutParser dataOutParser = (DataOutParser) bhs.getParser();
-          int dataSequenceNumber = dataOutParser.getDataSequenceNumber();
-          int targetTransferTag = dataOutParser.getTargetTransferTag();
-          int commandSequenceNumber = dataOutParser.getCommandSequenceNumber();
-          session.getStorageModule()
-                 .write(pdu.getDataSegment()
-                           .array(),
-                     storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag,
-                     commandSequenceNumber, dataSequenceNumber, targetTransferTag);
-          bytesReceived += bhs.getDataSegmentLength();
+          if (bhs.getParser() instanceof NOPOutParser) {
 
-          if (bhs.isFinalFlag())
-            firstBurstOver = true;
-        }
-      }
+            /* send SCSI Response PDU */
+            pdu = TargetPduFactory.createSCSIResponsePdu(false, // bidirectionalReadResidualOverflow
+                false, // bidirectionalReadResidualUnderflow
+                false, // residualOverflow
+                false, // residualUnderflow
+                SCSIResponseParser.ServiceResponse.COMMAND_COMPLETED_AT_TARGET, // response
+                SCSIStatus.GOOD, // status
+                initiatorTaskTag, 0, // snackTag
+                0, // (ExpDataSN or) Reserved
+                0, // bidirectionalReadResidualCount
+                0, // residualCount
+                ScsiResponseDataSegment.EMPTY_DATA_SEGMENT);// dataSegment
+            flushIfNeeded(needsFlush);
+            connection.sendPdu(pdu);
+            return;
+          } else if (bhs.getParser() instanceof DataOutParser) {
+            final DataOutParser dataOutParser = (DataOutParser) bhs.getParser();
+            int dataSequenceNumber = dataOutParser.getDataSequenceNumber();
+            int targetTransferTag = dataOutParser.getTargetTransferTag();
+            int commandSequenceNumber = dataOutParser.getCommandSequenceNumber();
+            session.getStorageModule()
+                   .write(pdu.getDataSegment()
+                             .array(),
+                       storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag,
+                       commandSequenceNumber, dataSequenceNumber, targetTransferTag);
+            needsFlush.set(true);
+            bytesReceivedThisCycle += bhs.getDataSegmentLength();
 
-      // *** receive solicited data ***
-      if (bytesReceived < transferLengthInBytes) {
-        if (LOGGER.isDebugEnabled())
-          LOGGER.debug(bytesReceived + "<" + transferLengthInBytes);
-
-        int readyToTransferSequenceNumber = 0;
-        int desiredDataTransferLength;
-
-        while (bytesReceived < transferLengthInBytes) {
-
-          desiredDataTransferLength = Math.min(maxBurstLength, transferLengthInBytes - bytesReceived);
-
-          // send R2T
-          pdu = TargetPduFactory.createReadyToTransferPdu(0, // logicalUnitNumber
-              initiatorTaskTag, TargetServer.getNextTargetTransferTag(), // targetTransferTag
-              readyToTransferSequenceNumber++, bytesReceived, // bufferOffset
-              desiredDataTransferLength);
-
-          connection.sendPdu(pdu);
-
-          // receive DataOut PDUs
-          expectedDataSequenceNumber = 0;// reset sequence counter//FIXME
-                                         // fix in jSCSI Initiator
-          boolean solicitedDataCycleOver = false;
-          int bytesReceivedThisCycle = 0;
-          while (!solicitedDataCycleOver) {
-
-            // receive and check PDU
-            pdu = connection.receivePdu();
-            bhs = pdu.getBasicHeaderSegment();
-            checkDataOutParser(bhs.getParser());
-
-            if (bhs.getParser() instanceof NOPOutParser) {
-
-              /* send SCSI Response PDU */
-              pdu = TargetPduFactory.createSCSIResponsePdu(false, // bidirectionalReadResidualOverflow
-                  false, // bidirectionalReadResidualUnderflow
-                  false, // residualOverflow
-                  false, // residualUnderflow
-                  SCSIResponseParser.ServiceResponse.COMMAND_COMPLETED_AT_TARGET, // response
-                  SCSIStatus.GOOD, // status
-                  initiatorTaskTag, 0, // snackTag
-                  0, // (ExpDataSN or) Reserved
-                  0, // bidirectionalReadResidualCount
-                  0, // residualCount
-                  ScsiResponseDataSegment.EMPTY_DATA_SEGMENT);// dataSegment
-
-              connection.sendPdu(pdu);
-              return;
-            } else if (bhs.getParser() instanceof DataOutParser) {
-              final DataOutParser dataOutParser = (DataOutParser) bhs.getParser();
-              int dataSequenceNumber = dataOutParser.getDataSequenceNumber();
-              int targetTransferTag = dataOutParser.getTargetTransferTag();
-              int commandSequenceNumber = dataOutParser.getCommandSequenceNumber();
-              session.getStorageModule()
-                     .write(pdu.getDataSegment()
-                               .array(),
-                         storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag,
-                         commandSequenceNumber, dataSequenceNumber, targetTransferTag);
-
-              bytesReceivedThisCycle += bhs.getDataSegmentLength();
-
-              /*
-               * Checking the final flag should be enough, but is not, when
-               * dealing with the jSCSI Initiator. This is also one of the
-               * reasons, why the contents of this while loop, though very
-               * similar to what is happening during the receiving of the
-               * unsolicited data PDU sequence, has not been put into a
-               * dedicated method.
-               */
-              if (bhs.isFinalFlag() || bytesReceivedThisCycle >= desiredDataTransferLength)
-                solicitedDataCycleOver = true;
-            }
+            /*
+             * Checking the final flag should be enough, but is not, when
+             * dealing with the jSCSI Initiator. This is also one of the
+             * reasons, why the contents of this while loop, though very similar
+             * to what is happening during the receiving of the unsolicited data
+             * PDU sequence, has not been put into a dedicated method.
+             */
+            if (bhs.isFinalFlag() || bytesReceivedThisCycle >= desiredDataTransferLength)
+              solicitedDataCycleOver = true;
           }
-          bytesReceived += bytesReceivedThisCycle;
         }
+        bytesReceived += bytesReceivedThisCycle;
       }
+    }
 
-      /* send SCSI Response PDU */
-      pdu = TargetPduFactory.createSCSIResponsePdu(false, // bidirectionalReadResidualOverflow
-          false, // bidirectionalReadResidualUnderflow
-          false, // residualOverflow
-          false, // residualUnderflow
-          SCSIResponseParser.ServiceResponse.COMMAND_COMPLETED_AT_TARGET, // response
-          SCSIStatus.GOOD, // status
-          initiatorTaskTag, 0, // snackTag
-          0, // (ExpDataSN or) Reserved
-          0, // bidirectionalReadResidualCount
-          0, // residualCount
-          ScsiResponseDataSegment.EMPTY_DATA_SEGMENT);// dataSegment
+    /* send SCSI Response PDU */
+    pdu = TargetPduFactory.createSCSIResponsePdu(false, // bidirectionalReadResidualOverflow
+        false, // bidirectionalReadResidualUnderflow
+        false, // residualOverflow
+        false, // residualUnderflow
+        SCSIResponseParser.ServiceResponse.COMMAND_COMPLETED_AT_TARGET, // response
+        SCSIStatus.GOOD, // status
+        initiatorTaskTag, 0, // snackTag
+        0, // (ExpDataSN or) Reserved
+        0, // bidirectionalReadResidualCount
+        0, // residualCount
+        ScsiResponseDataSegment.EMPTY_DATA_SEGMENT);// dataSegment
+    flushIfNeeded(needsFlush);
+    connection.sendPdu(pdu);
+  }
 
-      connection.sendPdu(pdu);
+  private void flushIfNeeded(AtomicBoolean needsFlush) throws IOException {
+    if (needsFlush.get()) {
+      session.getStorageModule()
+             .flushWrites();
+      needsFlush.set(false);
     }
   }
 }

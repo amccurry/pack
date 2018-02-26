@@ -13,6 +13,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -40,9 +41,14 @@ import com.codahale.metrics.MetricRegistry;
 import com.google.common.collect.ImmutableSet;
 
 import pack.block.blockstore.hdfs.HdfsBlockStore;
-import pack.block.blockstore.hdfs.UgiHdfsBlockStore;
 import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
-import pack.iscsi.hdfs.HdfsStorageModule;
+import pack.iscsi.storage.DataArchiveManager;
+import pack.iscsi.storage.DataSyncManager;
+import pack.iscsi.storage.HdfsDataArchiveManager;
+import pack.iscsi.storage.PackStorageMetaData;
+import pack.iscsi.storage.PackStorageModule;
+import pack.iscsi.storage.StorageManager;
+import pack.iscsi.storage.kafka.PackKafkaManager;
 
 public class IscsiServer implements Closeable {
 
@@ -77,7 +83,7 @@ public class IscsiServer implements Closeable {
     _ugi = config.getUgi();
   }
 
-  public void registerTargets() throws IOException, InterruptedException {
+  public void registerTargets() throws IOException, InterruptedException, ExecutionException {
     LOGGER.debug("Registering targets");
     FileSystem fileSystem = _root.getFileSystem(_configuration);
     if (fileSystem.exists(_root)) {
@@ -88,9 +94,35 @@ public class IscsiServer implements Closeable {
           String name = volumePath.getName();
           if (!_iscsiTargetManager.isValidTarget(_iscsiTargetManager.getFullName(name))) {
             LOGGER.info("Registering target {}", volumePath);
-            HdfsStorageModule module = new HdfsStorageModule(UgiHdfsBlockStore.wrap(_ugi,
-                getBlockStore(_registry, _configuration, _root, _ugi, _cacheDir, volumePath)));
-            _iscsiTargetManager.register(name, PACK + " " + name, module);
+
+            int blockSize = 512;
+            PackStorageMetaData metaData = PackStorageMetaData.builder()
+                                                              .blockSize(blockSize)
+                                                              .kafkaPartition(0)
+                                                              .kafkaTopic(name)
+                                                              .lengthInBytes(10L * blockSize * blockSize * blockSize)
+                                                              .localWalCachePath("./cache/" + name)
+                                                              .walCacheMemorySize(1024 * blockSize)
+                                                              .maxOffsetPerWalFile(16 * 1024)
+                                                              .lagSyncPollWaitTime(10)
+                                                              .hdfsPollTime(TimeUnit.SECONDS.toMillis(10))
+                                                              .build();
+            String bootstrapServers = "centos-01:9092,centos-02:9092,centos-03:9092,centos-04:9092";
+            String groupId = UUID.randomUUID()
+                                 .toString();
+            PackKafkaManager kafkaManager = new PackKafkaManager(bootstrapServers, groupId);
+            kafkaManager.createTopicIfMissing(metaData.getKafkaTopic());
+            DataSyncManager dataSyncManager = new DataSyncManager(kafkaManager, metaData);
+            DataArchiveManager dataArchiveManager = new HdfsDataArchiveManager(metaData, _configuration, volumePath,
+                _ugi);
+            StorageManager manager = new StorageManager(metaData, dataSyncManager, dataArchiveManager);
+            PackStorageModule packStorageModule = new PackStorageModule(metaData.getLengthInBytes(), manager);
+
+            // HdfsStorageModule module = new
+            // HdfsStorageModule(UgiHdfsBlockStore.wrap(_ugi,
+            // getBlockStore(_registry, _configuration, _root, _ugi, _cacheDir,
+            // volumePath)));
+            _iscsiTargetManager.register(name, PACK + " " + name, packStorageModule);
           }
         }
       }

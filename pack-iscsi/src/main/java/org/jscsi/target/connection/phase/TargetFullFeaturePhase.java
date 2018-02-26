@@ -6,9 +6,7 @@ import java.security.DigestException;
 import javax.naming.OperationNotSupportedException;
 
 import org.jscsi.exception.InternetSCSIException;
-import org.jscsi.parser.AbstractMessageParser;
 import org.jscsi.parser.BasicHeaderSegment;
-import org.jscsi.parser.InitiatorMessageParser;
 import org.jscsi.parser.ProtocolDataUnit;
 import org.jscsi.parser.scsi.SCSICommandParser;
 import org.jscsi.target.connection.Connection;
@@ -30,7 +28,6 @@ import org.jscsi.target.connection.stage.fullfeature.UnsupportedOpCodeStage;
 import org.jscsi.target.connection.stage.fullfeature.WriteStage;
 import org.jscsi.target.scsi.cdb.ScsiOperationCode;
 import org.jscsi.target.settings.SettingsException;
-import org.jscsi.target.storage.IStorageModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,24 +83,11 @@ public final class TargetFullFeaturePhase extends TargetPhase {
    */
   public boolean execute()
       throws DigestException, IOException, InterruptedException, InternetSCSIException, SettingsException {
-    long serialize = getTargetConnection().getTargetSession()
-                                          .getInitiatorSessionID()
-                                          .serialize();
-    IStorageModule storageModule = null;
-    if (connection != null && connection.getTargetSession() != null && connection.getTargetSession()
-                                                                                 .getTarget() != null) {
-      storageModule = connection.getTargetSession()
-                                .getStorageModule();
-    }
     running = true;
     while (running) {
       ProtocolDataUnit pdu = connection.receivePdu();
       BasicHeaderSegment bhs = pdu.getBasicHeaderSegment();
 
-      Integer commandSequenceNumber = getCommandSequenceNumber(bhs);
-      if (commandSequenceNumber != null && storageModule != null) {
-        storageModule.appendCommandSequenceNumber(serialize, commandSequenceNumber);
-      }
       // identify desired stage
       switch (bhs.getOpCode()) {
 
@@ -201,16 +185,6 @@ public final class TargetFullFeaturePhase extends TargetPhase {
     }
 
     return false;
-  }
-
-  private Integer getCommandSequenceNumber(BasicHeaderSegment bhs) {
-    AbstractMessageParser p = bhs.getParser();
-    if (p instanceof InitiatorMessageParser) {
-      InitiatorMessageParser initiatorMessageParser = (InitiatorMessageParser) p;
-      return initiatorMessageParser.getCommandSequenceNumber();
-    } else {
-      return null;
-    }
   }
 
   /**

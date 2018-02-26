@@ -260,7 +260,7 @@ public interface Connection extends Callable<Void> {
           LOGGER.error("Exception throws", e);
         }
       } finally {
-        IOUtils.closeQuiently(senderWorker);
+        IOUtils.closeQuietly(senderWorker);
       }
       targetSession.removeTargetConnection(this);
       LOGGER.debug("closed connection");
