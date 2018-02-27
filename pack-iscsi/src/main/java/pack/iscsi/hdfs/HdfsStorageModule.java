@@ -23,7 +23,7 @@ public class HdfsStorageModule extends BaseIStorageModule {
   @Override
   public void read(byte[] bytes, long storageIndex, InetAddress address, int port, int initiatorTaskTag,
       Integer commandSequenceNumber) throws IOException {
-    LOGGER.info("{} {} read initTag {} comSeqNum {} index {} length {} ", address, port, initiatorTaskTag,
+    LOGGER.debug("{} {} read initTag {} comSeqNum {} index {} length {} ", address, port, initiatorTaskTag,
         commandSequenceNumber, storageIndex, bytes.length);
     try {
       read(bytes, storageIndex);
@@ -36,7 +36,7 @@ public class HdfsStorageModule extends BaseIStorageModule {
   @Override
   public void write(byte[] bytes, long storageIndex, InetAddress address, int port, int initiatorTaskTag,
       Integer commandSequenceNumber, Integer dataSequenceNumber, Integer targetTransferTag) throws IOException {
-    LOGGER.info("{} {} write initTag {} comSeqNum {} TargetTransTag {} DataDeqNum {} index {} length {}", address, port,
+    LOGGER.debug("{} {} write initTag {} comSeqNum {} TargetTransTag {} DataDeqNum {} index {} length {}", address, port,
         initiatorTaskTag, commandSequenceNumber, targetTransferTag, dataSequenceNumber, storageIndex, bytes.length);
     try {
       write(bytes, storageIndex);
@@ -72,11 +72,13 @@ public class HdfsStorageModule extends BaseIStorageModule {
 
   @Override
   public void close() throws IOException {
+    LOGGER.debug("close");
     _store.close();
   }
 
   @Override
   public void flushWrites() throws IOException {
+    LOGGER.debug("flush");
     _store.fsync();
   }
 

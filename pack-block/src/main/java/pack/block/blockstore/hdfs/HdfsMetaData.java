@@ -26,6 +26,7 @@ import pack.block.server.fs.FileSystemType;
 @Builder(toBuilder = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class HdfsMetaData {
+
   private static final String MAX_IDLE_WRITER_TIME = "maxIdleWriterTime";
   private static final String MIN_TIME_BETWEEN_SYNCS = "minTimeBetweenSyncs";
   private static final String FILE_SYSTEM_TYPE = "fileSystemType";
@@ -33,10 +34,10 @@ public class HdfsMetaData {
   private static final String MAX_BLOCK_FILE_SIZE = "maxBlockFileSize";
   private static final String LENGTH = "length";
   private static final String FILE_SYSTEM_BLOCK_SIZE = "fileSystemBlockSize";
-  private static final String WAL_COMPRESSION_CODEC = "walCompressionCodec";
-  private static final String WAL_COMPRESSION_TYPE = "walCompressionType";
   private static final String MAX_WAL_FILE_SIZE = "maxWalFileSize";
   private static final String MAX_OBSOLETE_RATIO = "maxObsoleteRatio";
+
+  public static final boolean DEFAULT_ASYNC_FLUSH = false;
 
   public static final int DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE = 10_000;
 
@@ -61,10 +62,19 @@ public class HdfsMetaData {
   public static final long DEFAULT_MIN_TIME_BETWEEN_SYNCS = TimeUnit.MILLISECONDS.toMillis(10);
 
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
-      .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE).fileSystemType(FileSystemType.XFS).length(DEFAULT_LENGTH_BYTES)
-      .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE).maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
-      .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE).maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
-      .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS).build();
+                                                                   .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
+                                                                   .fileSystemType(FileSystemType.XFS)
+                                                                   .length(DEFAULT_LENGTH_BYTES)
+                                                                   .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE)
+                                                                   .maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
+                                                                   .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
+                                                                   .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
+                                                                   .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS)
+                                                                   .build();
+
+  @JsonProperty
+  @Builder.Default
+  boolean asyncFlush = DEFAULT_ASYNC_FLUSH;
 
   @JsonProperty
   @Builder.Default
@@ -92,12 +102,6 @@ public class HdfsMetaData {
   @JsonProperty
   @Builder.Default
   long maxWalFileSize = DEFAULT_MAX_WAL_FILE_SIZE;
-
-  @JsonProperty
-  String walCompressionType;
-
-  @JsonProperty
-  String walCompressionCodec;
 
   @JsonProperty
   @Builder.Default
@@ -138,12 +142,6 @@ public class HdfsMetaData {
     }
     if (options.containsKey(MAX_WAL_FILE_SIZE)) {
       builder.maxWalFileSize(toLong(options.get(MAX_WAL_FILE_SIZE)));
-    }
-    if (options.containsKey(WAL_COMPRESSION_TYPE)) {
-      builder.walCompressionType(toString(options.get(WAL_COMPRESSION_TYPE)));
-    }
-    if (options.containsKey(WAL_COMPRESSION_CODEC)) {
-      builder.walCompressionCodec(toString(options.get(WAL_COMPRESSION_CODEC)));
     }
     if (options.containsKey(MAX_IDLE_WRITER_TIME)) {
       builder.maxIdleWriterTime(toLong(options.get(MAX_IDLE_WRITER_TIME)));

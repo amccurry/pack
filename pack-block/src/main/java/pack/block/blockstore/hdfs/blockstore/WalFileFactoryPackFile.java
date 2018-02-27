@@ -27,9 +27,12 @@ public class WalFileFactoryPackFile extends WalFileFactory {
   private final static Logger LOGGER = LoggerFactory.getLogger(WalFileFactoryPackFile.class);
   private final long _maxIdleWriterTime;
   private final long _minTimeBetweenSyncs;
+  private final boolean _asyncFlush;
 
   public WalFileFactoryPackFile(FileSystem fileSystem, HdfsMetaData metaData) {
     super(fileSystem, metaData);
+    boolean asyncFlush = metaData.isAsyncFlush();
+    _asyncFlush = asyncFlush;
     long maxIdleWriterTime = metaData.getMaxIdleWriterTime();
     _maxIdleWriterTime = maxIdleWriterTime == 0 ? HdfsMetaData.DEFAULT_MAX_IDLE_WRITER_TIME : maxIdleWriterTime;
     long minTimeBetweenSyncs = metaData.getMinTimeBetweenSyncs();
@@ -37,7 +40,7 @@ public class WalFileFactoryPackFile extends WalFileFactory {
   }
 
   public WalFile.Writer create(Path path) throws IOException {
-    return new InternalWriter(_fileSystem, path, _maxIdleWriterTime, _minTimeBetweenSyncs);
+    return new InternalWriter(_fileSystem, path, _asyncFlush, _maxIdleWriterTime, _minTimeBetweenSyncs);
   }
 
   private static class InternalWriter extends WalFile.Writer {
@@ -52,16 +55,20 @@ public class WalFileFactoryPackFile extends WalFileFactory {
     private final Path _path;
     private final long _maxIdleWriterTime;
     private final long _minTimeBetweenSyncs;
+    private final boolean _asyncFlush;
 
-    public InternalWriter(FileSystem fileSystem, Path path, long maxIdleWriterTime, long minTimeBetweenSyncs)
-        throws IOException {
+    public InternalWriter(FileSystem fileSystem, Path path, boolean asyncFlush, long maxIdleWriterTime,
+        long minTimeBetweenSyncs) throws IOException {
       _maxIdleWriterTime = maxIdleWriterTime;
       _minTimeBetweenSyncs = minTimeBetweenSyncs;
       _fileSystem = fileSystem;
       _path = path;
-      executor.submit(() -> {
-        flushLoop(path);
-      });
+      _asyncFlush = asyncFlush;
+      if (_asyncFlush) {
+        executor.submit(() -> {
+          flushLoop(path);
+        });
+      }
     }
 
     private void flushLoop(Path path) {
@@ -153,8 +160,12 @@ public class WalFileFactoryPackFile extends WalFileFactory {
 
     @Override
     public void flush() throws IOException {
-      long pos = getOutputStream().getPos();
-      flushPoint.set(pos);
+      if (_asyncFlush) {
+        long pos = getOutputStream().getPos();
+        flushPoint.set(pos);
+      } else {
+        getOutputStream().hflush();
+      }
     }
 
   }

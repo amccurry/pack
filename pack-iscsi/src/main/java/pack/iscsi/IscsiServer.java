@@ -30,6 +30,7 @@ import com.codahale.metrics.MetricRegistry;
 import com.google.common.base.Joiner;
 
 import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
 import pack.iscsi.hdfs.HdfsStorageModule;
 import pack.iscsi.storage.DataArchiveManager;
@@ -56,6 +57,8 @@ public class IscsiServer implements Closeable {
   private final UserGroupInformation _ugi;
   private final List<String> _brokerServers;
   private final MetricRegistry _registry;
+  private final HdfsBlockStoreConfig _hdfsBlockStoreConfig;
+  private final boolean _hdfsStorageModule;
   private Timer _timer;
   private String _serialId;
 
@@ -73,6 +76,8 @@ public class IscsiServer implements Closeable {
     _ugi = config.getUgi();
     _serialId = config.getSerialId();
     _brokerServers = config.getBrokerServers();
+    _hdfsBlockStoreConfig = config.getHdfsBlockStoreConfig();
+    _hdfsStorageModule = config.isHdfsStorageModuleEnabled();
   }
 
   public void registerTargets() throws IOException, InterruptedException, ExecutionException {
@@ -86,10 +91,12 @@ public class IscsiServer implements Closeable {
           String name = volumePath.getName();
           if (!_iscsiTargetManager.isValidTarget(_iscsiTargetManager.getFullName(name))) {
             LOGGER.info("Registering target {}", volumePath);
-
-            IStorageModule storageModule = getPackStorageModule(volumePath, name);
-//            IStorageModule storageModule = getHdfsStorageModule(volumePath);
-
+            IStorageModule storageModule;
+            if (_hdfsStorageModule) {
+              storageModule = getHdfsStorageModule(volumePath);
+            } else {
+              storageModule = getPackStorageModule(volumePath, name);
+            }
             _iscsiTargetManager.register(name, PACK + " " + name, storageModule);
           }
         }
@@ -99,7 +106,7 @@ public class IscsiServer implements Closeable {
 
   private IStorageModule getHdfsStorageModule(Path volumePath) throws IOException {
     BlockStore store = new HdfsBlockStoreImpl(_registry, _cacheDir, volumePath.getFileSystem(_configuration),
-        volumePath);
+        volumePath, _hdfsBlockStoreConfig);
     return new HdfsStorageModule(store);
   }
 

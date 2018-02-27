@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -21,6 +22,8 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableSet;
+
+import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 
 public class IscsiServerMain {
 
@@ -83,14 +86,10 @@ public class IscsiServerMain {
       return;
     }
 
-    String brokerServers;
+    String brokerServers = null;
     if (cmd.hasOption('b')) {
       brokerServers = cmd.getOptionValue('b');
       LOGGER.info("brokerServers {}", brokerServers);
-    } else {
-      System.err.println("brokerServers missing");
-      printUsageAndExit(options);
-      return;
     }
 
     String remote = null;
@@ -146,8 +145,12 @@ public class IscsiServerMain {
     File cacheDir = new File(cache);
     TargetManager iscsiTargetManager = new BaseTargetManager(_2018_02, PACK);
 
-    List<String> brokerServersList = Splitter.on(',')
-                                             .splitToList(brokerServers);
+    List<String> brokerServersList = null;
+    if (brokerServers != null) {
+      brokerServersList = Splitter.on(',')
+                                  .splitToList(brokerServers);
+    }
+    HdfsBlockStoreConfig hdfsBlockStoreConfig = HdfsBlockStoreConfig.DEFAULT_CONFIG;
     IscsiServerConfig config = IscsiServerConfig.builder()
                                                 .addresses(addresses)
                                                 .port(3260)
@@ -158,8 +161,13 @@ public class IscsiServerMain {
                                                 .iscsiTargetManager(iscsiTargetManager)
                                                 .serialId(serialid)
                                                 .brokerServers(brokerServersList)
+                                                .hdfsStorageModuleEnabled(false)
+                                                .hdfsBlockStoreConfig(hdfsBlockStoreConfig)
                                                 .build();
-    runServer(config);
+    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      runServer(config);
+      return null;
+    });
   }
 
   public static void runServer(IscsiServerConfig config) throws IOException, InterruptedException, ExecutionException {

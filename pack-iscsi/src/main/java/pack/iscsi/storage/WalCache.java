@@ -63,11 +63,6 @@ public class WalCache implements BlockReader {
     return _startingOffset;
   }
 
-  public void delete(long startingBlockId, long endingBlockId) throws IOException {
-    _emptyIndex.add(startingBlockId, endingBlockId);
-    _dataIndex.remove(startingBlockId, endingBlockId);
-  }
-
   public boolean readBlocks(List<ReadRequest> requests) throws IOException {
     boolean more = false;
     for (ReadRequest readRequest : requests) {

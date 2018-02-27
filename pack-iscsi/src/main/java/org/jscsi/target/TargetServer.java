@@ -239,7 +239,6 @@ public final class TargetServer implements Callable<Void> {
     LOGGER.info("Closing socket channel.");
     serverSocketChannel.close();
     for (TargetSession session : sessions) {
-      System.out.println("Commiting uncommited changes.");
       session.getStorageModule()
              .close();
     }

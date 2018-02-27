@@ -10,6 +10,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 
 import lombok.Builder;
 import lombok.Value;
+import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 
 @Value
 @Builder
@@ -24,5 +25,7 @@ public class IscsiServerConfig {
   UserGroupInformation ugi;
   String serialId;
   List<String> brokerServers;
+  HdfsBlockStoreConfig hdfsBlockStoreConfig;
+  boolean hdfsStorageModuleEnabled;
 
 }

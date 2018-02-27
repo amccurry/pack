@@ -21,6 +21,7 @@ public class BaseTargetManager implements TargetManager {
 
   @Override
   public Target getTarget(String targetName) {
+    System.err.println("getTarget " + targetName);
     return _targetMap.get(targetName);
   }
 
