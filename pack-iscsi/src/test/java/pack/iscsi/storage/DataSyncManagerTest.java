@@ -153,7 +153,7 @@ public class DataSyncManagerTest implements TestExtras {
 
       List<WalCache> cache = manager.getPackWalCacheList();
       WalCache packWalCache = cache.get(cache.size() - 1);
-      long newCommitOffset = manager.commit(packWalCache);
+      long newCommitOffset = manager.commit(packWalCache.getEndingOffset());
       assertEquals(10, newCommitOffset);
     }
   }
@@ -182,7 +182,7 @@ public class DataSyncManagerTest implements TestExtras {
 
       List<WalCache> cache = manager.getPackWalCacheList();
       WalCache packWalCache = cache.get(cache.size() - 1);
-      long newCommitOffset = manager.commit(packWalCache);
+      long newCommitOffset = manager.commit(packWalCache.getEndingOffset());
       assertEquals(10, newCommitOffset);
     }
 

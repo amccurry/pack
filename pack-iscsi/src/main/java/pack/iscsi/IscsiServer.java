@@ -12,7 +12,6 @@ import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
@@ -30,7 +29,9 @@ import com.codahale.metrics.MetricRegistry;
 import com.google.common.base.Joiner;
 
 import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
 import pack.iscsi.hdfs.HdfsStorageModule;
 import pack.iscsi.storage.DataArchiveManager;
@@ -39,7 +40,9 @@ import pack.iscsi.storage.HdfsDataArchiveManager;
 import pack.iscsi.storage.PackStorageMetaData;
 import pack.iscsi.storage.PackStorageModule;
 import pack.iscsi.storage.StorageManager;
+import pack.iscsi.storage.concurrent.Executors;
 import pack.iscsi.storage.kafka.PackKafkaManager;
+import pack.iscsi.storage.utils.IOUtils;
 
 public class IscsiServer implements Closeable {
 
@@ -68,8 +71,10 @@ public class IscsiServer implements Closeable {
           new TargetServer(InetAddress.getByName(address), config.getPort(), config.getIscsiTargetManager()));
     }
     _registry = new MetricRegistry();
-    _executorService = Executors.newCachedThreadPool();
+    _executorService = Executors.newCachedThreadPool("iscsiserver");
     _cacheDir = config.getCacheDir();
+    IOUtils.rmr(_cacheDir);
+    _cacheDir.mkdirs();
     _configuration = config.getConfiguration();
     _iscsiTargetManager = config.getIscsiTargetManager();
     _root = config.getRoot();
@@ -97,7 +102,9 @@ public class IscsiServer implements Closeable {
             } else {
               storageModule = getPackStorageModule(volumePath, name);
             }
-            _iscsiTargetManager.register(name, PACK + " " + name, storageModule);
+            if (storageModule != null) {
+              _iscsiTargetManager.register(name, PACK + " " + name, storageModule);
+            }
           }
         }
       }
@@ -145,8 +152,15 @@ public class IscsiServer implements Closeable {
 
   private PackStorageModule getPackStorageModule(Path volumePath, String name)
       throws InterruptedException, ExecutionException, IOException {
-    int blockSize = 512;
-    long lengthInBytes = 10L * blockSize * blockSize * blockSize;
+    FileSystem fileSystem = volumePath.getFileSystem(_configuration);
+    if (!fileSystem.exists(new Path(volumePath, HdfsBlockStoreAdmin.METADATA))) {
+      return null;
+    }
+    Path blockPath = new Path(volumePath, "block");
+    fileSystem.mkdirs(blockPath);
+    HdfsMetaData hdfsMetaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+    int blockSize = hdfsMetaData.getFileSystemBlockSize();
+    long lengthInBytes = hdfsMetaData.getLength();
 
     String localWalCachePath = _cacheDir.getAbsolutePath() + "/" + _serialId + "/" + name;
     PackStorageMetaData metaData = PackStorageMetaData.builder()
@@ -164,8 +178,8 @@ public class IscsiServer implements Closeable {
                                     .join(_brokerServers);
     PackKafkaManager kafkaManager = new PackKafkaManager(bootstrapServers, _serialId);
     kafkaManager.createTopicIfMissing(metaData.getKafkaTopic());
-    DataSyncManager dataSyncManager = new DataSyncManager(kafkaManager, metaData);
-    DataArchiveManager dataArchiveManager = new HdfsDataArchiveManager(metaData, _configuration, volumePath, _ugi);
+    DataArchiveManager dataArchiveManager = new HdfsDataArchiveManager(metaData, _configuration, blockPath, _ugi);
+    DataSyncManager dataSyncManager = new DataSyncManager(kafkaManager, metaData, dataArchiveManager);
     StorageManager manager = new StorageManager(metaData, dataSyncManager, dataArchiveManager);
     PackStorageModule packStorageModule = new PackStorageModule(metaData.getLengthInBytes(), manager);
     return packStorageModule;

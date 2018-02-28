@@ -82,7 +82,7 @@ public final class WriteStage extends ReadOrWriteStage {
   public void execute(ProtocolDataUnit pdu)
       throws IOException, DigestException, InterruptedException, InternetSCSIException, SettingsException {
 
-    LOGGER.info("write {}", pdu);
+    LOGGER.debug("write {}", pdu);
 
     InetAddress address = session.getTargetServer()
                                  .getTargetAddress();

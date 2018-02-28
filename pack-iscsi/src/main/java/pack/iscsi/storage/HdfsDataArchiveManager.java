@@ -6,19 +6,22 @@ import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +32,10 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.block.blockstore.hdfs.blockstore.WalFile.Writer;
+import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.util.Utils;
+import pack.iscsi.storage.concurrent.Executors;
 import pack.iscsi.storage.hdfs.BlockFile;
 import pack.iscsi.storage.hdfs.BlockFile.Reader;
 import pack.iscsi.storage.utils.IOUtils;
@@ -38,7 +44,7 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HdfsDataArchiveManager.class);
 
-  private final ExecutorService _executorService = Executors.newCachedThreadPool();
+  private final ExecutorService _executorService = Executors.newCachedThreadPool("hdfsdataarchive");
   private final AtomicBoolean _running = new AtomicBoolean(true);
   private final Future<Void> _blockFileLoaderFuture;
   private final Path _path;
@@ -46,6 +52,7 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
   private final Cache<Path, BlockFile.Reader> _readerCache;
   private final UserGroupInformation _ugi;
   private final FileSystem _fileSystem;
+  private final AtomicLong _maxCommitOffset = new AtomicLong();
   private final AtomicReference<BlockReader> _currentBlockReader = new AtomicReference<BlockReader>(
       BlockReader.NOOP_READER);
 
@@ -64,6 +71,57 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
 
   public void checkState() {
     IOUtils.checkFutureIsRunning(_blockFileLoaderFuture);
+  }
+
+  @Override
+  public Writer createRemoteWalWriter(long offset) throws IOException {
+    String uuid = UUID.randomUUID()
+                      .toString();
+    Path path = new Path(_path, uuid + ".tmp.wal");
+    Path committedWalFile = new Path(_path, offset + ".wal");
+    FSDataOutputStream outputStream;
+    try {
+      outputStream = _ugi.doAs((PrivilegedExceptionAction<FSDataOutputStream>) () -> _fileSystem.create(path, false));
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
+    return new Writer() {
+      @Override
+      public void close() throws IOException {
+        outputStream.close();
+        try {
+          _ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+            if (!_fileSystem.rename(path, committedWalFile)) {
+              throw new IOException("Could not commit wal file " + path + " to " + committedWalFile);
+            }
+            return null;
+          });
+        } catch (InterruptedException e) {
+          throw new IOException(e);
+        }
+      }
+
+      @Override
+      public void append(WalKeyWritable key, BytesWritable value) throws IOException {
+        key.write(outputStream);
+        value.write(outputStream);
+      }
+
+      @Override
+      public long getLength() throws IOException {
+        return outputStream.getPos();
+      }
+
+      @Override
+      public void flush() throws IOException {
+        outputStream.hflush();
+      }
+    };
+  }
+
+  @Override
+  public long getMaxCommitOffset() {
+    return _maxCommitOffset.get();
   }
 
   @Override
@@ -103,11 +161,21 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
   }
 
   private void loadNewReaders(List<Path> blockPathList) throws IOException, FileNotFoundException {
+    setMaxCommitOffset(blockPathList);
     Builder<BlockReader> builder = ImmutableList.builder();
     for (Path blockPath : blockPathList) {
       builder.add(addUgi(getReader(blockPath)));
     }
     _currentBlockReader.set(BlockReader.mergeInOrder(builder.build()));
+  }
+
+  private void setMaxCommitOffset(List<Path> blockPathList) {
+    if (blockPathList == null || blockPathList.isEmpty()) {
+      _maxCommitOffset.set(0);
+    }
+    Path path = blockPathList.get(0);
+    Long layer = BlockFile.getLayer(path);
+    _maxCommitOffset.set(layer);
   }
 
   private List<Path> getBlockFilePathListFromStorage() throws FileNotFoundException, IOException {

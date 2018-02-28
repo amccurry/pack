@@ -34,6 +34,9 @@ public class IOUtils {
   }
 
   public static void checkFutureIsRunning(Future<Void> future) {
+    if (future == null) {
+      return;
+    }
     if (future.isDone()) {
       try {
         future.get();
@@ -100,6 +103,17 @@ public class IOUtils {
       }
     }
     file.delete();
+  }
+
+  public static void closeQuietly(Future<?>... futures) {
+    if (futures == null) {
+      return;
+    }
+    for (Future<?> future : futures) {
+      if (future != null) {
+        future.cancel(true);
+      }
+    }
   }
 
 }

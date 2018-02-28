@@ -9,6 +9,8 @@ public interface DataArchiveManager extends Closeable {
 
   BlockReader getBlockReader() throws IOException;
 
-  Writer createRemoteWalWriter(long kafkaOffset);
+  Writer createRemoteWalWriter(long offset) throws IOException;
+
+  long getMaxCommitOffset();
 
 }

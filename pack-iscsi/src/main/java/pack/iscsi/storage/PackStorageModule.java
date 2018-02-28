@@ -24,7 +24,7 @@ public class PackStorageModule extends BaseIStorageModule {
 
   @Override
   public void read(byte[] bytes, long storageIndex) throws IOException {
-    LOGGER.info("read {} {}", storageIndex, bytes.length);
+    LOGGER.debug("read {} {}", storageIndex, bytes.length);
     try {
       if (bytes.length == 0) {
         return;
@@ -45,7 +45,7 @@ public class PackStorageModule extends BaseIStorageModule {
 
   @Override
   public void write(byte[] bytes, long storageIndex) throws IOException {
-    LOGGER.info("write {} {}", storageIndex, bytes.length);
+    LOGGER.debug("write {} {}", storageIndex, bytes.length);
     try {
       assertIsValidForWriting(storageIndex, bytes.length);
       KafkaProducer<Long, byte[]> producer = _manager.getKafkaProducer();
@@ -62,7 +62,7 @@ public class PackStorageModule extends BaseIStorageModule {
 
   @Override
   public void flushWrites() throws IOException {
-    LOGGER.info("flushWrites");
+    LOGGER.debug("flushWrites");
     try {
       KafkaProducer<Long, byte[]> producer = _manager.getKafkaProducer();
       producer.flush();
