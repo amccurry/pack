@@ -1,8 +1,6 @@
 package pack.iscsi;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.List;
@@ -11,7 +9,6 @@ import java.util.concurrent.ExecutionException;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.HelpFormatter;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.PosixParser;
 import org.apache.hadoop.conf.Configuration;
@@ -33,18 +30,18 @@ public class IscsiServerMain {
   private static final String _2018_02 = "2018-02";
 
   public static void main(String[] args) throws Exception {
-    Options options = new Options();
+    Options options = CliUtils.createHdfsOptions();
     options.addOption("a", "address", true, "Listening address.");
-    options.addOption("p", "path", true, "Hdfs path.");
     options.addOption("C", "cache", true, "Local cache path.");
-    options.addOption("r", "remote", true, "Hdfs ugi remote user.");
-    options.addOption("u", "current", false, "Hdfs ugi use current user.");
-    options.addOption("c", "conf", true, "Hdfs configuration location.");
     options.addOption("b", "brokers", true, "Kafka brokers e.g. \"broker1:9092,broker2:9092,broker3:9092\"");
-    options.addOption("i", "path", true, "Hdfs path.");
+    options.addOption("i", "serial", true, "Serial id for iscsi server.");
 
     CommandLineParser parser = new PosixParser();
     CommandLine cmd = parser.parse(options, args);
+    Configuration configuration = CliUtils.getConfig(cmd, options);
+    UserGroupInformation ugi = CliUtils.getUGI(cmd, options, configuration);
+    Path root = CliUtils.getRootPath(cmd, options);
+
     Set<String> addresses;
     if (cmd.hasOption('a')) {
       String[] values = cmd.getOptionValues('a');
@@ -52,17 +49,7 @@ public class IscsiServerMain {
       LOGGER.info("address {}", addresses);
     } else {
       System.err.println("address missing");
-      printUsageAndExit(options);
-      return;
-    }
-
-    String path;
-    if (cmd.hasOption('p')) {
-      path = cmd.getOptionValue('p');
-      LOGGER.info("path {}", path);
-    } else {
-      System.err.println("path missing");
-      printUsageAndExit(options);
+      CliUtils.printUsageAndExit(options);
       return;
     }
 
@@ -72,7 +59,7 @@ public class IscsiServerMain {
       LOGGER.info("cache {}", cache);
     } else {
       System.err.println("cache missing");
-      printUsageAndExit(options);
+      CliUtils.printUsageAndExit(options);
       return;
     }
 
@@ -82,7 +69,7 @@ public class IscsiServerMain {
       LOGGER.info("serialid {}", serialid);
     } else {
       System.err.println("serialid missing");
-      printUsageAndExit(options);
+      CliUtils.printUsageAndExit(options);
       return;
     }
 
@@ -92,56 +79,6 @@ public class IscsiServerMain {
       LOGGER.info("brokerServers {}", brokerServers);
     }
 
-    String remote = null;
-    if (cmd.hasOption('r')) {
-      remote = cmd.getOptionValue('r');
-      LOGGER.info("remote {}", remote);
-    }
-
-    Boolean current = null;
-    if (cmd.hasOption('u')) {
-      current = true;
-      LOGGER.info("current {}", current);
-    }
-
-    if (current != null && remote != null) {
-      System.err.println("both remote user and current user are not supported together");
-      printUsageAndExit(options);
-      return;
-    }
-
-    String conf = null;
-    if (cmd.hasOption('c')) {
-      conf = cmd.getOptionValue('c');
-      LOGGER.info("conf {}", conf);
-    }
-
-    Configuration configuration = new Configuration();
-    if (conf != null) {
-      File dir = new File(conf);
-      if (!dir.exists()) {
-        System.err.println("conf dir does not exist");
-        printUsageAndExit(options);
-        return;
-      }
-      for (File f : dir.listFiles((FilenameFilter) (dir1, name) -> name.endsWith(".xml"))) {
-        if (f.isFile()) {
-          configuration.addResource(new FileInputStream(f));
-        }
-      }
-    }
-
-    UserGroupInformation.setConfiguration(configuration);
-    UserGroupInformation ugi;
-    if (remote != null) {
-      ugi = UserGroupInformation.createRemoteUser(remote);
-    } else if (current != null) {
-      ugi = UserGroupInformation.getCurrentUser();
-    } else {
-      ugi = UserGroupInformation.getLoginUser();
-    }
-
-    Path root = new Path(path);
     File cacheDir = new File(cache);
     TargetManager iscsiTargetManager = new BaseTargetManager(_2018_02, PACK);
 
@@ -176,12 +113,6 @@ public class IscsiServerMain {
       iscsiServer.start();
       iscsiServer.join();
     }
-  }
-
-  private static void printUsageAndExit(Options options) {
-    HelpFormatter helpFormatter = new HelpFormatter();
-    helpFormatter.printHelp(PACK, options);
-    System.exit(1);
   }
 
 }

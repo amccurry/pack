@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
@@ -17,6 +18,8 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
@@ -25,11 +28,14 @@ import com.google.common.collect.ImmutableSet;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.compactor.PackCompactorServer;
 import pack.iscsi.kafka.EmbeddedHdfsCluster;
 import pack.iscsi.kafka.EmbeddedKafkaCluster;
 import pack.iscsi.kafka.EmbeddedZookeeper;
 
 public class IscsiServerEmbedded {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(IscsiServerEmbedded.class);
 
   private static final String XML = ".xml";
 
@@ -79,10 +85,30 @@ public class IscsiServerEmbedded {
     try (IscsiServer server = new IscsiServer(config)) {
       server.registerTargets();
       server.start();
+      runCompactor(configuration, root, _embeddedZookeeper.getConnection());
       server.join();
     }
 
     shutdownServers();
+  }
+
+  private static void runCompactor(Configuration configuration, Path root, String zkConnection)
+      throws IOException, InterruptedException {
+    try (PackCompactorServer packCompactorServer = new PackCompactorServer(new File("./compactor-cache"),
+        root.getFileSystem(configuration), ImmutableList.of(root), zkConnection, 30000)) {
+      UserGroupInformation ugi = UserGroupInformation.getCurrentUser();
+      while (true) {
+        ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+          try {
+            packCompactorServer.executeCompaction();
+            Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+          } catch (Throwable t) {
+            LOGGER.error("Unknown error", t);
+          }
+          return null;
+        });
+      }
+    }
   }
 
   private static void shutdownServers() {

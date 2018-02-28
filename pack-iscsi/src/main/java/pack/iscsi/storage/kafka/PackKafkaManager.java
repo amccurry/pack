@@ -2,6 +2,7 @@ package pack.iscsi.storage.kafka;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Enumeration;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -17,24 +18,52 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.LongDeserializer;
 import org.apache.kafka.common.serialization.LongSerializer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
 
 public class PackKafkaManager implements Closeable {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackKafkaManager.class);
+
+  private static final String KAFKA = "kafka.";
   private static final String FALSE = "false";
   private static final String ALL = "all";
 
   private final String _bootstrapServers;
   private final String _groupId;
+  private final Properties _extraKafkaProps;
 
   public PackKafkaManager(String bootstrapServers, String groupId) {
     _bootstrapServers = bootstrapServers;
     _groupId = groupId;
+    _extraKafkaProps = getExtraKafkaProps();
+  }
+
+  private Properties getExtraKafkaProps() {
+    Properties extraKafkaProps = new Properties();
+    Properties properties = System.getProperties();
+    Enumeration<?> propertyNames = properties.propertyNames();
+    while (propertyNames.hasMoreElements()) {
+      Object propName = propertyNames.nextElement();
+      if (propName == null) {
+        continue;
+      }
+      String prop = propName.toString();
+      String value = properties.getProperty(prop);
+      if (prop.startsWith(KAFKA)) {
+        String key = prop.substring(KAFKA.length());
+        LOGGER.info("extra kafak prop {} => {}", key, value);
+        extraKafkaProps.put(key, value);
+      }
+    }
+    return extraKafkaProps;
   }
 
   public KafkaProducer<Long, byte[]> createProducer(String kafkaTopic) {
     Properties props = new Properties();
+    props.putAll(_extraKafkaProps);
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, _bootstrapServers);
     props.put(ProducerConfig.ACKS_CONFIG, ALL);
     props.put(ProducerConfig.RETRIES_CONFIG, 1_000_000_000);
@@ -48,6 +77,7 @@ public class PackKafkaManager implements Closeable {
 
   public KafkaConsumer<Long, byte[]> createConsumer(String kafkaTopic) {
     Properties props = new Properties();
+    props.putAll(_extraKafkaProps);
     props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, _bootstrapServers);
     props.put(ConsumerConfig.GROUP_ID_CONFIG, _groupId);
     props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, FALSE);
@@ -58,6 +88,7 @@ public class PackKafkaManager implements Closeable {
 
   public void createTopicIfMissing(String kafkaTopic) throws InterruptedException, ExecutionException {
     Properties props = new Properties();
+    props.putAll(_extraKafkaProps);
     props.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _bootstrapServers);
     try (AdminClient adminClient = AdminClient.create(props)) {
       Set<String> names = adminClient.listTopics()
@@ -71,6 +102,7 @@ public class PackKafkaManager implements Closeable {
 
   public void deleteTopic(String kafkaTopic) throws InterruptedException, ExecutionException {
     Properties props = new Properties();
+    props.putAll(_extraKafkaProps);
     props.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _bootstrapServers);
     try (AdminClient adminClient = AdminClient.create(props)) {
       Set<String> names = adminClient.listTopics()
@@ -84,7 +116,7 @@ public class PackKafkaManager implements Closeable {
 
   @Override
   public void close() throws IOException {
-    
+
   }
 
 }

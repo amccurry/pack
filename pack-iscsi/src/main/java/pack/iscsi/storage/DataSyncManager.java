@@ -59,12 +59,16 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
   private final long _lagSyncPollWaitTime;
   private final DataArchiveManager _dataArchiveManager;
   private final AtomicReference<Writer> _currentRemoteWalWriter = new AtomicReference<WalFile.Writer>();
+  private final DelayedResourceCleanup _delayedResourceCleanup;
 
-  public DataSyncManager(PackKafkaManager kafkaManager, PackStorageMetaData metaData) {
-    this(kafkaManager, metaData, null);
+  public DataSyncManager(DelayedResourceCleanup delayedResourceCleanup, PackKafkaManager kafkaManager,
+      PackStorageMetaData metaData) {
+    this(delayedResourceCleanup, kafkaManager, metaData, null);
   }
 
-  public DataSyncManager(PackKafkaManager kafkaManager, PackStorageMetaData metaData, DataArchiveManager manager) {
+  public DataSyncManager(DelayedResourceCleanup delayedResourceCleanup, PackKafkaManager kafkaManager,
+      PackStorageMetaData metaData, DataArchiveManager manager) {
+    _delayedResourceCleanup = delayedResourceCleanup;
     _metaData = metaData;
     _maxOffsetLagDiff = metaData.getMaxOffsetLagDiff();
     _lagSyncPollWaitTime = metaData.getLagSyncPollWaitTime();
@@ -159,7 +163,8 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
   }
 
   private void addToWalGc(ImmutableList<WalCache> walToBeClosed) {
-    LOGGER.warn("wal files need to be closed!!!!! {}", walToBeClosed);
+    Closeable[] closeables = walToBeClosed.toArray(new Closeable[] {});
+    _delayedResourceCleanup.register(walToBeClosed, closeables);
   }
 
   private boolean walStillInUse(WalCache walCache, long commitOffset) {
@@ -178,39 +183,6 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
       return true;
     }
     return false;
-  }
-
-  public Writer getRemoteWalWriter(long kafkaOffset) throws IOException {
-    Writer writer = _currentRemoteWalWriter.get();
-    if (shouldRollRemoteWalWriter(writer, kafkaOffset)) {
-      LOGGER.info("Rolling remote wal writer {}", writer);
-      if (writer != null) {
-        writer.close();
-      }
-      _currentRemoteWalWriter.set(writer = _dataArchiveManager.createRemoteWalWriter(kafkaOffset));
-    }
-    return writer;
-  }
-
-  private void tryToCloseCurrentWalWriter(long kafkaOffset) throws IOException {
-    Writer writer = _currentRemoteWalWriter.get();
-    if (shouldRollRemoteWalWriter(writer, kafkaOffset)) {
-      LOGGER.info("Close wal writer {}", writer);
-      if (writer != null) {
-        writer.close();
-      }
-      _currentRemoteWalWriter.set(null);
-    }
-  }
-
-  private boolean shouldRollRemoteWalWriter(Writer writer, long kafkaOffset) {
-    if (writer == null) {
-      return true;
-    } else if (kafkaOffset % _maxOffsetPerWalFile == 0) {
-      return true;
-    } else {
-      return false;
-    }
   }
 
   private WalCache getLocalWalCacheForWriting(long offset) throws InterruptedException {
@@ -244,26 +216,11 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
     @Override
     public Void call() throws Exception {
       while (_running.get()) {
-        File dir = new File(_metaData.getLocalWalCachePath());
-        dir.mkdirs();
-        TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
-        long startingOffset;
-        try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
-          OffsetAndMetadata offsetAndMetadata = consumer.committed(partition);
-          if (offsetAndMetadata != null) {
-            startingOffset = offsetAndMetadata.offset();
-          } else {
-            startingOffset = 0;
-          }
-        }
-        int maxOffsetPerWalFile = _metaData.getMaxOffsetPerWalFile();
-        while (_running.get()) {
-          File file = new File(dir, startingOffset + ".wal");
-          WalCache cache = new WalCache(startingOffset, maxOffsetPerWalFile, file, _metaData.getLengthInBytes(),
-              _metaData.getBlockSize(), _metaData.getWalCacheMemorySize());
-          LOGGER.info("Created new wal file adding to next wal queue {}", file);
-          _nextWalCache.put(cache);
-          startingOffset += maxOffsetPerWalFile;
+        try {
+          walFileGenerator();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error", t);
+          Thread.sleep(TimeUnit.SECONDS.toMillis(3));
         }
       }
       return null;
@@ -273,32 +230,136 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
   class RemoteWalConsumer implements Callable<Void> {
     @Override
     public Void call() throws Exception {
-      try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
-        TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
-        long lastCommitOffset = getLastCommit(consumer, partition);
-        int blockSize = _metaData.getBlockSize();
-        consumer.assign(ImmutableList.of(partition));
-        consumer.seek(partition, lastCommitOffset);
-        BytesWritable val = new BytesWritable();
-        long lastOffset = 0;
-        while (_running.get()) {
-          // try to commit new blocks from archive
-          long commitOffset = _dataArchiveManager.getMaxCommitOffset();
-          if (commitOffset > lastCommitOffset) {
-            commit(commitOffset - 1);
-            lastCommitOffset = commitOffset;
-          }
+      while (_running.get()) {
+        try {
+          remoteWalConsumer();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error", t);
+          Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+        }
+      }
+      return null;
+    }
+  }
 
-          OffsetInfo endOffsetInfo = _currentEndOffset.get();
-          if (endOffsetInfo == null || lastCommitOffset + _maxOffsetPerWalFile > endOffsetInfo.getOffset()) {
-            LOGGER.info("Waiting for more input to remote wal last commit {} current end offset {}", lastCommitOffset,
-                endOffsetInfo.getOffset());
-            Thread.sleep(TimeUnit.SECONDS.toMillis(10));
-            continue;
+  class LocalWalConsumer implements Callable<Void> {
+    @Override
+    public Void call() throws Exception {
+      while (_running.get()) {
+        try {
+          return localWalConsumer();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error", t);
+          Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+        }
+      }
+      return null;
+    }
+  }
+
+  private void walFileGenerator() throws IOException, InterruptedException {
+    File dir = new File(_metaData.getLocalWalCachePath());
+    dir.mkdirs();
+    TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
+    long startingOffset;
+    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
+      OffsetAndMetadata offsetAndMetadata = consumer.committed(partition);
+      if (offsetAndMetadata != null) {
+        startingOffset = offsetAndMetadata.offset();
+      } else {
+        startingOffset = 0;
+      }
+    }
+    int maxOffsetPerWalFile = _metaData.getMaxOffsetPerWalFile();
+    while (_running.get()) {
+      File file = new File(dir, startingOffset + ".wal");
+      WalCache cache = new WalCache(startingOffset, maxOffsetPerWalFile, file, _metaData.getLengthInBytes(),
+          _metaData.getBlockSize(), _metaData.getWalCacheMemorySize());
+      LOGGER.info("Created new wal file adding to next wal queue {}", file);
+      _nextWalCache.put(cache);
+      startingOffset += maxOffsetPerWalFile;
+    }
+  }
+
+  private Void localWalConsumer() throws InterruptedException, IOException {
+    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
+      TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
+      OffsetAndMetadata offsetAndMetadata = consumer.committed(partition);
+      long startingOffset;
+      if (offsetAndMetadata != null) {
+        startingOffset = offsetAndMetadata.offset();
+      } else {
+        startingOffset = 0;
+      }
+      int blockSize = _metaData.getBlockSize();
+      consumer.assign(ImmutableList.of(partition));
+      consumer.seek(partition, startingOffset);
+      updateProcessOffset(startingOffset);
+      while (_running.get()) {
+        LOGGER.debug("Starting poll for records.");
+        updateKnownEndOffset(consumer, partition);
+        ConsumerRecords<Long, byte[]> records = consumer.poll(TimeUnit.SECONDS.toMillis(1));
+        for (ConsumerRecord<Long, byte[]> record : records) {
+          long kafkaOffset = record.offset();
+          byte[] value = record.value();
+          long position = record.key();
+          LOGGER.debug("new record position {} length {}", position, value.length);
+          int length = value.length;
+          int offset = 0;
+
+          while (length > 0) {
+            long blockId = IOUtils.getBlockId(position, blockSize);
+            ByteBuffer byteBuffer = ByteBuffer.wrap(value, offset, blockSize);
+            WalCache localWalCache = getLocalWalCacheForWriting(kafkaOffset);
+            localWalCache.write(blockId, byteBuffer);
+            offset += blockSize;
+            position += blockSize;
+            length -= blockSize;
           }
-          tryToCloseCurrentWalWriter(lastOffset + 1);
-          LOGGER.info("Starting poll for records.");
-          ConsumerRecords<Long, byte[]> records = consumer.poll(TimeUnit.SECONDS.toMillis(10));
+          updateProcessOffset(kafkaOffset);
+        }
+      }
+      return null;
+    }
+  }
+
+  private void updateProcessOffset(long offset) {
+    _currentProcessOffset.set(OffsetInfo.builder()
+                                        .offset(offset)
+                                        .timestamp(System.currentTimeMillis())
+                                        .build());
+  }
+
+  private void remoteWalConsumer() throws IOException, InterruptedException {
+    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
+      TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
+      long lastCommitOffset = getLastCommit(consumer, partition);
+      int blockSize = _metaData.getBlockSize();
+      consumer.assign(ImmutableList.of(partition));
+      consumer.seek(partition, lastCommitOffset);
+      BytesWritable val = new BytesWritable();
+      long lastWriteTime = 0L;
+      while (_running.get()) {
+        // try to commit new blocks from archive
+        long commitOffset = _dataArchiveManager.getMaxCommitOffset();
+        if (commitOffset > lastCommitOffset) {
+          commit(commitOffset - 1);
+          lastCommitOffset = commitOffset;
+        }
+
+        OffsetInfo endOffsetInfo = _currentEndOffset.get();
+        if (endOffsetInfo == null) {
+          Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+          continue;
+        }
+
+        LOGGER.debug("Starting poll for records.");
+        ConsumerRecords<Long, byte[]> records = consumer.poll(TimeUnit.SECONDS.toMillis(10));
+        if (records.isEmpty()) {
+          if (lastWriteTime + TimeUnit.SECONDS.toNanos(10) < System.nanoTime()) {
+            closeCurrentRemoteWalWriter();
+          }
+        } else {
           for (ConsumerRecord<Long, byte[]> record : records) {
             long kafkaOffset = record.offset();
             WalFile.Writer walFileWriter = getRemoteWalWriter(kafkaOffset);
@@ -315,75 +376,53 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
               position += blockSize;
               length -= blockSize;
             }
-            lastOffset = kafkaOffset;
+            lastWriteTime = System.nanoTime();
           }
         }
-        return null;
       }
-    }
-
-    private long getLastCommit(KafkaConsumer<Long, byte[]> consumer, TopicPartition partition) {
-      long startingOffset;
-      OffsetAndMetadata offsetAndMetadata = consumer.committed(partition);
-      if (offsetAndMetadata != null) {
-        startingOffset = offsetAndMetadata.offset();
-      } else {
-        startingOffset = 0;
-      }
-      return startingOffset;
     }
   }
 
-  class LocalWalConsumer implements Callable<Void> {
-    @Override
-    public Void call() throws Exception {
-      try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
-        TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
-        OffsetAndMetadata offsetAndMetadata = consumer.committed(partition);
-        long startingOffset;
-        if (offsetAndMetadata != null) {
-          startingOffset = offsetAndMetadata.offset();
-        } else {
-          startingOffset = 0;
-        }
-        int blockSize = _metaData.getBlockSize();
-        consumer.assign(ImmutableList.of(partition));
-        consumer.seek(partition, startingOffset);
-        updateProcessOffset(startingOffset);
-        while (_running.get()) {
-          LOGGER.debug("Starting poll for records.");
-          updateKnownEndOffset(consumer, partition);
-          ConsumerRecords<Long, byte[]> records = consumer.poll(TimeUnit.SECONDS.toMillis(1));
-          for (ConsumerRecord<Long, byte[]> record : records) {
-            long kafkaOffset = record.offset();
-            byte[] value = record.value();
-            long position = record.key();
-            LOGGER.debug("new record position {} length {}", position, value.length);
-            int length = value.length;
-            int offset = 0;
-
-            while (length > 0) {
-              long blockId = IOUtils.getBlockId(position, blockSize);
-              ByteBuffer byteBuffer = ByteBuffer.wrap(value, offset, blockSize);
-              WalCache localWalCache = getLocalWalCacheForWriting(kafkaOffset);
-              localWalCache.write(blockId, byteBuffer);
-              offset += blockSize;
-              position += blockSize;
-              length -= blockSize;
-            }
-            updateProcessOffset(kafkaOffset);
-          }
-        }
-        return null;
+  public Writer getRemoteWalWriter(long kafkaOffset) throws IOException {
+    Writer writer = _currentRemoteWalWriter.get();
+    if (shouldRollRemoteWalWriter(writer, kafkaOffset)) {
+      if (writer != null) {
+        LOGGER.info("Rolling remote wal writer {}", writer);
+        writer.close();
       }
+      _currentRemoteWalWriter.set(writer = _dataArchiveManager.createRemoteWalWriter(kafkaOffset));
     }
+    return writer;
+  }
 
-    private void updateProcessOffset(long offset) {
-      _currentProcessOffset.set(OffsetInfo.builder()
-                                          .offset(offset)
-                                          .timestamp(System.currentTimeMillis())
-                                          .build());
+  private void closeCurrentRemoteWalWriter() throws IOException {
+    Writer writer = _currentRemoteWalWriter.get();
+    if (writer != null) {
+      LOGGER.info("Close wal writer {}", writer);
+      writer.close();
     }
+    _currentRemoteWalWriter.set(null);
+  }
+
+  private boolean shouldRollRemoteWalWriter(Writer writer, long kafkaOffset) {
+    if (writer == null) {
+      return true;
+    } else if (kafkaOffset % _maxOffsetPerWalFile == 0) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+
+  private long getLastCommit(KafkaConsumer<Long, byte[]> consumer, TopicPartition partition) {
+    long startingOffset;
+    OffsetAndMetadata offsetAndMetadata = consumer.committed(partition);
+    if (offsetAndMetadata != null) {
+      startingOffset = offsetAndMetadata.offset();
+    } else {
+      startingOffset = 0;
+    }
+    return startingOffset;
   }
 
   private void updateKnownEndOffset(KafkaConsumer<Long, byte[]> consumer, TopicPartition partition) {

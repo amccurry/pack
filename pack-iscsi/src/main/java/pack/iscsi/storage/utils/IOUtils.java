@@ -18,21 +18,6 @@ public class IOUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(IOUtils.class);
 
-  public static void closeQuietly(Closeable... closeables) {
-    if (closeables == null) {
-      return;
-    }
-    for (Closeable closeable : closeables) {
-      if (closeable != null) {
-        try {
-          closeable.close();
-        } catch (IOException e) {
-
-        }
-      }
-    }
-  }
-
   public static void checkFutureIsRunning(Future<Void> future) {
     if (future == null) {
       return;
@@ -112,6 +97,27 @@ public class IOUtils {
     for (Future<?> future : futures) {
       if (future != null) {
         future.cancel(true);
+      }
+    }
+  }
+
+  public static void closeQuietly(Closeable... closeables) {
+    close(null, closeables);
+  }
+
+  public static void close(Logger logger, Closeable... closeables) {
+    if (closeables == null) {
+      return;
+    }
+    for (Closeable closeable : closeables) {
+      if (closeable != null) {
+        try {
+          closeable.close();
+        } catch (IOException e) {
+          if (logger != null) {
+            LOGGER.error("Unknown error while trying to close " + closeable, e);
+          }
+        }
       }
     }
   }

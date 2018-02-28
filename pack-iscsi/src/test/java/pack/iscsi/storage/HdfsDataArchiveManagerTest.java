@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -31,6 +32,7 @@ public class HdfsDataArchiveManagerTest implements TestExtras {
   private static final String HADOOP_CONFIG_PATH = "HADOOP_CONFIG_PATH";
   private static EmbeddedHdfsCluster _embeddedHdfsCluster;
   private static ExecutorService _executorService;
+  private static DelayedResourceCleanup _delayedResourceCleanup = new DelayedResourceCleanup(TimeUnit.SECONDS, 10);
 
   @BeforeClass
   public static void setup() throws IOException {
@@ -61,8 +63,8 @@ public class HdfsDataArchiveManagerTest implements TestExtras {
     int blockSize = 1024;
     String testName = "testHdfsDataArchiveManager";
     PackStorageMetaData metaData = getMetaData(blockSize, testName);
-    try (HdfsDataArchiveManager archiveManager = new HdfsDataArchiveManager(metaData, config, root,
-        UserGroupInformation.getCurrentUser())) {
+    try (HdfsDataArchiveManager archiveManager = new HdfsDataArchiveManager(_delayedResourceCleanup, metaData, config,
+        root, UserGroupInformation.getCurrentUser())) {
 
       Random random = new Random();
       writeNewBlock(root, fileSystem, blockSize, random, 0);

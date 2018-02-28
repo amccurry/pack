@@ -1,0 +1,3 @@
+#!/bin/bash
+
+export PACK_PARCEL_PATH="${PARCELS_ROOT}/${PARCEL_DIRNAME}"

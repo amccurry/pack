@@ -33,7 +33,6 @@ import com.google.common.io.Closer;
 import pack.block.blockstore.compactor.BlockFileCompactor;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.server.BlockPackFuse;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
@@ -178,7 +177,6 @@ public class PackCompactorServer implements Closeable {
   private final List<Path> _pathList;
   private final Closer _closer;
   private final ZooKeeperLockManager _compactionLockManager;
-  private final ZooKeeperLockManager _mountLockManager;
   private final File _cacheDir;
   private final String _zkConnectionString;
   private final int _sessionTimeout;
@@ -197,7 +195,6 @@ public class PackCompactorServer implements Closeable {
     try (ZooKeeperClient zooKeeper = getZk()) {
       ZkUtils.mkNodesStr(zooKeeper, COMPACTION + "/lock");
     }
-    _mountLockManager = BlockPackFuse.createLockmanager(_zkConnectionString, _sessionTimeout);
     _compactionLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout, COMPACTION + "/lock");
   }
 
@@ -232,8 +229,8 @@ public class PackCompactorServer implements Closeable {
     if (_compactionLockManager.tryToLock(lockName)) {
       try {
         HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
-        try (BlockFileCompactor compactor = new BlockFileCompactor(_cacheDir, _fileSystem, volumePath, metaData,
-            _mountLockManager)) {
+        try (
+            BlockFileCompactor compactor = new BlockFileCompactor(_cacheDir, _fileSystem, volumePath, metaData, null)) {
           compactor.runCompaction();
         }
       } finally {

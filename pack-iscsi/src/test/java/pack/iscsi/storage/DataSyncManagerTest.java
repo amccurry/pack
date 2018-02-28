@@ -32,6 +32,7 @@ public class DataSyncManagerTest implements TestExtras {
 
   private static EmbeddedZookeeper _embeddedZookeeper;
   private static EmbeddedKafkaCluster _embeddedKafkaCluster;
+  private static DelayedResourceCleanup _delayedResourceCleanup = new DelayedResourceCleanup(TimeUnit.SECONDS, 10);
 
   @BeforeClass
   public static void setup() throws IOException {
@@ -44,6 +45,7 @@ public class DataSyncManagerTest implements TestExtras {
           Arrays.asList(-1, -1, -1));
       _embeddedKafkaCluster.startup();
     }
+
   }
 
   @AfterClass
@@ -82,7 +84,7 @@ public class DataSyncManagerTest implements TestExtras {
     PackKafkaManager kafkaManager = new PackKafkaManager(brokerList, testName);
     setupTopic(metaData, kafkaManager);
 
-    try (DataSyncManager manager = new DataSyncManager(kafkaManager, metaData)) {
+    try (DataSyncManager manager = new DataSyncManager(_delayedResourceCleanup, kafkaManager, metaData)) {
       ByteBuffer dest = ByteBuffer.allocate(blockSize);
       boolean written = false;
       while (true) {
@@ -116,7 +118,7 @@ public class DataSyncManagerTest implements TestExtras {
     PackKafkaManager kafkaManager = new PackKafkaManager(brokerList, testName);
     setupTopic(metaData, kafkaManager);
 
-    try (DataSyncManager manager = new DataSyncManager(kafkaManager, metaData)) {
+    try (DataSyncManager manager = new DataSyncManager(_delayedResourceCleanup, kafkaManager, metaData)) {
       for (int i = 0; i < metaData.getMaxOffsetPerWalFile() + 1; i++) {
         writeBlock(blockId, blockSize, manager, metaData);
       }
@@ -140,7 +142,7 @@ public class DataSyncManagerTest implements TestExtras {
     PackKafkaManager kafkaManager = new PackKafkaManager(brokerList, testName);
     setupTopic(metaData, kafkaManager);
 
-    try (DataSyncManager manager = new DataSyncManager(kafkaManager, metaData)) {
+    try (DataSyncManager manager = new DataSyncManager(_delayedResourceCleanup, kafkaManager, metaData)) {
       for (int i = 0; i < metaData.getMaxOffsetPerWalFile() + 1; i++) {
         writeBlock(blockId, blockSize, manager, metaData);
       }
@@ -169,7 +171,7 @@ public class DataSyncManagerTest implements TestExtras {
     PackKafkaManager kafkaManager = new PackKafkaManager(brokerList, testName);
     setupTopic(metaData, kafkaManager);
 
-    try (DataSyncManager manager = new DataSyncManager(kafkaManager, metaData)) {
+    try (DataSyncManager manager = new DataSyncManager(_delayedResourceCleanup, kafkaManager, metaData)) {
       for (int i = 0; i < metaData.getMaxOffsetPerWalFile() * 4 + 1; i++) {
         writeBlock(blockId, blockSize, manager, metaData);
       }
@@ -188,7 +190,7 @@ public class DataSyncManagerTest implements TestExtras {
 
     IOUtils.rmr(new File("./target/test/" + testName));
 
-    try (DataSyncManager manager = new DataSyncManager(kafkaManager, metaData)) {
+    try (DataSyncManager manager = new DataSyncManager(_delayedResourceCleanup, kafkaManager, metaData)) {
       manager.waitForKafkaSyncIfNeeded();
       // Let new wal file get created
       Thread.sleep(TimeUnit.SECONDS.toMillis(1));

@@ -5,12 +5,15 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,6 +35,7 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.block.blockstore.hdfs.blockstore.WalFile;
 import pack.block.blockstore.hdfs.blockstore.WalFile.Writer;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.util.Utils;
@@ -55,9 +59,11 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
   private final AtomicLong _maxCommitOffset = new AtomicLong();
   private final AtomicReference<BlockReader> _currentBlockReader = new AtomicReference<BlockReader>(
       BlockReader.NOOP_READER);
+  private final DelayedResourceCleanup _delayedResourceClean;
 
-  public HdfsDataArchiveManager(PackStorageMetaData metaData, Configuration configuration, Path path,
-      UserGroupInformation ugi) throws IOException, InterruptedException {
+  public HdfsDataArchiveManager(DelayedResourceCleanup delayedResourceCleanup, PackStorageMetaData metaData,
+      Configuration configuration, Path path, UserGroupInformation ugi) throws IOException, InterruptedException {
+    _delayedResourceClean = delayedResourceCleanup;
     _fileSystem = ugi.doAs((PrivilegedExceptionAction<FileSystem>) () -> path.getFileSystem(configuration));
     _metaData = metaData;
     _path = path;
@@ -75,48 +81,67 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
 
   @Override
   public Writer createRemoteWalWriter(long offset) throws IOException {
-    String uuid = UUID.randomUUID()
-                      .toString();
-    Path path = new Path(_path, uuid + ".tmp.wal");
-    Path committedWalFile = new Path(_path, offset + ".wal");
-    FSDataOutputStream outputStream;
-    try {
-      outputStream = _ugi.doAs((PrivilegedExceptionAction<FSDataOutputStream>) () -> _fileSystem.create(path, false));
-    } catch (InterruptedException e) {
-      throw new IOException(e);
+    return new RemoteWalWriter(_path, offset, _ugi, _fileSystem);
+  }
+
+  static class RemoteWalWriter extends WalFile.Writer {
+
+    private FSDataOutputStream _outputStream;
+    private Path _path;
+    private Path _committedWalFile;
+    private UserGroupInformation _ugi;
+    private FileSystem _fileSystem;
+
+    public RemoteWalWriter(Path root, long offset, UserGroupInformation ugi, FileSystem fileSystem) throws IOException {
+      String uuid = UUID.randomUUID()
+                        .toString();
+      _path = new Path(root, uuid + ".wal.tmp");
+      _committedWalFile = new Path(root, offset + ".wal");
+      _ugi = ugi;
+      _fileSystem = fileSystem;
+      try {
+        _outputStream = ugi.doAs((PrivilegedExceptionAction<FSDataOutputStream>) () -> fileSystem.create(_path, false));
+      } catch (InterruptedException e) {
+        throw new IOException(e);
+      }
     }
-    return new Writer() {
-      @Override
-      public void close() throws IOException {
-        outputStream.close();
-        try {
-          _ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-            if (!_fileSystem.rename(path, committedWalFile)) {
-              throw new IOException("Could not commit wal file " + path + " to " + committedWalFile);
-            }
-            return null;
-          });
-        } catch (InterruptedException e) {
-          throw new IOException(e);
-        }
-      }
 
-      @Override
-      public void append(WalKeyWritable key, BytesWritable value) throws IOException {
-        key.write(outputStream);
-        value.write(outputStream);
+    @Override
+    public void close() throws IOException {
+      _outputStream.close();
+      try {
+        _ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+          if (!_fileSystem.rename(_path, _committedWalFile)) {
+            throw new IOException("Could not commit wal file " + _path + " to " + _committedWalFile);
+          }
+          return null;
+        });
+      } catch (InterruptedException e) {
+        throw new IOException(e);
       }
+    }
 
-      @Override
-      public long getLength() throws IOException {
-        return outputStream.getPos();
-      }
+    @Override
+    public void append(WalKeyWritable key, BytesWritable value) throws IOException {
+      key.write(_outputStream);
+      value.write(_outputStream);
+    }
 
-      @Override
-      public void flush() throws IOException {
-        outputStream.hflush();
-      }
-    };
+    @Override
+    public long getLength() throws IOException {
+      return _outputStream.getPos();
+    }
+
+    @Override
+    public void flush() throws IOException {
+      _outputStream.hflush();
+    }
+
+    @Override
+    public String toString() {
+      return "RemoteWalWriter [_path=" + _path + ", _committedWalFile=" + _committedWalFile + "]";
+    }
+
   }
 
   @Override
@@ -143,11 +168,41 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
       while (_running.get()) {
         Thread.sleep(_metaData.getHdfsPollTime());
         _ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-          updateBlocks();
+          try {
+            updateBlocks();
+            cleanupBlockDir();
+          } catch (Throwable e) {
+            LOGGER.error("Unknown error", e);
+            Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+          }
           return null;
         });
       }
       return null;
+    }
+
+    private void cleanupBlockDir() {
+      try {
+        FileStatus[] listStatus = _fileSystem.listStatus(_path);
+        if (listStatus != null) {
+          List<FileStatus> filesThatShouldBeDeleted = getFilesThatShouldBeDeleted(listStatus);
+          for (FileStatus fileStatus : filesThatShouldBeDeleted) {
+            Path path = fileStatus.getPath();
+            String key = path.toString();
+            if (!_delayedResourceClean.contains(key)) {
+              LOGGER.info("Adding file to be deleted {}", key);
+              _delayedResourceClean.register(key, () -> {
+                LOGGER.info("Removing file from cache {}", key);
+                _readerCache.invalidate(key);
+                LOGGER.info("Removing file from hdfs {}", key);
+                _fileSystem.delete(path, false);
+              });
+            }
+          }
+        }
+      } catch (IOException e) {
+        LOGGER.error("Unknown error", e);
+      }
     }
   }
 
@@ -172,6 +227,7 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
   private void setMaxCommitOffset(List<Path> blockPathList) {
     if (blockPathList == null || blockPathList.isEmpty()) {
       _maxCommitOffset.set(0);
+      return;
     }
     Path path = blockPathList.get(0);
     Long layer = BlockFile.getLayer(path);
@@ -215,4 +271,31 @@ public class HdfsDataArchiveManager implements DataArchiveManager, Closeable {
     };
   }
 
+  private List<FileStatus> getFilesThatShouldBeDeleted(FileStatus[] listStatus) throws IOException {
+    Set<String> sourceBlockFiles = new HashSet<>();
+    for (FileStatus fileStatus : listStatus) {
+      Path path = fileStatus.getPath();
+      String name = path.getName();
+      if (BlockFile.isOrderedBlock(path)) {
+        Reader reader = getReader(path);
+        sourceBlockFiles.addAll(reader.getSourceBlockFiles());
+      } else if (name.endsWith(".wal")) {
+        int indexOf = name.indexOf('.');
+        Path blockFile = new Path(_path, name.substring(0, indexOf) + ".block");
+        if (_fileSystem.exists(blockFile)) {
+          sourceBlockFiles.add(name);
+        }
+      }
+    }
+
+    Builder<FileStatus> toBeDeleted = ImmutableList.builder();
+    for (FileStatus fileStatus : listStatus) {
+      String name = fileStatus.getPath()
+                              .getName();
+      if (sourceBlockFiles.contains(name)) {
+        toBeDeleted.add(fileStatus);
+      }
+    }
+    return toBeDeleted.build();
+  }
 }

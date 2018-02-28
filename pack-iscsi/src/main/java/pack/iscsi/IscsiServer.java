@@ -36,6 +36,7 @@ import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
 import pack.iscsi.hdfs.HdfsStorageModule;
 import pack.iscsi.storage.DataArchiveManager;
 import pack.iscsi.storage.DataSyncManager;
+import pack.iscsi.storage.DelayedResourceCleanup;
 import pack.iscsi.storage.HdfsDataArchiveManager;
 import pack.iscsi.storage.PackStorageMetaData;
 import pack.iscsi.storage.PackStorageModule;
@@ -83,6 +84,7 @@ public class IscsiServer implements Closeable {
     _brokerServers = config.getBrokerServers();
     _hdfsBlockStoreConfig = config.getHdfsBlockStoreConfig();
     _hdfsStorageModule = config.isHdfsStorageModuleEnabled();
+
   }
 
   public void registerTargets() throws IOException, InterruptedException, ExecutionException {
@@ -128,7 +130,7 @@ public class IscsiServer implements Closeable {
         try {
           registerTargets();
         } catch (Throwable t) {
-          LOGGER.error("Unknown error");
+          LOGGER.error("Unknown error", t);
         }
       }
     }, TimeUnit.SECONDS.toMillis(10), TimeUnit.SECONDS.toMillis(10));
@@ -170,7 +172,7 @@ public class IscsiServer implements Closeable {
                                                       .lengthInBytes(lengthInBytes)
                                                       .localWalCachePath(localWalCachePath)
                                                       .walCacheMemorySize(1024 * blockSize)
-                                                      .maxOffsetPerWalFile(16 * 1024)
+                                                      .maxOffsetPerWalFile(1024)
                                                       .lagSyncPollWaitTime(10)
                                                       .hdfsPollTime(TimeUnit.SECONDS.toMillis(10))
                                                       .build();
@@ -178,8 +180,10 @@ public class IscsiServer implements Closeable {
                                     .join(_brokerServers);
     PackKafkaManager kafkaManager = new PackKafkaManager(bootstrapServers, _serialId);
     kafkaManager.createTopicIfMissing(metaData.getKafkaTopic());
-    DataArchiveManager dataArchiveManager = new HdfsDataArchiveManager(metaData, _configuration, blockPath, _ugi);
-    DataSyncManager dataSyncManager = new DataSyncManager(kafkaManager, metaData, dataArchiveManager);
+    DelayedResourceCleanup cleanup = new DelayedResourceCleanup(TimeUnit.MINUTES, 1);
+    DataArchiveManager dataArchiveManager = new HdfsDataArchiveManager(cleanup, metaData, _configuration, blockPath,
+        _ugi);
+    DataSyncManager dataSyncManager = new DataSyncManager(cleanup, kafkaManager, metaData, dataArchiveManager);
     StorageManager manager = new StorageManager(metaData, dataSyncManager, dataArchiveManager);
     PackStorageModule packStorageModule = new PackStorageModule(metaData.getLengthInBytes(), manager);
     return packStorageModule;
