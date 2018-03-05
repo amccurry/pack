@@ -37,4 +37,12 @@ public abstract class BaseStorageModule implements IStorageModule {
     return _blockSize;
   }
 
+  public int getBlockId(long pos) {
+    return (int) (pos / _blockSize);
+  }
+
+  public int getBlockOffset(long pos) {
+    return (int) (pos % _blockSize);
+  }
+
 }

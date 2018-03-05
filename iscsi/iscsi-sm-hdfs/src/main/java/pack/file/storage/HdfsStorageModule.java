@@ -9,16 +9,16 @@ import org.slf4j.LoggerFactory;
 
 import pack.iscsi.storage.BaseStorageModule;
 
-public class FileStorageModule extends BaseStorageModule {
+public class HdfsStorageModule extends BaseStorageModule {
 
   private static final String RW = "rw";
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(FileStorageModule.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(HdfsStorageModule.class);
 
   private final RandomAccessFile _rand;
   private final Object _lock = new Object();
 
-  public FileStorageModule(long sizeInBytes, int blockSize, String name, File file) throws IOException {
+  public HdfsStorageModule(long sizeInBytes, int blockSize, String name, File file) throws IOException {
     super(sizeInBytes, blockSize, name);
     _rand = new RandomAccessFile(file, RW);
   }
@@ -27,10 +27,7 @@ public class FileStorageModule extends BaseStorageModule {
   public void read(byte[] bytes, long storageIndex) throws IOException {
     LOGGER.info("read boff {} len {} bid {}  pos {}", getBlockOffset(storageIndex), bytes.length,
         getBlockId(storageIndex), storageIndex);
-    synchronized (_lock) {
-      _rand.seek(storageIndex);
-      _rand.read(bytes);
-    }
+
   }
 
   @Override

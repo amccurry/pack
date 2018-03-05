@@ -24,12 +24,13 @@ public class IscsiServerMain {
     List<String> addresses = PackUtils.getEnvListFailIfMissing(PACK_ISCSI_ADDRESS);
     String serialid = PackUtils.getEnvFailIfMissing(PACK_ISCSI_SERIAL_ID);
 
-    ServiceLoader<StorageTargetManagerFactory> loader = ServiceLoader.load(StorageTargetManagerFactory.class);
     List<StorageTargetManager> targetManagers = new ArrayList<>();
+    ServiceLoader<StorageTargetManagerFactory> loader = ServiceLoader.load(StorageTargetManagerFactory.class);
     for (StorageTargetManagerFactory factory : loader) {
       LOGGER.info("Loading factory {} {}", factory.getClass(), factory);
       targetManagers.add(factory.create());
     }
+
     StorageTargetManager manager = StorageTargetManager.merge(targetManagers);
     IscsiServerConfig config = IscsiServerConfig.builder()
                                                 .addresses(ImmutableSet.copyOf(addresses))

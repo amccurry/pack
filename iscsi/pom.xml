@@ -11,10 +11,17 @@
 	<packaging>pom</packaging>
 	<name>iscsi</name>
 
+	<properties>
+		<parcel.assembly.file>src/assemble/parcel.xml</parcel.assembly.file>
+		<parcel.version>${maven.build.timestamp}</parcel.version>
+		<maven.build.timestamp.format>yy.MM.dd.HH.mm</maven.build.timestamp.format>
+	</properties>
+
 	<modules>
 		<module>iscsi-server</module>
 		<module>iscsi-spi</module>
 		<module>iscsi-sm-file</module>
+		<module>iscsi-sm-hdfs</module>
 	</modules>
 
 	<dependencyManagement>

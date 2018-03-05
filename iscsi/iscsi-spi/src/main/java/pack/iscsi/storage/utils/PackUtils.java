@@ -129,4 +129,8 @@ public class PackUtils {
     return list;
   }
 
+  public static boolean isEnvSet(String name) {
+    return System.getenv(name) != null;
+  }
+
 }
