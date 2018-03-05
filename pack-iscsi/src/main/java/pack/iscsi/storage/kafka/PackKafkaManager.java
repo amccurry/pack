@@ -61,7 +61,7 @@ public class PackKafkaManager implements Closeable {
     return extraKafkaProps;
   }
 
-  public KafkaProducer<Long, byte[]> createProducer(String kafkaTopic) {
+  public KafkaProducer<Long, byte[]> createProducer() {
     Properties props = new Properties();
     props.putAll(_extraKafkaProps);
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, _bootstrapServers);
@@ -75,7 +75,7 @@ public class PackKafkaManager implements Closeable {
     return new KafkaProducer<>(props);
   }
 
-  public KafkaConsumer<Long, byte[]> createConsumer(String kafkaTopic) {
+  public KafkaConsumer<Long, byte[]> createConsumer() {
     Properties props = new Properties();
     props.putAll(_extraKafkaProps);
     props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, _bootstrapServers);

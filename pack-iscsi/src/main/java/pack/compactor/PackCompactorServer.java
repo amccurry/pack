@@ -2,11 +2,8 @@ package pack.compactor;
 
 import java.io.Closeable;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -27,13 +24,14 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableList;
 import com.google.common.io.Closer;
 
 import pack.block.blockstore.compactor.BlockFileCompactor;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.util.Utils;
+import pack.iscsi.CliUtils;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
@@ -49,26 +47,16 @@ public class PackCompactorServer implements Closeable {
   public static void main(String[] args) throws IOException, InterruptedException, KeeperException, ParseException {
     Utils.setupLog4j();
 
-    Options options = new Options();
-    options.addOption("p", "path", true, "Hdfs path.");
-    options.addOption("r", "remote", true, "Hdfs ugi remote user.");
-    options.addOption("u", "current", false, "Hdfs ugi use current user.");
-    options.addOption("c", "conf", true, "Hdfs configuration location.");
+    Options options = CliUtils.createHdfsOptions();
     options.addOption("C", "cache", true, "Local cache path.");
     options.addOption("t", "zktimeout", true, "ZooKeeper timeout.");
     options.addOption("z", "zkcon", true, "ZooKeeper connection.");
 
     CommandLineParser parser = new PosixParser();
     CommandLine cmd = parser.parse(options, args);
-    String path;
-    if (cmd.hasOption('p')) {
-      path = cmd.getOptionValue('p');
-      LOGGER.info("path {}", path);
-    } else {
-      System.err.println("path missing");
-      printUsageAndExit(options);
-      return;
-    }
+    Configuration configuration = CliUtils.getConfig(cmd, options);
+    UserGroupInformation ugi = CliUtils.getUGI(cmd, options, configuration);
+    Path root = CliUtils.getRootPath(cmd, options);
 
     String cache;
     if (cmd.hasOption('C')) {
@@ -98,55 +86,6 @@ public class PackCompactorServer implements Closeable {
       zkTimeout = "30000";
     }
 
-    String remote = null;
-    if (cmd.hasOption('r')) {
-      remote = cmd.getOptionValue('r');
-      LOGGER.info("remote {}", remote);
-    }
-
-    Boolean current = null;
-    if (cmd.hasOption('u')) {
-      current = true;
-      LOGGER.info("current {}", current);
-    }
-
-    if (current != null && remote != null) {
-      System.err.println("both remote user and current user are not supported together");
-      printUsageAndExit(options);
-      return;
-    }
-
-    String conf = null;
-    if (cmd.hasOption('c')) {
-      conf = cmd.getOptionValue('c');
-      LOGGER.info("conf {}", conf);
-    }
-
-    Configuration configuration = new Configuration();
-    if (conf != null) {
-      File dir = new File(conf);
-      if (!dir.exists()) {
-        System.err.println("conf dir does not exist");
-        printUsageAndExit(options);
-        return;
-      }
-      for (File f : dir.listFiles((FilenameFilter) (dir1, name) -> name.endsWith(".xml"))) {
-        if (f.isFile()) {
-          configuration.addResource(new FileInputStream(f));
-        }
-      }
-    }
-
-    UserGroupInformation.setConfiguration(configuration);
-    UserGroupInformation ugi;
-    if (remote != null) {
-      ugi = UserGroupInformation.createRemoteUser(remote);
-    } else if (current != null) {
-      ugi = UserGroupInformation.getCurrentUser();
-    } else {
-      ugi = UserGroupInformation.getLoginUser();
-    }
-
     File cacheDir = new File(cache);
     cacheDir.mkdirs();
     AtomicBoolean running = new AtomicBoolean(true);
@@ -154,8 +93,7 @@ public class PackCompactorServer implements Closeable {
                        .addShutdownHook(() -> running.set(false), Integer.MAX_VALUE);
 
     FileSystem fileSystem = FileSystem.get(configuration);
-
-    List<Path> pathList = getPathList(fileSystem, path);
+    List<Path> pathList = ImmutableList.of(root);
 
     try (PackCompactorServer packCompactorServer = new PackCompactorServer(cacheDir, fileSystem, pathList, zkConn,
         Integer.parseInt(zkTimeout))) {
@@ -237,17 +175,6 @@ public class PackCompactorServer implements Closeable {
         _compactionLockManager.unlock(lockName);
       }
     }
-  }
-
-  private static List<Path> getPathList(FileSystem fileSystem, String packRootPathList) throws IOException {
-    List<String> list = Splitter.on(',')
-                                .splitToList(packRootPathList);
-    List<Path> pathList = new ArrayList<>();
-    for (String p : list) {
-      FileStatus fileStatus = fileSystem.getFileStatus(new Path(p));
-      pathList.add(fileStatus.getPath());
-    }
-    return pathList;
   }
 
   private static void printUsageAndExit(Options options) {

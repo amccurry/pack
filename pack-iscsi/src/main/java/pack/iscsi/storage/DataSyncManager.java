@@ -74,7 +74,7 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
     _lagSyncPollWaitTime = metaData.getLagSyncPollWaitTime();
     _kafkaManager = kafkaManager;
     _maxOffsetPerWalFile = _metaData.getMaxOffsetPerWalFile();
-    _producer = kafkaManager.createProducer(metaData.getKafkaTopic());
+    _producer = kafkaManager.createProducer();
     _localWalConsumerFuture = _executorService.submit(new LocalWalConsumer());
     _walFuture = _executorService.submit(new WalFileGenerator());
     if (manager == null) {
@@ -140,7 +140,7 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
     OffsetAndMetadata offsetAndMetaData = new OffsetAndMetadata(commitOffset);
     offsets.put(topicPartition, offsetAndMetaData);
     long newOffset;
-    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
+    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer()) {
       consumer.commitSync(offsets);
       OffsetAndMetadata metadata = consumer.committed(topicPartition);
       newOffset = metadata.offset();
@@ -262,7 +262,7 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
     dir.mkdirs();
     TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
     long startingOffset;
-    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
+    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer()) {
       OffsetAndMetadata offsetAndMetadata = consumer.committed(partition);
       if (offsetAndMetadata != null) {
         startingOffset = offsetAndMetadata.offset();
@@ -270,6 +270,9 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
         startingOffset = 0;
       }
     }
+
+    LOGGER.info("Starting walCache topic {} offset {}", _metaData.getKafkaTopic(), startingOffset);
+
     int maxOffsetPerWalFile = _metaData.getMaxOffsetPerWalFile();
     while (_running.get()) {
       File file = new File(dir, startingOffset + ".wal");
@@ -282,7 +285,7 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
   }
 
   private Void localWalConsumer() throws InterruptedException, IOException {
-    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
+    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer()) {
       TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
       OffsetAndMetadata offsetAndMetadata = consumer.committed(partition);
       long startingOffset;
@@ -331,7 +334,7 @@ public class DataSyncManager implements DataArchiveManager, Closeable {
   }
 
   private void remoteWalConsumer() throws IOException, InterruptedException {
-    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer(_metaData.getKafkaTopic())) {
+    try (KafkaConsumer<Long, byte[]> consumer = _kafkaManager.createConsumer()) {
       TopicPartition partition = new TopicPartition(_metaData.getKafkaTopic(), _metaData.getKafkaPartition());
       long lastCommitOffset = getLastCommit(consumer, partition);
       int blockSize = _metaData.getBlockSize();

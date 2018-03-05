@@ -33,9 +33,16 @@ public class WalCache implements BlockReader {
   private final Cache<Integer, byte[]> _cache;
   private final long _startingOffset;
   private final long _endingOffset;
+  private final boolean _deleteFileOnClose;
 
   public WalCache(long startingOffset, int offsetLength, File file, long length, int blockSize, long cacheSize)
       throws IOException {
+    this(startingOffset, offsetLength, file, length, blockSize, cacheSize, true);
+  }
+
+  public WalCache(long startingOffset, int offsetLength, File file, long length, int blockSize, long cacheSize,
+      boolean deleteFileOnClose) throws IOException {
+    _deleteFileOnClose = deleteFileOnClose;
     _startingOffset = startingOffset;
     _endingOffset = startingOffset + offsetLength;
     _blockSize = blockSize;
@@ -126,7 +133,9 @@ public class WalCache implements BlockReader {
   public void close() throws IOException {
     Utils.close(LOGGER, _channel);
     Utils.close(LOGGER, _rnd);
-    _file.delete();
+    if (_deleteFileOnClose) {
+      _file.delete();
+    }
   }
 
   public static ByteBuffer toBuffer(BytesWritable value) {
