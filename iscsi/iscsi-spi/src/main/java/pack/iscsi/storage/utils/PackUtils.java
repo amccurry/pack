@@ -31,6 +31,21 @@ public class PackUtils {
     }
   }
 
+  public static void close(Logger logger, Closeable... closeables) {
+    if (closeables == null) {
+      return;
+    }
+    for (Closeable closeable : closeables) {
+      if (closeable != null) {
+        try {
+          closeable.close();
+        } catch (IOException e) {
+          logger.error("Unknown error", e);
+        }
+      }
+    }
+  }
+
   public static void checkFutureIsRunning(Future<Void> future) {
     if (future == null) {
       return;

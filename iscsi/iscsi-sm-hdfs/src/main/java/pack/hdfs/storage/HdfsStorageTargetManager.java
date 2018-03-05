@@ -1,7 +1,6 @@
-package pack.file.storage;
+package pack.hdfs.storage;
 
 import java.io.File;
-import java.io.FileFilter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
@@ -16,7 +15,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.jscsi.target.storage.IStorageModule;
 
-import com.amazonaws.services.identitymanagement.model.User;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
@@ -31,10 +29,7 @@ public class HdfsStorageTargetManager extends BaseStorageTargetManager {
   private static final String HDFS_KERBEROS_PRINCIPAL = "HDFS_KERBEROS_PRINCIPAL";
   private static final String HDFS_UGI_REMOTE_USER = "HDFS_UGI_REMOTE_USER";
   private static final String HDFS_UGI_CURRENT_USER = "HDFS_UGI_CURRENT_USER";
-  private static final String HDFS_BLOCK_SIZE = "HDFS_BLOCK_SIZE";
   private static final String HDFS_TARGET_PATH = "HDFS_TARGET_PATH";
-  private static final String DEFAULT_BLOCK_SIZE = "4096";
-  private final int _blockSize;
   private final UserGroupInformation _ugi;
   private final Path _rootPath;
   private final Configuration _conf;
@@ -42,7 +37,6 @@ public class HdfsStorageTargetManager extends BaseStorageTargetManager {
   public HdfsStorageTargetManager() throws IOException {
     String rootPath = PackUtils.getEnvFailIfMissing(HDFS_TARGET_PATH);
     _rootPath = new Path(rootPath);
-    _blockSize = Integer.parseInt(PackUtils.getEnv(HDFS_BLOCK_SIZE, DEFAULT_BLOCK_SIZE));
     _ugi = getUgi();
     _conf = getConfiguration();
   }
@@ -83,29 +77,36 @@ public class HdfsStorageTargetManager extends BaseStorageTargetManager {
 
   @Override
   protected IStorageModule createNewStorageModule(String name) throws IOException {
-    return new HdfsStorageModule(sizeInBytes, _blockSize, name, file);
+    Path volumeDir = new Path(_rootPath, name);
+    HdfsMetaData hdfsMetaData = getHdfsMetaData(volumeDir);
+    return new HdfsStorageModule(name, hdfsMetaData, _conf, volumeDir);
+  }
+
+  private HdfsMetaData getHdfsMetaData(Path volumeDir) throws IOException {
+    FileSystem fileSystem = volumeDir.getFileSystem(_conf);
+    if (!fileSystem.exists(volumeDir)) {
+      throw new FileNotFoundException("Volume path " + volumeDir + " not found");
+    }
+    return HdfsMetaData.read(_conf, volumeDir);
   }
 
   @Override
   protected List<String> getVolumeNames() {
     try {
-      return _ugi.doAs(new PrivilegedExceptionAction<List<String>>() {
-        @Override
-        public List<String> run() throws Exception {
-          Builder<String> builder = ImmutableList.builder();
-          FileSystem fileSystem = _rootPath.getFileSystem(_conf);
-          if (!fileSystem.exists(_rootPath)) {
-            return builder.build();
-          }
-          FileStatus[] listStatus = fileSystem.listStatus(_rootPath);
-          for (FileStatus fileStatus : listStatus) {
-            if (fileStatus.isDirectory()) {
-              Path path = fileStatus.getPath();
-              builder.add(path.getName());
-            }
-          }
+      return _ugi.doAs((PrivilegedExceptionAction<List<String>>) () -> {
+        Builder<String> builder = ImmutableList.builder();
+        FileSystem fileSystem = _rootPath.getFileSystem(_conf);
+        if (!fileSystem.exists(_rootPath)) {
           return builder.build();
         }
+        FileStatus[] listStatus = fileSystem.listStatus(_rootPath);
+        for (FileStatus fileStatus : listStatus) {
+          if (fileStatus.isDirectory()) {
+            Path path = fileStatus.getPath();
+            builder.add(path.getName());
+          }
+        }
+        return builder.build();
       });
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException(e);

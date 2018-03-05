@@ -15,11 +15,11 @@
 	</properties>
 
 	<repositories>
-	<repository>
-		<id>cloudera</id>
-		<url>https://repository.cloudera.com/artifactory/cloudera-repos/</url>
-	</repository>
-</repositories>
+		<repository>
+			<id>cloudera</id>
+			<url>https://repository.cloudera.com/artifactory/cloudera-repos/</url>
+		</repository>
+	</repositories>
 
 	<dependencies>
 		<dependency>
@@ -30,6 +30,22 @@
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-client</artifactId>
 			<version>2.6.0-cdh5.12.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.roaringbitmap</groupId>
+			<artifactId>RoaringBitmap</artifactId>
+			<version>0.7.3</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.hadoop</groupId>
+			<artifactId>hadoop-minicluster</artifactId>
+			<version>2.6.0-cdh5.12.2</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<scope>test</scope>
 		</dependency>
 	</dependencies>
 

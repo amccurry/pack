@@ -1,4 +1,4 @@
-package pack.file.storage;
+package pack.hdfs.storage;
 
 import pack.iscsi.storage.StorageTargetManager;
 import pack.iscsi.storage.StorageTargetManagerFactory;
