@@ -1,0 +1,23 @@
+{
+	"schema_version": 1,
+	"name": "${parcel.name}",
+	"version" : "${parcel.version}",
+	"setActiveSymlink": true,
+	"depends": "",
+	"replaces":"${parcel.name}",
+	"conflicts":"",
+	"provides": ["pack_iscsi_module"],
+	"scripts": {
+		"defines":"parcel_env.sh"
+	},
+	"components": [
+		{
+			"name" : "${parcel.name}",
+			"version" : "${project.version}",
+			"pkg_version": "${parcel.version}"
+		}
+	],
+	"packages" : [],
+	"users":  {},
+	"groups": []
+}
