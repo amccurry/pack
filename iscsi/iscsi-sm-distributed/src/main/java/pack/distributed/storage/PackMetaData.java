@@ -28,7 +28,7 @@ import lombok.experimental.FieldDefaults;
 @EqualsAndHashCode
 @Builder(toBuilder = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class HdfsMetaData {
+public class PackMetaData {
 
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -45,14 +45,14 @@ public class HdfsMetaData {
   @Builder.Default
   int blockSize = DEFAULT_BLOCK_SIZE;
 
-  public static HdfsMetaData read(Configuration configuration, Path volume) throws IOException {
+  public static PackMetaData read(Configuration configuration, Path volume) throws IOException {
     Path path = getMeatDataPath(volume);
     FileSystem fileSystem = path.getFileSystem(configuration);
     if (!fileSystem.exists(path)) {
       throw new FileNotFoundException(path.getName());
     }
     try (InputStream inputStream = fileSystem.open(path)) {
-      return OBJECT_MAPPER.readValue(inputStream, HdfsMetaData.class);
+      return OBJECT_MAPPER.readValue(inputStream, PackMetaData.class);
     }
   }
 

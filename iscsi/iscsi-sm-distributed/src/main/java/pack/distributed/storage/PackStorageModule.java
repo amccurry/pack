@@ -9,11 +9,11 @@ import org.slf4j.LoggerFactory;
 
 import pack.iscsi.storage.BaseStorageModule;
 
-public class HdfsStorageModule extends BaseStorageModule {
+public class PackStorageModule extends BaseStorageModule {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(HdfsStorageModule.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackStorageModule.class);
 
-  public HdfsStorageModule(String name, HdfsMetaData hdfsMetaData, Configuration conf, Path volumeDir) {
+  public PackStorageModule(String name, PackMetaData hdfsMetaData, Configuration conf, Path volumeDir) {
     super(hdfsMetaData.getLength(), hdfsMetaData.getBlockSize(), name);
   }
 

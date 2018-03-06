@@ -1,1 +1,1 @@
-pack.file.storage.FileStorageTargetManagerFactory
+pack.distributed.storage.PackStorageTargetManagerFactory

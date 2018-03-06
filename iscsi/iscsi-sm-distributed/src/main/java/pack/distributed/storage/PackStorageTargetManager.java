@@ -21,7 +21,7 @@ import com.google.common.collect.ImmutableList.Builder;
 import pack.iscsi.storage.BaseStorageTargetManager;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class HdfsStorageTargetManager extends BaseStorageTargetManager {
+public class PackStorageTargetManager extends BaseStorageTargetManager {
 
   private static final String HDFS_CONF_PATH = "HDFS_CONF_PATH";
   private static final String XML = ".xml";
@@ -34,7 +34,7 @@ public class HdfsStorageTargetManager extends BaseStorageTargetManager {
   private final Path _rootPath;
   private final Configuration _conf;
 
-  public HdfsStorageTargetManager() throws IOException {
+  public PackStorageTargetManager() throws IOException {
     String rootPath = PackUtils.getEnvFailIfMissing(HDFS_TARGET_PATH);
     _rootPath = new Path(rootPath);
     _ugi = getUgi();
@@ -78,16 +78,16 @@ public class HdfsStorageTargetManager extends BaseStorageTargetManager {
   @Override
   protected IStorageModule createNewStorageModule(String name) throws IOException {
     Path volumeDir = new Path(_rootPath, name);
-    HdfsMetaData hdfsMetaData = getHdfsMetaData(volumeDir);
-    return new HdfsStorageModule(name, hdfsMetaData, _conf, volumeDir);
+    PackMetaData hdfsMetaData = getHdfsMetaData(volumeDir);
+    return new PackStorageModule(name, hdfsMetaData, _conf, volumeDir);
   }
 
-  private HdfsMetaData getHdfsMetaData(Path volumeDir) throws IOException {
+  private PackMetaData getHdfsMetaData(Path volumeDir) throws IOException {
     FileSystem fileSystem = volumeDir.getFileSystem(_conf);
     if (!fileSystem.exists(volumeDir)) {
       throw new FileNotFoundException("Volume path " + volumeDir + " not found");
     }
-    return HdfsMetaData.read(_conf, volumeDir);
+    return PackMetaData.read(_conf, volumeDir);
   }
 
   @Override

@@ -1,4 +1,4 @@
-package pack.hdfs.storage.util;
+package pack.distributed.storage.hdfs;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
