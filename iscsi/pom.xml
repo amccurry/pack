@@ -21,7 +21,7 @@
 		<module>iscsi-server</module>
 		<module>iscsi-spi</module>
 		<module>iscsi-sm-file</module>
-		<module>iscsi-sm-hdfs</module>
+		<module>iscsi-sm-distributed</module>
 	</modules>
 
 	<dependencyManagement>

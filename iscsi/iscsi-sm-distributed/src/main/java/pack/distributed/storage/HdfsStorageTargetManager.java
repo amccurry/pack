@@ -1,4 +1,4 @@
-package pack.hdfs.storage;
+package pack.distributed.storage;
 
 import java.io.File;
 import java.io.FileInputStream;

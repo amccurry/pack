@@ -28,12 +28,14 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
-import pack.hdfs.storage.util.BlockFile.BlockFileEntry;
-import pack.hdfs.storage.util.BlockFile.Reader;
-import pack.hdfs.storage.util.BlockFile.ReaderMultiOrdered;
-import pack.hdfs.storage.util.BlockFile.Writer;
-import pack.hdfs.storage.util.BlockFile.WriterMultiOrdered;
-import pack.hdfs.storage.util.BlockFile.WriterOrdered;
+import pack.distributed.storage.hdfs.BlockFile;
+import pack.distributed.storage.hdfs.ReadRequest;
+import pack.distributed.storage.hdfs.BlockFile.BlockFileEntry;
+import pack.distributed.storage.hdfs.BlockFile.Reader;
+import pack.distributed.storage.hdfs.BlockFile.ReaderMultiOrdered;
+import pack.distributed.storage.hdfs.BlockFile.Writer;
+import pack.distributed.storage.hdfs.BlockFile.WriterMultiOrdered;
+import pack.distributed.storage.hdfs.BlockFile.WriterOrdered;
 
 public class BlockFileTest {
 

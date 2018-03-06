@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package pack.hdfs.storage.util;
+package pack.distributed.storage.hdfs;
 
 import java.io.FilterInputStream;
 import java.io.IOException;

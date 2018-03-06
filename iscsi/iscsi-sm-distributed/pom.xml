@@ -7,11 +7,11 @@
 		<version>1.0-SNAPSHOT</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
-	<artifactId>iscsi-sm-hdfs</artifactId>
+	<artifactId>iscsi-sm-distributed</artifactId>
 	<packaging>jar</packaging>
 
 	<properties>
-		<parcel.name>PACK_ISCSI_HDFS_MODULE</parcel.name>
+		<parcel.name>PACK_ISCSI_DISTRIBUTED_MODULE</parcel.name>
 	</properties>
 
 	<repositories>

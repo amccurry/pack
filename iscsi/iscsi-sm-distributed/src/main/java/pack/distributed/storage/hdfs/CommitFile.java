@@ -1,4 +1,4 @@
-package pack.hdfs.storage.util;
+package pack.distributed.storage.hdfs;
 
 import java.io.IOException;
 
