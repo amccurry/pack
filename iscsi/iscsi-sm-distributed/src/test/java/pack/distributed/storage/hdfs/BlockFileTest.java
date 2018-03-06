@@ -63,31 +63,31 @@ public class BlockFileTest {
     System.out.println("Writing");
     try (Writer writer = BlockFile.create(true, fileSystem, path, valueLength)) {
       Random random = new Random(4);
-      long longKey = random.nextInt(1000000);
+      int key = random.nextInt(1000000);
       for (int i = 0; i < checkCount; i++) {
-        BytesWritable value = getValue(longKey, valueLength);
-        writer.append(longKey, value);
+        BytesWritable value = getValue(key, valueLength);
+        writer.append(key, value);
         System.out.println("======================");
-        System.out.println(longKey);
+        System.out.println(key);
         System.out.println(value);
-        longKey += random.nextInt(10000 - 1) + 1;
+        key += random.nextInt(10000 - 1) + 1;
       }
     }
 
     System.out.println("Reading");
     try (Reader reader = BlockFile.open(fileSystem, path)) {
       Random random = new Random(4);
-      long longKey = random.nextInt(1000000);
+      int key = random.nextInt(1000000);
       BytesWritable actual = new BytesWritable();
       for (int i = 0; i < checkCount; i++) {
-        BytesWritable expected = getValue(longKey, valueLength);
-        assertTrue(reader.read(longKey, actual));
+        BytesWritable expected = getValue(key, valueLength);
+        assertTrue(reader.read(key, actual));
         System.out.println("======================");
-        System.out.println(longKey);
+        System.out.println(key);
         System.out.println(expected);
         System.out.println(actual);
         assertTrue(expected.compareTo(actual) == 0);
-        longKey += random.nextInt(10000 - 1) + 1;
+        key += random.nextInt(10000 - 1) + 1;
       }
     }
 
@@ -105,14 +105,14 @@ public class BlockFileTest {
     System.out.println("Writing");
     try (Writer writer = BlockFile.create(true, fileSystem, path, valueLength)) {
       Random random = new Random(seed);
-      long longKey = random.nextInt(startingPoint);
+      int key = random.nextInt(startingPoint);
       for (int i = 0; i < checkCount; i++) {
-        BytesWritable value = getValue(longKey, valueLength);
-        writer.append(longKey, value);
+        BytesWritable value = getValue(key, valueLength);
+        writer.append(key, value);
         System.out.println("======================");
-        System.out.println(longKey);
+        System.out.println(key);
         System.out.println(value);
-        longKey += random.nextInt(maxSkip - 1) + 1;
+        key += random.nextInt(maxSkip - 1) + 1;
       }
     }
 
@@ -125,14 +125,14 @@ public class BlockFileTest {
 
       {
         Random random = new Random(seed);
-        long longKey = random.nextInt(startingPoint);
+        int key = random.nextInt(startingPoint);
 
         for (int i = 0; i < checkCount; i++) {
-          expectedList.add(getValue(longKey, valueLength));
+          expectedList.add(getValue(key, valueLength));
           ByteBuffer dest = ByteBuffer.allocate(valueLength);
           actualList.add(dest);
-          requests.add(new ReadRequest(longKey, 0, dest));
-          longKey += random.nextInt(maxSkip - 1) + 1;
+          requests.add(new ReadRequest(key, 0, dest));
+          key += random.nextInt(maxSkip - 1) + 1;
         }
       }
       reader.read(requests);
@@ -275,14 +275,14 @@ public class BlockFileTest {
     System.out.println("Writing");
     try (Writer writer = BlockFile.create(false, fileSystem, path, valueLength)) {
       Random random = new Random(seed);
-      long longKey = random.nextInt(startingPoint);
+      int key = random.nextInt(startingPoint);
       for (int i = 0; i < checkCount; i++) {
-        BytesWritable value = getValue(longKey, valueLength);
-        writer.append(longKey, value);
+        BytesWritable value = getValue(key, valueLength);
+        writer.append(key, value);
         System.out.println("======================");
-        System.out.println(longKey);
+        System.out.println(key);
         System.out.println(value);
-        longKey = random.nextInt(maxSkip - 1) + 1;
+        key = random.nextInt(maxSkip - 1) + 1;
       }
     }
 
@@ -295,14 +295,14 @@ public class BlockFileTest {
 
       {
         Random random = new Random(seed);
-        long longKey = random.nextInt(startingPoint);
+        int key = random.nextInt(startingPoint);
 
         for (int i = 0; i < checkCount; i++) {
-          expectedList.add(getValue(longKey, valueLength));
+          expectedList.add(getValue(key, valueLength));
           ByteBuffer dest = ByteBuffer.allocate(valueLength);
           actualList.add(dest);
-          requests.add(new ReadRequest(longKey, 0, dest));
-          longKey = random.nextInt(maxSkip - 1) + 1;
+          requests.add(new ReadRequest(key, 0, dest));
+          key = random.nextInt(maxSkip - 1) + 1;
         }
       }
       reader.read(requests);
@@ -382,16 +382,27 @@ public class BlockFileTest {
     System.out.println("Test seed " + seed);
 
     Random random = new Random(seed);
-    int layers = random.nextInt(maxLayers);
+    int layers = random.nextInt(maxLayers) + 1;
 
-    try (RandomAccessFile rand = new RandomAccessFile(new File("./target/testBlockFileMergeRandom.data"), "rw")) {
+    File file = new File("./target/testBlockFileMergeRandom.data");
+    file.delete();
+    try (RandomAccessFile rand = new RandomAccessFile(file, "rw")) {
       RoaringBitmap allKeys = new RoaringBitmap();
       rand.setLength(vl * maxKeyValues);
+      int layerId = random.nextInt(10000);
+
+      Path blockDir = new Path("/testBlockFileMergeRandom/");
+      Path mergeFile = new Path("/testBlockFileMergeRandomOutput");
+
+      FileSystem fileSystem = _cluster.getFileSystem();
+      fileSystem.delete(mergeFile, true);
+      fileSystem.delete(blockDir, true);
+      fileSystem.mkdirs(blockDir);
+
       for (int layer = 0; layer < layers; layer++) {
         RoaringBitmap keys = getKeys(random, maxKeyValues, maxKeysPerLayer);
         allKeys.or(keys);
-        Path path = new Path("/" + layer + ".block");
-        FileSystem fileSystem = _cluster.getFileSystem();
+        Path path = new Path(blockDir, layerId + ".block");
         try (Writer writer = BlockFile.create(true, fileSystem, path, vl)) {
           for (Integer key : keys) {
             long pos = ((int) key) * (long) vl;
@@ -405,38 +416,37 @@ public class BlockFileTest {
             }
           }
         }
+        layerId += random.nextInt(10000);
       }
 
-      Path path = new Path("/testBlockFileMergeRandom");
-      FileSystem fileSystem = _cluster.getFileSystem();
-      PathFilter pathFilter = (PathFilter) path1 -> path1.getName()
-                                                         .endsWith(".block");
-      FileStatus[] listStatus = fileSystem.listStatus(new Path("/"), pathFilter);
+      PathFilter pathFilter = (PathFilter) p -> p.getName()
+                                                 .endsWith(".block");
+      FileStatus[] listStatus = fileSystem.listStatus(blockDir, pathFilter);
       List<Reader> readers = new ArrayList<>();
       for (FileStatus fileStatus : listStatus) {
         readers.add(BlockFile.open(fileSystem, fileStatus.getPath()));
       }
-      try (WriterOrdered writer = BlockFile.createOrdered(fileSystem, path, vl)) {
+      try (WriterOrdered writer = BlockFile.createOrdered(fileSystem, mergeFile, vl)) {
         BlockFile.merge(readers, writer);
       }
       readers.forEach(reader -> IOUtils.closeQuietly(reader));
 
-      Reader reader = BlockFile.open(fileSystem, path);
+      Reader reader = BlockFile.open(fileSystem, mergeFile);
       RoaringBitmap dataKeys = new RoaringBitmap();
       reader.orDataBlocks(dataKeys);
 
-      assertEquals(allKeys, dataKeys);
+      assertEquals("seed " + seed, allKeys, dataKeys);
 
       byte[] buffer = new byte[vl];
       BytesWritable value = new BytesWritable();
       for (Integer key : dataKeys) {
-        assertTrue(reader.hasBlock(key));
+        assertTrue("seed " + seed, reader.hasBlock(key));
         long pos = ((int) key) * (long) vl;
         rand.seek(pos);
         rand.read(buffer);
         reader.read(key, value);
-        assertEquals(vl, value.getLength());
-        assertEquals(new BytesWritable(buffer), value);
+        assertEquals("seed " + seed, vl, value.getLength());
+        assertEquals("seed " + seed, new BytesWritable(buffer), value);
       }
     }
   }

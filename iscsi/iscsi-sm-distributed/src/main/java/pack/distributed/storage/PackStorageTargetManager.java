@@ -1,9 +1,7 @@
 package pack.distributed.storage;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.List;
@@ -18,56 +16,25 @@ import org.jscsi.target.storage.IStorageModule;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.iscsi.storage.BaseStorageTargetManager;
-import pack.iscsi.storage.utils.PackUtils;
 
 public class PackStorageTargetManager extends BaseStorageTargetManager {
 
-  private static final String HDFS_CONF_PATH = "HDFS_CONF_PATH";
-  private static final String XML = ".xml";
-  private static final String HDFS_KERBEROS_KEYTAB = "HDFS_KERBEROS_KEYTAB";
-  private static final String HDFS_KERBEROS_PRINCIPAL = "HDFS_KERBEROS_PRINCIPAL";
-  private static final String HDFS_UGI_REMOTE_USER = "HDFS_UGI_REMOTE_USER";
-  private static final String HDFS_UGI_CURRENT_USER = "HDFS_UGI_CURRENT_USER";
-  private static final String HDFS_TARGET_PATH = "HDFS_TARGET_PATH";
   private final UserGroupInformation _ugi;
   private final Path _rootPath;
   private final Configuration _conf;
+  private final PackKafkaClientFactory _packKafkaClientFactory;
+  private final File _cacheDir;
 
   public PackStorageTargetManager() throws IOException {
-    String rootPath = PackUtils.getEnvFailIfMissing(HDFS_TARGET_PATH);
-    _rootPath = new Path(rootPath);
-    _ugi = getUgi();
-    _conf = getConfiguration();
-  }
+    _cacheDir = PackConfig.getWalCachePath();
+    _ugi = PackConfig.getUgi();
+    _conf = PackConfig.getConfiguration();
+    _rootPath = PackConfig.getHdfsTarget();
 
-  private Configuration getConfiguration() throws FileNotFoundException {
-    String configPath = PackUtils.getEnv(HDFS_CONF_PATH);
-    Configuration configuration = new Configuration();
-    File file = new File(configPath);
-    if (file.isDirectory()) {
-      File[] listFiles = file.listFiles((FilenameFilter) (dir, name) -> name.endsWith(XML));
-      for (File f : listFiles) {
-        configuration.addResource(new FileInputStream(f));
-      }
-    }
-    return configuration;
-  }
-
-  private UserGroupInformation getUgi() throws IOException {
-    if (PackUtils.isEnvSet(HDFS_UGI_CURRENT_USER)) {
-      return UserGroupInformation.getCurrentUser();
-    }
-    String remoteUser = PackUtils.getEnv(HDFS_UGI_REMOTE_USER);
-    if (remoteUser != null) {
-      return UserGroupInformation.createRemoteUser(remoteUser);
-    }
-    String user = PackUtils.getEnv(HDFS_KERBEROS_PRINCIPAL);
-    if (user != null) {
-      String path = PackUtils.getEnvFailIfMissing(HDFS_KERBEROS_KEYTAB);
-      return UserGroupInformation.loginUserFromKeytabAndReturnUGI(user, path);
-    }
-    return UserGroupInformation.getLoginUser();
+    String kafkaZkConnection = PackConfig.getKafkaZkConnection();
+    _packKafkaClientFactory = new PackKafkaClientFactory(kafkaZkConnection);
   }
 
   @Override
@@ -77,12 +44,20 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
 
   @Override
   protected IStorageModule createNewStorageModule(String name) throws IOException {
-    Path volumeDir = new Path(_rootPath, name);
-    PackMetaData hdfsMetaData = getHdfsMetaData(volumeDir);
-    return new PackStorageModule(name, hdfsMetaData, _conf, volumeDir);
+    try {
+      return _ugi.doAs((PrivilegedExceptionAction<IStorageModule>) () -> {
+        Path volumeDir = new Path(_rootPath, name);
+        PackMetaData metaData = getMetaData(volumeDir);
+        File cacheDir = new File(_cacheDir, name);
+        cacheDir.mkdirs();
+        return new PackStorageModule(name, metaData, _conf, volumeDir, _packKafkaClientFactory, _ugi, cacheDir);
+      });
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
   }
 
-  private PackMetaData getHdfsMetaData(Path volumeDir) throws IOException {
+  private PackMetaData getMetaData(Path volumeDir) throws IOException {
     FileSystem fileSystem = volumeDir.getFileSystem(_conf);
     if (!fileSystem.exists(volumeDir)) {
       throw new FileNotFoundException("Volume path " + volumeDir + " not found");

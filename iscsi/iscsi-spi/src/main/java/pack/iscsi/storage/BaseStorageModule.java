@@ -4,8 +4,8 @@ import org.jscsi.target.storage.IStorageModule;
 
 public abstract class BaseStorageModule implements IStorageModule {
 
-  private final long _sizeInBlocks;
-  private final int _blockSize;
+  protected final long _sizeInBlocks;
+  protected final int _blockSize;
 
   public BaseStorageModule(long sizeInBytes, int blockSize, String name) {
     _blockSize = blockSize;

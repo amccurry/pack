@@ -4,12 +4,12 @@ import java.nio.ByteBuffer;
 
 public class ReadRequest implements Comparable<ReadRequest> {
 
-  private final long _blockId;
+  private final int _blockId;
   private final ByteBuffer _dest;
   private final int _blockOffset;
   private boolean _empty;
 
-  public ReadRequest(long blockId, int blockOffset, ByteBuffer dest) {
+  public ReadRequest(int blockId, int blockOffset, ByteBuffer dest) {
     _blockId = blockId;
     _blockOffset = blockOffset;
     _dest = dest;
@@ -23,7 +23,7 @@ public class ReadRequest implements Comparable<ReadRequest> {
     return _dest.remaining() == 0;
   }
 
-  public long getBlockId() {
+  public int getBlockId() {
     return _blockId;
   }
 

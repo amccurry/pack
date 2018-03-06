@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.distributed.storage.BlockReader;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class BlockFile {
@@ -162,6 +163,12 @@ public class BlockFile {
     public MergePlan(List<Reader> readers, RoaringBitmap blocksToIgnore, int requestsPerBlock) {
       _requestsPerBlock = requestsPerBlock;
       _readers = orderReaders(readers);
+
+      for (Reader reader : _readers) {
+        System.out.println(reader.getPath()
+                                 .getName());
+      }
+
       _blockSize = _readers.get(0)
                            .getBlockSize();
       _blocksToIgnore = blocksToIgnore;
@@ -343,11 +350,11 @@ public class BlockFile {
 
   public static abstract class Writer implements Closeable {
 
-    public abstract boolean canAppend(long longKey) throws IOException;
+    public abstract boolean canAppend(int longKey) throws IOException;
 
-    public abstract void appendEmpty(long longKey) throws IOException;
+    public abstract void appendEmpty(int longKey) throws IOException;
 
-    public abstract void append(long longKey, BytesWritable value) throws IOException;
+    public abstract void append(int longKey, BytesWritable value) throws IOException;
 
     public abstract long getLen() throws IOException;
 
@@ -372,26 +379,26 @@ public class BlockFile {
     }
 
     @Override
-    public boolean canAppend(long longKey) throws IOException {
+    public boolean canAppend(int longKey) throws IOException {
       return true;
     }
 
     @Override
-    public void appendEmpty(long longKey) throws IOException {
+    public void appendEmpty(int key) throws IOException {
       WriterOrdered writer = getWriter();
-      if (!writer.canAppend(longKey)) {
+      if (!writer.canAppend(key)) {
         writer = newWriter();
       }
-      writer.appendEmpty(longKey);
+      writer.appendEmpty(key);
     }
 
     @Override
-    public void append(long longKey, BytesWritable value) throws IOException {
+    public void append(int key, BytesWritable value) throws IOException {
       WriterOrdered writer = getWriter();
-      if (!writer.canAppend(longKey)) {
+      if (!writer.canAppend(key)) {
         writer = newWriter();
       }
-      writer.append(longKey, value);
+      writer.append(key, value);
     }
 
     @Override
@@ -467,24 +474,23 @@ public class BlockFile {
     }
 
     @Override
-    public boolean canAppend(long longKey) throws IOException {
-      if (longKey <= _prevKey) {
+    public boolean canAppend(int key) throws IOException {
+      if (key <= _prevKey) {
         return false;
       }
-      getIntKey(longKey);
       return true;
     }
 
     @Override
-    public void appendEmpty(long longKey) throws IOException {
-      int key = checkKey(longKey);
+    public void appendEmpty(int key) throws IOException {
+      checkKey(key);
       _emptyBlocks.add(key);
-      _prevKey = longKey;
+      _prevKey = key;
     }
 
     @Override
-    public void append(long longKey, BytesWritable value) throws IOException {
-      int key = checkKey(longKey);
+    public void append(int key, BytesWritable value) throws IOException {
+      checkKey(key);
       checkValue(value, _blockSize);
       if (isValueAllZeros(value) || value.getLength() == 0) {
         _emptyBlocks.add(key);
@@ -492,7 +498,7 @@ public class BlockFile {
         _blocks.add(key);
         _output.write(value.getBytes(), 0, value.getLength());
       }
-      _prevKey = longKey;
+      _prevKey = key;
     }
 
     @Override
@@ -511,11 +517,10 @@ public class BlockFile {
       return true;
     }
 
-    private int checkKey(long key) throws IOException {
+    private void checkKey(int key) throws IOException {
       if (key <= _prevKey) {
         throw new IOException("Key " + key + " is less then or equal to prevkey " + _prevKey);
       }
-      return getIntKey(key);
     }
 
     @Override
@@ -548,11 +553,11 @@ public class BlockFile {
     }
   }
 
-  public abstract static class Reader implements Iterable<BlockFileEntry>, Closeable {
+  public abstract static class Reader implements Iterable<BlockFileEntry>, Closeable, BlockReader {
 
     public abstract boolean read(Collection<ReadRequest> requests) throws IOException;
 
-    public abstract boolean read(long longKey, BytesWritable value) throws IOException;
+    public abstract boolean read(int key, BytesWritable value) throws IOException;
 
     public abstract void orDataBlocks(RoaringBitmap bitmap);
 
@@ -576,6 +581,10 @@ public class BlockFile {
           + "/" + path.getName();
     }
 
+    @Override
+    public boolean readBlocks(List<ReadRequest> requests) throws IOException {
+      return read(requests);
+    }
   }
 
   public static class ReaderMultiOrdered extends Reader {
@@ -659,9 +668,9 @@ public class BlockFile {
     }
 
     @Override
-    public boolean read(long longKey, BytesWritable value) throws IOException {
+    public boolean read(int key, BytesWritable value) throws IOException {
       for (ReaderOrdered readerOrdered : _orderedReaders) {
-        if (readerOrdered.read(longKey, value)) {
+        if (readerOrdered.read(key, value)) {
           return true;
         }
       }
@@ -730,8 +739,8 @@ public class BlockFile {
     protected final int _blockSize;
     protected final Path _path;
     protected final List<String> _sourceFiles;
-    protected final long _first;
-    protected final long _last;
+    protected final int _first;
+    protected final int _last;
     protected final long _startingPosition;
     protected final long _endingPosition;
 
@@ -820,8 +829,7 @@ public class BlockFile {
       ReadRequest[] requestBatch = new ReadRequest[_maxParallelBlocksToPull];
       for (ReadRequest readRequest : requests) {
         if (!readRequest.isCompleted()) {
-          long blockId = readRequest.getBlockId();
-          int key = getIntKey(blockId);
+          int key = readRequest.getBlockId();
           if (_emptyBlocks.contains(key)) {
             readRequest.handleEmptyResult();
           } else if (_blocks.contains(key)) {
@@ -868,13 +876,12 @@ public class BlockFile {
     }
 
     @Override
-    public boolean read(long longKey, BytesWritable value) throws IOException {
-      if (longKey < _first) {
+    public boolean read(int key, BytesWritable value) throws IOException {
+      if (key < _first) {
         return false;
-      } else if (longKey > _last) {
+      } else if (key > _last) {
         return false;
       }
-      int key = getIntKey(longKey);
       value.setSize(_blockSize);
       if (_emptyBlocks.contains(key)) {
         setAllZeros(value);
@@ -1207,10 +1214,11 @@ public class BlockFile {
     return new BytesWritable(buf);
   }
 
-  public static int getIntKey(long key) throws IOException {
-    if (key < Integer.MAX_VALUE) {
-      return (int) key;
-    }
-    throw new IOException("Key " + key + " is too large >= " + Integer.MAX_VALUE);
-  }
+  // public static int getIntKey(long key) throws IOException {
+  // if (key < Integer.MAX_VALUE) {
+  // return (int) key;
+  // }
+  // throw new IOException("Key " + key + " is too large >= " +
+  // Integer.MAX_VALUE);
+  // }
 }
