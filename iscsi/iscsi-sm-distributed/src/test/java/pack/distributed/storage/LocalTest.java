@@ -7,6 +7,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.UUID;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -35,22 +36,28 @@ public class LocalTest {
     Path volume = new Path("/tmp/testpack/" + name);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
 
+      FileSystem fileSystem = volume.getFileSystem(configuration);
+
+      PackMetaData metaData = PackMetaData.read(configuration, volume);
+
       String kafkaZkConnection = PackConfig.getKafkaZkConnection();
       PackKafkaClientFactory clientFactory = new PackKafkaClientFactory(kafkaZkConnection);
+      String newTopicId = PackUtils.getTopic(name, UUID.randomUUID()
+                                                       .toString());
       try (AdminClient admin = clientFactory.createAdmin()) {
-
-        admin.deleteTopics(ImmutableList.of(PackUtils.getTopic(name)));
-        Thread.sleep(3000);
-        admin.createTopics(ImmutableList.of(new NewTopic(name, 1, (short) 3)));
+        if (metaData != null) {
+          admin.deleteTopics(ImmutableList.of(metaData.getTopicId()));
+        }
+        admin.createTopics(ImmutableList.of(new NewTopic(newTopicId, 1, (short) 3)));
         Thread.sleep(3000);
       }
 
-      FileSystem fileSystem = volume.getFileSystem(configuration);
       fileSystem.delete(new Path("/tmp/testpack"), true);
       fileSystem.mkdirs(volume);
       PackMetaData.builder()
-                  .length(10_000_000_000L)
+                  .length(100_000_000_000L)
                   .blockSize(4096)
+                  .topicId(newTopicId)
                   .build()
                   .write(configuration, volume);
       return null;

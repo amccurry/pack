@@ -18,6 +18,7 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.iscsi.storage.BaseStorageTargetManager;
+import pack.iscsi.storage.utils.PackUtils;
 
 public class PackStorageTargetManager extends BaseStorageTargetManager {
 
@@ -51,6 +52,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         Path volumeDir = new Path(_rootPath, name);
         PackMetaData metaData = getMetaData(volumeDir);
         File cacheDir = new File(_cacheDir, name);
+        PackUtils.rmr(cacheDir);
         cacheDir.mkdirs();
         return new PackStorageModule(name, _serialId, metaData, _conf, volumeDir, _packKafkaClientFactory, _ugi,
             cacheDir);

@@ -3,6 +3,9 @@ package pack.iscsi.storage.utils;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -148,12 +151,21 @@ public class PackUtils {
     return System.getenv(name) != null;
   }
 
-  public static String getTopic(String name) {
-    return "pack." + name;
+  public static String getTopic(String name, String id) {
+    return "pack." + name + "." + id;
   }
 
   public static long getPosition(int blockId, int blockSize) {
     return (long) blockId * (long) blockSize;
+  }
+
+  public static String toMd5(byte[] value) {
+    try {
+      return new BigInteger(MessageDigest.getInstance("md5")
+                                         .digest(value)).toString();
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException(e);
+    }
   }
 
 }

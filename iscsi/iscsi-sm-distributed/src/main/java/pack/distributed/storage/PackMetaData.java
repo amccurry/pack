@@ -1,6 +1,5 @@
 package pack.distributed.storage;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -45,11 +44,14 @@ public class PackMetaData {
   @Builder.Default
   int blockSize = DEFAULT_BLOCK_SIZE;
 
+  @JsonProperty
+  String topicId;
+
   public static PackMetaData read(Configuration configuration, Path volume) throws IOException {
     Path path = getMeatDataPath(volume);
     FileSystem fileSystem = path.getFileSystem(configuration);
     if (!fileSystem.exists(path)) {
-      throw new FileNotFoundException(path.getName());
+      return null;
     }
     try (InputStream inputStream = fileSystem.open(path)) {
       return OBJECT_MAPPER.readValue(inputStream, PackMetaData.class);

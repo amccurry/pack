@@ -63,6 +63,7 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
     _cache = CacheBuilder.newBuilder()
                          .maximumWeight(blockSize * 32)
                          .weigher(weigher)
+                         .concurrencyLevel(1)
                          .build();
   }
 
@@ -85,6 +86,9 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
     if (_cache != null) {
       byte[] bs = _cache.getIfPresent(id);
       if (bs != null) {
+        if (LOGGER.isTraceEnabled()) {
+          LOGGER.trace("wal read blockId {} md5 {}", id, PackUtils.toMd5(bs));
+        }
         readRequest.handleResult(bs);
         return false;
       }
@@ -95,7 +99,9 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
       long pos = PackUtils.getPosition(blockId, _blockSize);
       int remaining = readRequest.getByteBuffer()
                                  .remaining();
-      LOGGER.info("read bo {} bid {} rlen {} pos {}", readRequest.getBlockOffset(), blockId, remaining, pos);
+      if (LOGGER.isTraceEnabled()) {
+        LOGGER.trace("read bo {} bid {} rlen {} pos {}", readRequest.getBlockOffset(), blockId, remaining, pos);
+      }
       while (src.remaining() > 0) {
         int read = _channel.read(src, pos);
         pos += read;
@@ -123,11 +129,16 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
   public void write(long layer, int blockId, ByteBuffer byteBuffer) throws IOException {
     add(blockId);
     if (_cache != null) {
-      _cache.put(blockId, toByteArray(byteBuffer));
+      byte[] value = toByteArray(byteBuffer);
+      if (LOGGER.isTraceEnabled()) {
+        LOGGER.trace("wal write blockId {} md5 {}", blockId, PackUtils.toMd5(value));
+      }
+      _cache.put(blockId, value);
     }
     long pos = PackUtils.getPosition(blockId, _blockSize);
-
-    LOGGER.info("write bo {} bid {} rlen {} pos {} layer {}", 0, blockId, byteBuffer.remaining(), pos, layer);
+    if (LOGGER.isTraceEnabled()) {
+      LOGGER.trace("write bo {} bid {} rlen {} pos {} layer {}", 0, blockId, byteBuffer.remaining(), pos, layer);
+    }
     while (byteBuffer.remaining() > 0) {
       int write = _channel.write(byteBuffer, pos);
       pos += write;

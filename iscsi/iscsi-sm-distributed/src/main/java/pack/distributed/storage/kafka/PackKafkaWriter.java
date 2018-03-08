@@ -5,9 +5,15 @@ import java.io.IOException;
 
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import pack.distributed.storage.trace.PackTracer;
+import pack.iscsi.storage.utils.PackUtils;
 
 public class PackKafkaWriter implements Closeable {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackKafkaWriter.class);
   private final Producer<Integer, byte[]> _producer;
   private final String _topic;
   private final Integer _partition;
@@ -18,14 +24,21 @@ public class PackKafkaWriter implements Closeable {
     _partition = partition;
   }
 
-  public void write(int blockId, byte[] bs, int off, int len) {
+  public void write(PackTracer tracer, int blockId, byte[] bs, int off, int len) {
     byte[] value = new byte[len];
     System.arraycopy(bs, off, value, 0, len);
-    _producer.send(new ProducerRecord<Integer, byte[]>(_topic, _partition, blockId, value));
+    try (PackTracer span = tracer.span(LOGGER, "producer send")) {
+      if (LOGGER.isTraceEnabled()) {
+        LOGGER.trace("write blockId {} md5 {}", blockId, PackUtils.toMd5(value));
+      }
+      _producer.send(new ProducerRecord<Integer, byte[]>(_topic, _partition, blockId, value));
+    }
   }
 
-  public void flush() {
-    _producer.flush();
+  public void flush(PackTracer tracer) {
+    try (PackTracer span = tracer.span(LOGGER, "producer flush")) {
+      _producer.flush();
+    }
   }
 
   @Override

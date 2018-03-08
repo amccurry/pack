@@ -20,6 +20,7 @@ import pack.distributed.storage.hdfs.ReadRequest;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.kafka.PackKafkaReader;
 import pack.distributed.storage.kafka.PackKafkaWriter;
+import pack.distributed.storage.trace.PackTracer;
 import pack.distributed.storage.wal.PackWalCacheManager;
 import pack.iscsi.storage.BaseStorageModule;
 import pack.iscsi.storage.utils.PackUtils;
@@ -39,7 +40,7 @@ public class PackStorageModule extends BaseStorageModule {
   public PackStorageModule(String name, String serialId, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize(), name);
-    _topic = PackUtils.getTopic(name);
+    _topic = metaData.getTopicId();
     _kafkaClientFactory = kafkaClientFactory;
     _hdfsReader = new PackHdfsReader(conf, volumeDir, ugi);
     _walCacheManager = new PackWalCacheManager(name, cacheDir, _hdfsReader, metaData, conf, volumeDir);
@@ -50,45 +51,61 @@ public class PackStorageModule extends BaseStorageModule {
 
   @Override
   public void read(byte[] bytes, long storageIndex) throws IOException {
-    _packKafkaReader.waitForWalSync();
-    int blockOffset = getBlockOffset(storageIndex);
-    int blockId = getBlockId(storageIndex);
-    int length = bytes.length;
-    if (length == 0) {
-      return;
-    }
-    LOGGER.info("read bo {} bid {} rlen {} pos {}", blockOffset, blockId, length, storageIndex);
-    List<ReadRequest> requests = createRequests(ByteBuffer.wrap(bytes), storageIndex);
-    if (_walCacheManager.readBlocks(requests)) {
-      _hdfsReader.readBlocks(requests);
+    try (PackTracer tracer = PackTracer.create(LOGGER, "read")) {
+      _packKafkaReader.waitForWalSync(tracer);
+      int blockOffset = getBlockOffset(storageIndex);
+      int blockId = getBlockId(storageIndex);
+      int length = bytes.length;
+      if (length == 0) {
+        return;
+      }
+      if (LOGGER.isTraceEnabled()) {
+        LOGGER.trace("read bo {} bid {} rlen {} pos {}", blockOffset, blockId, length, storageIndex);
+      }
+      List<ReadRequest> requests = createRequests(ByteBuffer.wrap(bytes), storageIndex);
+      boolean moreToRead;
+      try (PackTracer span = tracer.span(LOGGER, "wal cache read")) {
+        moreToRead = _walCacheManager.readBlocks(requests);
+      }
+      if (moreToRead) {
+        try (PackTracer span = tracer.span(LOGGER, "block read")) {
+          _hdfsReader.readBlocks(requests);
+        }
+      }
     }
   }
 
   @Override
   public void write(byte[] bytes, long storageIndex) throws IOException {
-    int len = bytes.length;
-    int off = 0;
-    long pos = storageIndex;
-    int blockSize = _blockSize;
-    PackKafkaWriter packKafkaWriter = getPackKafkaWriter();
+    try (PackTracer tracer = PackTracer.create(LOGGER, "write")) {
+      int len = bytes.length;
+      int off = 0;
+      long pos = storageIndex;
+      int blockSize = _blockSize;
+      PackKafkaWriter packKafkaWriter = getPackKafkaWriter();
 
-    while (len > 0) {
-      int blockOffset = getBlockOffset(pos);
-      int blockId = getBlockId(pos);
-      LOGGER.info("write bo {} bid {} rlen {} pos {}", blockOffset, blockId, len, pos);
-      if (blockOffset != 0) {
-        throw new IonException("block offset not 0");
+      while (len > 0) {
+        int blockOffset = getBlockOffset(pos);
+        int blockId = getBlockId(pos);
+        if (LOGGER.isTraceEnabled()) {
+          LOGGER.trace("write bo {} bid {} rlen {} pos {}", blockOffset, blockId, len, pos);
+        }
+        if (blockOffset != 0) {
+          throw new IonException("block offset not 0");
+        }
+        packKafkaWriter.write(tracer, getBlockId(pos), bytes, off, blockSize);
+        len -= blockSize;
+        off += blockSize;
+        pos += blockSize;
       }
-      packKafkaWriter.write(getBlockId(pos), bytes, off, blockSize);
-      len -= blockSize;
-      off += blockSize;
-      pos += blockSize;
     }
   }
 
   @Override
   public void flushWrites() throws IOException {
-    getPackKafkaWriter().flush();
+    try (PackTracer tracer = PackTracer.create(LOGGER, "flush")) {
+      getPackKafkaWriter().flush(tracer);
+    }
   }
 
   @Override

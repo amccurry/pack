@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 
 import pack.distributed.storage.hdfs.PackHdfsReader;
+import pack.distributed.storage.trace.PackTracer;
 import pack.distributed.storage.wal.PackWalCacheManager;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -93,7 +94,12 @@ public class PackKafkaReader implements Closeable {
       while (_running.get()) {
         ConsumerRecords<Integer, byte[]> records = consumer.poll(_kafkaPollTimeout);
         for (ConsumerRecord<Integer, byte[]> record : records) {
-          _walCacheManager.write(record.offset(), record.key(), ByteBuffer.wrap(record.value()));
+          Integer blockId = record.key();
+          byte[] value = record.value();
+          if (LOGGER.isTraceEnabled()) {
+            LOGGER.trace("wal consumer blockId {} md5 {}", blockId, PackUtils.toMd5(value));
+          }
+          _walCacheManager.write(record.offset(), blockId, ByteBuffer.wrap(value));
         }
         setEndOffset(consumer, partition, partitions);
       }
@@ -137,12 +143,14 @@ public class PackKafkaReader implements Closeable {
     };
   }
 
-  public void waitForWalSync() throws IOException {
-    while (shouldWaitForSync()) {
-      try {
-        Thread.sleep(3);
-      } catch (InterruptedException e) {
-        throw new IOException(e);
+  public void waitForWalSync(PackTracer tracer) throws IOException {
+    try (PackTracer span = tracer.span(LOGGER, "waitForWalSync")) {
+      while (shouldWaitForSync()) {
+        try {
+          Thread.sleep(3);
+        } catch (InterruptedException e) {
+          throw new IOException(e);
+        }
       }
     }
   }
@@ -151,7 +159,9 @@ public class PackKafkaReader implements Closeable {
     long endOffset = _endPointLookup.getEndpoint();
     long hdfsMaxLayer = _hdfsReader.getMaxLayer();
     long walMaxLayer = _walCacheManager.getMaxLayer();
-    LOGGER.info("shouldWaitForSync endOffset {} hdfs {} wal {}", endOffset, hdfsMaxLayer, walMaxLayer);
+    if (LOGGER.isTraceEnabled()) {
+      LOGGER.trace("shouldWaitForSync endOffset {} hdfs {} wal {}", endOffset, hdfsMaxLayer, walMaxLayer);
+    }
     if (endOffset == Long.MAX_VALUE) {
       return true;
       // } else if (hdfsMaxLayer == endOffset) {

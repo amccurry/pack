@@ -226,7 +226,7 @@ public final class TargetServer implements Callable<Void> {
               throw e;
             }
           });
-        } catch (DigestException | InternetSCSIException | SettingsException e) {
+        } catch (DigestException | InternetSCSIException | SettingsException | IOException e) {
           LOGGER.info("Throws Exception", e);
           continue;
         }
