@@ -9,8 +9,10 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
@@ -32,24 +34,26 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackWalCacheManager implements BlockReader {
 
+  private static final String BLOCK = "block";
+
   private final static Logger LOGGER = LoggerFactory.getLogger(PackWalCacheManager.class);
 
   private final File _cacheDir;
   private final PackHdfsReader _hdfsReader;
   private final AtomicReference<WalCache> _currentWalCache = new AtomicReference<>();
-  private final AtomicReference<List<WalCache>> _currentWalCacheReaderList = new AtomicReference<>();
+  private final AtomicReference<List<WalCache>> _currentWalCacheReaderList = new AtomicReference<>(ImmutableList.of());
   private final Cache<Long, WalCache> _walCache;
   private final long _maxWalTime = TimeUnit.MINUTES.toMillis(1);
   private final PackMetaData _metaData;
   private final Object _currentWalCacheLock = new Object();
+  private final Configuration _configuration;
+  private final Path _volumeDir;
+  private final AtomicBoolean _forceRoll = new AtomicBoolean(false);
 
-  private FileSystem _fileSystem;
-
-  private String _root;
-
-  private int _blockSize;
-
-  public PackWalCacheManager(String volumeName, File cacheDir, PackHdfsReader hdfsReader, PackMetaData metaData) {
+  public PackWalCacheManager(String volumeName, File cacheDir, PackHdfsReader hdfsReader, PackMetaData metaData,
+      Configuration configuration, Path volumeDir) {
+    _volumeDir = volumeDir;
+    _configuration = configuration;
     _metaData = metaData;
     _cacheDir = cacheDir;
     _hdfsReader = hdfsReader;
@@ -57,6 +61,14 @@ public class PackWalCacheManager implements BlockReader {
     _walCache = CacheBuilder.newBuilder()
                             .removalListener(readerListener)
                             .build();
+  }
+
+  public long getMaxLayer() {
+    WalCache walCache = _currentWalCache.get();
+    if (walCache == null) {
+      return -1L;
+    }
+    return walCache.getMaxLayer();
   }
 
   @Override
@@ -72,6 +84,12 @@ public class PackWalCacheManager implements BlockReader {
     }
     return BlockReader.mergeInOrder(list)
                       .readBlocks(requests);
+  }
+
+  @Override
+  public List<BlockReader> getLeaves() {
+    List<WalCache> list = _currentWalCacheReaderList.get();
+    return new ArrayList<>(list);
   }
 
   public void write(long layer, int blockId, ByteBuffer byteBuffer) throws IOException {
@@ -97,26 +115,28 @@ public class PackWalCacheManager implements BlockReader {
     // write oldest first
     Collections.reverse(list);
 
+    Path blockDir = new Path(_volumeDir, BLOCK);
+    FileSystem fileSystem = blockDir.getFileSystem(_configuration);
     for (WalCache cache : list) {
-      Path path = new Path(_root, UUID.randomUUID()
-                                      .toString()
-          + ".tmp");
-      Path commit = new Path(_root, cache.getMaxLayer() + ".block");
+      String uuid = UUID.randomUUID()
+                        .toString();
+      Path path = new Path(blockDir, uuid + ".tmp");
+      Path commit = new Path(blockDir, cache.getMaxLayer() + ".block");
       CommitFile commitFile = () -> {
-        if (!_fileSystem.rename(path, commit)) {
+        if (!fileSystem.rename(path, commit)) {
           throw new IOException("Could not commit file " + commit);
         }
         LOGGER.info("Block file added {}", commit);
       };
-      try (WriterOrdered writer = BlockFile.createOrdered(_fileSystem, path, _blockSize, commitFile)) {
+      try (WriterOrdered writer = BlockFile.createOrdered(fileSystem, path, _metaData.getBlockSize(), commitFile)) {
         cache.copy(writer);
       }
     }
-    _hdfsReader.refresh();
     removeOldWalCache();
   }
 
-  private void removeOldWalCache() {
+  public void removeOldWalCache() throws IOException {
+    _hdfsReader.refresh();
     // invalidate old entries here
     long maxLayer = _hdfsReader.getMaxLayer();
 
@@ -124,7 +144,7 @@ public class PackWalCacheManager implements BlockReader {
     for (Entry<Long, WalCache> e : _walCache.asMap()
                                             .entrySet()) {
       WalCache cache = e.getValue();
-      if (cache.getMaxLayer() < maxLayer) {
+      if (cache.getMaxLayer() <= maxLayer) {
         walIdsToInvalidate.add(e.getKey());
         updateFromReadList(cache, true);
       }
@@ -164,10 +184,20 @@ public class PackWalCacheManager implements BlockReader {
   }
 
   private boolean shouldRollWal(WalCache walCache) {
-    if (walCache.getCreationTime() + _maxWalTime < System.currentTimeMillis()) {
+    if (walCache == null) {
       return true;
+    } else if (_forceRoll.get()) {
+      _forceRoll.set(false);
+      return true;
+    } else if (walCache.getCreationTime() + _maxWalTime < System.currentTimeMillis()) {
+      return true;
+    } else {
+      return false;
     }
-    return false;
+  }
+
+  public void forceRollOnNextWrite() {
+    _forceRoll.set(true);
   }
 
 }

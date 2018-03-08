@@ -15,6 +15,10 @@ public class ReadRequest implements Comparable<ReadRequest> {
     _dest = dest;
   }
 
+  public int getBlockOffset() {
+    return _blockOffset;
+  }
+
   public boolean isEmpty() {
     return _empty;
   }

@@ -26,12 +26,14 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final Configuration _conf;
   private final PackKafkaClientFactory _packKafkaClientFactory;
   private final File _cacheDir;
+  private final String _serialId;
 
   public PackStorageTargetManager() throws IOException {
     _cacheDir = PackConfig.getWalCachePath();
     _ugi = PackConfig.getUgi();
     _conf = PackConfig.getConfiguration();
     _rootPath = PackConfig.getHdfsTarget();
+    _serialId = PackConfig.getPackSerialId();
 
     String kafkaZkConnection = PackConfig.getKafkaZkConnection();
     _packKafkaClientFactory = new PackKafkaClientFactory(kafkaZkConnection);
@@ -50,7 +52,8 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         PackMetaData metaData = getMetaData(volumeDir);
         File cacheDir = new File(_cacheDir, name);
         cacheDir.mkdirs();
-        return new PackStorageModule(name, metaData, _conf, volumeDir, _packKafkaClientFactory, _ugi, cacheDir);
+        return new PackStorageModule(name, _serialId, metaData, _conf, volumeDir, _packKafkaClientFactory, _ugi,
+            cacheDir);
       });
     } catch (InterruptedException e) {
       throw new IOException(e);

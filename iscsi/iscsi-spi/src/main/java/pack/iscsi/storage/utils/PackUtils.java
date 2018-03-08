@@ -148,4 +148,12 @@ public class PackUtils {
     return System.getenv(name) != null;
   }
 
+  public static String getTopic(String name) {
+    return "pack." + name;
+  }
+
+  public static long getPosition(int blockId, int blockSize) {
+    return (long) blockId * (long) blockSize;
+  }
+
 }

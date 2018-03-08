@@ -13,6 +13,7 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
+  private static final String PACK_ISCSI_SERIAL_ID = "PACK_ISCSI_SERIAL_ID";
   private static final String WAL_CACHE_DIR = "WAL_CACHE_DIR";
   private static final String KAFKA_ZK_CONNECTION = "KAFKA_ZK_CONNECTION";
   private static final String HDFS_TARGET_PATH = "HDFS_TARGET_PATH";
@@ -28,6 +29,7 @@ public class PackConfig {
   }
 
   public static UserGroupInformation getUgi() throws IOException {
+    UserGroupInformation.setConfiguration(getConfiguration());
     if (PackUtils.isEnvSet(HDFS_UGI_CURRENT_USER)) {
       return UserGroupInformation.getCurrentUser();
     }
@@ -64,7 +66,7 @@ public class PackConfig {
     return new File(PackUtils.getEnvFailIfMissing(WAL_CACHE_DIR));
   }
 
-  public static String getTopic(String name) {
-    return "pack." + name;
+  public static String getPackSerialId() {
+    return PackUtils.getEnvFailIfMissing(PACK_ISCSI_SERIAL_ID);
   }
 }

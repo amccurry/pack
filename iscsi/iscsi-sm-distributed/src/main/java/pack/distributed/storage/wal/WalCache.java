@@ -6,11 +6,16 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.io.BytesWritable;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.Weigher;
 
 import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.hdfs.BlockFile.Writer;
@@ -32,17 +37,19 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
   private final Object _dataIndexLock = new Object();
   private final long _id;
   private final long _created = System.currentTimeMillis();
+  private final AtomicLong _layer = new AtomicLong(-1L);
+  private final Cache<Integer, byte[]> _cache;
 
-  private long _layer;
-
-  public WalCache(File dirFile, long id, long length, int blockSize) throws IOException {
-    this(dirFile, id, length, blockSize, true);
+  public WalCache(File dirFile, long startingLayer, long length, int blockSize) throws IOException {
+    this(dirFile, startingLayer, length, blockSize, true);
   }
 
-  public WalCache(File dirFile, long id, long length, int blockSize, boolean deleteFileOnClose) throws IOException {
+  public WalCache(File dirFile, long startingLayer, long length, int blockSize, boolean deleteFileOnClose)
+      throws IOException {
     _deleteFileOnClose = deleteFileOnClose;
     _blockSize = blockSize;
-    _id = id;
+    _id = startingLayer;
+    _layer.set(startingLayer);
     _file = new File(dirFile, Long.toString(_id));
     if (_file.exists()) {
       _file.delete();
@@ -52,10 +59,15 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
     _rnd = new RandomAccessFile(_file, RW);
     _rnd.setLength(length);
     _channel = _rnd.getChannel();
+    Weigher<Integer, byte[]> weigher = (key, value) -> value.length;
+    _cache = CacheBuilder.newBuilder()
+                         .maximumWeight(blockSize * 32)
+                         .weigher(weigher)
+                         .build();
   }
 
   public long getMaxLayer() {
-    return _layer;
+    return _layer.get();
   }
 
   public boolean readBlocks(List<ReadRequest> requests) throws IOException {
@@ -70,10 +82,20 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
 
   public boolean readBlock(ReadRequest readRequest) throws IOException {
     int id = readRequest.getBlockId();
+    if (_cache != null) {
+      byte[] bs = _cache.getIfPresent(id);
+      if (bs != null) {
+        readRequest.handleResult(bs);
+        return false;
+      }
+    }
     if (contains(id)) {
       ByteBuffer src = ByteBuffer.allocate(_blockSize);
-      long blockId = readRequest.getBlockId();
-      long pos = blockId * _blockSize;
+      int blockId = readRequest.getBlockId();
+      long pos = PackUtils.getPosition(blockId, _blockSize);
+      int remaining = readRequest.getByteBuffer()
+                                 .remaining();
+      LOGGER.info("read bo {} bid {} rlen {} pos {}", readRequest.getBlockOffset(), blockId, remaining, pos);
       while (src.remaining() > 0) {
         int read = _channel.read(src, pos);
         pos += read;
@@ -99,18 +121,30 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
   }
 
   public void write(long layer, int blockId, ByteBuffer byteBuffer) throws IOException {
-    setMaxLayer(layer);
     add(blockId);
-    long pos = blockId * _blockSize;
+    if (_cache != null) {
+      _cache.put(blockId, toByteArray(byteBuffer));
+    }
+    long pos = PackUtils.getPosition(blockId, _blockSize);
+
+    LOGGER.info("write bo {} bid {} rlen {} pos {} layer {}", 0, blockId, byteBuffer.remaining(), pos, layer);
     while (byteBuffer.remaining() > 0) {
       int write = _channel.write(byteBuffer, pos);
       pos += write;
     }
+    setMaxLayer(layer);
+  }
+
+  private byte[] toByteArray(ByteBuffer byteBuffer) {
+    ByteBuffer duplicate = byteBuffer.duplicate();
+    byte[] bs = new byte[duplicate.remaining()];
+    duplicate.get(bs);
+    return bs;
   }
 
   private void setMaxLayer(long layer) {
-    if (_layer < layer) {
-      _layer = layer;
+    if (_layer.get() < layer) {
+      _layer.set(layer);
     }
   }
 
@@ -144,7 +178,7 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
   public void copy(Writer writer) throws IOException {
     byte[] buf = new byte[_blockSize];
     for (Integer id : _dataIndex) {
-      long pos = ((long) _blockSize) * ((long) (int) id);
+      long pos = PackUtils.getPosition(id, _blockSize);
       _rnd.seek(pos);
       _rnd.readFully(buf, 0, _blockSize);
       writer.append(id, new BytesWritable(buf));

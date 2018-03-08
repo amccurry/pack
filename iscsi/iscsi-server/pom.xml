@@ -16,6 +16,10 @@
 			<artifactId>iscsi-spi</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>iscsi-sm-distributed</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
 			<version>4.12</version>
