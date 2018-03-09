@@ -46,7 +46,7 @@ public class PackConfig {
   }
 
   public static Configuration getConfiguration() throws IOException {
-    String configPath = PackUtils.getEnv(HDFS_CONF_PATH);
+    String configPath = PackUtils.getEnvFailIfMissing(HDFS_CONF_PATH);
     Configuration configuration = new Configuration();
     File file = new File(configPath);
     if (file.isDirectory()) {

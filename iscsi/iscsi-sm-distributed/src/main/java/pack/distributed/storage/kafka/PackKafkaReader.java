@@ -163,12 +163,16 @@ public class PackKafkaReader implements Closeable {
       LOGGER.trace("shouldWaitForSync endOffset {} hdfs {} wal {}", endOffset, hdfsMaxLayer, walMaxLayer);
     }
     if (endOffset == Long.MAX_VALUE) {
+      // EndOffset is not know always wait
       return true;
-      // } else if (hdfsMaxLayer == endOffset) {
-      // return false;
     } else if (walMaxLayer != -1L && walMaxLayer + 1 >= endOffset) {
+      // else if walMaxLayer has recved all data upto endOffset don't wait
+      return false;
+    } else if (hdfsMaxLayer == endOffset) {
+      // else if hdfs is update to date don't wait
       return false;
     } else {
+      // otherwise we have to wait for this node to catch up
       return true;
     }
   }

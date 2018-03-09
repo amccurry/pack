@@ -25,10 +25,7 @@ import pack.iscsi.storage.utils.PackUtils;
 public class LocalTest {
 
   public static void main(String[] args) throws Exception {
-
     Random random = new Random(1);
-    boolean testWrites = false;
-
     String name = "test";
 
     Configuration configuration = PackConfig.getConfiguration();
@@ -107,27 +104,29 @@ public class LocalTest {
     }
   }
 
-  private static void testReads(Random random, PackStorageModule storageModule, int blockSize) throws IOException {
-    byte[] buf = new byte[blockSize];
-    byte[] readBuf = new byte[blockSize];
-    for (int i = 0; i < 1000; i++) {
-      random.nextBytes(buf);
-      long storageIndex = i * blockSize;
-      storageModule.read(readBuf, storageIndex);
-      if (!Arrays.equals(buf, readBuf)) {
-        throw new RuntimeException("block " + i + " not equal");
-      }
-    }
-  }
-
-  private static void testWrites(Random random, PackStorageModule storageModule, int blockSize) throws IOException {
-    byte[] buf = new byte[blockSize];
-    for (int i = 0; i < 1000; i++) {
-      random.nextBytes(buf);
-      long storageIndex = i * blockSize;
-      storageModule.write(buf, storageIndex);
-    }
-    storageModule.flushWrites();
-  }
+  // private static void testReads(Random random, PackStorageModule
+  // storageModule, int blockSize) throws IOException {
+  // byte[] buf = new byte[blockSize];
+  // byte[] readBuf = new byte[blockSize];
+  // for (int i = 0; i < 1000; i++) {
+  // random.nextBytes(buf);
+  // long storageIndex = i * blockSize;
+  // storageModule.read(readBuf, storageIndex);
+  // if (!Arrays.equals(buf, readBuf)) {
+  // throw new RuntimeException("block " + i + " not equal");
+  // }
+  // }
+  // }
+  //
+  // private static void testWrites(Random random, PackStorageModule
+  // storageModule, int blockSize) throws IOException {
+  // byte[] buf = new byte[blockSize];
+  // for (int i = 0; i < 1000; i++) {
+  // random.nextBytes(buf);
+  // long storageIndex = i * blockSize;
+  // storageModule.write(buf, storageIndex);
+  // }
+  // storageModule.flushWrites();
+  // }
 
 }

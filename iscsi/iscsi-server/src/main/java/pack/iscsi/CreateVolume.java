@@ -1,4 +1,4 @@
-package pack.distributed.storage;
+package pack.iscsi;
 
 import java.security.PrivilegedExceptionAction;
 import java.util.UUID;
@@ -8,15 +8,19 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 
+import pack.distributed.storage.PackConfig;
+import pack.distributed.storage.PackMetaData;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class CreateVolume {
 
   public static void main(String[] args) throws Exception {
-    String name = "test";
+    String name = args[0];
+    long length = Long.parseLong(args[1]);
     Configuration configuration = PackConfig.getConfiguration();
     UserGroupInformation ugi = PackConfig.getUgi();
-    Path volume = new Path("/tmp/testpack/" + name);
+    Path hdfsTarget = PackConfig.getHdfsTarget();
+    Path volume = new Path(hdfsTarget, name);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
 
       FileSystem fileSystem = volume.getFileSystem(configuration);
@@ -25,7 +29,7 @@ public class CreateVolume {
       fileSystem.delete(volume, true);
       fileSystem.mkdirs(volume);
       PackMetaData.builder()
-                  .length(100_000_000_000L)
+                  .length(length)
                   .blockSize(4096)
                   .topicId(newTopicId)
                   .build()
