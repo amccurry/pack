@@ -5,11 +5,14 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.io.BytesWritable;
-import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +31,8 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(WalCache.class);
 
-  private final RoaringBitmap _dataIndex = new RoaringBitmap();
+  // private final RoaringBitmap _dataIndex = new RoaringBitmap();
+  private final Set<Integer> _dataIndex = Collections.newSetFromMap(new ConcurrentHashMap<>());
   private final File _file;
   private final RandomAccessFile _rnd;
   private final int _blockSize;
@@ -115,15 +119,15 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
   }
 
   private boolean contains(int id) {
-    synchronized (_dataIndexLock) {
-      return _dataIndex.contains(id);
-    }
+    // synchronized (_dataIndexLock) {
+    return _dataIndex.contains(id);
+    // }
   }
 
   private void add(int id) {
-    synchronized (_dataIndexLock) {
-      _dataIndex.add(id);
-    }
+    // synchronized (_dataIndexLock) {
+    _dataIndex.add(id);
+    // }
   }
 
   public void write(long layer, int blockId, ByteBuffer byteBuffer) throws IOException {
@@ -188,7 +192,9 @@ public class WalCache implements Comparable<WalCache>, BlockReader {
 
   public void copy(Writer writer) throws IOException {
     byte[] buf = new byte[_blockSize];
-    for (Integer id : _dataIndex) {
+    List<Integer> ids = new ArrayList<>(_dataIndex);
+    Collections.sort(ids);
+    for (Integer id : ids) {
       long pos = PackUtils.getPosition(id, _blockSize);
       _rnd.seek(pos);
       _rnd.readFully(buf, 0, _blockSize);

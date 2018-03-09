@@ -25,6 +25,7 @@ import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.HdfsMiniClusterUtil;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.hdfs.ReadRequest;
+import pack.distributed.storage.monitor.PackWriteBlockMonitor;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackWalCacheManagerTest {
@@ -72,7 +73,7 @@ public class PackWalCacheManagerTest {
                                           .getConf();
     try (PackHdfsReader hdfsReader = new PackHdfsReader(configuration, volumeDir,
         UserGroupInformation.getCurrentUser())) {
-      try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, _dirFile, hdfsReader, metaData,
+      try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, _dirFile, PackWriteBlockMonitor.NO_OP, hdfsReader, metaData,
           configuration, volumeDir)) {
         File file = new File("./target/tmp/PackWalCacheManagerTest/test");
         byte[] buffer = new byte[blockSize];

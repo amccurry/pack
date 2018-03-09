@@ -27,6 +27,7 @@ import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.BlockFile;
 import pack.distributed.storage.hdfs.BlockFile.WriterOrdered;
+import pack.distributed.storage.monitor.PackWriteBlockMonitor;
 import pack.distributed.storage.hdfs.CommitFile;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.hdfs.ReadRequest;
@@ -49,9 +50,11 @@ public class PackWalCacheManager implements BlockReader {
   private final Configuration _configuration;
   private final Path _volumeDir;
   private final AtomicBoolean _forceRoll = new AtomicBoolean(false);
+  private final PackWriteBlockMonitor _writeBlockMonitor;
 
-  public PackWalCacheManager(String volumeName, File cacheDir, PackHdfsReader hdfsReader, PackMetaData metaData,
-      Configuration configuration, Path volumeDir) {
+  public PackWalCacheManager(String volumeName, File cacheDir, PackWriteBlockMonitor writeBlockMonitor,
+      PackHdfsReader hdfsReader, PackMetaData metaData, Configuration configuration, Path volumeDir) {
+    _writeBlockMonitor = writeBlockMonitor;
     _volumeDir = volumeDir;
     _configuration = configuration;
     _metaData = metaData;
@@ -95,6 +98,7 @@ public class PackWalCacheManager implements BlockReader {
   public void write(long layer, int blockId, ByteBuffer byteBuffer) throws IOException {
     WalCache walCache = getCurrentWalCache(layer);
     walCache.write(layer, blockId, byteBuffer);
+    _writeBlockMonitor.resetDirtyBlock(blockId);
   }
 
   public void writeWalCacheToHdfs() throws IOException {

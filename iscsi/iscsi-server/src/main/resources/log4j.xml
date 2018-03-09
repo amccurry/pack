@@ -9,7 +9,7 @@
 		</layout>
 	</appender>
 	<logger name="pack.distributed">
-		<level value="error" />
+		<level value="info" />
 	</logger>
 	<root>
 		<priority value="info" />

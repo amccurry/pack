@@ -4,7 +4,10 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -17,6 +20,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
+import pack.distributed.storage.monitor.PackWriteBlockMonitor;
 import pack.iscsi.storage.BaseStorageTargetManager;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -54,12 +58,39 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         File cacheDir = new File(_cacheDir, name);
         PackUtils.rmr(cacheDir);
         cacheDir.mkdirs();
-        return new PackStorageModule(name, _serialId, metaData, _conf, volumeDir, _packKafkaClientFactory, _ugi,
-            cacheDir);
+        PackWriteBlockMonitor monitor = newPackWriteBlockMonitor();
+        return trace(new PackStorageModule(name, _serialId, metaData, _conf, volumeDir, _packKafkaClientFactory, _ugi,
+            cacheDir, monitor));
       });
     } catch (InterruptedException e) {
       throw new IOException(e);
     }
+  }
+
+  private IStorageModule trace(PackStorageModule packStorageModule) {
+    return new TraceStorageModule(packStorageModule);
+  }
+
+  private PackWriteBlockMonitor newPackWriteBlockMonitor() {
+    Set<Integer> set = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    return new PackWriteBlockMonitor() {
+
+      @Override
+      public void resetDirtyBlock(int blockId) {
+        set.remove(blockId);
+      }
+
+      @Override
+      public void addDirtyBlock(int blockId) {
+        set.add(blockId);
+      }
+
+      @Override
+      public boolean isBlockDirty(int blockId) {
+        return set.contains(blockId);
+      }
+
+    };
   }
 
   private PackMetaData getMetaData(Path volumeDir) throws IOException {

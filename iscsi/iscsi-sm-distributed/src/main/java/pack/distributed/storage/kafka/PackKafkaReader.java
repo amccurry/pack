@@ -20,7 +20,6 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 
 import pack.distributed.storage.hdfs.PackHdfsReader;
-import pack.distributed.storage.trace.PackTracer;
 import pack.distributed.storage.wal.PackWalCacheManager;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -141,39 +140,5 @@ public class PackKafkaReader implements Closeable {
         }
       }
     };
-  }
-
-  public void waitForWalSync(PackTracer tracer) throws IOException {
-    try (PackTracer span = tracer.span(LOGGER, "waitForWalSync")) {
-      while (shouldWaitForSync()) {
-        try {
-          Thread.sleep(3);
-        } catch (InterruptedException e) {
-          throw new IOException(e);
-        }
-      }
-    }
-  }
-
-  private boolean shouldWaitForSync() throws IOException {
-    long endOffset = _endPointLookup.getEndpoint();
-    long hdfsMaxLayer = _hdfsReader.getMaxLayer();
-    long walMaxLayer = _walCacheManager.getMaxLayer();
-    if (LOGGER.isTraceEnabled()) {
-      LOGGER.trace("shouldWaitForSync endOffset {} hdfs {} wal {}", endOffset, hdfsMaxLayer, walMaxLayer);
-    }
-    if (endOffset == Long.MAX_VALUE) {
-      // EndOffset is not know always wait
-      return true;
-    } else if (walMaxLayer != -1L && walMaxLayer + 1 >= endOffset) {
-      // else if walMaxLayer has recved all data upto endOffset don't wait
-      return false;
-    } else if (hdfsMaxLayer == endOffset) {
-      // else if hdfs is update to date don't wait
-      return false;
-    } else {
-      // otherwise we have to wait for this node to catch up
-      return true;
-    }
   }
 }
