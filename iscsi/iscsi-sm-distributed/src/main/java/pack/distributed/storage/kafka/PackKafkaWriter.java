@@ -2,12 +2,15 @@ package pack.distributed.storage.kafka;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Arrays;
 
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.Header;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.distributed.storage.kafka.util.HeaderUtil;
 import pack.distributed.storage.trace.PackTracer;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -24,15 +27,19 @@ public class PackKafkaWriter implements Closeable {
     _partition = partition;
   }
 
-  public void write(PackTracer tracer, int blockId, byte[] bs, int off, int len) {
+  public void write(PackTracer tracer, long transId, int blockId, byte[] bs, int off, int len) {
     byte[] value = new byte[len];
     System.arraycopy(bs, off, value, 0, len);
     try (PackTracer span = tracer.span(LOGGER, "producer send")) {
       if (LOGGER.isTraceEnabled()) {
         LOGGER.trace("write blockId {} md5 {}", blockId, PackUtils.toMd5(value));
       }
-      _producer.send(new ProducerRecord<Integer, byte[]>(_topic, _partition, blockId, value));
+      _producer.send(new ProducerRecord<Integer, byte[]>(_topic, _partition, blockId, value, getHeaders(transId)));
     }
+  }
+
+  private Iterable<Header> getHeaders(long transId) {
+    return Arrays.asList(HeaderUtil.toTransHeader(transId));
   }
 
   public void flush(PackTracer tracer) {

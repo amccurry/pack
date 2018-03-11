@@ -15,7 +15,7 @@ import org.junit.Test;
 import pack.distributed.storage.hdfs.ReadRequest;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class WalCacheTest {
+public class PackWalCacheTest {
 
   private File _dirFile;
 
@@ -35,13 +35,13 @@ public class WalCacheTest {
     long length = (long) maxBlocks * (long) blockSize;
     int numberOfWrites = random.nextInt(1000);
 
-    try (WalCache cache = new WalCache(_dirFile, id, length, blockSize)) {
+    try (PackWalCache cache = new PackWalCache(_dirFile, id, length, blockSize)) {
       long layer = random.nextInt(Integer.MAX_VALUE);
       for (int i = 0; i < numberOfWrites; i++) {
         int blockId = random.nextInt(maxBlocks);
         byte[] buf = new byte[blockSize];
         random.nextBytes(buf);
-        cache.write(layer, blockId, ByteBuffer.wrap(buf));
+        cache.write(layer, blockId, buf);
 
         ByteBuffer dest = ByteBuffer.allocate(blockSize);
         cache.readBlocks(Arrays.asList(new ReadRequest(blockId, 0, dest)));

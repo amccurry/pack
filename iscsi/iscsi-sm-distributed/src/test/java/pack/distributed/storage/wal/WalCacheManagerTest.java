@@ -25,10 +25,10 @@ import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.HdfsMiniClusterUtil;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.hdfs.ReadRequest;
-import pack.distributed.storage.monitor.PackWriteBlockMonitor;
+import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class PackWalCacheManagerTest {
+public class WalCacheManagerTest {
 
   private static final File TMPDIR = new File(
       System.getProperty("hdfs.tmp.dir", "./target/tmp/PackWalCacheManagerTest/hdfs"));
@@ -73,8 +73,9 @@ public class PackWalCacheManagerTest {
                                           .getConf();
     try (PackHdfsReader hdfsReader = new PackHdfsReader(configuration, volumeDir,
         UserGroupInformation.getCurrentUser())) {
-      try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, _dirFile, PackWriteBlockMonitor.NO_OP, hdfsReader, metaData,
-          configuration, volumeDir)) {
+      WalCacheFactory cacheFactory = new PackWalCacheFactory(metaData, _dirFile);
+      try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, WriteBlockMonitor.NO_OP, cacheFactory,
+          hdfsReader, metaData, configuration, volumeDir)) {
         File file = new File("./target/tmp/PackWalCacheManagerTest/test");
         byte[] buffer = new byte[blockSize];
         long layer = 0;
@@ -90,7 +91,7 @@ public class PackWalCacheManagerTest {
             long pos = (long) blockId * (long) blockSize;
             rand.seek(pos);
             rand.write(buffer, 0, blockSize);
-            manager.write(layer, blockId, ByteBuffer.wrap(buffer));
+            manager.write(-1L, layer, blockId, buffer);
             layer++;
           }
           for (Integer blockId : roaringBitmap) {
@@ -112,7 +113,7 @@ public class PackWalCacheManagerTest {
 
           List<BlockReader> leaves = manager.getLeaves();
           for (BlockReader blockReader : leaves) {
-            WalCache cache = (WalCache) blockReader;
+            PackWalCache cache = (PackWalCache) blockReader;
             long cachemaxLayer = cache.getMaxLayer();
             assertTrue(maxLayer + "<" + cachemaxLayer, maxLayer < cachemaxLayer);
           }

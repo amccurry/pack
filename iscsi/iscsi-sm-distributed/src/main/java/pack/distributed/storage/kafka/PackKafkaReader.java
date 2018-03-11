@@ -2,7 +2,6 @@ package pack.distributed.storage.kafka;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -20,7 +19,8 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 
 import pack.distributed.storage.hdfs.PackHdfsReader;
-import pack.distributed.storage.wal.PackWalCacheManager;
+import pack.distributed.storage.kafka.util.HeaderUtil;
+import pack.distributed.storage.wal.WalCacheManager;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackKafkaReader implements Closeable {
@@ -28,7 +28,7 @@ public class PackKafkaReader implements Closeable {
   private static final Logger LOGGER = LoggerFactory.getLogger(PackKafkaReader.class);
 
   private final PackKafkaClientFactory _kafkaClientFactory;
-  private final PackWalCacheManager _walCacheManager;
+  private final WalCacheManager _walCacheManager;
   private final PackHdfsReader _hdfsReader;
   private final String _name;
   private final Thread _kafkaReader;
@@ -43,7 +43,7 @@ public class PackKafkaReader implements Closeable {
   private final long _kafkaPollTimeout;
 
   public PackKafkaReader(String name, String serialId, PackKafkaClientFactory kafkaClientFactory,
-      PackWalCacheManager walCacheManager, PackHdfsReader hdfsReader, String topic, Integer partition) {
+      WalCacheManager walCacheManager, PackHdfsReader hdfsReader, String topic, Integer partition) {
     _name = name;
     _serialId = serialId;
     _topic = topic;
@@ -98,7 +98,8 @@ public class PackKafkaReader implements Closeable {
           if (LOGGER.isTraceEnabled()) {
             LOGGER.trace("wal consumer blockId {} md5 {}", blockId, PackUtils.toMd5(value));
           }
-          _walCacheManager.write(record.offset(), blockId, ByteBuffer.wrap(value));
+          long transId = HeaderUtil.getTransId(record.headers());
+          _walCacheManager.write(transId, record.offset(), blockId, value);
         }
         setEndOffset(consumer, partition, partitions);
       }

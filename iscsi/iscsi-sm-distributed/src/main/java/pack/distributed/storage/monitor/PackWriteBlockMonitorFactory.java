@@ -2,8 +2,8 @@ package pack.distributed.storage.monitor;
 
 public class PackWriteBlockMonitorFactory {
 
-  public PackWriteBlockMonitor create(String name) {
-    return null;
+  public WriteBlockMonitor create(String name) {
+    return new PackWriteBlockMonitor();
   }
 
 }

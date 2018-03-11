@@ -1,6 +1,9 @@
 package org.jscsi.target;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.channels.ServerSocketChannel;
@@ -35,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
 
 import pack.iscsi.storage.StorageTargetManager;
+import pack.iscsi.storage.utils.PackUtils;
 
 /**
  * The central class of the jSCSI Target, which keeps track of all active
@@ -95,11 +99,19 @@ public final class TargetServer implements Callable<Void> {
 
   private UnitSerialNumberVpdPage unitSerialNumber = new UnitSerialNumberVpdPage(UUID.randomUUID());
 
-  public TargetServer(InetAddress targetAddress, int targetPort, StorageTargetManager iscsiTargetManager) throws IOException {
+  private InetAddress bindAddress;
+
+  private int bindPort;
+
+  public TargetServer(InetAddress targetAddress, int targetPort, StorageTargetManager iscsiTargetManager,
+      InetAddress bindAddress, int bindPort) throws IOException {
+    this.bindAddress = bindAddress;
+    this.bindPort = bindPort;
     this.targetAddress = targetAddress;
     this.targetPort = targetPort;
     try {
-      config = Configuration.create(targetAddress.getHostAddress());
+      config = Configuration.create(extractFile("/jscsi-target.xsd"), extractFile("/jscsi-target.xml"),
+          targetAddress.getHostAddress());
     } catch (SAXException | ParserConfigurationException | IOException e) {
       throw new IOException(e);
     }
@@ -111,6 +123,18 @@ public final class TargetServer implements Callable<Void> {
     LOGGER.debug("   addr:           " + targetAddress);
     LOGGER.debug("   port:           " + targetPort);
     this.deviceIdentificationVpdPage = new DeviceIdentificationVpdPage(this);
+  }
+
+  private File extractFile(String resource) throws IOException {
+    File file = new File("/tmp/.jscsi" + resource);
+    file.getParentFile()
+        .mkdirs();
+    try (InputStream input = getClass().getResourceAsStream(resource)) {
+      try (FileOutputStream output = new FileOutputStream(file)) {
+        PackUtils.copy(input, output);
+        return file;
+      }
+    }
   }
 
   static class TargetThreadFactory implements ThreadFactory {
@@ -184,7 +208,7 @@ public final class TargetServer implements Callable<Void> {
 
       // Making sure the socket is bound to the address used in the config.
       serverSocketChannel.socket()
-                         .bind(new InetSocketAddress(targetAddress, targetPort));
+                         .bind(new InetSocketAddress(bindAddress, bindPort));
 
       while (running) {
         // Accept the connection request.

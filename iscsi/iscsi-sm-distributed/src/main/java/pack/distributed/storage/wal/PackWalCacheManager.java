@@ -1,8 +1,7 @@
 package pack.distributed.storage.wal;
 
-import java.io.File;
+import java.io.Closeable;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,19 +26,19 @@ import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.BlockFile;
 import pack.distributed.storage.hdfs.BlockFile.WriterOrdered;
-import pack.distributed.storage.monitor.PackWriteBlockMonitor;
 import pack.distributed.storage.hdfs.CommitFile;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.hdfs.ReadRequest;
+import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.trace.TraceWalCache;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class PackWalCacheManager implements BlockReader {
+public class PackWalCacheManager implements Closeable, WalCacheManager {
 
   private static final String BLOCK = "block";
 
   private final static Logger LOGGER = LoggerFactory.getLogger(PackWalCacheManager.class);
 
-  private final File _cacheDir;
   private final PackHdfsReader _hdfsReader;
   private final AtomicReference<WalCache> _currentWalCache = new AtomicReference<>();
   private final AtomicReference<List<WalCache>> _currentWalCacheReaderList = new AtomicReference<>(ImmutableList.of());
@@ -50,15 +49,16 @@ public class PackWalCacheManager implements BlockReader {
   private final Configuration _configuration;
   private final Path _volumeDir;
   private final AtomicBoolean _forceRoll = new AtomicBoolean(false);
-  private final PackWriteBlockMonitor _writeBlockMonitor;
+  private final WriteBlockMonitor _writeBlockMonitor;
+  private final WalCacheFactory _cacheFactory;
 
-  public PackWalCacheManager(String volumeName, File cacheDir, PackWriteBlockMonitor writeBlockMonitor,
+  public PackWalCacheManager(String volumeName, WriteBlockMonitor writeBlockMonitor, WalCacheFactory cacheFactory,
       PackHdfsReader hdfsReader, PackMetaData metaData, Configuration configuration, Path volumeDir) {
+    _cacheFactory = cacheFactory;
     _writeBlockMonitor = writeBlockMonitor;
     _volumeDir = volumeDir;
     _configuration = configuration;
     _metaData = metaData;
-    _cacheDir = cacheDir;
     _hdfsReader = hdfsReader;
     RemovalListener<Long, WalCache> readerListener = n -> PackUtils.closeQuietly(n.getValue());
     _walCache = CacheBuilder.newBuilder()
@@ -95,10 +95,11 @@ public class PackWalCacheManager implements BlockReader {
     return new ArrayList<>(list);
   }
 
-  public void write(long layer, int blockId, ByteBuffer byteBuffer) throws IOException {
+  @Override
+  public void write(long transId, long layer, int blockId, byte[] value) throws IOException {
     WalCache walCache = getCurrentWalCache(layer);
-    walCache.write(layer, blockId, byteBuffer);
-    _writeBlockMonitor.resetDirtyBlock(blockId);
+    walCache.write(layer, blockId, value);
+    _writeBlockMonitor.resetDirtyBlock(blockId, transId);
   }
 
   public void writeWalCacheToHdfs() throws IOException {
@@ -178,7 +179,7 @@ public class PackWalCacheManager implements BlockReader {
     synchronized (_currentWalCacheLock) {
       WalCache walCache = _currentWalCache.get();
       if (shouldRollWal(walCache)) {
-        walCache = new WalCache(_cacheDir, layer, _metaData.getLength(), _metaData.getBlockSize());
+        walCache = TraceWalCache.traceIfEnabled(_cacheFactory.create(layer));
         _walCache.put(layer, walCache);
         _currentWalCache.set(walCache);
         updateFromReadList(walCache, false);

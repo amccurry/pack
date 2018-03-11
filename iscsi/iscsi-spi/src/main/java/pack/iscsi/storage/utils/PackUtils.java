@@ -3,6 +3,8 @@ package pack.iscsi.storage.utils;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -165,6 +167,20 @@ public class PackUtils {
                                          .digest(value)).toString();
     } catch (NoSuchAlgorithmException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  public static byte[] copy(byte[] bytes, int off, int len) {
+    byte[] buf = new byte[len];
+    System.arraycopy(bytes, off, buf, 0, len);
+    return buf;
+  }
+
+  public static void copy(InputStream input, OutputStream output) throws IOException {
+    byte[] buf = new byte[1024];
+    int num;
+    while ((num = input.read(buf)) != -1) {
+      output.write(buf, 0, num);
     }
   }
 

@@ -18,10 +18,12 @@ import pack.distributed.storage.hdfs.ReadRequest;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.kafka.PackKafkaReader;
 import pack.distributed.storage.kafka.PackKafkaWriter;
-import pack.distributed.storage.monitor.PackWriteBlockMonitor;
-import pack.distributed.storage.monitor.PackWriteMonitor;
+import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.trace.PackTracer;
+import pack.distributed.storage.wal.InMemoryWalCacheFactory;
 import pack.distributed.storage.wal.PackWalCacheManager;
+import pack.distributed.storage.wal.WalCacheFactory;
+import pack.distributed.storage.wal.WalCacheManager;
 import pack.iscsi.storage.BaseStorageModule;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -32,26 +34,29 @@ public class PackStorageModule extends BaseStorageModule {
   private final AtomicReference<PackKafkaWriter> _packKafkaWriter = new AtomicReference<PackKafkaWriter>();
   private final PackKafkaClientFactory _kafkaClientFactory;
   private final PackHdfsReader _hdfsReader;
-  private final PackWalCacheManager _walCacheManager;
+  private final WalCacheManager _walCacheManager;
   private final Integer _topicPartition = 0;
   private final String _topic;
   private final PackKafkaReader _packKafkaReader;
-  private final PackWriteMonitor _writeMonitor;
-  private final PackWriteBlockMonitor _writeBlockMonitor;
+  // private final PackWriteMonitor _writeMonitor;
+  private final WriteBlockMonitor _writeBlockMonitor;
+  private final WalCacheFactory _cacheFactory;
 
   public PackStorageModule(String name, String serialId, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
-      PackWriteBlockMonitor writeBlockMonitor) throws IOException {
+      WriteBlockMonitor writeBlockMonitor) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize(), name);
     _topic = metaData.getTopicId();
     _kafkaClientFactory = kafkaClientFactory;
     _hdfsReader = new PackHdfsReader(conf, volumeDir, ugi);
     _hdfsReader.refresh();
     _writeBlockMonitor = writeBlockMonitor;
-    _walCacheManager = new PackWalCacheManager(name, cacheDir, _writeBlockMonitor, _hdfsReader, metaData, conf,
+    _cacheFactory = new InMemoryWalCacheFactory(metaData);
+    _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader, metaData, conf,
         volumeDir);
-    _writeMonitor = new PackWriteMonitor(name, _hdfsReader, _walCacheManager, _kafkaClientFactory, serialId, _topic,
-        _topicPartition);
+    // _writeMonitor = new PackWriteMonitor(name, _hdfsReader, _walCacheManager,
+    // _kafkaClientFactory, serialId, _topic,
+    // _topicPartition);
     _packKafkaReader = new PackKafkaReader(name, serialId, _kafkaClientFactory, _walCacheManager, _hdfsReader, _topic,
         _topicPartition);
     _packKafkaReader.start();
@@ -66,11 +71,15 @@ public class PackStorageModule extends BaseStorageModule {
       if (length == 0) {
         return;
       }
-      List<ReadRequest> requests = createRequests(ByteBuffer.wrap(bytes), storageIndex);
-      _writeMonitor.waitForDataIfNeeded(tracer, requests, _writeBlockMonitor);
       if (LOGGER.isTraceEnabled()) {
         LOGGER.trace("read bo {} bid {} rlen {} pos {}", blockOffset, blockId, length, storageIndex);
       }
+      List<ReadRequest> requests = createRequests(ByteBuffer.wrap(bytes), storageIndex);
+      for (ReadRequest request : requests) {
+        _writeBlockMonitor.waitIfNeededForSync(request.getBlockId());
+      }
+      // _writeMonitor.waitForDataIfNeeded(tracer, requests,
+      // _writeBlockMonitor);
       boolean moreToRead;
       try (PackTracer span = tracer.span(LOGGER, "wal cache read")) {
         moreToRead = _walCacheManager.readBlocks(requests);
@@ -101,8 +110,9 @@ public class PackStorageModule extends BaseStorageModule {
         if (blockOffset != 0) {
           throw new IOException("block offset not 0");
         }
-        packKafkaWriter.write(tracer, blockId, bytes, off, blockSize);
-        _writeBlockMonitor.addDirtyBlock(blockId);
+        long transId = _writeBlockMonitor.createTransId();
+        packKafkaWriter.write(tracer, transId, blockId, bytes, off, blockSize);
+        _writeBlockMonitor.addDirtyBlock(blockId, transId);
         len -= blockSize;
         off += blockSize;
         pos += blockSize;

@@ -10,10 +10,6 @@
 	<artifactId>iscsi-sm-distributed</artifactId>
 	<packaging>jar</packaging>
 
-	<properties>
-		<parcel.name>PACK_ISCSI_DISTRIBUTED_MODULE</parcel.name>
-	</properties>
-
 	<repositories>
 		<repository>
 			<id>cloudera</id>
@@ -53,29 +49,4 @@
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
-
-	<build>
-		<plugins>
-			<plugin>
-				<artifactId>maven-assembly-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>distro-assembly-parcel</id>
-						<phase>package</phase>
-						<goals>
-							<goal>single</goal>
-						</goals>
-						<configuration>
-							<descriptors>
-								<descriptor>${parcel.assembly.file}</descriptor>
-							</descriptors>
-							<finalName>${parcel.name}-${parcel.version}</finalName>
-							<appendAssemblyId>false</appendAssemblyId>
-							<ignoreDirFormatExtensions>false</ignoreDirFormatExtensions>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-		</plugins>
-	</build>
 </project>
