@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -13,6 +14,9 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
+  private static final long WAL_MAX_LIFE_TIME_DEAULT = TimeUnit.MINUTES.toMillis(1);
+  private static final int WAL_MAX_SIZE_DEFAULT = 10_000_000;
+  private static final String WAL_MAX_LIFE_TIME = "WAL_MAX_LIFE_TIME";
   private static final String WAL_MAX_SIZE = "WAL_MAX_SIZE";
   private static final String WAL_CACHE_DIR = "WAL_CACHE_DIR";
   private static final String KAFKA_ZK_CONNECTION = "KAFKA_ZK_CONNECTION";
@@ -67,6 +71,10 @@ public class PackConfig {
   }
 
   public static long getMaxWalSize() {
-    return Long.parseLong(PackUtils.getEnv(WAL_MAX_SIZE, Long.toString(10_000_000)));
+    return Long.parseLong(PackUtils.getEnv(WAL_MAX_SIZE, Long.toString(WAL_MAX_SIZE_DEFAULT)));
+  }
+
+  public static long getMaxWalLifeTime() {
+    return Long.parseLong(PackUtils.getEnv(WAL_MAX_LIFE_TIME, Long.toString(WAL_MAX_LIFE_TIME_DEAULT)));
   }
 }

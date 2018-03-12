@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
@@ -24,8 +25,8 @@ import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.HdfsMiniClusterUtil;
 import pack.distributed.storage.hdfs.PackHdfsReader;
-import pack.distributed.storage.hdfs.ReadRequest;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.read.ReadRequest;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class WalCacheManagerTest {
@@ -75,7 +76,7 @@ public class WalCacheManagerTest {
         UserGroupInformation.getCurrentUser())) {
       WalCacheFactory cacheFactory = new PackWalCacheFactory(metaData, _dirFile);
       try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, WriteBlockMonitor.NO_OP, cacheFactory,
-          hdfsReader, metaData, configuration, volumeDir, 1_000_000)) {
+          hdfsReader, metaData, configuration, volumeDir, 1_000_000, TimeUnit.SECONDS.toMillis(10))) {
         File file = new File("./target/tmp/PackWalCacheManagerTest/test");
         byte[] buffer = new byte[blockSize];
         long layer = 0;

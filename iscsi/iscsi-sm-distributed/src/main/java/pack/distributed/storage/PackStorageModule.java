@@ -15,11 +15,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.distributed.storage.hdfs.PackHdfsReader;
-import pack.distributed.storage.hdfs.ReadRequest;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.kafka.PackKafkaReader;
 import pack.distributed.storage.kafka.PackKafkaWriter;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.read.ReadRequest;
 import pack.distributed.storage.trace.PackTracer;
 import pack.distributed.storage.wal.PackWalCacheFactory;
 import pack.distributed.storage.wal.PackWalCacheManager;
@@ -45,7 +45,7 @@ public class PackStorageModule extends BaseStorageModule {
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
-      WriteBlockMonitor writeBlockMonitor, long maxWalSize) throws IOException {
+      WriteBlockMonitor writeBlockMonitor, long maxWalSize,long maxWalLifeTime) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize(), name);
     _serialId = UUID.fromString(metaData.getSerialId());
     _topic = metaData.getTopicId();
@@ -55,7 +55,7 @@ public class PackStorageModule extends BaseStorageModule {
     _writeBlockMonitor = writeBlockMonitor;
     _cacheFactory = new PackWalCacheFactory(metaData, cacheDir);
     _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader, metaData, conf,
-        volumeDir, maxWalSize);
+        volumeDir, maxWalSize, maxWalLifeTime);
     _packKafkaReader = new PackKafkaReader(name, metaData.getSerialId(), _kafkaClientFactory, _walCacheManager,
         _hdfsReader, _topic, _topicPartition);
     _packKafkaReader.start();

@@ -8,7 +8,7 @@ import java.util.List;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
-import pack.distributed.storage.hdfs.ReadRequest;
+import pack.distributed.storage.read.ReadRequest;
 
 public interface BlockReader extends Closeable {
 

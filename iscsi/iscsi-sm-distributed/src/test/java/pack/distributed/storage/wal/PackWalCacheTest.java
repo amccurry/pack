@@ -12,7 +12,7 @@ import java.util.Random;
 import org.junit.Before;
 import org.junit.Test;
 
-import pack.distributed.storage.hdfs.ReadRequest;
+import pack.distributed.storage.read.ReadRequest;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackWalCacheTest {

@@ -32,6 +32,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
 import pack.distributed.storage.BlockReader;
+import pack.distributed.storage.read.ReadRequest;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class BlockFile {

@@ -12,7 +12,7 @@ import com.amazonaws.util.Md5Utils;
 
 import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.hdfs.BlockFile.Writer;
-import pack.distributed.storage.hdfs.ReadRequest;
+import pack.distributed.storage.read.ReadRequest;
 import pack.distributed.storage.wal.WalCache;
 
 public class TraceWalCache implements WalCache {

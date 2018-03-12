@@ -28,6 +28,7 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.hdfs.BlockFile.Reader;
+import pack.distributed.storage.read.ReadRequest;
 import pack.distributed.storage.trace.TraceHdfsBlockReader;
 import pack.iscsi.storage.utils.PackUtils;
 

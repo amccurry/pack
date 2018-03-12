@@ -1,4 +1,4 @@
-package pack.distributed.storage.hdfs;
+package pack.distributed.storage.read;
 
 import java.nio.ByteBuffer;
 

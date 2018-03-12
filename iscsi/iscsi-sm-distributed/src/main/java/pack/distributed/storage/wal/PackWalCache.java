@@ -19,7 +19,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.Weigher;
 
 import pack.distributed.storage.hdfs.BlockFile.Writer;
-import pack.distributed.storage.hdfs.ReadRequest;
+import pack.distributed.storage.read.ReadRequest;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackWalCache implements WalCache {

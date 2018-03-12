@@ -3,8 +3,6 @@ package pack.distributed.storage.kafka;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,8 +34,6 @@ public class PackKafkaReader implements Closeable {
   private final String _serialId;
   private final String _topic;
   private final Integer _partition;
-  private final long _hdfsPollTimeout;
-  private final Timer _hdfsRefresh;
   private final AtomicLong _endOffset = new AtomicLong(Long.MAX_VALUE);
   private final EndPointLookup _endPointLookup;
   private final long _kafkaPollTimeout;
@@ -52,7 +48,6 @@ public class PackKafkaReader implements Closeable {
     _walCacheManager = walCacheManager;
     _hdfsReader = hdfsReader;
     _endPointLookup = new EndPointLookup(name, kafkaClientFactory, serialId, topic, partition);
-    _hdfsPollTimeout = TimeUnit.MINUTES.toMillis(1);
     _kafkaPollTimeout = TimeUnit.MILLISECONDS.toMillis(10);
     _kafkaReader = new Thread(() -> {
       while (_running.get()) {
@@ -65,21 +60,7 @@ public class PackKafkaReader implements Closeable {
     });
     _kafkaReader.setDaemon(true);
     _kafkaReader.setName("PackKafkaReader-" + _name);
-    _hdfsRefresh = new Timer("HdfsRefresh-" + _name, true);
-    _hdfsRefresh.scheduleAtFixedRate(getTimerTask(), _hdfsPollTimeout, _hdfsPollTimeout);
 
-  }
-
-  private void updateHdfs() throws IOException {
-    if (isLeader()) {
-      _walCacheManager.writeWalCacheToHdfs();
-    } else {
-      _walCacheManager.removeOldWalCache();
-    }
-  }
-
-  private boolean isLeader() {
-    return true;
   }
 
   private void writeDataToWal() throws IOException {
@@ -125,21 +106,7 @@ public class PackKafkaReader implements Closeable {
   public void close() throws IOException {
     PackUtils.closeQuietly(_endPointLookup);
     _running.set(false);
-    _hdfsRefresh.cancel();
-    _hdfsRefresh.purge();
     _kafkaReader.interrupt();
   }
 
-  private TimerTask getTimerTask() {
-    return new TimerTask() {
-      @Override
-      public void run() {
-        try {
-          updateHdfs();
-        } catch (Throwable t) {
-          LOGGER.error("Unknown error", t);
-        }
-      }
-    };
-  }
 }

@@ -29,13 +29,13 @@ import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
 import pack.distributed.storage.hdfs.BlockFile;
-import pack.distributed.storage.hdfs.ReadRequest;
 import pack.distributed.storage.hdfs.BlockFile.BlockFileEntry;
 import pack.distributed.storage.hdfs.BlockFile.Reader;
 import pack.distributed.storage.hdfs.BlockFile.ReaderMultiOrdered;
 import pack.distributed.storage.hdfs.BlockFile.Writer;
 import pack.distributed.storage.hdfs.BlockFile.WriterMultiOrdered;
 import pack.distributed.storage.hdfs.BlockFile.WriterOrdered;
+import pack.distributed.storage.read.ReadRequest;
 
 public class BlockFileTest {
 

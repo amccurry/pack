@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.distributed.storage.hdfs.BlockFile.Writer;
-import pack.distributed.storage.hdfs.ReadRequest;
+import pack.distributed.storage.read.ReadRequest;
 
 public class InMemoryWalCache implements WalCache {
 
