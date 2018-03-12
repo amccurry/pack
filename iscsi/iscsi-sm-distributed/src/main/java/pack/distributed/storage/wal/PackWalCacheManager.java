@@ -25,11 +25,12 @@ import com.google.common.collect.ImmutableList;
 import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.BlockFile;
-import pack.distributed.storage.hdfs.BlockFile.WriterOrdered;
+import pack.distributed.storage.hdfs.BlockFile.Writer;
 import pack.distributed.storage.hdfs.CommitFile;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.hdfs.ReadRequest;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.trace.TraceHdfsBlockReader;
 import pack.distributed.storage.trace.TraceWalCache;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -43,7 +44,7 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   private final AtomicReference<WalCache> _currentWalCache = new AtomicReference<>();
   private final AtomicReference<List<WalCache>> _currentWalCacheReaderList = new AtomicReference<>(ImmutableList.of());
   private final Cache<Long, WalCache> _walCache;
-  private final long _maxWalTime = TimeUnit.MINUTES.toMillis(1);
+  private final long _maxWalTime = TimeUnit.SECONDS.toMillis(10);
   private final PackMetaData _metaData;
   private final Object _currentWalCacheLock = new Object();
   private final Configuration _configuration;
@@ -133,7 +134,8 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
         }
         LOGGER.info("Block file added {}", commit);
       };
-      try (WriterOrdered writer = BlockFile.createOrdered(fileSystem, path, _metaData.getBlockSize(), commitFile)) {
+      try (Writer writer = TraceHdfsBlockReader.traceIfEnabled(
+          BlockFile.createOrdered(fileSystem, path, _metaData.getBlockSize(), commitFile), path)) {
         cache.copy(writer);
       }
     }

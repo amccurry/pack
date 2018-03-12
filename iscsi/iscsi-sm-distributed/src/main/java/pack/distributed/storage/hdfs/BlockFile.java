@@ -776,6 +776,11 @@ public class BlockFile {
       // @TODO read and validate the magic string
     }
 
+    @Override
+    public String toString() {
+      return getPath().toString();
+    }
+
     public long getStartingPosition() {
       return _startingPosition;
     }

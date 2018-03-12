@@ -12,17 +12,27 @@ import pack.distributed.storage.hdfs.ReadRequest;
 
 public interface BlockReader extends Closeable {
 
-  BlockReader NOOP_READER = requests -> {
-    if (requests.isEmpty()) {
+  BlockReader NOOP_READER = new BlockReader() {
+
+    @Override
+    public boolean readBlocks(List<ReadRequest> requests) throws IOException {
+      if (requests.isEmpty()) {
+        return false;
+      }
+      for (ReadRequest readRequest : requests) {
+        if (!readRequest.isCompleted()) {
+          // if not completed there is more work
+          return true;
+        }
+      }
       return false;
     }
-    for (ReadRequest readRequest : requests) {
-      if (!readRequest.isCompleted()) {
-        // if not completed there is more work
-        return true;
-      }
+
+    @Override
+    public String toString() {
+      return "NOOP_READER";
     }
-    return false;
+
   };
 
   default List<BlockReader> getLeaves() {
@@ -99,6 +109,11 @@ public interface BlockReader extends Closeable {
         builder.addAll(blockReader.getLeaves());
       }
       return builder.build();
+    }
+
+    @Override
+    public String toString() {
+      return "{" + _readers + "}";
     }
 
   }

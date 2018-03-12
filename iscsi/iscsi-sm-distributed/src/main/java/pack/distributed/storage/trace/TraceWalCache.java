@@ -1,7 +1,6 @@
 package pack.distributed.storage.trace;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
@@ -28,45 +27,7 @@ public class TraceWalCache implements WalCache {
 
   @Override
   public boolean readBlocks(List<ReadRequest> requests) throws IOException {
-    boolean[] completedBefore = new boolean[requests.size()];
-    for (int i = 0; i < requests.size(); i++) {
-      completedBefore[i] = requests.get(i)
-                                   .isCompleted();
-    }
-    boolean readBlocks = _delegate.readBlocks(requests);
-    for (int i = 0; i < requests.size(); i++) {
-      if (!completedBefore[i]) {
-        ReadRequest readRequest = requests.get(i);
-        int blockId = readRequest.getBlockId();
-        if (blockId != 0L) {
-          continue;
-        }
-        String current = _hashes.get(blockId);
-        LOGGER.info("Read {} {}", blockId, current);
-        if (readRequest.isCompleted()) {
-          // Complete during this readBlocks call
-          if (current != null) {
-            ByteBuffer duplicate = readRequest.getByteBuffer()
-                                              .duplicate();
-            duplicate.flip();
-            byte[] value = new byte[duplicate.remaining()];
-            duplicate.get(value);
-            String bs = Md5Utils.md5AsBase64(value);
-            if (!current.equals(bs)) {
-              LOGGER.error("Bid {} not equal {} {} {}", blockId, current, bs, value.length);
-            }
-          } else {
-            LOGGER.error("Wal Cache HIT when shouldn't {}", blockId);
-          }
-        } else {
-          // Not completed during this readBlocks call
-          if (current != null) {
-            LOGGER.error("Wal Cache MISS when shouldn't {} {}", blockId, current);
-          }
-        }
-      }
-    }
-    return readBlocks;
+    return TraceReader.trace(LOGGER, _delegate, _hashes, requests);
   }
 
   @Override

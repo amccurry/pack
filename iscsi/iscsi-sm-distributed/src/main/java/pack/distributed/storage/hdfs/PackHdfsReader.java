@@ -28,6 +28,7 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.hdfs.BlockFile.Reader;
+import pack.distributed.storage.trace.TraceHdfsBlockReader;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackHdfsReader implements BlockReader, Closeable {
@@ -91,8 +92,11 @@ public class PackHdfsReader implements BlockReader, Closeable {
   @Override
   public boolean readBlocks(List<ReadRequest> requests) throws IOException {
     try {
-      return _ugi.doAs((PrivilegedExceptionAction<Boolean>) () -> _currentBlockReader.get()
-                                                                                     .readBlocks(requests));
+      return _ugi.doAs((PrivilegedExceptionAction<Boolean>) () -> {
+        BlockReader blockReader = _currentBlockReader.get();
+        LOGGER.debug("readBlocks {}", blockReader);
+        return blockReader.readBlocks(requests);
+      });
     } catch (InterruptedException e) {
       throw new IOException(e);
     }
@@ -110,7 +114,8 @@ public class PackHdfsReader implements BlockReader, Closeable {
   private BlockFile.Reader getReader(Path path) throws IOException {
     try {
       LOGGER.debug("getReader {}", path);
-      return _readerCache.get(path, () -> BlockFile.open(path.getFileSystem(_conf), path));
+      return _readerCache.get(path,
+          () -> TraceHdfsBlockReader.traceIfEnabled(BlockFile.open(path.getFileSystem(_conf), path), path));
     } catch (ExecutionException e) {
       Throwable cause = e.getCause();
       if (cause instanceof IOException) {
