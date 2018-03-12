@@ -5,11 +5,6 @@ public interface WriteBlockMonitor {
   WriteBlockMonitor NO_OP = new WriteBlockMonitor() {
   };
 
-  @Deprecated
-  default boolean isBlockDirty(int blockId, long transId) {
-    return true;
-  }
-
   default void resetDirtyBlock(int blockId, long transId) {
 
   }

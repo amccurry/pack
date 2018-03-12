@@ -20,12 +20,9 @@ public class TraceHdfsBlockReader {
   public static Writer traceIfEnabled(Writer writer, Path path) {
     if (LOGGER.isTraceEnabled() || Boolean.getBoolean("pack.trace")) {
       Map<Integer, String> value = new ConcurrentHashMap<>();
-      Map<Integer, String> hashMap = _hashesMap.putIfAbsent(path, value);
-      if (hashMap == null) {
-        hashMap = value;
-      }
+      _hashesMap.put(path, value);
       LOGGER.info("created trace writer {}", path);
-      return new TraceWriter(hashMap, writer);
+      return new TraceWriter(value, writer);
     }
     return writer;
   }
@@ -33,6 +30,10 @@ public class TraceHdfsBlockReader {
   public static Reader traceIfEnabled(Reader reader, Path path) {
     if (LOGGER.isTraceEnabled() || Boolean.getBoolean("pack.trace")) {
       Map<Integer, String> hashMap = _hashesMap.get(path);
+      if (hashMap == null) {
+        LOGGER.error("could not trace reader, no input {}", path);
+        return reader;
+      }
       LOGGER.info("created trace reader {}", path);
       return new TraceReader(hashMap, reader);
     }

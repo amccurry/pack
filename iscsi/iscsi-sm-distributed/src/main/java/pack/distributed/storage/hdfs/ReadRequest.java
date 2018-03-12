@@ -50,7 +50,9 @@ public class ReadRequest implements Comparable<ReadRequest> {
   }
 
   public void handleEmptyResult() {
-    _dest.position(_dest.remaining());
+    while (_dest.remaining() > 0) {
+      _dest.put((byte) 0);
+    }
     _empty = true;
   }
 

@@ -62,9 +62,6 @@ public class TraceStorageModule implements IStorageModule {
     long pos = storageIndex;
     while (len > 0) {
       String md5AsBase64 = Md5Utils.md5AsBase64(PackUtils.copy(bytes, off, blockSize));
-      if (pos == 0) {
-        LOGGER.info("Write {} {}", pos, md5AsBase64);
-      }
       _hashes.put(pos, md5AsBase64);
       len -= blockSize;
       off += blockSize;

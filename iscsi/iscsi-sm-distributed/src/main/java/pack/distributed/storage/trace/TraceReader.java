@@ -92,19 +92,16 @@ public class TraceReader extends Reader {
       List<ReadRequest> requests) throws IOException {
     boolean[] completedBefore = new boolean[requests.size()];
     for (int i = 0; i < requests.size(); i++) {
-      completedBefore[i] = requests.get(i)
-                                   .isCompleted();
+      ReadRequest readRequest = requests.get(i);
+      completedBefore[i] = readRequest.isCompleted();
     }
     boolean readBlocks = blockReader.readBlocks(requests);
     for (int i = 0; i < requests.size(); i++) {
       if (!completedBefore[i]) {
         ReadRequest readRequest = requests.get(i);
         int blockId = readRequest.getBlockId();
-        if (blockId != 0L) {
-          continue;
-        }
         String current = hashes.get(blockId);
-        logger.info("Read {} {}", blockId, current);
+        logger.debug("Read {} {}", blockId, current);
         if (readRequest.isCompleted()) {
           // Complete during this readBlocks call
           if (current != null) {
@@ -115,7 +112,21 @@ public class TraceReader extends Reader {
             duplicate.get(value);
             String bs = Md5Utils.md5AsBase64(value);
             if (!current.equals(bs)) {
-              logger.error("Bid {} not equal {} {} {}", blockId, current, bs, value.length);
+              logger.error("Block id {} not equal {} {} {}", blockId, current, bs, value.length);
+              for (ReadRequest request : requests) {
+
+                logger.info("read request {} {} {}", request.isCompleted(), request.getBlockId(),
+                    readRequest.getBlockOffset());
+
+                byte[] bb = new byte[value.length];
+                ReadRequest rr = new ReadRequest(blockId, 0, ByteBuffer.wrap(bb));
+                boolean completed = blockReader.readBlocks(rr);
+                if (!completed) {
+                  logger.info("second attempt {}", Md5Utils.md5AsBase64(bb));
+                } else {
+                  logger.error("second attempt miss", Md5Utils.md5AsBase64(bb));
+                }
+              }
             }
           } else {
             logger.error("HIT when shouldn't {}", blockId);

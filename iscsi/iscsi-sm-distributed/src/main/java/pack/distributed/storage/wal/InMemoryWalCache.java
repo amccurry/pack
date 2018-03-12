@@ -12,8 +12,6 @@ import org.apache.hadoop.io.BytesWritable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.amazonaws.util.Md5Utils;
-
 import pack.distributed.storage.hdfs.BlockFile.Writer;
 import pack.distributed.storage.hdfs.ReadRequest;
 
@@ -39,19 +37,9 @@ public class InMemoryWalCache implements WalCache {
       if (!readRequest.isCompleted()) {
         byte[] bs = _cache.get(blockId);
         if (bs != null) {
-          if (blockId == 0) {
-            LOGGER.info("read {} {}", blockId, Md5Utils.md5AsBase64(bs));
-          }
           readRequest.handleResult(bs);
         } else {
-          if (blockId == 0) {
-            LOGGER.info("read miss {}", blockId);
-          }
           more = true;
-        }
-      } else {
-        if (blockId == 0) {
-          LOGGER.info("read complete {}", blockId);
         }
       }
     }
@@ -60,15 +48,13 @@ public class InMemoryWalCache implements WalCache {
 
   @Override
   public void write(long layer, int blockId, byte[] block) throws IOException {
-    if (blockId == 0) {
-      LOGGER.info("write {} {}", blockId, Md5Utils.md5AsBase64(block));
-    }
     setMaxlayer(layer);
     _cache.put(blockId, block);
   }
 
   @Override
   public void copy(Writer writer) throws IOException {
+    LOGGER.debug("Copy to writer {} {}", this, writer);
     List<Integer> list = new ArrayList<>(_cache.keySet());
     Collections.sort(list);
     for (Integer blockId : list) {

@@ -33,9 +33,6 @@ public class TraceWalCache implements WalCache {
   @Override
   public void write(long layer, int blockId, byte[] value) throws IOException {
     String md5AsBase64 = Md5Utils.md5AsBase64(value);
-    if (blockId == 0) {
-      LOGGER.info("Write {} {}", blockId, md5AsBase64);
-    }
     _hashes.put(blockId, md5AsBase64);
     _delegate.write(layer, blockId, value);
   }

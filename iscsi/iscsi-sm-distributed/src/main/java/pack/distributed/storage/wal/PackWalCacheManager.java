@@ -126,8 +126,8 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
     for (WalCache cache : list) {
       String uuid = UUID.randomUUID()
                         .toString();
-      Path path = new Path(blockDir, uuid + ".tmp");
-      Path commit = new Path(blockDir, cache.getMaxLayer() + ".block");
+      Path path = fileSystem.makeQualified(new Path(blockDir, uuid + ".tmp"));
+      Path commit = fileSystem.makeQualified(new Path(blockDir, cache.getMaxLayer() + ".block"));
       CommitFile commitFile = () -> {
         if (!fileSystem.rename(path, commit)) {
           throw new IOException("Could not commit file " + commit);
@@ -135,7 +135,7 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
         LOGGER.info("Block file added {}", commit);
       };
       try (Writer writer = TraceHdfsBlockReader.traceIfEnabled(
-          BlockFile.createOrdered(fileSystem, path, _metaData.getBlockSize(), commitFile), path)) {
+          BlockFile.createOrdered(fileSystem, path, _metaData.getBlockSize(), commitFile), commit)) {
         cache.copy(writer);
       }
     }
