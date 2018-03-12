@@ -30,7 +30,6 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final Configuration _conf;
   private final PackKafkaClientFactory _packKafkaClientFactory;
   private final File _cacheDir;
-  private final String _serialId;
   private final PackWriteBlockMonitorFactory _packWriteBlockMonitorFactory;
 
   public PackStorageTargetManager() throws IOException {
@@ -38,7 +37,6 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
     _ugi = PackConfig.getUgi();
     _conf = PackConfig.getConfiguration();
     _rootPath = PackConfig.getHdfsTarget();
-    _serialId = PackConfig.getPackSerialId();
 
     String kafkaZkConnection = PackConfig.getKafkaZkConnection();
     _packKafkaClientFactory = new PackKafkaClientFactory(kafkaZkConnection);
@@ -60,7 +58,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         PackUtils.rmr(cacheDir);
         cacheDir.mkdirs();
         WriteBlockMonitor monitor = _packWriteBlockMonitorFactory.create(name);
-        return TraceStorageModule.traceIfEnabled(new PackStorageModule(name, _serialId, metaData, _conf, volumeDir,
+        return TraceStorageModule.traceIfEnabled(new PackStorageModule(name, metaData, _conf, volumeDir,
             _packKafkaClientFactory, _ugi, cacheDir, monitor));
       });
     } catch (InterruptedException e) {

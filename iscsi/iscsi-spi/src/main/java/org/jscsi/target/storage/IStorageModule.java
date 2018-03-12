@@ -6,6 +6,7 @@ package org.jscsi.target.storage;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.UUID;
 
 import org.jscsi.target.scsi.cdb.CommandDescriptorBlock;
 
@@ -125,5 +126,7 @@ public interface IStorageModule extends Closeable {
   }
 
   int getBlockSize();
+
+  UUID getSerialId();
 
 }

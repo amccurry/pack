@@ -9,6 +9,7 @@ import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -20,6 +21,10 @@ import com.google.common.base.Splitter;
 public class PackUtils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackUtils.class);
+
+  public static UUID generateSerialId() {
+    return UUID.randomUUID();
+  }
 
   public static void closeQuietly(Closeable... closeables) {
     if (closeables == null) {

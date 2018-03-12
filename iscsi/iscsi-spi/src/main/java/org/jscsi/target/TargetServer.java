@@ -97,8 +97,6 @@ public final class TargetServer implements Callable<Void> {
 
   private int targetPort;
 
-  private UnitSerialNumberVpdPage unitSerialNumber = new UnitSerialNumberVpdPage(UUID.randomUUID());
-
   private InetAddress bindAddress;
 
   private int bindPort;
@@ -335,8 +333,8 @@ public final class TargetServer implements Callable<Void> {
     }
   }
 
-  public UnitSerialNumberVpdPage getUnitSerialNumber() {
-    return unitSerialNumber;
+  public UnitSerialNumberVpdPage getUnitSerialNumber(UUID serialId) {
+    return new UnitSerialNumberVpdPage(serialId);
   }
 
 }

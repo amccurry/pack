@@ -3,6 +3,7 @@ package pack.file.storage;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,10 +18,16 @@ public class FileStorageModule extends BaseStorageModule {
 
   private final RandomAccessFile _rand;
   private final Object _lock = new Object();
+  private final UUID _serialId = UUID.randomUUID();
 
   public FileStorageModule(long sizeInBytes, int blockSize, String name, File file) throws IOException {
     super(sizeInBytes, blockSize, name);
     _rand = new RandomAccessFile(file, RW);
+  }
+
+  @Override
+  public UUID getSerialId() {
+    return _serialId;
   }
 
   @Override

@@ -106,7 +106,7 @@ public class InquiryStage extends TargetFullFeatureStage {
           break;
         case UNIT_SERIAL_NUMBER:
           responseData = session.getTargetServer()
-                                .getUnitSerialNumber();
+                                .getUnitSerialNumber(session.getStorageModule().getSerialId());
           break;
         default:
           // The initiator must not request unsupported mode pages.

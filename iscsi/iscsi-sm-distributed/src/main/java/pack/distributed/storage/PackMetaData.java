@@ -43,9 +43,12 @@ public class PackMetaData {
   @JsonProperty
   @Builder.Default
   int blockSize = DEFAULT_BLOCK_SIZE;
-
+  
   @JsonProperty
   String topicId;
+
+  @JsonProperty
+  String serialId;
 
   public static PackMetaData read(Configuration configuration, Path volume) throws IOException {
     Path path = getMeatDataPath(volume);

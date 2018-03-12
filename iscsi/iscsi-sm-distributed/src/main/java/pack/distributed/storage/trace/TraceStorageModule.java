@@ -2,6 +2,7 @@ package pack.distributed.storage.trace;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 
 import org.jboss.netty.util.internal.ConcurrentHashMap;
 import org.jscsi.target.storage.IStorageModule;
@@ -85,5 +86,10 @@ public class TraceStorageModule implements IStorageModule {
       return new TraceStorageModule(storageModule);
     }
     return storageModule;
+  }
+
+  @Override
+  public UUID getSerialId() {
+    return _delegate.getSerialId();
   }
 }

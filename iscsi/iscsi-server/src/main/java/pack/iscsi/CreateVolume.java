@@ -32,6 +32,8 @@ public class CreateVolume {
                   .length(length)
                   .blockSize(4096)
                   .topicId(newTopicId)
+                  .serialId(PackUtils.generateSerialId()
+                                     .toString())
                   .build()
                   .write(configuration, volume);
       return null;

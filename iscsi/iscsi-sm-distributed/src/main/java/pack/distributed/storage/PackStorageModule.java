@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.conf.Configuration;
@@ -20,7 +21,7 @@ import pack.distributed.storage.kafka.PackKafkaReader;
 import pack.distributed.storage.kafka.PackKafkaWriter;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.trace.PackTracer;
-import pack.distributed.storage.wal.InMemoryWalCacheFactory;
+import pack.distributed.storage.wal.PackWalCacheFactory;
 import pack.distributed.storage.wal.PackWalCacheManager;
 import pack.distributed.storage.wal.WalCacheFactory;
 import pack.distributed.storage.wal.WalCacheManager;
@@ -38,28 +39,31 @@ public class PackStorageModule extends BaseStorageModule {
   private final Integer _topicPartition = 0;
   private final String _topic;
   private final PackKafkaReader _packKafkaReader;
-  // private final PackWriteMonitor _writeMonitor;
   private final WriteBlockMonitor _writeBlockMonitor;
   private final WalCacheFactory _cacheFactory;
+  private final UUID _serialId;
 
-  public PackStorageModule(String name, String serialId, PackMetaData metaData, Configuration conf, Path volumeDir,
+  public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
       WriteBlockMonitor writeBlockMonitor) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize(), name);
+    _serialId = UUID.fromString(metaData.getSerialId());
     _topic = metaData.getTopicId();
     _kafkaClientFactory = kafkaClientFactory;
     _hdfsReader = new PackHdfsReader(conf, volumeDir, ugi);
     _hdfsReader.refresh();
     _writeBlockMonitor = writeBlockMonitor;
-    _cacheFactory = new InMemoryWalCacheFactory(metaData);
+    _cacheFactory = new PackWalCacheFactory(metaData, cacheDir);
     _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader, metaData, conf,
         volumeDir);
-    // _writeMonitor = new PackWriteMonitor(name, _hdfsReader, _walCacheManager,
-    // _kafkaClientFactory, serialId, _topic,
-    // _topicPartition);
-    _packKafkaReader = new PackKafkaReader(name, serialId, _kafkaClientFactory, _walCacheManager, _hdfsReader, _topic,
-        _topicPartition);
+    _packKafkaReader = new PackKafkaReader(name, metaData.getSerialId(), _kafkaClientFactory, _walCacheManager,
+        _hdfsReader, _topic, _topicPartition);
     _packKafkaReader.start();
+  }
+
+  @Override
+  public UUID getSerialId() {
+    return _serialId;
   }
 
   @Override
@@ -78,8 +82,6 @@ public class PackStorageModule extends BaseStorageModule {
       for (ReadRequest request : requests) {
         _writeBlockMonitor.waitIfNeededForSync(request.getBlockId());
       }
-      // _writeMonitor.waitForDataIfNeeded(tracer, requests,
-      // _writeBlockMonitor);
       boolean moreToRead;
       try (PackTracer span = tracer.span(LOGGER, "wal cache read")) {
         moreToRead = _walCacheManager.readBlocks(requests);
