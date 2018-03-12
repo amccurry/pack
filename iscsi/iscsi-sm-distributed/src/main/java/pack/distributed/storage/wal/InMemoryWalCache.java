@@ -23,10 +23,17 @@ public class InMemoryWalCache implements WalCache {
   private final long _layer;
   private final AtomicLong _maxLayer = new AtomicLong();
   private final Map<Integer, byte[]> _cache = new ConcurrentHashMap<>();
+  private final int _blockSize;
 
-  public InMemoryWalCache(long layer) {
+  public InMemoryWalCache(long layer, int blockSize) {
+    _blockSize = blockSize;
     _layer = layer;
     setMaxlayer(layer);
+  }
+
+  @Override
+  public int getSize() {
+    return _cache.size() * _blockSize;
   }
 
   @Override

@@ -75,7 +75,7 @@ public class WalCacheManagerTest {
         UserGroupInformation.getCurrentUser())) {
       WalCacheFactory cacheFactory = new PackWalCacheFactory(metaData, _dirFile);
       try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, WriteBlockMonitor.NO_OP, cacheFactory,
-          hdfsReader, metaData, configuration, volumeDir)) {
+          hdfsReader, metaData, configuration, volumeDir, 1_000_000)) {
         File file = new File("./target/tmp/PackWalCacheManagerTest/test");
         byte[] buffer = new byte[blockSize];
         long layer = 0;

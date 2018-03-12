@@ -79,4 +79,9 @@ public class TraceWalCache implements WalCache {
     return walCache;
   }
 
+  @Override
+  public int getSize() {
+    return _delegate.getSize();
+  }
+
 }

@@ -13,6 +13,7 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
+  private static final String WAL_MAX_SIZE = "WAL_MAX_SIZE";
   private static final String WAL_CACHE_DIR = "WAL_CACHE_DIR";
   private static final String KAFKA_ZK_CONNECTION = "KAFKA_ZK_CONNECTION";
   private static final String HDFS_TARGET_PATH = "HDFS_TARGET_PATH";
@@ -63,5 +64,9 @@ public class PackConfig {
 
   public static File getWalCachePath() {
     return new File(PackUtils.getEnvFailIfMissing(WAL_CACHE_DIR));
+  }
+
+  public static long getMaxWalSize() {
+    return Long.parseLong(PackUtils.getEnv(WAL_MAX_SIZE, Long.toString(10_000_000)));
   }
 }

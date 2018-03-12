@@ -5,14 +5,12 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.io.BytesWritable;
+import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,18 +28,18 @@ public class PackWalCache implements WalCache {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(PackWalCache.class);
 
-  // private final RoaringBitmap _dataIndex = new RoaringBitmap();
-  private final Set<Integer> _dataIndex = Collections.newSetFromMap(new ConcurrentHashMap<>());
+  private final RoaringBitmap _dataIndex = new RoaringBitmap();
   private final File _file;
   private final RandomAccessFile _rnd;
   private final int _blockSize;
   private final FileChannel _channel;
   private final boolean _deleteFileOnClose;
-  // private final Object _dataIndexLock = new Object();
+  private final Object _dataIndexLock = new Object();
   private final long _id;
   private final long _created = System.currentTimeMillis();
   private final AtomicLong _layer = new AtomicLong(-1L);
   private final Cache<Integer, byte[]> _cache;
+  private final AtomicInteger _count = new AtomicInteger();
 
   public PackWalCache(File dirFile, long startingLayer, long length, int blockSize) throws IOException {
     this(dirFile, startingLayer, length, blockSize, true);
@@ -68,6 +66,11 @@ public class PackWalCache implements WalCache {
                          .weigher(weigher)
                          .concurrencyLevel(1)
                          .build();
+  }
+
+  @Override
+  public int getSize() {
+    return _count.get() * _blockSize;
   }
 
   public long getMaxLayer() {
@@ -118,15 +121,18 @@ public class PackWalCache implements WalCache {
   }
 
   private boolean contains(int id) {
-    // synchronized (_dataIndexLock) {
-    return _dataIndex.contains(id);
-    // }
+    synchronized (_dataIndexLock) {
+      return _dataIndex.contains(id);
+    }
   }
 
   private void add(int id) {
-    // synchronized (_dataIndexLock) {
-    _dataIndex.add(id);
-    // }
+    synchronized (_dataIndexLock) {
+      if (!_dataIndex.contains(id)) {
+        _dataIndex.add(id);
+        _count.incrementAndGet();
+      }
+    }
   }
 
   @Override
@@ -186,13 +192,13 @@ public class PackWalCache implements WalCache {
   @Override
   public void copy(Writer writer) throws IOException {
     byte[] buf = new byte[_blockSize];
-    List<Integer> ids = new ArrayList<>(_dataIndex);
-    Collections.sort(ids);
-    for (Integer id : ids) {
-      long pos = PackUtils.getPosition(id, _blockSize);
-      _rnd.seek(pos);
-      _rnd.readFully(buf, 0, _blockSize);
-      writer.append(id, new BytesWritable(buf));
+    synchronized (_dataIndex) {
+      for (Integer id : _dataIndex) {
+        long pos = PackUtils.getPosition(id, _blockSize);
+        _rnd.seek(pos);
+        _rnd.readFully(buf, 0, _blockSize);
+        writer.append(id, new BytesWritable(buf));
+      }
     }
   }
 

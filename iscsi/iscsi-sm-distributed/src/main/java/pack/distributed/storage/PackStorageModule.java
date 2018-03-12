@@ -45,7 +45,7 @@ public class PackStorageModule extends BaseStorageModule {
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
-      WriteBlockMonitor writeBlockMonitor) throws IOException {
+      WriteBlockMonitor writeBlockMonitor, long maxWalSize) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize(), name);
     _serialId = UUID.fromString(metaData.getSerialId());
     _topic = metaData.getTopicId();
@@ -55,7 +55,7 @@ public class PackStorageModule extends BaseStorageModule {
     _writeBlockMonitor = writeBlockMonitor;
     _cacheFactory = new PackWalCacheFactory(metaData, cacheDir);
     _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader, metaData, conf,
-        volumeDir);
+        volumeDir, maxWalSize);
     _packKafkaReader = new PackKafkaReader(name, metaData.getSerialId(), _kafkaClientFactory, _walCacheManager,
         _hdfsReader, _topic, _topicPartition);
     _packKafkaReader.start();

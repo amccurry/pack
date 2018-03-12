@@ -22,4 +22,6 @@ public interface WalCache extends Comparable<WalCache>, BlockReader {
     return Long.compare(o.getId(), getId());
   }
 
+  int getSize();
+
 }

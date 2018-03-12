@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -44,7 +43,6 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   private final AtomicReference<WalCache> _currentWalCache = new AtomicReference<>();
   private final AtomicReference<List<WalCache>> _currentWalCacheReaderList = new AtomicReference<>(ImmutableList.of());
   private final Cache<Long, WalCache> _walCache;
-  private final long _maxWalTime = TimeUnit.SECONDS.toMillis(10);
   private final PackMetaData _metaData;
   private final Object _currentWalCacheLock = new Object();
   private final Configuration _configuration;
@@ -52,9 +50,11 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   private final AtomicBoolean _forceRoll = new AtomicBoolean(false);
   private final WriteBlockMonitor _writeBlockMonitor;
   private final WalCacheFactory _cacheFactory;
+  private final long _maxWalSize;
 
   public PackWalCacheManager(String volumeName, WriteBlockMonitor writeBlockMonitor, WalCacheFactory cacheFactory,
-      PackHdfsReader hdfsReader, PackMetaData metaData, Configuration configuration, Path volumeDir) {
+      PackHdfsReader hdfsReader, PackMetaData metaData, Configuration configuration, Path volumeDir, long maxWalSize) {
+    _maxWalSize = maxWalSize;
     _cacheFactory = cacheFactory;
     _writeBlockMonitor = writeBlockMonitor;
     _volumeDir = volumeDir;
@@ -196,7 +196,7 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
     } else if (_forceRoll.get()) {
       _forceRoll.set(false);
       return true;
-    } else if (walCache.getCreationTime() + _maxWalTime < System.currentTimeMillis()) {
+    } else if (walCache.getSize() >= _maxWalSize) {
       return true;
     } else {
       return false;

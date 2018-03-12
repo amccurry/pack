@@ -31,12 +31,14 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final PackKafkaClientFactory _packKafkaClientFactory;
   private final File _cacheDir;
   private final PackWriteBlockMonitorFactory _packWriteBlockMonitorFactory;
+  private final long _maxWalSize;
 
   public PackStorageTargetManager() throws IOException {
     _cacheDir = PackConfig.getWalCachePath();
     _ugi = PackConfig.getUgi();
     _conf = PackConfig.getConfiguration();
     _rootPath = PackConfig.getHdfsTarget();
+    _maxWalSize = PackConfig.getMaxWalSize();
 
     String kafkaZkConnection = PackConfig.getKafkaZkConnection();
     _packKafkaClientFactory = new PackKafkaClientFactory(kafkaZkConnection);
@@ -55,11 +57,12 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         Path volumeDir = new Path(_rootPath, name);
         PackMetaData metaData = getMetaData(volumeDir);
         File cacheDir = new File(_cacheDir, name);
+        long maxWalSize = _maxWalSize;
         PackUtils.rmr(cacheDir);
         cacheDir.mkdirs();
         WriteBlockMonitor monitor = _packWriteBlockMonitorFactory.create(name);
         return TraceStorageModule.traceIfEnabled(new PackStorageModule(name, metaData, _conf, volumeDir,
-            _packKafkaClientFactory, _ugi, cacheDir, monitor));
+            _packKafkaClientFactory, _ugi, cacheDir, monitor, maxWalSize));
       });
     } catch (InterruptedException e) {
       throw new IOException(e);
