@@ -21,7 +21,7 @@ public class FileStorageModule extends BaseStorageModule {
   private final UUID _serialId = UUID.randomUUID();
 
   public FileStorageModule(long sizeInBytes, int blockSize, String name, File file) throws IOException {
-    super(sizeInBytes, blockSize, name);
+    super(sizeInBytes, blockSize);
     _rand = new RandomAccessFile(file, RW);
   }
 

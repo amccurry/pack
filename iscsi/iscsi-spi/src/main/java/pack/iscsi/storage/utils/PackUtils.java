@@ -13,12 +13,18 @@ import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import org.apache.log4j.PropertyConfigurator;
+import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Splitter;
 
 public class PackUtils {
+
+  private static final String XML = ".xml";
+
+  public static final String PACK_LOG4J_CONFIG = "PACK_LOG4J_CONFIG";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackUtils.class);
 
@@ -186,6 +192,17 @@ public class PackUtils {
     int num;
     while ((num = input.read(buf)) != -1) {
       output.write(buf, 0, num);
+    }
+  }
+
+  public static void setupLog4j() {
+    String log4jConfigFile = System.getenv(PACK_LOG4J_CONFIG);
+    if (log4jConfigFile == null) {
+      return;
+    } else if (log4jConfigFile.endsWith(XML)) {
+      DOMConfigurator.configure(log4jConfigFile);
+    } else {
+      PropertyConfigurator.configure(log4jConfigFile);
     }
   }
 

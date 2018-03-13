@@ -42,11 +42,13 @@ public class PackStorageModule extends BaseStorageModule {
   private final WriteBlockMonitor _writeBlockMonitor;
   private final WalCacheFactory _cacheFactory;
   private final UUID _serialId;
+  private final String _name;
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
-      WriteBlockMonitor writeBlockMonitor, long maxWalSize,long maxWalLifeTime) throws IOException {
-    super(metaData.getLength(), metaData.getBlockSize(), name);
+      WriteBlockMonitor writeBlockMonitor, long maxWalSize, long maxWalLifeTime) throws IOException {
+    super(metaData.getLength(), metaData.getBlockSize());
+    _name = name;
     _serialId = UUID.fromString(metaData.getSerialId());
     _topic = metaData.getTopicId();
     _kafkaClientFactory = kafkaClientFactory;
@@ -131,6 +133,7 @@ public class PackStorageModule extends BaseStorageModule {
 
   @Override
   public void close() throws IOException {
+    LOGGER.info("Closing storage module {}", _name);
     PackUtils.close(LOGGER, _packKafkaWriter.get(), _packKafkaReader, _walCacheManager, _hdfsReader);
   }
 

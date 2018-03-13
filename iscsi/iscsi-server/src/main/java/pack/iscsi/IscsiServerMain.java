@@ -21,6 +21,7 @@ public class IscsiServerMain {
   private static final Logger LOGGER = LoggerFactory.getLogger(IscsiServerMain.class);
 
   public static void main(String[] args) throws Exception {
+    PackUtils.setupLog4j();
     List<String> addresses = PackUtils.getEnvListFailIfMissing(PACK_ISCSI_ADDRESS);
     String serialid = PackUtils.getEnvFailIfMissing(PACK_ISCSI_SERIAL_ID);
 
@@ -43,7 +44,6 @@ public class IscsiServerMain {
 
   public static void runServer(IscsiServerConfig config) throws Exception {
     try (IscsiServer iscsiServer = new IscsiServer(config)) {
-      iscsiServer.registerTargets();
       iscsiServer.start();
       iscsiServer.join();
     }

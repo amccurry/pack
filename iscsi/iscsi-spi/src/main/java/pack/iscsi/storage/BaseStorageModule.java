@@ -7,7 +7,7 @@ public abstract class BaseStorageModule implements IStorageModule {
   protected final long _sizeInBlocks;
   protected final int _blockSize;
 
-  public BaseStorageModule(long sizeInBytes, int blockSize, String name) {
+  public BaseStorageModule(long sizeInBytes, int blockSize) {
     _blockSize = blockSize;
     _sizeInBlocks = sizeInBytes / blockSize;
   }

@@ -33,7 +33,7 @@ public abstract class BaseStorageTargetManager implements StorageTargetManager {
     return list.toArray(new String[list.size()]);
   }
 
-  protected void registerNewTargets() {
+  protected synchronized void registerNewTargets() {
     List<String> names = getVolumeNames();
     for (String name : names) {
       String fullName = getFullName(name);

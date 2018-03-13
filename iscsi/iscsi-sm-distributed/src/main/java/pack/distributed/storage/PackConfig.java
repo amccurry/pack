@@ -14,6 +14,8 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
+  private static final String ZK_CONNECTION = "ZK_CONNECTION";
+  private static final String ZK_TIMEOUT = "ZK_TIMEOUT";
   private static final long WAL_MAX_LIFE_TIME_DEAULT = TimeUnit.MINUTES.toMillis(1);
   private static final int WAL_MAX_SIZE_DEFAULT = 10_000_000;
   private static final String WAL_MAX_LIFE_TIME = "WAL_MAX_LIFE_TIME";
@@ -27,6 +29,9 @@ public class PackConfig {
   private static final String HDFS_KERBEROS_PRINCIPAL = "HDFS_KERBEROS_PRINCIPAL";
   private static final String HDFS_UGI_REMOTE_USER = "HDFS_UGI_REMOTE_USER";
   private static final String HDFS_UGI_CURRENT_USER = "HDFS_UGI_CURRENT_USER";
+  private static final int ZK_TIMEOUT_DEAULT = 30000;
+  private static final long MAX_BLOCK_FILE_SIZE_DEAULT = 10_737_418_240L;
+  private static final double MAX_OBSOLETE_RATIO_DEAULT = 0.5;
 
   public static Path getHdfsTarget() {
     return new Path(PackUtils.getEnvFailIfMissing(HDFS_TARGET_PATH));
@@ -76,5 +81,21 @@ public class PackConfig {
 
   public static long getMaxWalLifeTime() {
     return Long.parseLong(PackUtils.getEnv(WAL_MAX_LIFE_TIME, Long.toString(WAL_MAX_LIFE_TIME_DEAULT)));
+  }
+
+  public static int getZooKeeperSessionTimeout() {
+    return Integer.parseInt(PackUtils.getEnv(ZK_TIMEOUT, Integer.toString(ZK_TIMEOUT_DEAULT)));
+  }
+
+  public static String getZooKeeperConnection() {
+    return PackUtils.getEnvFailIfMissing(ZK_CONNECTION);
+  }
+
+  public static long getMaxBlockFileSize() {
+    return Long.parseLong(PackUtils.getEnv("MAX_BLOCK_FILE_SIZE", Long.toString(MAX_BLOCK_FILE_SIZE_DEAULT)));
+  }
+
+  public static double getMaxObsoleteRatio() {
+    return Double.parseDouble(PackUtils.getEnv("MAX_OBSOLETE_RATIO", Double.toString(MAX_OBSOLETE_RATIO_DEAULT)));
   }
 }
