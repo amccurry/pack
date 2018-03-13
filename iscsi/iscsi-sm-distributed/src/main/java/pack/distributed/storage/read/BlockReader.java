@@ -1,4 +1,4 @@
-package pack.distributed.storage;
+package pack.distributed.storage.read;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -7,8 +7,6 @@ import java.util.List;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
-
-import pack.distributed.storage.read.ReadRequest;
 
 public interface BlockReader extends Closeable {
 

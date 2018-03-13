@@ -2,8 +2,8 @@ package pack.distributed.storage.wal;
 
 import java.io.IOException;
 
-import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.hdfs.BlockFile.Writer;
+import pack.distributed.storage.read.BlockReader;
 
 public interface WalCache extends Comparable<WalCache>, BlockReader {
 

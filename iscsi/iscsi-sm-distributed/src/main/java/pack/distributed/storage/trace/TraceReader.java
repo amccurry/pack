@@ -15,9 +15,9 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.util.Md5Utils;
 
-import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.hdfs.BlockFile.BlockFileEntry;
 import pack.distributed.storage.hdfs.BlockFile.Reader;
+import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
 
 public class TraceReader extends Reader {

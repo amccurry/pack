@@ -21,13 +21,13 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 
-import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.BlockFile;
 import pack.distributed.storage.hdfs.BlockFile.Writer;
 import pack.distributed.storage.hdfs.CommitFile;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
 import pack.distributed.storage.trace.TraceHdfsBlockReader;
 import pack.distributed.storage.trace.TraceWalCache;

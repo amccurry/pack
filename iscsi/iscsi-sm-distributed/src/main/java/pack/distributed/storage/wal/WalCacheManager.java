@@ -3,7 +3,7 @@ package pack.distributed.storage.wal;
 import java.io.Closeable;
 import java.io.IOException;
 
-import pack.distributed.storage.BlockReader;
+import pack.distributed.storage.read.BlockReader;
 
 public interface WalCacheManager extends Closeable, BlockReader {
 

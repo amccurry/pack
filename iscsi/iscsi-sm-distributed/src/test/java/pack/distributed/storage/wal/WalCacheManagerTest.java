@@ -21,11 +21,11 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
-import pack.distributed.storage.BlockReader;
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.HdfsMiniClusterUtil;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
 import pack.iscsi.storage.utils.PackUtils;
 
