@@ -9,8 +9,10 @@ import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 import org.apache.log4j.PropertyConfigurator;
@@ -27,6 +29,13 @@ public class PackUtils {
   public static final String PACK_LOG4J_CONFIG = "PACK_LOG4J_CONFIG";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackUtils.class);
+
+  private static ThreadLocal<Random> _random = new ThreadLocal<Random>() {
+    @Override
+    protected Random initialValue() {
+      return new Random();
+    }
+  };
 
   public static UUID generateSerialId() {
     return UUID.randomUUID();
@@ -60,6 +69,24 @@ public class PackUtils {
         }
       }
     }
+  }
+
+  public static void close(Logger logger, ExecutorService... service) {
+    close(logger, toCloseables(service));
+  }
+
+  private static Closeable[] toCloseables(ExecutorService[] service) {
+    if (service == null) {
+      return null;
+    }
+    Closeable[] closeables = new Closeable[service.length];
+    int i = 0;
+    for (ExecutorService executorService : service) {
+      if (executorService != null) {
+        closeables[i++] = () -> executorService.shutdownNow();
+      }
+    }
+    return closeables;
   }
 
   public static void checkFutureIsRunning(Future<Void> future) {
@@ -204,6 +231,15 @@ public class PackUtils {
     } else {
       PropertyConfigurator.configure(log4jConfigFile);
     }
+  }
+
+  public static String getMapName(String name) {
+    return "pack." + name;
+  }
+
+  public static long getRandomLong() {
+    return _random.get()
+                  .nextLong();
   }
 
 }

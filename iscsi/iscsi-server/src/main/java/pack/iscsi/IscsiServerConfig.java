@@ -13,6 +13,5 @@ public class IscsiServerConfig {
   Set<String> addresses;
   int port;
   StorageTargetManager iscsiTargetManager;
-  String serialId;
 
 }

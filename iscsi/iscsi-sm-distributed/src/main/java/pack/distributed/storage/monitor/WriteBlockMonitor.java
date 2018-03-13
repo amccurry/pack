@@ -1,5 +1,7 @@
 package pack.distributed.storage.monitor;
 
+import pack.iscsi.storage.utils.PackUtils;
+
 public interface WriteBlockMonitor {
 
   WriteBlockMonitor NO_OP = new WriteBlockMonitor() {
@@ -18,7 +20,7 @@ public interface WriteBlockMonitor {
   }
 
   default long createTransId() {
-    return System.currentTimeMillis();
+    return PackUtils.getRandomLong();
   }
 
 }

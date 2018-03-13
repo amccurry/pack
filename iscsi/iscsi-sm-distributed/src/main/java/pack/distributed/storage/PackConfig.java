@@ -14,24 +14,31 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
-  private static final String ZK_CONNECTION = "ZK_CONNECTION";
-  private static final String ZK_TIMEOUT = "ZK_TIMEOUT";
-  private static final long WAL_MAX_LIFE_TIME_DEAULT = TimeUnit.MINUTES.toMillis(1);
-  private static final int WAL_MAX_SIZE_DEFAULT = 10_000_000;
-  private static final String WAL_MAX_LIFE_TIME = "WAL_MAX_LIFE_TIME";
-  private static final String WAL_MAX_SIZE = "WAL_MAX_SIZE";
-  private static final String WAL_CACHE_DIR = "WAL_CACHE_DIR";
-  private static final String KAFKA_ZK_CONNECTION = "KAFKA_ZK_CONNECTION";
-  private static final String HDFS_TARGET_PATH = "HDFS_TARGET_PATH";
-  private static final String HDFS_CONF_PATH = "HDFS_CONF_PATH";
-  private static final String XML = ".xml";
-  private static final String HDFS_KERBEROS_KEYTAB = "HDFS_KERBEROS_KEYTAB";
-  private static final String HDFS_KERBEROS_PRINCIPAL = "HDFS_KERBEROS_PRINCIPAL";
-  private static final String HDFS_UGI_REMOTE_USER = "HDFS_UGI_REMOTE_USER";
-  private static final String HDFS_UGI_CURRENT_USER = "HDFS_UGI_CURRENT_USER";
-  private static final int ZK_TIMEOUT_DEAULT = 30000;
-  private static final long MAX_BLOCK_FILE_SIZE_DEAULT = 10_737_418_240L;
-  private static final double MAX_OBSOLETE_RATIO_DEAULT = 0.5;
+  private static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS = "WRITE_BLOCK_MONITOR_BIND_ADDRESS";
+  public static final String WRITE_BLOCK_MONITOR_ADDRESS = "WRITE_BLOCK_MONITOR_ADDRESS";
+  public static final String MAX_BLOCK_FILE_SIZE = "MAX_BLOCK_FILE_SIZE";
+  public static final String MAX_OBSOLETE_RATIO = "MAX_OBSOLETE_RATIO";
+  public static final String WRITE_BLOCK_MONITOR_PORT = "WRITE_BLOCK_MONITOR_PORT";
+  public static final String ZK_CONNECTION = "ZK_CONNECTION";
+  public static final String ZK_TIMEOUT = "ZK_TIMEOUT";
+  public static final long WAL_MAX_LIFE_TIME_DEAULT = TimeUnit.MINUTES.toMillis(1);
+  public static final int WAL_MAX_SIZE_DEFAULT = 10_000_000;
+  public static final String WAL_MAX_LIFE_TIME = "WAL_MAX_LIFE_TIME";
+  public static final String WAL_MAX_SIZE = "WAL_MAX_SIZE";
+  public static final String WAL_CACHE_DIR = "WAL_CACHE_DIR";
+  public static final String KAFKA_ZK_CONNECTION = "KAFKA_ZK_CONNECTION";
+  public static final String HDFS_TARGET_PATH = "HDFS_TARGET_PATH";
+  public static final String HDFS_CONF_PATH = "HDFS_CONF_PATH";
+  public static final String XML = ".xml";
+  public static final String HDFS_KERBEROS_KEYTAB = "HDFS_KERBEROS_KEYTAB";
+  public static final String HDFS_KERBEROS_PRINCIPAL = "HDFS_KERBEROS_PRINCIPAL";
+  public static final String HDFS_UGI_REMOTE_USER = "HDFS_UGI_REMOTE_USER";
+  public static final String HDFS_UGI_CURRENT_USER = "HDFS_UGI_CURRENT_USER";
+  public static final int ZK_TIMEOUT_DEAULT = 30000;
+  public static final long MAX_BLOCK_FILE_SIZE_DEAULT = 10_737_418_240L;
+  public static final double MAX_OBSOLETE_RATIO_DEAULT = 0.5;
+  public static final int WRITE_BLOCK_MONITOR_PORT_DEAULT = 9753;
+  public static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS_DEFAULT = "0.0.0.0";
 
   public static Path getHdfsTarget() {
     return new Path(PackUtils.getEnvFailIfMissing(HDFS_TARGET_PATH));
@@ -92,10 +99,23 @@ public class PackConfig {
   }
 
   public static long getMaxBlockFileSize() {
-    return Long.parseLong(PackUtils.getEnv("MAX_BLOCK_FILE_SIZE", Long.toString(MAX_BLOCK_FILE_SIZE_DEAULT)));
+    return Long.parseLong(PackUtils.getEnv(MAX_BLOCK_FILE_SIZE, Long.toString(MAX_BLOCK_FILE_SIZE_DEAULT)));
   }
 
   public static double getMaxObsoleteRatio() {
-    return Double.parseDouble(PackUtils.getEnv("MAX_OBSOLETE_RATIO", Double.toString(MAX_OBSOLETE_RATIO_DEAULT)));
+    return Double.parseDouble(PackUtils.getEnv(MAX_OBSOLETE_RATIO, Double.toString(MAX_OBSOLETE_RATIO_DEAULT)));
+  }
+
+  public static int getWriteBlockMonitorPort() {
+    return Integer.parseInt(
+        PackUtils.getEnv(WRITE_BLOCK_MONITOR_PORT, Integer.toString(WRITE_BLOCK_MONITOR_PORT_DEAULT)));
+  }
+
+  public static String getWriteBlockMonitorBindAddress() {
+    return PackUtils.getEnv(WRITE_BLOCK_MONITOR_BIND_ADDRESS, WRITE_BLOCK_MONITOR_BIND_ADDRESS_DEFAULT);
+  }
+
+  public static String getWriteBlockMonitorAddress() {
+    return PackUtils.getEnvFailIfMissing(WRITE_BLOCK_MONITOR_ADDRESS);
   }
 }

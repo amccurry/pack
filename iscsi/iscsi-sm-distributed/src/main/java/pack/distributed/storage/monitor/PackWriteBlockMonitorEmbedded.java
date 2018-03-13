@@ -8,13 +8,13 @@ import org.jboss.netty.util.internal.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class PackWriteBlockMonitorSimple implements WriteBlockMonitor {
+public class PackWriteBlockMonitorEmbedded implements WriteBlockMonitor {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(PackWriteBlockMonitorSimple.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackWriteBlockMonitorEmbedded.class);
 
   private final ConcurrentMap<Integer, List<Long>> _map;
 
-  public PackWriteBlockMonitorSimple() {
+  public PackWriteBlockMonitorEmbedded() {
     _map = new ConcurrentHashMap<>();
   }
 

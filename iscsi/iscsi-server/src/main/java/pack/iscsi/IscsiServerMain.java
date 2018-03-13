@@ -16,14 +16,12 @@ import pack.iscsi.storage.utils.PackUtils;
 public class IscsiServerMain {
 
   private static final String PACK_ISCSI_ADDRESS = "PACK_ISCSI_ADDRESS";
-  private static final String PACK_ISCSI_SERIAL_ID = "PACK_ISCSI_SERIAL_ID";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(IscsiServerMain.class);
 
   public static void main(String[] args) throws Exception {
     PackUtils.setupLog4j();
     List<String> addresses = PackUtils.getEnvListFailIfMissing(PACK_ISCSI_ADDRESS);
-    String serialid = PackUtils.getEnvFailIfMissing(PACK_ISCSI_SERIAL_ID);
 
     List<StorageTargetManager> targetManagers = new ArrayList<>();
     ServiceLoader<StorageTargetManagerFactory> loader = ServiceLoader.load(StorageTargetManagerFactory.class);
@@ -37,7 +35,6 @@ public class IscsiServerMain {
                                                 .addresses(ImmutableSet.copyOf(addresses))
                                                 .port(3260)
                                                 .iscsiTargetManager(manager)
-                                                .serialId(serialid)
                                                 .build();
     runServer(config);
   }

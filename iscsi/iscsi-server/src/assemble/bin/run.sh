@@ -21,6 +21,9 @@ case $CMD in
   (iscsi)
     exec -a pack-iscsi java -Xmx256m -Xms256m pack.iscsi.IscsiServerMain
     ;;
+  (monitor)
+    exec -a pack-monitor java -Xmx256m -Xms256m pack.distributed.storage.monitor.rpc.PackWriteBlockMonitorServerRaw
+    ;;
   (*)
     echo "Don't understand [$CMD]"
     ;;
