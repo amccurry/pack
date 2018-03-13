@@ -32,6 +32,9 @@ public class PackWriteBlockMonitor implements WriteBlockMonitor {
     synchronized (list) {
       list.remove(transId);
       list.notifyAll();
+      if (list.isEmpty()) {
+        _map.remove(blockId);
+      }
     }
   }
 
