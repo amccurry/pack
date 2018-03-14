@@ -242,4 +242,9 @@ public class PackUtils {
                   .nextLong();
   }
 
+  public static int getRandomInt() {
+    return _random.get()
+                  .nextInt();
+  }
+
 }

@@ -25,6 +25,8 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackStorageTargetManager extends BaseStorageTargetManager {
 
+  private static final String PACK_ISCSI_ADDRESS = "PACK_ISCSI_ADDRESS";
+
   private final UserGroupInformation _ugi;
   private final Path _rootPath;
   private final Configuration _conf;
@@ -41,10 +43,11 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
     _rootPath = PackConfig.getHdfsTarget();
     _maxWalSize = PackConfig.getMaxWalSize();
     _maxWalLifeTime = PackConfig.getMaxWalLifeTime();
+    String addresses = PackUtils.getEnvFailIfMissing(PACK_ISCSI_ADDRESS);
 
     String kafkaZkConnection = PackConfig.getKafkaZkConnection();
     _packKafkaClientFactory = new PackKafkaClientFactory(kafkaZkConnection);
-    _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory();
+    _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory(addresses);
   }
 
   @Override

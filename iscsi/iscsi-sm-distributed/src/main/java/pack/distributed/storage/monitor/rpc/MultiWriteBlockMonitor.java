@@ -8,19 +8,21 @@ import java.net.Socket;
 
 import com.google.common.io.Closer;
 
-public interface WriteBlockMonitorRaw extends Closeable {
+public interface MultiWriteBlockMonitor extends Closeable {
 
   public static final String UTF_8 = "UTF-8";
 
-  int register(String name) throws IOException;
+  int registerVolume(String volumeName) throws IOException;
 
-  void addDirtyBlock(int id, int blockId, long transId) throws IOException;
+  int registerServer(String server) throws IOException;
 
-  void resetDirtyBlock(int id, int blockId, long transId) throws IOException;
+  void addDirtyBlock(int volumeId, int blockId, long transId) throws IOException;
 
-  void waitIfNeededForSync(int id, int blockId) throws IOException;
+  void resetDirtyBlock(int serverId, int volumeId, int blockId, long transId) throws IOException;
 
-  public static WriteBlockMonitorRaw createClientTcp(String host, int port) throws IOException {
+  void waitIfNeededForSync(int serverId, int volumeId, int blockId) throws IOException;
+
+  public static MultiWriteBlockMonitor createClientTcp(String host, int port) throws IOException {
     Closer closer = Closer.create();
     try {
       Socket socket = closer.register(new Socket(host, port));
@@ -28,12 +30,13 @@ public interface WriteBlockMonitorRaw extends Closeable {
       socket.setKeepAlive(true);
       DataInputStream inputStream = closer.register(new DataInputStream(socket.getInputStream()));
       DataOutputStream outputStream = closer.register(new DataOutputStream(socket.getOutputStream()));
-      return new WriteBlockMonitorRaw() {
+      return new MultiWriteBlockMonitor() {
 
         @Override
-        public void waitIfNeededForSync(int id, int blockId) throws IOException {
+        public void waitIfNeededForSync(int serverId, int volumeId, int blockId) throws IOException {
           outputStream.write(2);
-          outputStream.writeInt(id);
+          outputStream.writeInt(serverId);
+          outputStream.writeInt(volumeId);
           outputStream.writeInt(blockId);
           outputStream.flush();
           if (inputStream.read() != 0) {
@@ -42,9 +45,10 @@ public interface WriteBlockMonitorRaw extends Closeable {
         }
 
         @Override
-        public void resetDirtyBlock(int id, int blockId, long transId) throws IOException {
+        public void resetDirtyBlock(int serverId, int volumeId, int blockId, long transId) throws IOException {
           outputStream.write(1);
-          outputStream.writeInt(id);
+          outputStream.writeInt(serverId);
+          outputStream.writeInt(volumeId);
           outputStream.writeInt(blockId);
           outputStream.writeLong(transId);
           outputStream.flush();
@@ -54,9 +58,9 @@ public interface WriteBlockMonitorRaw extends Closeable {
         }
 
         @Override
-        public void addDirtyBlock(int id, int blockId, long transId) throws IOException {
+        public void addDirtyBlock(int volumeId, int blockId, long transId) throws IOException {
           outputStream.write(0);
-          outputStream.writeInt(id);
+          outputStream.writeInt(volumeId);
           outputStream.writeInt(blockId);
           outputStream.writeLong(transId);
           outputStream.flush();
@@ -64,11 +68,22 @@ public interface WriteBlockMonitorRaw extends Closeable {
             throw new IOException("Unknown error");
           }
         }
+        
+        @Override
+        public int registerServer(String serverName) throws IOException {
+          outputStream.write(4);
+          writeString(outputStream, serverName);
+          outputStream.flush();
+          if (inputStream.read() != 0) {
+            throw new IOException("Unknown error");
+          }
+          return inputStream.readInt();
+        }
 
         @Override
-        public int register(String name) throws IOException {
+        public int registerVolume(String volumeName) throws IOException {
           outputStream.write(3);
-          writeString(outputStream, name);
+          writeString(outputStream, volumeName);
           outputStream.flush();
           if (inputStream.read() != 0) {
             throw new IOException("Unknown error");
