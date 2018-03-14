@@ -14,13 +14,8 @@ public class PackWriteBlockMonitorEmbedded implements WriteBlockMonitor {
 
   private final ConcurrentMap<Integer, List<Long>> _map;
 
-  public PackWriteBlockMonitorEmbedded() {
+  public PackWriteBlockMonitorEmbedded(String name) {
     _map = new ConcurrentHashMap<>();
-  }
-
-  @Override
-  public long createTransId() {
-    return System.nanoTime();
   }
 
   @Override
@@ -60,7 +55,7 @@ public class PackWriteBlockMonitorEmbedded implements WriteBlockMonitor {
           return;
         }
         try {
-          LOGGER.info("Waiting for block to written to wal {}", blockId);
+          LOGGER.info("Waiting for block to written to wal block {} transIds {}", blockId, list);
           list.wait();
         } catch (InterruptedException e) {
           throw new RuntimeException(e);

@@ -32,6 +32,8 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.iscsi.storage.utils.PackUtils;
+
 public class ZkUtils {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(ZkUtils.class);
@@ -54,6 +56,11 @@ public class ZkUtils {
     @Override
     public void process(WatchedEvent event) {
       KeeperState state = event.getState();
+      if (state == KeeperState.Expired) {
+        LOGGER.error("ZooKeeper session expired, shutdown jvm.");
+        System.err.println("ZooKeeper session expired, shutdown jvm.");
+        System.exit(1);
+      }
       LOGGER.info("ZooKeeper {} timeout {} changed to {} state", zkConnectionString, sessionTimeout, state);
     }
 
@@ -210,5 +217,11 @@ public class ZkUtils {
       rmr(zooKeeper, path + "/" + c);
     }
     zooKeeper.delete(path, -1);
+  }
+
+  public static ZooKeeperClient addOnShutdownCloseTrigger(ZooKeeperClient zk) {
+    Runtime.getRuntime()
+           .addShutdownHook(new Thread(() -> PackUtils.closeQuietly(zk)));
+    return zk;
   }
 }

@@ -87,4 +87,9 @@ public class InMemoryWalCache implements WalCache {
   private void setMaxlayer(long layer) {
     _maxLayer.set(layer);
   }
+
+  @Override
+  public boolean isClosed() {
+    return true;
+  }
 }

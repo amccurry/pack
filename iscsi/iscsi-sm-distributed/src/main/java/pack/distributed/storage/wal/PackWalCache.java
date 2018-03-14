@@ -6,6 +6,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -40,6 +41,7 @@ public class PackWalCache implements WalCache {
   private final AtomicLong _layer = new AtomicLong(-1L);
   private final Cache<Integer, byte[]> _cache;
   private final AtomicInteger _count = new AtomicInteger();
+  private final AtomicBoolean _closed = new AtomicBoolean(false);
 
   public PackWalCache(File dirFile, long startingLayer, long length, int blockSize) throws IOException {
     this(dirFile, startingLayer, length, blockSize, true);
@@ -88,6 +90,7 @@ public class PackWalCache implements WalCache {
   }
 
   public boolean readBlock(ReadRequest readRequest) throws IOException {
+    ensureOpen();
     int id = readRequest.getBlockId();
     if (_cache != null) {
       byte[] bs = _cache.getIfPresent(id);
@@ -137,6 +140,7 @@ public class PackWalCache implements WalCache {
 
   @Override
   public void write(long layer, int blockId, byte[] value) throws IOException {
+    ensureOpen();
     add(blockId);
     if (_cache != null) {
       if (LOGGER.isTraceEnabled()) {
@@ -162,8 +166,20 @@ public class PackWalCache implements WalCache {
     }
   }
 
+  public void ensureOpen() throws IOException {
+    if (isClosed()) {
+      throw new IOException("Already closed");
+    }
+  }
+
+  @Override
+  public boolean isClosed() {
+    return _closed.get();
+  }
+
   @Override
   public void close() throws IOException {
+    _closed.set(true);
     PackUtils.close(LOGGER, _channel);
     PackUtils.close(LOGGER, _rnd);
     if (_deleteFileOnClose) {

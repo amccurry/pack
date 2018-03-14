@@ -19,13 +19,15 @@ import com.google.common.collect.ImmutableList.Builder;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.monitor.PackWriteBlockMonitorFactory;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.PackServerStatusManager;
 import pack.distributed.storage.trace.TraceStorageModule;
+import pack.distributed.storage.zk.ZkUtils;
+import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.iscsi.storage.BaseStorageTargetManager;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackStorageTargetManager extends BaseStorageTargetManager {
-
-  private static final String PACK_ISCSI_ADDRESS = "PACK_ISCSI_ADDRESS";
 
   private final UserGroupInformation _ugi;
   private final Path _rootPath;
@@ -35,6 +37,8 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final PackWriteBlockMonitorFactory _packWriteBlockMonitorFactory;
   private final long _maxWalSize;
   private final long _maxWalLifeTime;
+  private final ZooKeeperClient _zk;
+  private final ServerStatusManager _serverStatusManager;
 
   public PackStorageTargetManager() throws IOException {
     _cacheDir = PackConfig.getWalCachePath();
@@ -43,11 +47,21 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
     _rootPath = PackConfig.getHdfsTarget();
     _maxWalSize = PackConfig.getMaxWalSize();
     _maxWalLifeTime = PackConfig.getMaxWalLifeTime();
-    String addresses = PackUtils.getEnvFailIfMissing(PACK_ISCSI_ADDRESS);
+
+    String zkConnectionString = PackConfig.getZooKeeperConnection();
+    int sessionTimeout = PackConfig.getZooKeeperSessionTimeout();
+    _zk = ZkUtils.addOnShutdownCloseTrigger(ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout));
+
+    String writeBlockMonitorBindAddress = PackConfig.getWriteBlockMonitorBindAddress();
+    int writeBlockMonitorPort = PackConfig.getWriteBlockMonitorPort();
+    String writeBlockMonitorAddress = PackConfig.getWriteBlockMonitorAddress();
+
+    _serverStatusManager = new PackServerStatusManager(_zk, writeBlockMonitorBindAddress, writeBlockMonitorPort,
+        writeBlockMonitorAddress);
 
     String kafkaZkConnection = PackConfig.getKafkaZkConnection();
     _packKafkaClientFactory = new PackKafkaClientFactory(kafkaZkConnection);
-    _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory(addresses);
+    _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory();
   }
 
   @Override
@@ -65,8 +79,9 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         PackUtils.rmr(cacheDir);
         cacheDir.mkdirs();
         WriteBlockMonitor monitor = _packWriteBlockMonitorFactory.create(name);
+        _serverStatusManager.register(name, monitor);
         return TraceStorageModule.traceIfEnabled(new PackStorageModule(name, metaData, _conf, volumeDir,
-            _packKafkaClientFactory, _ugi, cacheDir, monitor, _maxWalSize, _maxWalLifeTime));
+            _packKafkaClientFactory, _ugi, cacheDir, monitor, _serverStatusManager, _maxWalSize, _maxWalLifeTime));
       });
     } catch (InterruptedException e) {
       throw new IOException(e);

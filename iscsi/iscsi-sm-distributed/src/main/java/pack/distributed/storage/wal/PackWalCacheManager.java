@@ -29,6 +29,7 @@ import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
+import pack.distributed.storage.status.ServerStatusManager;
 import pack.distributed.storage.trace.TraceHdfsBlockReader;
 import pack.distributed.storage.trace.TraceWalCache;
 import pack.iscsi.storage.utils.PackUtils;
@@ -56,10 +57,12 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   private final AtomicBoolean _running = new AtomicBoolean(true);
   private final String _volumeName;
   private final long _maxWalLifeTime;
+  private final ServerStatusManager _serverStatusManager;
 
   public PackWalCacheManager(String volumeName, WriteBlockMonitor writeBlockMonitor, WalCacheFactory cacheFactory,
-      PackHdfsReader hdfsReader, PackMetaData metaData, Configuration configuration, Path volumeDir, long maxWalSize,
-      long maxWalLifeTime) {
+      PackHdfsReader hdfsReader, ServerStatusManager serverStatusManager, PackMetaData metaData,
+      Configuration configuration, Path volumeDir, long maxWalSize, long maxWalLifeTime) {
+    _serverStatusManager = serverStatusManager;
     _maxWalLifeTime = maxWalLifeTime;
     _volumeName = volumeName;
     _maxWalSize = maxWalSize;
@@ -111,15 +114,11 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
 
   public void updateHdfs() throws IOException {
     LOGGER.info("Updating hdfs {}", _volumeName);
-    if (isLeader()) {
+    if (_serverStatusManager.isLeader(_volumeName)) {
       writeWalCacheToHdfs();
     } else {
       removeOldWalCache();
     }
-  }
-
-  private boolean isLeader() {
-    return true;
   }
 
   public long getMaxLayer() {
@@ -161,7 +160,7 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   }
 
   public void writeWalCacheToHdfs() throws IOException {
-    LOGGER.info("Writing wal cache to hdfs {}", _volumeName);
+    LOGGER.debug("Writing wal cache to hdfs {}", _volumeName);
     WalCache walCache = _currentWalCache.get();
     List<WalCache> list = new ArrayList<>();
     for (Entry<Long, WalCache> e : _walCache.asMap()
@@ -252,6 +251,8 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
 
   private boolean shouldRollWal(WalCache walCache) {
     if (walCache == null) {
+      return true;
+    } else if (walCache.isClosed()) {
       return true;
     } else if (_forceRoll.get()) {
       _forceRoll.set(false);

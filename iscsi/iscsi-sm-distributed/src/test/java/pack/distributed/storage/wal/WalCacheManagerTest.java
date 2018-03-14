@@ -27,6 +27,7 @@ import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
+import pack.distributed.storage.status.ServerStatusManager;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class WalCacheManagerTest {
@@ -75,8 +76,9 @@ public class WalCacheManagerTest {
     try (PackHdfsReader hdfsReader = new PackHdfsReader(configuration, volumeDir,
         UserGroupInformation.getCurrentUser())) {
       WalCacheFactory cacheFactory = new PackWalCacheFactory(metaData, _dirFile);
+      ServerStatusManager ssm = newServerStatusManager();
       try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, WriteBlockMonitor.NO_OP, cacheFactory,
-          hdfsReader, metaData, configuration, volumeDir, 1_000_000, TimeUnit.SECONDS.toMillis(10))) {
+          hdfsReader, ssm, metaData, configuration, volumeDir, 1_000_000, TimeUnit.SECONDS.toMillis(10))) {
         File file = new File("./target/tmp/PackWalCacheManagerTest/test");
         byte[] buffer = new byte[blockSize];
         long layer = 0;
@@ -121,5 +123,25 @@ public class WalCacheManagerTest {
         }
       }
     }
+  }
+
+  private ServerStatusManager newServerStatusManager() {
+    return new ServerStatusManager() {
+
+      @Override
+      public void register(String name, WriteBlockMonitor monitor) {
+
+      }
+
+      @Override
+      public boolean isLeader(String name) {
+        return true;
+      }
+
+      @Override
+      public void broadcastToAllServers(String name, int blockId, long transId) {
+
+      }
+    };
   }
 }

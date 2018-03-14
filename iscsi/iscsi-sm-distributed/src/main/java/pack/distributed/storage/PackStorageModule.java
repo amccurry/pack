@@ -20,6 +20,7 @@ import pack.distributed.storage.kafka.PackKafkaReader;
 import pack.distributed.storage.kafka.PackKafkaWriter;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.ReadRequest;
+import pack.distributed.storage.status.ServerStatusManager;
 import pack.distributed.storage.trace.PackTracer;
 import pack.distributed.storage.wal.PackWalCacheFactory;
 import pack.distributed.storage.wal.PackWalCacheManager;
@@ -43,10 +44,12 @@ public class PackStorageModule extends BaseStorageModule {
   private final WalCacheFactory _cacheFactory;
   private final UUID _serialId;
   private final String _name;
+  private final ServerStatusManager _serverStatusManager;
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
-      WriteBlockMonitor writeBlockMonitor, long maxWalSize, long maxWalLifeTime) throws IOException {
+      WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager, long maxWalSize,
+      long maxWalLifeTime) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize());
     _name = name;
     _serialId = UUID.fromString(metaData.getSerialId());
@@ -55,9 +58,10 @@ public class PackStorageModule extends BaseStorageModule {
     _hdfsReader = new PackHdfsReader(conf, volumeDir, ugi);
     _hdfsReader.refresh();
     _writeBlockMonitor = writeBlockMonitor;
+    _serverStatusManager = serverStatusManager;
     _cacheFactory = new PackWalCacheFactory(metaData, cacheDir);
-    _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader, metaData, conf,
-        volumeDir, maxWalSize, maxWalLifeTime);
+    _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader,
+        _serverStatusManager, metaData, conf, volumeDir, maxWalSize, maxWalLifeTime);
     _packKafkaReader = new PackKafkaReader(name, metaData.getSerialId(), _kafkaClientFactory, _walCacheManager,
         _hdfsReader, _topic, _topicPartition);
     _packKafkaReader.start();
@@ -114,9 +118,7 @@ public class PackStorageModule extends BaseStorageModule {
         if (blockOffset != 0) {
           throw new IOException("block offset not 0");
         }
-        long transId = _writeBlockMonitor.createTransId();
-        packKafkaWriter.write(tracer, transId, blockId, bytes, off, blockSize);
-        _writeBlockMonitor.addDirtyBlock(blockId, transId);
+        packKafkaWriter.write(tracer, blockId, bytes, off, blockSize);
         len -= blockSize;
         off += blockSize;
         pos += blockSize;
@@ -148,8 +150,8 @@ public class PackStorageModule extends BaseStorageModule {
   private synchronized PackKafkaWriter createPackKafkaWriter() {
     PackKafkaWriter packKafkaWriter = _packKafkaWriter.get();
     if (packKafkaWriter == null) {
-      _packKafkaWriter.set(
-          packKafkaWriter = new PackKafkaWriter(_kafkaClientFactory.createProducer(), _topic, _topicPartition));
+      _packKafkaWriter.set(packKafkaWriter = new PackKafkaWriter(_name, _kafkaClientFactory.createProducer(), _topic,
+          _topicPartition, _writeBlockMonitor, _serverStatusManager));
     }
     return packKafkaWriter;
   }

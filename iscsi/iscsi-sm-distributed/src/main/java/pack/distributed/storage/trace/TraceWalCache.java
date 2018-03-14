@@ -84,4 +84,9 @@ public class TraceWalCache implements WalCache {
     return _delegate.getSize();
   }
 
+  @Override
+  public boolean isClosed() {
+    return _delegate.isClosed();
+  }
+
 }
