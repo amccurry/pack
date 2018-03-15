@@ -21,6 +21,16 @@
 			<artifactId>iscsi-sm-distributed</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>com.sparkjava</groupId>
+			<artifactId>spark-core</artifactId>
+			<version>2.7.2</version>
+		</dependency>
+		<dependency>
+			<groupId>io.dropwizard.metrics</groupId>
+			<artifactId>metrics-core</artifactId>
+			<version>4.0.2</version>
+		</dependency>
+		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
 			<version>4.12</version>
@@ -29,6 +39,12 @@
 	</dependencies>
 	<build>
 		<plugins>
+			<!-- <plugin> <artifactId>maven-assembly-plugin</artifactId> <executions> 
+				<execution> <id>distro-assembly-parcel</id> <phase>package</phase> <goals> 
+				<goal>single</goal> </goals> <configuration> <descriptors> <descriptor>src/assemble/tar.xml</descriptor> 
+				</descriptors> <appendAssemblyId>false</appendAssemblyId> <ignoreDirFormatExtensions>false</ignoreDirFormatExtensions> 
+				</configuration> </execution> </executions> </plugin> -->
+
 			<plugin>
 				<artifactId>maven-assembly-plugin</artifactId>
 				<executions>
@@ -40,8 +56,9 @@
 						</goals>
 						<configuration>
 							<descriptors>
-								<descriptor>src/assemble/tar.xml</descriptor>
+								<descriptor>${parcel.assembly.file}</descriptor>
 							</descriptors>
+							<finalName>${parcel.name}-${parcel.version}</finalName>
 							<appendAssemblyId>false</appendAssemblyId>
 							<ignoreDirFormatExtensions>false</ignoreDirFormatExtensions>
 						</configuration>

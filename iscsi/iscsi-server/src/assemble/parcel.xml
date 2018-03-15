@@ -1,0 +1,59 @@
+<assembly
+	xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.2"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.2 http://maven.apache.org/xsd/assembly-1.1.2.xsd">
+	<id>parcel</id>
+	<formats>
+		<format>dir</format>
+		<format>tar.gz</format>
+	</formats>
+	<includeBaseDirectory>false</includeBaseDirectory>
+
+	<dependencySets>
+		<dependencySet>
+			<useProjectArtifact>true</useProjectArtifact>
+			<outputDirectory>${parcel.name}-${parcel.version}/jars</outputDirectory>
+			<unpack>false</unpack>
+			<includes>
+				<include>pack:iscsi-server</include>
+				<include>pack:iscsi-spi</include>
+				<include>pack:iscsi-sm-distributed</include>
+			</includes>
+		</dependencySet>
+		<dependencySet>
+			<useProjectArtifact>false</useProjectArtifact>
+
+			<outputDirectory>${parcel.name}-${parcel.version}/lib</outputDirectory>
+			<unpack>false</unpack>
+			<excludes>
+				<exclude>pack:iscsi-server</exclude>
+				<exclude>pack:iscsi-spi</exclude>
+				<exclude>pack:iscsi-sm-distributed</exclude>
+			</excludes>
+		</dependencySet>
+	</dependencySets>
+
+	<fileSets>
+		<fileSet>
+			<directory>${project.basedir}/src/assemble/parcel/meta</directory>
+			<outputDirectory>${parcel.name}-${parcel.version}/meta</outputDirectory>
+			<excludes>
+				<exclude>**/.empty</exclude>
+				<exclude>**/parcel.json</exclude>
+			</excludes>
+		</fileSet>
+		<fileSet>
+			<directory>${project.basedir}/src/assemble/bin</directory>
+			<outputDirectory>${parcel.name}-${parcel.version}/bin</outputDirectory>
+		</fileSet>
+	</fileSets>
+
+	<files>
+		<file>
+			<source>${project.basedir}/src/assemble/parcel/meta/parcel.json</source>
+			<outputDirectory>${parcel.name}-${parcel.version}/meta</outputDirectory>
+			<destName>parcel.json</destName>
+			<filtered>true</filtered>
+		</file>
+	</files>
+</assembly>

@@ -76,12 +76,12 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   }
 
   @Override
-  protected String getType() {
+  public String getType() {
     return HDFS;
   }
 
   @Override
-  protected IStorageModule createNewStorageModule(String name) throws IOException {
+  public IStorageModule createNewStorageModule(String name) throws IOException {
     try {
       return _ugi.doAs((PrivilegedExceptionAction<IStorageModule>) () -> {
         Path volumeDir = new Path(_rootPath, name);
@@ -109,7 +109,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   }
 
   @Override
-  protected List<String> getVolumeNames() {
+  public List<String> getVolumeNames() {
     try {
       return _ugi.doAs((PrivilegedExceptionAction<List<String>>) () -> {
         Builder<String> builder = ImmutableList.builder();

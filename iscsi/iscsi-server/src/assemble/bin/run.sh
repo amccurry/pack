@@ -2,7 +2,11 @@
 set -e
 set -x
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/.."
+if [ -z ${PACK_ISCSI_PARCEL+x} ] ; then
+  DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/.."
+else
+  DIR="${PACK_ISCSI_PARCEL}"
+fi
 
 set +x
 for f in ${DIR}/jars/*
@@ -19,10 +23,10 @@ CMD=$1
 
 case $CMD in
   (iscsi)
-    exec -a pack-iscsi java -Xmx256m -Xms256m pack.iscsi.IscsiServerMain
+    exec -a pack-iscsi java -Xmx1g -Xms1g pack.iscsi.IscsiServerMain
     ;;
-  (monitor)
-    exec -a pack-monitor java -Xmx256m -Xms256m pack.distributed.storage.monitor.rpc.PackDistributedWriteBlockMonitorServer
+  (compactor)
+    exec -a pack-compactor java -Xmx1g -Xms1g pack.distributed.storage.compactor.PackCompactorServer
     ;;
   (*)
     echo "Don't understand [$CMD]"

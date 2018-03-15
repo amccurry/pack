@@ -72,10 +72,4 @@ public abstract class BaseStorageTargetManager implements StorageTargetManager {
     return TARGET_PREFIX + "." + getType();
   }
 
-  protected abstract String getType();
-
-  protected abstract IStorageModule createNewStorageModule(String name) throws IOException;
-
-  protected abstract List<String> getVolumeNames();
-
 }

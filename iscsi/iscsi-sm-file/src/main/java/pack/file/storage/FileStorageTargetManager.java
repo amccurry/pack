@@ -30,19 +30,19 @@ public class FileStorageTargetManager extends BaseStorageTargetManager {
   }
 
   @Override
-  protected String getType() {
+  public String getType() {
     return FILE;
   }
 
   @Override
-  protected IStorageModule createNewStorageModule(String name) throws IOException {
+  public IStorageModule createNewStorageModule(String name) throws IOException {
     File file = new File(_file, name);
     long sizeInBytes = file.length();
     return new FileStorageModule(sizeInBytes, _blockSize, name, file);
   }
 
   @Override
-  protected List<String> getVolumeNames() {
+  public List<String> getVolumeNames() {
     File[] listFiles = _file.listFiles((FileFilter) pathname -> pathname.isFile());
     Builder<String> builder = ImmutableList.builder();
     for (File file : listFiles) {

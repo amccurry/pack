@@ -24,7 +24,6 @@ public interface StorageTargetManager {
     throw new RuntimeException("not implemented");
   }
 
-
   public static StorageTargetManager merge(StorageTargetManager... targetManagers) {
     return merge(Arrays.asList(targetManagers));
   }
@@ -61,7 +60,28 @@ public interface StorageTargetManager {
         }
         return false;
       }
+
+      @Override
+      public String getType() {
+        return null;
+      }
+
+      @Override
+      public IStorageModule createNewStorageModule(String name) throws IOException {
+        return null;
+      }
+
+      @Override
+      public List<String> getVolumeNames() {
+        return null;
+      }
     };
   }
+
+  String getType();
+
+  IStorageModule createNewStorageModule(String name) throws IOException;
+
+  List<String> getVolumeNames();
 
 }
