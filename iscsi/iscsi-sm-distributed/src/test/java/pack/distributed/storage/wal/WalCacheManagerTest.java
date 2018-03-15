@@ -154,6 +154,11 @@ public class WalCacheManagerTest {
       public void broadcastToAllServers(UpdateBlockIdBatch updateBlockIdBatch) {
 
       }
+
+      @Override
+      public void close() throws IOException {
+
+      }
     };
   }
 }
