@@ -113,7 +113,7 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   }
 
   public void updateHdfs() throws IOException {
-    LOGGER.info("Updating hdfs {}", _volumeName);
+    LOGGER.debug("Updating hdfs {}", _volumeName);
     if (_serverStatusManager.isLeader(_volumeName)) {
       writeWalCacheToHdfs();
     } else {
@@ -200,7 +200,7 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   }
 
   public void removeOldWalCache() throws IOException {
-    LOGGER.info("Removing old wal cache {}", _volumeName);
+    LOGGER.debug("Removing old wal cache {}", _volumeName);
     _hdfsReader.refresh();
     // invalidate old entries here
     long maxLayer = _hdfsReader.getMaxLayer();

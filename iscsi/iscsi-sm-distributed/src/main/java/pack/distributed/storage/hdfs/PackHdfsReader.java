@@ -44,8 +44,11 @@ public class PackHdfsReader implements BlockReader, Closeable {
   private final AtomicReference<BlockReader> _currentBlockReader = new AtomicReference<BlockReader>(
       BlockReader.NOOP_READER);
   private final AtomicLong _maxLayer = new AtomicLong();
+  private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
 
-  public PackHdfsReader(Configuration conf, Path volumeDir, UserGroupInformation ugi) throws IOException {
+  public PackHdfsReader(Configuration conf, Path volumeDir, UserGroupInformation ugi,
+      HdfsBlockGarbageCollector hdfsBlockGarbageCollector) throws IOException {
+    _hdfsBlockGarbageCollector = hdfsBlockGarbageCollector;
     _conf = conf;
     _blockDir = new Path(volumeDir, BLOCK);
     _ugi = ugi;
@@ -71,6 +74,7 @@ public class PackHdfsReader implements BlockReader, Closeable {
           if (sourceBlockFiles.contains(path.getName())) {
             LOGGER.info("No longer in use {}", path);
             _readerCache.invalidate(path);
+            _hdfsBlockGarbageCollector.add(path);
           } else {
             updateMaxLayer(path);
             builder.add(reader);

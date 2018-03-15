@@ -14,6 +14,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.distributed.storage.hdfs.HdfsBlockGarbageCollector;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.kafka.PackKafkaReader;
@@ -48,14 +49,14 @@ public class PackStorageModule extends BaseStorageModule {
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
-      WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager, long maxWalSize,
-      long maxWalLifeTime) throws IOException {
+      WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager,
+      HdfsBlockGarbageCollector hdfsBlockGarbageCollector, long maxWalSize, long maxWalLifeTime) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize());
     _name = name;
     _serialId = UUID.fromString(metaData.getSerialId());
     _topic = metaData.getTopicId();
     _kafkaClientFactory = kafkaClientFactory;
-    _hdfsReader = new PackHdfsReader(conf, volumeDir, ugi);
+    _hdfsReader = new PackHdfsReader(conf, volumeDir, ugi, hdfsBlockGarbageCollector);
     _hdfsReader.refresh();
     _writeBlockMonitor = writeBlockMonitor;
     _serverStatusManager = serverStatusManager;

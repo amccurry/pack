@@ -22,12 +22,14 @@ import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
 import pack.distributed.storage.PackMetaData;
+import pack.distributed.storage.hdfs.HdfsBlockGarbageCollector;
 import pack.distributed.storage.hdfs.HdfsMiniClusterUtil;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
 import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.UpdateBlockIdBatch;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class WalCacheManagerTest {
@@ -73,8 +75,8 @@ public class WalCacheManagerTest {
     Path volumeDir = new Path("/testPackWalCacheManager");
     Configuration configuration = _cluster.getFileSystem()
                                           .getConf();
-    try (PackHdfsReader hdfsReader = new PackHdfsReader(configuration, volumeDir,
-        UserGroupInformation.getCurrentUser())) {
+    try (PackHdfsReader hdfsReader = new PackHdfsReader(configuration, volumeDir, UserGroupInformation.getCurrentUser(),
+        getHdfsBlockGC())) {
       WalCacheFactory cacheFactory = new PackWalCacheFactory(metaData, _dirFile);
       ServerStatusManager ssm = newServerStatusManager();
       try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, WriteBlockMonitor.NO_OP, cacheFactory,
@@ -122,7 +124,17 @@ public class WalCacheManagerTest {
           }
         }
       }
+    } finally {
     }
+  }
+
+  private HdfsBlockGarbageCollector getHdfsBlockGC() {
+    return new HdfsBlockGarbageCollector() {
+      @Override
+      public void add(Path path) {
+
+      }
+    };
   }
 
   private ServerStatusManager newServerStatusManager() {
@@ -139,7 +151,7 @@ public class WalCacheManagerTest {
       }
 
       @Override
-      public void broadcastToAllServers(String name, int blockId, long transId) {
+      public void broadcastToAllServers(UpdateBlockIdBatch updateBlockIdBatch) {
 
       }
     };

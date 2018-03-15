@@ -16,6 +16,8 @@ import org.jscsi.target.storage.IStorageModule;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.distributed.storage.hdfs.HdfsBlockGarbageCollector;
+import pack.distributed.storage.hdfs.PackHdfsBlockGarbageCollector;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.monitor.PackWriteBlockMonitorFactory;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
@@ -29,6 +31,8 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackStorageTargetManager extends BaseStorageTargetManager {
 
+  private static final String HDFS = "hdfs";
+  
   private final UserGroupInformation _ugi;
   private final Path _rootPath;
   private final Configuration _conf;
@@ -39,6 +43,8 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final long _maxWalLifeTime;
   private final ZooKeeperClient _zk;
   private final ServerStatusManager _serverStatusManager;
+  private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
+  private final long _delayBeforeRemoval;
 
   public PackStorageTargetManager() throws IOException {
     _cacheDir = PackConfig.getWalCachePath();
@@ -47,6 +53,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
     _rootPath = PackConfig.getHdfsTarget();
     _maxWalSize = PackConfig.getMaxWalSize();
     _maxWalLifeTime = PackConfig.getMaxWalLifeTime();
+    _delayBeforeRemoval = PackConfig.getHdfsBlockGCDelay();
 
     String zkConnectionString = PackConfig.getZooKeeperConnection();
     int sessionTimeout = PackConfig.getZooKeeperSessionTimeout();
@@ -59,6 +66,8 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
     _serverStatusManager = new PackServerStatusManager(_zk, writeBlockMonitorBindAddress, writeBlockMonitorPort,
         writeBlockMonitorAddress);
 
+    _hdfsBlockGarbageCollector = new PackHdfsBlockGarbageCollector(_ugi, _conf, _delayBeforeRemoval);
+
     String kafkaZkConnection = PackConfig.getKafkaZkConnection();
     _packKafkaClientFactory = new PackKafkaClientFactory(kafkaZkConnection);
     _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory();
@@ -66,7 +75,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
 
   @Override
   protected String getType() {
-    return "hdfs";
+    return HDFS;
   }
 
   @Override
@@ -80,8 +89,9 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         cacheDir.mkdirs();
         WriteBlockMonitor monitor = _packWriteBlockMonitorFactory.create(name);
         _serverStatusManager.register(name, monitor);
-        return TraceStorageModule.traceIfEnabled(new PackStorageModule(name, metaData, _conf, volumeDir,
-            _packKafkaClientFactory, _ugi, cacheDir, monitor, _serverStatusManager, _maxWalSize, _maxWalLifeTime));
+        return TraceStorageModule.traceIfEnabled(
+            new PackStorageModule(name, metaData, _conf, volumeDir, _packKafkaClientFactory, _ugi, cacheDir, monitor,
+                _serverStatusManager, _hdfsBlockGarbageCollector, _maxWalSize, _maxWalLifeTime));
       });
     } catch (InterruptedException e) {
       throw new IOException(e);

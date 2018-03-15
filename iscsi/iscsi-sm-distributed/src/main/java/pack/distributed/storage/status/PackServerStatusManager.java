@@ -50,7 +50,7 @@ public class PackServerStatusManager implements Closeable, ServerStatusManager {
   private final int _writeBlockMonitorPort;
   private final String _writeBlockMonitorAddress;
   private final Object _serverLock = new Object();
-  private final Map<String, BlockingQueue<UpdateBlockId>> _sendingQueue = new ConcurrentHashMap<>();
+  private final Map<String, BlockingQueue<UpdateBlockIdBatch>> _sendingQueue = new ConcurrentHashMap<>();
   private final int _queueDepth = 64;
   private final ServerSocket _serverSocket;
 
@@ -72,7 +72,7 @@ public class PackServerStatusManager implements Closeable, ServerStatusManager {
     startServerWatcher();
   }
 
-  private BlockingQueue<UpdateBlockId> startSender(String server, BlockingQueue<UpdateBlockId> queue) {
+  private BlockingQueue<UpdateBlockIdBatch> startSender(String server, BlockingQueue<UpdateBlockIdBatch> queue) {
     _service.submit(() -> {
       while (_running.get()) {
         try {
@@ -109,18 +109,20 @@ public class PackServerStatusManager implements Closeable, ServerStatusManager {
     });
   }
 
-  private void send(String server, BlockingQueue<UpdateBlockId> queue) throws IOException, InterruptedException {
+  private void send(String server, BlockingQueue<UpdateBlockIdBatch> queue) throws IOException, InterruptedException {
     try (Socket socket = new Socket(server, _writeBlockMonitorPort)) {
       socket.setTcpNoDelay(true);
       socket.setKeepAlive(true);
       try (DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream())) {
-        List<UpdateBlockId> drain = new ArrayList<>();
+        List<UpdateBlockIdBatch> drain = new ArrayList<>();
         while (_running.get()) {
-          UpdateBlockId updateBlockId = queue.take();
-          queue.drainTo(drain);
-          write(outputStream, updateBlockId);
-          for (UpdateBlockId ubi : drain) {
-            write(outputStream, ubi);
+          {
+            UpdateBlockIdBatch ubib = queue.take();
+            queue.drainTo(drain);
+            write(outputStream, ubib);
+          }
+          for (UpdateBlockIdBatch ubib : drain) {
+            write(outputStream, ubib);
           }
           drain.clear();
         }
@@ -128,23 +130,44 @@ public class PackServerStatusManager implements Closeable, ServerStatusManager {
     }
   }
 
+  private void write(DataOutput output, UpdateBlockIdBatch updateBlockIdBatch) throws IOException {
+    write(output, updateBlockIdBatch.getVolume());
+    List<UpdateBlockId> batch = updateBlockIdBatch.getBatch();
+    int size = batch.size();
+    output.writeInt(size);
+    for (int i = 0; i < size; i++) {
+      write(output, batch.get(i));
+    }
+  }
+
   private void write(DataOutput output, UpdateBlockId updateBlockId) throws IOException {
     output.writeInt(updateBlockId.getBlockId());
     output.writeLong(updateBlockId.getTransId());
-    writeString(output, updateBlockId.getVolume());
   }
 
-  private void writeString(DataOutput output, String s) throws IOException {
+  private void write(DataOutput output, String s) throws IOException {
     byte[] bs = s.getBytes();
     output.writeInt(bs.length);
     output.write(bs);
   }
 
-  private UpdateBlockId read(DataInput input) throws IOException {
+  private UpdateBlockIdBatch readUpdateBlockIdBatch(DataInput input) throws IOException {
+    String volume = readString(input);
+    List<UpdateBlockId> batch = new ArrayList<>();
+    int count = input.readInt();
+    for (int i = 0; i < count; i++) {
+      batch.add(readUpdateBlockId(input));
+    }
+    return UpdateBlockIdBatch.builder()
+                             .batch(batch)
+                             .volume(volume)
+                             .build();
+  }
+
+  private UpdateBlockId readUpdateBlockId(DataInput input) throws IOException {
     return UpdateBlockId.builder()
                         .blockId(input.readInt())
                         .transId(input.readLong())
-                        .volume(readString(input))
                         .build();
   }
 
@@ -158,9 +181,12 @@ public class PackServerStatusManager implements Closeable, ServerStatusManager {
   private void receive(Socket socket) throws IOException {
     try (DataInputStream inputStream = new DataInputStream(socket.getInputStream())) {
       while (_running.get()) {
-        UpdateBlockId updateBlockId = read(inputStream);
-        WriteBlockMonitor writeBlockMonitor = _monitorMap.get(updateBlockId.getVolume());
-        writeBlockMonitor.addDirtyBlock(updateBlockId.getBlockId(), updateBlockId.getTransId());
+        UpdateBlockIdBatch ubib = readUpdateBlockIdBatch(inputStream);
+        WriteBlockMonitor writeBlockMonitor = _monitorMap.get(ubib.getVolume());
+        List<UpdateBlockId> list = ubib.getBatch();
+        for (UpdateBlockId updateBlockId : list) {
+          writeBlockMonitor.addDirtyBlock(updateBlockId.getBlockId(), updateBlockId.getTransId());
+        }
       }
     }
   }
@@ -186,40 +212,34 @@ public class PackServerStatusManager implements Closeable, ServerStatusManager {
   }
 
   @Override
-  public void broadcastToAllServers(String name, int blockId, long transId) {
+  public void broadcastToAllServers(UpdateBlockIdBatch updateBlockIdBatch) {
     Set<String> servers = _servers.get();
-    LOGGER.debug("broadcastToAllServers {} {} {} {}", name, blockId, transId, servers);
     if (servers == null || servers.isEmpty()) {
       return;
     } else if (servers.size() == 1 && servers.contains(_writeBlockMonitorAddress)) {
       return;
     }
     try {
-      UpdateBlockId updateBlockId = UpdateBlockId.builder()
-                                                 .blockId(blockId)
-                                                 .transId(transId)
-                                                 .volume(name)
-                                                 .build();
       for (String server : servers) {
-        BlockingQueue<UpdateBlockId> queue = getSendingQueue(server);
-        queue.put(updateBlockId);
+        BlockingQueue<UpdateBlockIdBatch> queue = getSendingQueue(server);
+        queue.put(updateBlockIdBatch);
       }
     } catch (InterruptedException e) {
       LOGGER.error("Unknown error trying to send block update info", e);
     }
   }
 
-  private BlockingQueue<UpdateBlockId> getSendingQueue(String server) {
-    BlockingQueue<UpdateBlockId> queue = _sendingQueue.get(server);
+  private BlockingQueue<UpdateBlockIdBatch> getSendingQueue(String server) {
+    BlockingQueue<UpdateBlockIdBatch> queue = _sendingQueue.get(server);
     if (queue == null) {
       return newSendingQueue(server);
     }
     return queue;
   }
 
-  private BlockingQueue<UpdateBlockId> newSendingQueue(String server) {
-    BlockingQueue<UpdateBlockId> newQueue = new ArrayBlockingQueue<>(_queueDepth);
-    BlockingQueue<UpdateBlockId> current = _sendingQueue.putIfAbsent(server, newQueue);
+  private BlockingQueue<UpdateBlockIdBatch> newSendingQueue(String server) {
+    BlockingQueue<UpdateBlockIdBatch> newQueue = new ArrayBlockingQueue<>(_queueDepth);
+    BlockingQueue<UpdateBlockIdBatch> current = _sendingQueue.putIfAbsent(server, newQueue);
     if (current == null) {
       return startSender(server, newQueue);
     }

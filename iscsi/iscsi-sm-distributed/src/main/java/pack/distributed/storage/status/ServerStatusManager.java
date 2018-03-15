@@ -8,6 +8,6 @@ public interface ServerStatusManager {
 
   void register(String name, WriteBlockMonitor monitor);
 
-  void broadcastToAllServers(String name, int blockId, long transId);
+  void broadcastToAllServers(UpdateBlockIdBatch updateBlockIdBatch);
 
 }

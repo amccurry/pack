@@ -16,6 +16,7 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
+  private static final String HDFS_BLOCK_GC_DELAY = "HDFS_BLOCK_GC_DELAY";
   public static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS = "WRITE_BLOCK_MONITOR_BIND_ADDRESS";
   public static final String WRITE_BLOCK_MONITOR_ADDRESS = "WRITE_BLOCK_MONITOR_ADDRESS";
   public static final String MAX_BLOCK_FILE_SIZE = "MAX_BLOCK_FILE_SIZE";
@@ -42,6 +43,7 @@ public class PackConfig {
   public static final int WRITE_BLOCK_MONITOR_PORT_DEAULT = 9753;
   public static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS_DEFAULT = "0.0.0.0";
   public static final int SERVER_STATUS_PORT_DEAULT = 9753;
+  public static final long HDFS_BLOCK_GC_DELAY_DEAULT = TimeUnit.MINUTES.toMillis(10);
 
   public static Path getHdfsTarget() {
     return new Path(PackUtils.getEnvFailIfMissing(HDFS_TARGET_PATH));
@@ -127,6 +129,10 @@ public class PackConfig {
       return PackUtils.getEnvFailIfMissing(WRITE_BLOCK_MONITOR_ADDRESS);
     }
     return PackUtils.getEnv(WRITE_BLOCK_MONITOR_ADDRESS, address);
+  }
+
+  public static long getHdfsBlockGCDelay() {
+    return Long.parseLong(PackUtils.getEnv(HDFS_BLOCK_GC_DELAY, Long.toString(HDFS_BLOCK_GC_DELAY_DEAULT)));
   }
 
 }
