@@ -1,6 +1,5 @@
 package pack.distributed.storage.status;
 
-import java.io.Closeable;
 import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.DataOutput;
@@ -37,7 +36,7 @@ import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class PackServerStatusManager implements Closeable, ServerStatusManager {
+public class PackServerStatusManager implements ServerStatusManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackServerStatusManager.class);
 

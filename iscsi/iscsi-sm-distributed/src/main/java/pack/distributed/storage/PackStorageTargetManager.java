@@ -32,7 +32,7 @@ import pack.iscsi.storage.utils.PackUtils;
 public class PackStorageTargetManager extends BaseStorageTargetManager {
 
   private static final String HDFS = "hdfs";
-  
+
   private final UserGroupInformation _ugi;
   private final Path _rootPath;
   private final Configuration _conf;
@@ -57,14 +57,16 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
 
     String zkConnectionString = PackConfig.getZooKeeperConnection();
     int sessionTimeout = PackConfig.getZooKeeperSessionTimeout();
-    _zk = ZkUtils.addOnShutdownCloseTrigger(ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout));
 
     String writeBlockMonitorBindAddress = PackConfig.getWriteBlockMonitorBindAddress();
     int writeBlockMonitorPort = PackConfig.getWriteBlockMonitorPort();
     String writeBlockMonitorAddress = PackConfig.getWriteBlockMonitorAddress();
 
+    _zk = ZkUtils.addOnShutdownCloseTrigger(ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout));
     _serverStatusManager = new PackServerStatusManager(_zk, writeBlockMonitorBindAddress, writeBlockMonitorPort,
         writeBlockMonitorAddress);
+
+    PackUtils.closeOnShutdown(_serverStatusManager, _zk);
 
     _hdfsBlockGarbageCollector = new PackHdfsBlockGarbageCollector(_ugi, _conf, _delayBeforeRemoval);
 

@@ -275,4 +275,9 @@ public class PackUtils {
         + ((b[off + 1] & 0xFFL) << 48) + (((long) b[off]) << 56);
   }
 
+  public static void closeOnShutdown(Closeable... closeables) {
+    Runtime.getRuntime()
+           .addShutdownHook(new Thread(() -> PackUtils.closeQuietly(closeables)));
+  }
+
 }
