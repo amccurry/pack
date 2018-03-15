@@ -3,6 +3,7 @@ package pack.distributed.storage.monitor;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 
 import org.jboss.netty.util.internal.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -13,9 +14,16 @@ public class PackWriteBlockMonitorEmbedded implements WriteBlockMonitor {
   private static final Logger LOGGER = LoggerFactory.getLogger(PackWriteBlockMonitorEmbedded.class);
 
   private final ConcurrentMap<Integer, List<Long>> _map;
+  private final long _maxWait;
 
   public PackWriteBlockMonitorEmbedded(String name) {
     _map = new ConcurrentHashMap<>();
+    _maxWait = TimeUnit.MILLISECONDS.toMillis(100);
+  }
+
+  @Override
+  public void clearAllLocks() {
+    _map.clear();
   }
 
   @Override
@@ -44,21 +52,26 @@ public class PackWriteBlockMonitorEmbedded implements WriteBlockMonitor {
   }
 
   @Override
-  public void waitIfNeededForSync(int blockId) {
+  public boolean waitIfNeededForSync(int blockId) {
     List<Long> list = _map.get(blockId);
     if (list == null) {
-      return;
+      return false;
     }
     while (true) {
       synchronized (list) {
         if (list.isEmpty()) {
-          return;
+          return false;
         }
         try {
           LOGGER.info("Waiting for block to written to wal block {} transIds {}", blockId, list);
-          list.wait();
+          list.wait(_maxWait);
         } catch (InterruptedException e) {
           throw new RuntimeException(e);
+        }
+        if (list.isEmpty()) {
+          return false;
+        } else {
+          return true;
         }
       }
     }

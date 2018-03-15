@@ -37,9 +37,11 @@ public class PackKafkaReader implements Closeable {
   private final AtomicLong _endOffset = new AtomicLong(Long.MAX_VALUE);
   private final EndPointLookup _endPointLookup;
   private final long _kafkaPollTimeout;
+  private final long _syncDelay;
 
   public PackKafkaReader(String name, String serialId, PackKafkaClientFactory kafkaClientFactory,
       WalCacheManager walCacheManager, PackHdfsReader hdfsReader, String topic, Integer partition) {
+    _syncDelay = TimeUnit.MILLISECONDS.toMillis(10);
     _name = name;
     _serialId = serialId;
     _topic = topic;
@@ -60,7 +62,18 @@ public class PackKafkaReader implements Closeable {
     });
     _kafkaReader.setDaemon(true);
     _kafkaReader.setName("PackKafkaReader-" + _name);
+  }
 
+  public void sync() throws IOException {
+    long endpoint = _endPointLookup.getEndpoint();
+    while (endpoint + 1 < _endOffset.get()) {
+      LOGGER.info("Waiting for sync {}", _topic);
+      try {
+        Thread.sleep(_syncDelay);
+      } catch (InterruptedException e) {
+        throw new IOException(e);
+      }
+    }
   }
 
   private void writeDataToWal() throws IOException {

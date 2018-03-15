@@ -136,7 +136,6 @@ public final class TargetServer implements Callable<Void> {
   }
 
   static class TargetThreadFactory implements ThreadFactory {
-    private static final AtomicInteger poolNumber = new AtomicInteger(1);
     private final ThreadGroup group;
     private final AtomicInteger threadNumber = new AtomicInteger(1);
     private final String namePrefix;
@@ -145,7 +144,7 @@ public final class TargetServer implements Callable<Void> {
       SecurityManager s = System.getSecurityManager();
       group = (s != null) ? s.getThreadGroup() : Thread.currentThread()
                                                        .getThreadGroup();
-      namePrefix = "pool-" + poolNumber.getAndIncrement() + "-thread-";
+      namePrefix = "target-call-handler-";
     }
 
     public Thread newThread(Runnable r) {

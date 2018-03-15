@@ -87,7 +87,9 @@ public class PackStorageModule extends BaseStorageModule {
       }
       List<ReadRequest> requests = createRequests(ByteBuffer.wrap(bytes), storageIndex);
       for (ReadRequest request : requests) {
-        _writeBlockMonitor.waitIfNeededForSync(request.getBlockId());
+        if (_writeBlockMonitor.waitIfNeededForSync(request.getBlockId())) {
+          fullSyncAndClearMonitor();
+        }
       }
       boolean moreToRead;
       try (PackTracer span = tracer.span(LOGGER, "wal cache read")) {
@@ -99,6 +101,11 @@ public class PackStorageModule extends BaseStorageModule {
         }
       }
     }
+  }
+
+  private void fullSyncAndClearMonitor() throws IOException {
+    _writeBlockMonitor.clearAllLocks();
+    _packKafkaReader.sync();
   }
 
   @Override

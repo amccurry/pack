@@ -28,7 +28,8 @@ public class PackKafkaClientFactory {
 
   private static final String KAFKA = "kafka.";
   private static final String FALSE = "false";
-  private static final String ALL = "all";
+  // private static final String ACKS_VALUE = "1";
+  private static final String ACKS_VALUE = "all";
 
   private final List<String> _bootstrapServers;
   private final Properties _extraKafkaProps;
@@ -50,10 +51,10 @@ public class PackKafkaClientFactory {
     Properties props = new Properties();
     props.putAll(_extraKafkaProps);
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, toString(_bootstrapServers));
-    props.put(ProducerConfig.ACKS_CONFIG, ALL);
+    props.put(ProducerConfig.ACKS_CONFIG, ACKS_VALUE);
     props.put(ProducerConfig.RETRIES_CONFIG, 1_000_000_000);
     props.put(ProducerConfig.BATCH_SIZE_CONFIG, 16_384);
-    props.put(ProducerConfig.LINGER_MS_CONFIG, 1);
+    props.put(ProducerConfig.LINGER_MS_CONFIG, 0);
     props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 1_048_576);
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, IntegerSerializer.class.getName());
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());

@@ -15,12 +15,16 @@ public interface WriteBlockMonitor {
 
   }
 
-  default void waitIfNeededForSync(int blockId) {
-
+  default boolean waitIfNeededForSync(int blockId) {
+    return false;
   }
 
   default long createTransId() {
     return PackUtils.getRandomLong();
+  }
+
+  default void clearAllLocks() {
+
   }
 
 }
