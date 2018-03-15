@@ -219,7 +219,7 @@ public class PackServerStatusManager implements Closeable, ServerStatusManager {
 
   private BlockingQueue<UpdateBlockId> newSendingQueue(String server) {
     BlockingQueue<UpdateBlockId> newQueue = new ArrayBlockingQueue<>(_queueDepth);
-    BlockingQueue<UpdateBlockId> current = _sendingQueue.get(server);
+    BlockingQueue<UpdateBlockId> current = _sendingQueue.putIfAbsent(server, newQueue);
     if (current == null) {
       return startSender(server, newQueue);
     }
