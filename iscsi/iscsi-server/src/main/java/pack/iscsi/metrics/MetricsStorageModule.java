@@ -5,34 +5,39 @@ import java.net.InetAddress;
 import java.util.UUID;
 
 import org.jscsi.target.storage.IStorageModule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.codahale.metrics.Histogram;
+import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 
-public class MetricsIStorageModule implements IStorageModule {
+public class MetricsStorageModule implements IStorageModule {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(MetricsStorageModule.class);
 
   private final IStorageModule _delegate;
   private final MetricRegistry _registry;
   private final Timer _writeTimer;
   private final Timer _readTimer;
   private final Timer _flushTimer;
-  private final Histogram _writerHistogram;
-  private final Histogram _readHistogram;
+  private final Meter _writerMeter;
+  private final Meter _readMeter;
 
   public static IStorageModule wrap(String name, MetricRegistry registry, IStorageModule module) {
-    return new MetricsIStorageModule(name, registry, module);
+    LOGGER.info("Adding metrics to {} {}", name, module);
+    return new MetricsStorageModule(name, registry, module);
   }
 
-  public MetricsIStorageModule(String name, MetricRegistry registry, IStorageModule delegate) {
+  public MetricsStorageModule(String name, MetricRegistry registry, IStorageModule delegate) {
     _registry = registry;
     _delegate = delegate;
     _writeTimer = _registry.timer(name + "." + "write.latency");
     _readTimer = _registry.timer(name + "." + "read.latency");
     _flushTimer = _registry.timer(name + "." + "flush.latency");
-    _writerHistogram = _registry.histogram(name + "." + "write.throughput");
-    _readHistogram = _registry.histogram(name + "." + "read.throughput");
+    _writerMeter = _registry.meter(name + "." + "write.throughput");
+    _readMeter = _registry.meter(name + "." + "read.throughput");
   }
 
   @Override
@@ -50,7 +55,7 @@ public class MetricsIStorageModule implements IStorageModule {
     try (Context context = _readTimer.time()) {
       _delegate.read(bytes, storageIndex);
     }
-    _readHistogram.update(bytes.length);
+    _readMeter.mark(bytes.length);
   }
 
   @Override
@@ -59,7 +64,7 @@ public class MetricsIStorageModule implements IStorageModule {
     try (Context context = _readTimer.time()) {
       _delegate.read(bytes, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber);
     }
-    _readHistogram.update(bytes.length);
+    _readMeter.mark(bytes.length);
   }
 
   @Override
@@ -67,7 +72,7 @@ public class MetricsIStorageModule implements IStorageModule {
     try (Context context = _writeTimer.time()) {
       _delegate.write(bytes, storageIndex);
     }
-    _writerHistogram.update(bytes.length);
+    _writerMeter.mark(bytes.length);
   }
 
   @Override
@@ -77,7 +82,7 @@ public class MetricsIStorageModule implements IStorageModule {
       _delegate.write(bytes, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber, dataSequenceNumber,
           targetTransferTag);
     }
-    _writerHistogram.update(bytes.length);
+    _writerMeter.mark(bytes.length);
   }
 
   @Override

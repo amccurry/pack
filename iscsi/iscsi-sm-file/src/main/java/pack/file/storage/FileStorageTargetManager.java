@@ -23,6 +23,7 @@ public class FileStorageTargetManager extends BaseStorageTargetManager {
   private final int _blockSize;
 
   public FileStorageTargetManager() {
+    super(null);
     String filePath = PackUtils.getEnvFailIfMissing(LOCAL_TARGET_PATH);
     _blockSize = Integer.parseInt(PackUtils.getEnv(LOCAL_BLOCK_SIZE, DEFAULT_BLOCK_SIZE));
     _file = new File(filePath);

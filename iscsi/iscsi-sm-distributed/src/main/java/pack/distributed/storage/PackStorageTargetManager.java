@@ -27,6 +27,7 @@ import pack.distributed.storage.trace.TraceStorageModule;
 import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.iscsi.storage.BaseStorageTargetManager;
+import pack.iscsi.storage.StorageModuleDelegateFactory;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackStorageTargetManager extends BaseStorageTargetManager {
@@ -46,7 +47,8 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
   private final long _delayBeforeRemoval;
 
-  public PackStorageTargetManager() throws IOException {
+  public PackStorageTargetManager(StorageModuleDelegateFactory factory) throws IOException {
+    super(factory);
     _cacheDir = PackConfig.getWalCachePath();
     _ugi = PackConfig.getUgi();
     _conf = PackConfig.getConfiguration();

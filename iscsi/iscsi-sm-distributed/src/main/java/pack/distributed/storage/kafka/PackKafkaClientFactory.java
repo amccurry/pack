@@ -54,7 +54,6 @@ public class PackKafkaClientFactory {
     props.put(ProducerConfig.ACKS_CONFIG, ACKS_VALUE);
     props.put(ProducerConfig.RETRIES_CONFIG, 1_000_000_000);
     props.put(ProducerConfig.BATCH_SIZE_CONFIG, 16_384);
-    props.put(ProducerConfig.LINGER_MS_CONFIG, 0);
     props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 1_048_576);
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, IntegerSerializer.class.getName());
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
