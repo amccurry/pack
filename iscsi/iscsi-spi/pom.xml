@@ -31,9 +31,9 @@
 			<version>1.7.21</version>
 		</dependency>
 		<dependency>
-			<groupId>org.apache.ant</groupId>
-			<artifactId>ant</artifactId>
-			<version>1.10.2</version>
+			<groupId>io.dropwizard.metrics</groupId>
+			<artifactId>metrics-core</artifactId>
+			<version>4.0.2</version>
 		</dependency>
 	</dependencies>
 </project>

@@ -12,6 +12,9 @@ import org.apache.kafka.common.header.Header;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
+import com.codahale.metrics.Timer.Context;
 import com.google.common.collect.ImmutableList;
 
 import pack.distributed.storage.kafka.util.HeaderUtil;
@@ -20,6 +23,7 @@ import pack.distributed.storage.status.ServerStatusManager;
 import pack.distributed.storage.status.UpdateBlockId;
 import pack.distributed.storage.status.UpdateBlockIdBatch;
 import pack.distributed.storage.trace.PackTracer;
+import pack.iscsi.metrics.MetricsRegistrySingleton;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackKafkaWriter implements Closeable {
@@ -32,6 +36,8 @@ public class PackKafkaWriter implements Closeable {
   private final ServerStatusManager _serverStatusManager;
   private final String _volumeName;
   private final List<UpdateBlockId> _updateBlockBatch = new ArrayList<>();
+  private final Timer _kafkaFlush;
+  private final Timer _broadcast;
 
   public PackKafkaWriter(String volumeName, Producer<Integer, byte[]> producer, String topic, Integer partition,
       WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager) {
@@ -41,6 +47,9 @@ public class PackKafkaWriter implements Closeable {
     _producer = producer;
     _topic = topic;
     _partition = partition;
+    MetricRegistry registry = MetricsRegistrySingleton.getInstance();
+    _kafkaFlush = registry.timer(volumeName + ".kafka.flush");
+    _broadcast = registry.timer(volumeName + ".pack.broadcast");
   }
 
   public void write(PackTracer tracer, int blockId, byte[] bs, int off, int len) {
@@ -68,13 +77,17 @@ public class PackKafkaWriter implements Closeable {
 
   public void flush(PackTracer tracer) {
     try (PackTracer span = tracer.span(LOGGER, "producer flush")) {
-      _producer.flush();
-      UpdateBlockIdBatch batch = UpdateBlockIdBatch.builder()
-                                                   .batch(ImmutableList.copyOf(_updateBlockBatch))
-                                                   .volume(_volumeName)
-                                                   .build();
-      _updateBlockBatch.clear();
-      _serverStatusManager.broadcastToAllServers(batch);
+      try (Context time = _kafkaFlush.time()) {
+        _producer.flush();
+      }
+      try (Context time = _broadcast.time()) {
+        UpdateBlockIdBatch batch = UpdateBlockIdBatch.builder()
+                                                     .batch(ImmutableList.copyOf(_updateBlockBatch))
+                                                     .volume(_volumeName)
+                                                     .build();
+        _updateBlockBatch.clear();
+        _serverStatusManager.broadcastToAllServers(batch);
+      }
     }
   }
 

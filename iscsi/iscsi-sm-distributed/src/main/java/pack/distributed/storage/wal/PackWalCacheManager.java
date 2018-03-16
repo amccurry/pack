@@ -206,10 +206,13 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
     long maxLayer = _hdfsReader.getMaxLayer();
 
     List<Long> walIdsToInvalidate = new ArrayList<>();
+    WalCache current = _currentWalCache.get();
     for (Entry<Long, WalCache> e : _walCache.asMap()
                                             .entrySet()) {
       WalCache cache = e.getValue();
-      if (cache.getMaxLayer() <= maxLayer) {
+      if (cache == current) {
+        continue;
+      } else if (cache.getMaxLayer() <= maxLayer) {
         walIdsToInvalidate.add(e.getKey());
         updateFromReadList(cache, true);
       }

@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableSet;
 
 import pack.iscsi.http.HttpServer;
 import pack.iscsi.metrics.ConsoleReporter;
+import pack.iscsi.metrics.MetricsRegistrySingleton;
 import pack.iscsi.metrics.MetricsStorageModule;
 import pack.iscsi.metrics.PrintStreamFactory;
 import pack.iscsi.storage.StorageModuleDelegateFactory;
@@ -34,7 +35,7 @@ public class IscsiServerMain {
     PackUtils.setupLog4j();
     List<String> addresses = PackUtils.getEnvListFailIfMissing(PACK_ISCSI_ADDRESS);
 
-    MetricRegistry registry = new MetricRegistry();
+    MetricRegistry registry = MetricsRegistrySingleton.getInstance();
 
     AtomicReference<byte[]> metricsOutput = new AtomicReference<>();
     setupReporter(registry, metricsOutput);

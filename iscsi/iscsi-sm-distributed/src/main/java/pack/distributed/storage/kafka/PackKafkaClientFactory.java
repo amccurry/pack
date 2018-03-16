@@ -27,12 +27,14 @@ public class PackKafkaClientFactory {
   private static final Logger LOGGER = LoggerFactory.getLogger(PackKafkaClientFactory.class);
 
   private static final String KAFKA = "kafka.";
+  private static final String KAFKA_PRODUCER = "kafka-producer.";
+  private static final String KAFKA_CONSUMER = "kafka-consumer.";
+  private static final String KAFKA_ADMIN = "kafka-admin.";
+
   private static final String FALSE = "false";
-  // private static final String ACKS_VALUE = "1";
   private static final String ACKS_VALUE = "all";
 
   private final List<String> _bootstrapServers;
-  private final Properties _extraKafkaProps;
 
   public PackKafkaClientFactory(String zkConnection) {
     this(LookupKafkaBrokers.getAllBrokers(zkConnection));
@@ -44,12 +46,10 @@ public class PackKafkaClientFactory {
 
   public PackKafkaClientFactory(List<String> bootstrapServers) {
     _bootstrapServers = bootstrapServers;
-    _extraKafkaProps = getExtraKafkaProps();
   }
 
   public KafkaProducer<Integer, byte[]> createProducer() {
     Properties props = new Properties();
-    props.putAll(_extraKafkaProps);
     props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, toString(_bootstrapServers));
     props.put(ProducerConfig.ACKS_CONFIG, ACKS_VALUE);
     props.put(ProducerConfig.RETRIES_CONFIG, 1_000_000_000);
@@ -57,28 +57,32 @@ public class PackKafkaClientFactory {
     props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 1_048_576);
     props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, IntegerSerializer.class.getName());
     props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, ByteArraySerializer.class.getName());
+    props.putAll(getExtraKafkaProps(KAFKA));
+    props.putAll(getExtraKafkaProps(KAFKA_PRODUCER));
     return new KafkaProducer<>(props);
   }
 
   public KafkaConsumer<Integer, byte[]> createConsumer(String groupId) {
     Properties props = new Properties();
-    props.putAll(_extraKafkaProps);
     props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, toString(_bootstrapServers));
     props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
     props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, FALSE);
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, IntegerDeserializer.class.getName());
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+    props.putAll(getExtraKafkaProps(KAFKA));
+    props.putAll(getExtraKafkaProps(KAFKA_CONSUMER));
     return new KafkaConsumer<>(props);
   }
 
   public AdminClient createAdmin() {
     Properties props = new Properties();
-    props.putAll(_extraKafkaProps);
     props.setProperty(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, toString(_bootstrapServers));
+    props.putAll(getExtraKafkaProps(KAFKA));
+    props.putAll(getExtraKafkaProps(KAFKA_ADMIN));
     return AdminClient.create(props);
   }
 
-  private Properties getExtraKafkaProps() {
+  private Properties getExtraKafkaProps(String prefix) {
     Properties extraKafkaProps = new Properties();
     Properties properties = System.getProperties();
     Enumeration<?> propertyNames = properties.propertyNames();
@@ -89,9 +93,9 @@ public class PackKafkaClientFactory {
       }
       String prop = propName.toString();
       String value = properties.getProperty(prop);
-      if (prop.startsWith(KAFKA)) {
-        String key = prop.substring(KAFKA.length());
-        LOGGER.info("extra kafak prop {} => {}", key, value);
+      if (prop.startsWith(prefix)) {
+        String key = prop.substring(prefix.length());
+        LOGGER.info("extra kafka prop {} => {}", key, value);
         extraKafkaProps.put(key, value);
       }
     }

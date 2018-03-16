@@ -168,6 +168,7 @@ public class PackWalCache implements WalCache {
 
   public void ensureOpen() throws IOException {
     if (isClosed()) {
+      LOGGER.info("Wal file already close {}", _file);
       throw new IOException("Already closed");
     }
   }
@@ -179,6 +180,7 @@ public class PackWalCache implements WalCache {
 
   @Override
   public void close() throws IOException {
+    LOGGER.info("Closing wal file {}", _file);
     _closed.set(true);
     PackUtils.close(LOGGER, _channel);
     PackUtils.close(LOGGER, _rnd);
