@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableList;
 
 import pack.distributed.storage.hdfs.PackHdfsReader;
-import pack.distributed.storage.kafka.util.HeaderUtil;
 import pack.distributed.storage.wal.WalCacheManager;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -49,7 +48,7 @@ public class PackKafkaReader implements Closeable {
     _kafkaClientFactory = kafkaClientFactory;
     _walCacheManager = walCacheManager;
     _hdfsReader = hdfsReader;
-    _endPointLookup = new EndPointLookup(name, kafkaClientFactory, serialId, topic, partition);
+    _endPointLookup = new EndPointLookup(name, kafkaClientFactory, _serialId, topic, partition);
     _kafkaPollTimeout = TimeUnit.MILLISECONDS.toMillis(10);
     _kafkaReader = new Thread(() -> {
       while (_running.get()) {
@@ -77,7 +76,7 @@ public class PackKafkaReader implements Closeable {
   }
 
   private void writeDataToWal() throws IOException {
-    try (KafkaConsumer<Integer, byte[]> consumer = _kafkaClientFactory.createConsumer(_serialId)) {
+    try (KafkaConsumer<byte[], Blocks> consumer = _kafkaClientFactory.createConsumer(_serialId)) {
       TopicPartition partition = new TopicPartition(_topic, _partition);
       long maxLayer = _hdfsReader.getMaxLayer();
       ImmutableList<TopicPartition> partitions = ImmutableList.of(partition);
@@ -85,22 +84,19 @@ public class PackKafkaReader implements Closeable {
       consumer.seek(partition, maxLayer);
       setEndOffset(consumer, partition, partitions);
       while (_running.get()) {
-        ConsumerRecords<Integer, byte[]> records = consumer.poll(_kafkaPollTimeout);
-        for (ConsumerRecord<Integer, byte[]> record : records) {
-          Integer blockId = record.key();
-          byte[] value = record.value();
-          if (LOGGER.isTraceEnabled()) {
-            LOGGER.trace("wal consumer blockId {} md5 {}", blockId, PackUtils.toMd5(value));
+        ConsumerRecords<byte[], Blocks> records = consumer.poll(_kafkaPollTimeout);
+        for (ConsumerRecord<byte[], Blocks> record : records) {
+          Blocks blocks = record.value();
+          for (Block block : blocks.getBlocks()) {
+            _walCacheManager.write(block.getTransId(), record.offset(), block.getBlockId(), block.getData());
           }
-          long transId = HeaderUtil.getTransId(record.headers());
-          _walCacheManager.write(transId, record.offset(), blockId, value);
         }
         setEndOffset(consumer, partition, partitions);
       }
     }
   }
 
-  private void setEndOffset(KafkaConsumer<Integer, byte[]> consumer, TopicPartition partition,
+  private void setEndOffset(KafkaConsumer<byte[], Blocks> consumer, TopicPartition partition,
       ImmutableList<TopicPartition> partitions) {
     Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
     Long endOffset = endOffsets.get(partition);

@@ -1,5 +1,8 @@
 package pack.distributed.storage.kafka.util;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.Headers;
 
@@ -20,6 +23,14 @@ public class HeaderUtil {
         return toBytes(transId);
       }
     };
+  }
+
+  public static List<Long> getAllTransId(Headers headers) {
+    List<Long> result = new ArrayList<>();
+    for (Header header : headers.headers(TID)) {
+      result.add(toLong(header.value()));
+    }
+    return result;
   }
 
   public static long getTransId(Headers headers) {

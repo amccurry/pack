@@ -3,12 +3,10 @@ package pack.distributed.storage.kafka;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.header.Header;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,11 +15,10 @@ import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 import com.google.common.collect.ImmutableList;
 
-import pack.distributed.storage.kafka.util.HeaderUtil;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.status.BlockUpdateInfo;
+import pack.distributed.storage.status.BlockUpdateInfoBatch;
 import pack.distributed.storage.status.ServerStatusManager;
-import pack.distributed.storage.status.UpdateBlockId;
-import pack.distributed.storage.status.UpdateBlockIdBatch;
 import pack.distributed.storage.trace.PackTracer;
 import pack.iscsi.metrics.MetricsRegistrySingleton;
 import pack.iscsi.storage.utils.PackUtils;
@@ -29,17 +26,21 @@ import pack.iscsi.storage.utils.PackUtils;
 public class PackKafkaWriter implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackKafkaWriter.class);
-  private final Producer<Integer, byte[]> _producer;
+  private final Producer<byte[], Blocks> _producer;
   private final String _topic;
   private final Integer _partition;
   private final WriteBlockMonitor _writeBlockMonitor;
   private final ServerStatusManager _serverStatusManager;
   private final String _volumeName;
-  private final List<UpdateBlockId> _updateBlockBatch = new ArrayList<>();
+
   private final Timer _kafkaFlush;
   private final Timer _broadcast;
+  private final List<Block> _blockBatch = new ArrayList<>();
+  private final List<BlockUpdateInfo> _transBlockInfoBatch = new ArrayList<>();
 
-  public PackKafkaWriter(String volumeName, Producer<Integer, byte[]> producer, String topic, Integer partition,
+  private final Object _writeLock = new Object();
+
+  public PackKafkaWriter(String volumeName, Producer<byte[], Blocks> producer, String topic, Integer partition,
       WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager) {
     _volumeName = volumeName;
     _serverStatusManager = serverStatusManager;
@@ -53,42 +54,54 @@ public class PackKafkaWriter implements Closeable {
   }
 
   public void write(PackTracer tracer, int blockId, byte[] bs, int off, int len) {
-    byte[] value = new byte[len];
-    System.arraycopy(bs, off, value, 0, len);
-    try (PackTracer span = tracer.span(LOGGER, "producer send")) {
-      if (LOGGER.isTraceEnabled()) {
-        LOGGER.trace("write blockId {} md5 {}", blockId, PackUtils.toMd5(value));
-      }
+    synchronized (_writeLock) {
       long transId = _writeBlockMonitor.createTransId();
+
       _writeBlockMonitor.addDirtyBlock(blockId, transId);
 
-      UpdateBlockId updateBlockId = UpdateBlockId.builder()
-                                                 .blockId(blockId)
-                                                 .transId(transId)
-                                                 .build();
-      _updateBlockBatch.add(updateBlockId);
-      _producer.send(new ProducerRecord<Integer, byte[]>(_topic, _partition, blockId, value, getHeaders(transId)));
+      _blockBatch.add(Block.builder()
+                           .blockId(blockId)
+                           .transId(transId)
+                           .data(PackUtils.copy(bs, off, len))
+                           .build());
+
+      _transBlockInfoBatch.add(BlockUpdateInfo.builder()
+                                              .blockId(blockId)
+                                              .transId(transId)
+                                              .build());
     }
   }
 
-  private Iterable<Header> getHeaders(long transId) {
-    return Arrays.asList(HeaderUtil.toTransHeader(transId));
+  private void sendRecords(PackTracer tracer) {
+    try (PackTracer span = tracer.span(LOGGER, "producer send message")) {
+      if (_blockBatch.isEmpty()) {
+        return;
+      }
+      Blocks blocks = Blocks.builder()
+                            .blocks(ImmutableList.copyOf(_blockBatch))
+                            .build();
+      _blockBatch.clear();
+      _producer.send(new ProducerRecord<byte[], Blocks>(_topic, _partition, null, blocks));
+    }
   }
 
   public void flush(PackTracer tracer) {
-    try (PackTracer span = tracer.span(LOGGER, "producer flush")) {
-      try (Context time = _kafkaFlush.time()) {
-        _producer.flush();
-      }
-      try (Context time = _broadcast.time()) {
-        UpdateBlockIdBatch batch = UpdateBlockIdBatch.builder()
-                                                     .batch(ImmutableList.copyOf(_updateBlockBatch))
+    sendRecords(tracer);
+    try (Context time = _kafkaFlush.time()) {
+      _producer.flush();
+    }
+    try (Context time = _broadcast.time()) {
+      notifyOtherServers();
+    }
+  }
+
+  private void notifyOtherServers() {
+    BlockUpdateInfoBatch batch = BlockUpdateInfoBatch.builder()
+                                                     .batch(ImmutableList.copyOf(_transBlockInfoBatch))
                                                      .volume(_volumeName)
                                                      .build();
-        _updateBlockBatch.clear();
-        _serverStatusManager.broadcastToAllServers(batch);
-      }
-    }
+    _transBlockInfoBatch.clear();
+    _serverStatusManager.broadcastToAllServers(batch);
   }
 
   @Override

@@ -29,7 +29,7 @@ import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
 import pack.distributed.storage.status.ServerStatusManager;
-import pack.distributed.storage.status.UpdateBlockIdBatch;
+import pack.distributed.storage.status.BlockUpdateInfoBatch;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class WalCacheManagerTest {
@@ -151,7 +151,7 @@ public class WalCacheManagerTest {
       }
 
       @Override
-      public void broadcastToAllServers(UpdateBlockIdBatch updateBlockIdBatch) {
+      public void broadcastToAllServers(BlockUpdateInfoBatch updateBlockIdBatch) {
 
       }
 

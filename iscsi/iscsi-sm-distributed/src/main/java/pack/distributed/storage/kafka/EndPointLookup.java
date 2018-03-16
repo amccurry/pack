@@ -30,7 +30,7 @@ public class EndPointLookup implements Closeable {
         TopicPartition topicPartition = new TopicPartition(topic, partition);
         while (_running.get()) {
           try {
-            KafkaConsumer<Integer, byte[]> consumer = clientFactory.createConsumer(serialId);
+            KafkaConsumer<?, ?> consumer = clientFactory.createConsumer(serialId);
             while (_running.get()) {
               synchronized (_lock) {
                 lookupEndpoint(consumer, topicPartition);
@@ -56,7 +56,7 @@ public class EndPointLookup implements Closeable {
     _thread.start();
   }
 
-  protected void lookupEndpoint(KafkaConsumer<Integer, byte[]> consumer, TopicPartition partition) {
+  protected void lookupEndpoint(KafkaConsumer<?, ?> consumer, TopicPartition partition) {
     Map<TopicPartition, Long> offsets = consumer.endOffsets(ImmutableList.of(partition));
     Long offset = offsets.get(partition);
     if (offset == null) {

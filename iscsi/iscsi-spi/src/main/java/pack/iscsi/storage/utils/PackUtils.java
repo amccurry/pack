@@ -214,6 +214,15 @@ public class PackUtils {
     return buf;
   }
 
+  public static byte[] trimIfNeeded(byte[] bytes, int off, int len) {
+    if (off == 0 && bytes.length == len) {
+      return bytes;
+    }
+    byte[] buf = new byte[len];
+    System.arraycopy(bytes, off, buf, 0, len);
+    return buf;
+  }
+
   public static void copy(InputStream input, OutputStream output) throws IOException {
     byte[] buf = new byte[1024];
     int num;
