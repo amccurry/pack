@@ -9,7 +9,7 @@ import lombok.Value;
 @Builder
 public class HttpServerConfig {
 
-  InfoLookup infoLookup;
+  PackDao packDao;
   int port;
   AtomicReference<byte[]> textMetricsOutput;
 }

@@ -26,14 +26,16 @@ public class CreateVolume {
       FileSystem fileSystem = volume.getFileSystem(configuration);
       String newTopicId = PackUtils.getTopic(name, UUID.randomUUID()
                                                        .toString());
+      String serialId = PackUtils.generateSerialId()
+                                 .toString();
       fileSystem.delete(volume, true);
       fileSystem.mkdirs(volume);
+
       PackMetaData.builder()
                   .length(length)
                   .blockSize(4096)
                   .topicId(newTopicId)
-                  .serialId(PackUtils.generateSerialId()
-                                     .toString())
+                  .serialId(serialId)
                   .build()
                   .write(configuration, volume);
       return null;

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/">
+	<appender name="file" class="org.apache.log4j.RollingFileAppender">
+		<param name="append" value="true" />
+		<param name="maxFileSize" value="10MB" />
+		<param name="maxBackupIndex" value="5" />
+		<param name="file" value="/tmp/.pack-cli.log" />
+		<layout class="org.apache.log4j.PatternLayout">
+			<param name="ConversionPattern" value="%-5p %d{yyyyMMdd_HH:mm:ss:SSS_z} [%t] %c{2}: %m%n" />
+		</layout>
+	</appender>
+	<logger name="org.apache.zookeeper">
+		<level value="error" />
+	</logger>
+	<root>
+		<priority value="info" />
+		<appender-ref ref="file" />
+	</root>
+</log4j:configuration>

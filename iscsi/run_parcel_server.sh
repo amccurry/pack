@@ -1,7 +1,8 @@
 #!/bin/bash
 
 PARCEL_FILE=$(ls iscsi-server/target/*.tar.gz)
-PACK_VERSION=$(echo ${PARCEL_FILE##*/} | sed 's#PACK-##g' | sed 's#\.tar\.gz##g')
+PACK_NAME="PACK_ISCSI"
+PACK_VERSION=$(echo ${PARCEL_FILE##*/} | sed "s#${PACK_NAME}-##g" | sed 's#\.tar\.gz##g')
 PROJECT_DIR="./target/http"
 
 PARCEL_FILE_SHA=$PARCEL_FILE.sha
@@ -25,11 +26,11 @@ do
 	if [ $DISTRO != "el7" ] ; then
 		echo "," >> $MANIFEST
 	fi
-	DISTRO_PARCEL="PACK-${PACK_VERSION}-${DISTRO}.parcel"
-	DISTRO_PARCEL_SHA="PACK-${PACK_VERSION}-${DISTRO}.parcel.sha"
+	DISTRO_PARCEL="${PACK_NAME}-${PACK_VERSION}-${DISTRO}.parcel"
+	DISTRO_PARCEL_SHA="${PACK_NAME}-${PACK_VERSION}-${DISTRO}.parcel.sha"
 	ln $PARCEL_FILE "${HTTP_DIR}/${DISTRO_PARCEL}"
 	ln $PARCEL_FILE_SHA "${HTTP_DIR}/${DISTRO_PARCEL_SHA}"
-	echo "{\"parcelName\":\"${DISTRO_PARCEL}\",\"components\": [{\"name\" : \"PACK\",\"version\" : \"${PACK_VERSION}\",\"pkg_version\": \"${PACK_VERSION}\"}],\"hash\":\"${HASH}\"}" >> $MANIFEST
+	echo "{\"parcelName\":\"${DISTRO_PARCEL}\",\"components\": [{\"name\" : \"${PACK_NAME}\",\"version\" : \"${PACK_VERSION}\",\"pkg_version\": \"${PACK_VERSION}\"}],\"hash\":\"${HASH}\"}" >> $MANIFEST
 done
 echo "]}" >> $MANIFEST
 

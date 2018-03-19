@@ -30,7 +30,7 @@ import pack.distributed.storage.hdfs.PackHdfsBlockGarbageCollector;
 import pack.distributed.storage.http.CompactorServerInfo;
 import pack.distributed.storage.http.HttpServer;
 import pack.distributed.storage.http.HttpServerConfig;
-import pack.distributed.storage.http.InfoLookup;
+import pack.distributed.storage.http.PackDao;
 import pack.distributed.storage.http.TargetServerInfo;
 import pack.distributed.storage.http.Volume;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
@@ -80,11 +80,11 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
 
     int httpPort = Integer.parseInt(PackUtils.getEnv(PACK_HTTP_PORT, PACK_HTTP_PORT_DEFAULT));
 
-    InfoLookup infoLookup = newInfoLookup();
+    PackDao packDao = newPackDao();
     HttpServerConfig httpServerConfig = HttpServerConfig.builder()
                                                         .port(httpPort)
                                                         .textMetricsOutput(metricsOutput)
-                                                        .infoLookup(infoLookup)
+                                                        .packDao(packDao)
                                                         .build();
     HttpServer.startHttpServer(httpServerConfig);
 
@@ -214,8 +214,8 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
     PackUtils.closeOnShutdown(reporter);
   }
 
-  private InfoLookup newInfoLookup() {
-    return new InfoLookup() {
+  private PackDao newPackDao() {
+    return new PackDao() {
       @Override
       public List<Volume> getVolumes() {
         try {
@@ -260,6 +260,18 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
       @Override
       public List<CompactorServerInfo> getCompactors() {
         return CompactorServerInfo.list(_zk);
+      }
+
+      @Override
+      public void createVolume(String name, PackMetaData metaData) throws IOException {
+        try {
+          _ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+            metaData.write(_conf, new Path(_rootPath, name));
+            return null;
+          });
+        } catch (InterruptedException e) {
+          throw new IOException(e);
+        }
       }
     };
   }

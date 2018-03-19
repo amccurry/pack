@@ -1,29 +1,34 @@
 package pack.distributed.storage.http;
 
-import static spark.Spark.*;
+import static spark.Spark.get;
 import static spark.Spark.port;
+import static spark.Spark.put;
+import static spark.Spark.staticFileLocation;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.servlet.ServletOutputStream;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
 import freemarker.cache.ClassTemplateLoader;
 import freemarker.template.Configuration;
+import pack.distributed.storage.PackMetaData;
+import pack.iscsi.storage.utils.PackUtils;
 import spark.ModelAndView;
-import spark.Request;
-import spark.Response;
-import spark.Route;
 import spark.TemplateViewRoute;
 import spark.template.freemarker.FreeMarkerEngine;
 
 public class HttpServer {
 
+  private static final String NAME = "name";
+  private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final String WEB = "/web";
 
   public static void main(String[] args) {
@@ -46,7 +51,7 @@ public class HttpServer {
                                                            .size(10000000000L)
                                                            .build());
 
-    InfoLookup infoLookup = new InfoLookup() {
+    PackDao packDao = new PackDao() {
 
       @Override
       public List<Volume> getVolumes() {
@@ -64,7 +69,7 @@ public class HttpServer {
       }
     };
     HttpServerConfig config = HttpServerConfig.builder()
-                                              .infoLookup(infoLookup)
+                                              .packDao(packDao)
                                               .port(8642)
                                               .textMetricsOutput(textMetricsOutput)
                                               .build();
@@ -75,7 +80,7 @@ public class HttpServer {
   public static void startHttpServer(HttpServerConfig httpServerConfig) {
     port(httpServerConfig.getPort());
 
-    InfoLookup infoLookup = httpServerConfig.getInfoLookup();
+    PackDao dao = httpServerConfig.getPackDao();
 
     Configuration config = new Configuration(Configuration.VERSION_2_3_26);
     config.setTemplateLoader(new ClassTemplateLoader(HttpServer.class, WEB));
@@ -84,8 +89,8 @@ public class HttpServer {
     staticFileLocation(WEB);
 
     TemplateViewRoute overview = (TemplateViewRoute) (request, response) -> {
-      List<TargetServerInfo> targets = infoLookup.getTargets();
-      List<CompactorServerInfo> compactors = infoLookup.getCompactors();
+      List<TargetServerInfo> targets = dao.getTargets();
+      List<CompactorServerInfo> compactors = dao.getCompactors();
       return new ModelAndView(ImmutableMap.of("targets", targets, "compactors", compactors), "index.ftl");
     };
     get("/", overview, engine);
@@ -96,20 +101,45 @@ public class HttpServer {
       return new ModelAndView(attributes, "sessions.ftl");
     }, engine);
     get("/volumes.html", (request, response) -> {
-      List<Volume> volumes = infoLookup.getVolumes();
+      List<Volume> volumes = dao.getVolumes();
       return new ModelAndView(ImmutableMap.of("volumes", volumes), "volumes.ftl");
     }, engine);
-    get("/metrics/text", new Route() {
-      @Override
-      public Object handle(Request request, Response response) throws Exception {
-        response.type("text/plain");
-        ServletOutputStream outputStream = response.raw()
-                                                   .getOutputStream();
-        outputStream.write(httpServerConfig.getTextMetricsOutput()
-                                           .get());
-        outputStream.flush();
-        return "";
+    get("/metrics/text", (request, response) -> {
+      response.type("text/plain");
+      ServletOutputStream outputStream = response.raw()
+                                                 .getOutputStream();
+      outputStream.write(httpServerConfig.getTextMetricsOutput()
+                                         .get());
+      outputStream.flush();
+      return "";
+    });
+    put("/api/create/:name", (request, response) -> {
+      String name = request.params(NAME);
+      PackMetaData metaData = MAPPER.readValue(request.body(), PackMetaData.class);
+
+      if (metaData.getSerialId() == null) {
+        String serialId = PackUtils.generateSerialId()
+                                   .toString();
+        metaData = metaData.toBuilder()
+                           .serialId(serialId)
+                           .build();
       }
+
+      if (metaData.getTopicId() == null) {
+        String newTopicId = PackUtils.getTopic(name, UUID.randomUUID()
+                                                         .toString());
+        metaData = metaData.toBuilder()
+                           .topicId(newTopicId)
+                           .build();
+
+      }
+
+      dao.createVolume(name, metaData);
+      return "{}";
+    });
+    get("/api/list", (request, response) -> {
+      List<Volume> volumes = dao.getVolumes();
+      return MAPPER.writeValueAsString(volumes);
     });
 
   }

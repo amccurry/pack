@@ -2,10 +2,10 @@
 set -e
 set -x
 
-if [ -z ${PACK_ISCSI_PARCEL+x} ] ; then
+if [ -z ${PACK_PARCEL+x} ] ; then
   DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/.."
 else
-  DIR="${PACK_ISCSI_PARCEL}"
+  DIR="${PACK_PARCEL}"
 fi
 
 set +x

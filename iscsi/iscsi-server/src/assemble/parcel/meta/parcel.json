@@ -6,7 +6,7 @@
 	"depends": "",
 	"replaces":"${parcel.name}",
 	"conflicts":"",
-	"provides": ["pack"],
+	"provides": ["${parcel.provides}"],
 	"scripts": {
 		"defines":"parcel_env.sh"
 	},

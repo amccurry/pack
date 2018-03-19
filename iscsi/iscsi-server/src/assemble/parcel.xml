@@ -18,6 +18,7 @@
 				<include>pack:iscsi-server</include>
 				<include>pack:iscsi-spi</include>
 				<include>pack:iscsi-sm-distributed</include>
+				<include>pack:iscsi-cli</include>
 			</includes>
 		</dependencySet>
 		<dependencySet>
@@ -29,6 +30,7 @@
 				<exclude>pack:iscsi-server</exclude>
 				<exclude>pack:iscsi-spi</exclude>
 				<exclude>pack:iscsi-sm-distributed</exclude>
+				<exclude>pack:iscsi-cli</exclude>
 			</excludes>
 		</dependencySet>
 	</dependencySets>
@@ -46,6 +48,10 @@
 			<directory>${project.basedir}/src/assemble/bin</directory>
 			<outputDirectory>${parcel.name}-${parcel.version}/bin</outputDirectory>
 		</fileSet>
+		<fileSet>
+			<directory>${project.basedir}/src/assemble/conf</directory>
+			<outputDirectory>${parcel.name}-${parcel.version}/conf</outputDirectory>
+		</fileSet>
 	</fileSets>
 
 	<files>
@@ -53,6 +59,12 @@
 			<source>${project.basedir}/src/assemble/parcel/meta/parcel.json</source>
 			<outputDirectory>${parcel.name}-${parcel.version}/meta</outputDirectory>
 			<destName>parcel.json</destName>
+			<filtered>true</filtered>
+		</file>
+		<file>
+			<source>${project.basedir}/src/assemble/parcel/meta/alternatives.json</source>
+			<outputDirectory>${parcel.name}-${parcel.version}/meta</outputDirectory>
+			<destName>alternatives.json</destName>
 			<filtered>true</filtered>
 		</file>
 	</files>

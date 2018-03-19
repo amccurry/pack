@@ -13,6 +13,7 @@
 
 	<properties>
 		<parcel.name>PACK</parcel.name>
+		<parcel.provides>pack</parcel.provides>
 		<parcel.assembly.file>src/assemble/parcel.xml</parcel.assembly.file>
 		<parcel.version>${maven.build.timestamp}</parcel.version>
 		<maven.build.timestamp.format>yy.MM.dd.HH.mm</maven.build.timestamp.format>
@@ -36,6 +37,11 @@
 			<dependency>
 				<groupId>pack</groupId>
 				<artifactId>iscsi-spi</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>iscsi-cli</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
