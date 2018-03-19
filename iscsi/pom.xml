@@ -12,7 +12,7 @@
 	<name>iscsi</name>
 
 	<properties>
-		<parcel.name>PACK_ISCSI</parcel.name>
+		<parcel.name>PACK</parcel.name>
 		<parcel.assembly.file>src/assemble/parcel.xml</parcel.assembly.file>
 		<parcel.version>${maven.build.timestamp}</parcel.version>
 		<maven.build.timestamp.format>yy.MM.dd.HH.mm</maven.build.timestamp.format>

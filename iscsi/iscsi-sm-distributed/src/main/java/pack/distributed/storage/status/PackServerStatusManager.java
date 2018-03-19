@@ -40,7 +40,7 @@ public class PackServerStatusManager implements ServerStatusManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackServerStatusManager.class);
 
-  private static final String SERVERS = "/servers";
+  private static final String STATUS_SERVERS = "/status-servers";
   private final AtomicReference<Set<String>> _servers = new AtomicReference<Set<String>>();
   private final Map<String, WriteBlockMonitor> _monitorMap = new ConcurrentHashMap<>();
   private final ExecutorService _service;
@@ -58,9 +58,9 @@ public class PackServerStatusManager implements ServerStatusManager {
     _writeBlockMonitorPort = writeBlockMonitorPort;
     _zk = zk;
     _writeBlockMonitorAddress = writeBlockMonitorAddress;
-    ZkUtils.mkNodesStr(zk, SERVERS);
+    ZkUtils.mkNodesStr(zk, STATUS_SERVERS);
     try {
-      zk.create(SERVERS + "/" + writeBlockMonitorAddress, null, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
+      zk.create(STATUS_SERVERS + "/" + writeBlockMonitorAddress, null, Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL);
     } catch (KeeperException | InterruptedException e) {
       throw new IOException(e);
     }
@@ -275,9 +275,10 @@ public class PackServerStatusManager implements ServerStatusManager {
     };
     while (_running.get()) {
       synchronized (_serverLock) {
-        _servers.set(ImmutableSet.copyOf(_zk.getChildren(SERVERS, watch)));
+        _servers.set(ImmutableSet.copyOf(_zk.getChildren(STATUS_SERVERS, watch)));
         _serverLock.wait();
       }
     }
   }
+
 }

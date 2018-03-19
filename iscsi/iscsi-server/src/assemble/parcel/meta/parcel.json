@@ -6,7 +6,7 @@
 	"depends": "",
 	"replaces":"${parcel.name}",
 	"conflicts":"",
-	"provides": ["pack-iscsi"],
+	"provides": ["pack"],
 	"scripts": {
 		"defines":"parcel_env.sh"
 	},
@@ -18,6 +18,13 @@
 		}
 	],
 	"packages" : [],
-	"users":  {},
+	"users": {
+    "pack": {
+      "longname"    : "Pack",
+      "home"        : "/var/lib/pack",
+      "shell"       : "/bin/bash",
+			"extra_groups": []
+    }
+	},
 	"groups": []
 }

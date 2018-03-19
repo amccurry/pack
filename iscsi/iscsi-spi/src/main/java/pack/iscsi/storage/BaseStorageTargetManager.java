@@ -20,12 +20,6 @@ public abstract class BaseStorageTargetManager implements StorageTargetManager {
 
   protected final ConcurrentMap<String, Target> _targetMap = new ConcurrentHashMap<>();
 
-  private final StorageModuleDelegateFactory _factory;
-
-  public BaseStorageTargetManager(StorageModuleDelegateFactory factory) {
-    _factory = factory;
-  }
-
   @Override
   public Target getTarget(String targetName) {
     return _targetMap.get(targetName);
@@ -46,11 +40,7 @@ public abstract class BaseStorageTargetManager implements StorageTargetManager {
       if (!isValidTarget(fullName)) {
         try {
           IStorageModule module = createNewStorageModule(name);
-          if (_factory != null) {
-            register(name, name, _factory.delegate(name, module));
-          } else {
-            register(name, name, module);
-          }
+          register(name, name, module);
         } catch (IOException e) {
           LOGGER.error("Error creating new storage module " + name, e);
         }

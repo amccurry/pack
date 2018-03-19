@@ -1,4 +1,4 @@
-package pack.iscsi.metrics;
+package pack.distributed.storage.metrics;
 
 import java.io.PrintStream;
 import java.text.DateFormat;

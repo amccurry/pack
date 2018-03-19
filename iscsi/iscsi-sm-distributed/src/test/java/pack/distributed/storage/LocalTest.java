@@ -62,7 +62,7 @@ public class LocalTest {
 
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       PackStorageTargetManagerFactory factory = new PackStorageTargetManagerFactory();
-      PackStorageTargetManager manager = (PackStorageTargetManager) factory.create(null);
+      PackStorageTargetManager manager = (PackStorageTargetManager) factory.create();
       manager.getTargetNames();
       String fullName = manager.getFullName("test");
       Target target = manager.getTarget(fullName);

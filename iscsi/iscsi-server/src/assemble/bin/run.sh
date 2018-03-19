@@ -23,10 +23,10 @@ CMD=$1
 
 case $CMD in
   (iscsi)
-    exec -a pack-iscsi java -Xmx1g -Xms1g pack.iscsi.IscsiServerMain
+    exec -a pack-iscsi java  -Xmx1g -Xms1g $JAVA_OPTIONS pack.iscsi.IscsiServerMain
     ;;
   (compactor)
-    exec -a pack-compactor java -Xmx1g -Xms1g pack.distributed.storage.compactor.PackCompactorServer
+    exec -a pack-compactor java -Xmx1g -Xms1g $JAVA_OPTIONS pack.distributed.storage.compactor.PackCompactorServer
     ;;
   (*)
     echo "Don't understand [$CMD]"
