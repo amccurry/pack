@@ -23,6 +23,7 @@
 		<module>iscsi-spi</module>
 		<module>iscsi-sm-file</module>
 		<module>iscsi-sm-distributed</module>
+		<module>iscsi-cli</module>
 	</modules>
 
 	<dependencyManagement>
