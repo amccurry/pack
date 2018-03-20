@@ -19,6 +19,7 @@
 				<include>pack:iscsi-spi</include>
 				<include>pack:iscsi-sm-distributed</include>
 				<include>pack:iscsi-cli</include>
+				<include>pack:iscsi-docker-plugin</include>
 			</includes>
 		</dependencySet>
 		<dependencySet>
@@ -31,6 +32,7 @@
 				<exclude>pack:iscsi-spi</exclude>
 				<exclude>pack:iscsi-sm-distributed</exclude>
 				<exclude>pack:iscsi-cli</exclude>
+				<exclude>pack:iscsi-docker-plugin</exclude>
 			</excludes>
 		</dependencySet>
 	</dependencySets>

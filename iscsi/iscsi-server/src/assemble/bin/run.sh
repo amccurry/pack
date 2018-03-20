@@ -28,6 +28,9 @@ case $CMD in
   (compactor)
     exec -a pack-compactor java -Xmx1g -Xms1g $JAVA_OPTIONS pack.distributed.storage.compactor.PackCompactorServer
     ;;
+  (docker-plugin)
+    exec -a pack-docker-plugin java -Xmx64m -Xms64m $JAVA_OPTIONS pack.iscsi.docker.DockerVolumePluginServerMain
+    ;;
   (*)
     echo "Don't understand [$CMD]"
     ;;
