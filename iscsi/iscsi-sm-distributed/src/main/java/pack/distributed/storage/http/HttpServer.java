@@ -2,32 +2,29 @@ package pack.distributed.storage.http;
 
 import static spark.Spark.get;
 import static spark.Spark.port;
-import static spark.Spark.put;
 import static spark.Spark.staticFileLocation;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.servlet.ServletOutputStream;
 
+import com.codahale.metrics.MetricRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
 import freemarker.cache.ClassTemplateLoader;
 import freemarker.template.Configuration;
-import pack.distributed.storage.PackMetaData;
-import pack.iscsi.storage.utils.PackUtils;
+import pack.distributed.storage.metrics.json.JsonReporter;
 import spark.ModelAndView;
 import spark.TemplateViewRoute;
 import spark.template.freemarker.FreeMarkerEngine;
 
 public class HttpServer {
 
-  private static final String NAME = "name";
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final String WEB = "/web";
 
@@ -74,10 +71,10 @@ public class HttpServer {
                                               .textMetricsOutput(textMetricsOutput)
                                               .build();
 
-    startHttpServer(config);
+    startHttpServer(config, new JsonReporter(new MetricRegistry()));
   }
 
-  public static void startHttpServer(HttpServerConfig httpServerConfig) {
+  public static void startHttpServer(HttpServerConfig httpServerConfig, JsonReporter jsonReporter) {
     port(httpServerConfig.getPort());
 
     PackDao dao = httpServerConfig.getPackDao();
@@ -113,34 +110,16 @@ public class HttpServer {
       outputStream.flush();
       return "";
     });
-    put("/api/create/:name", (request, response) -> {
-      String name = request.params(NAME);
-      PackMetaData metaData = MAPPER.readValue(request.body(), PackMetaData.class);
-
-      if (metaData.getSerialId() == null) {
-        String serialId = PackUtils.generateSerialId()
-                                   .toString();
-        metaData = metaData.toBuilder()
-                           .serialId(serialId)
-                           .build();
-      }
-
-      if (metaData.getTopicId() == null) {
-        String newTopicId = PackUtils.getTopic(name, UUID.randomUUID()
-                                                         .toString());
-        metaData = metaData.toBuilder()
-                           .topicId(newTopicId)
-                           .build();
-
-      }
-
-      dao.createVolume(name, metaData);
-      return "{}";
+    get("/metrics/json", (request, response) -> {
+      response.type("application/javascript");
+      ServletOutputStream outputStream = response.raw()
+                                                 .getOutputStream();
+      MAPPER.writeValue(outputStream, jsonReporter.getReport());
+      outputStream.flush();
+      
+      return "";
     });
-    get("/api/list", (request, response) -> {
-      List<Volume> volumes = dao.getVolumes();
-      return MAPPER.writeValueAsString(volumes);
-    });
+    
 
   }
 

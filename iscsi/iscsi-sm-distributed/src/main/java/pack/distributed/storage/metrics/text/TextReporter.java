@@ -1,4 +1,4 @@
-package pack.distributed.storage.metrics;
+package pack.distributed.storage.metrics.text;
 
 import java.io.PrintStream;
 import java.text.DateFormat;
@@ -18,20 +18,20 @@ import com.codahale.metrics.*;
  * A reporter which outputs measurements to a {@link PrintStream}, like
  * {@code System.out}.
  */
-public class ConsoleReporter extends ScheduledReporter {
+public class TextReporter extends ScheduledReporter {
   /**
-   * Returns a new {@link Builder} for {@link ConsoleReporter}.
+   * Returns a new {@link Builder} for {@link TextReporter}.
    *
    * @param registry
    *          the registry to report
-   * @return a {@link Builder} instance for a {@link ConsoleReporter}
+   * @return a {@link Builder} instance for a {@link TextReporter}
    */
   public static Builder forRegistry(MetricRegistry registry) {
     return new Builder(registry);
   }
 
   /**
-   * A builder for {@link ConsoleReporter} instances. Defaults to using the
+   * A builder for {@link TextReporter} instances. Defaults to using the
    * default locale and time zone, writing to {@code System.out}, converting
    * rates to events/second, converting durations to milliseconds, and not
    * filtering metrics.
@@ -196,12 +196,12 @@ public class ConsoleReporter extends ScheduledReporter {
     }
 
     /**
-     * Builds a {@link ConsoleReporter} with the given properties.
+     * Builds a {@link TextReporter} with the given properties.
      *
-     * @return a {@link ConsoleReporter}
+     * @return a {@link TextReporter}
      */
-    public ConsoleReporter build() {
-      return new ConsoleReporter(registry, printStreamFactory, locale, clock, timeZone, rateUnit, durationUnit, filter,
+    public TextReporter build() {
+      return new TextReporter(registry, printStreamFactory, locale, clock, timeZone, rateUnit, durationUnit, filter,
           executor, shutdownExecutorOnStop, disabledMetricAttributes);
     }
   }
@@ -213,7 +213,7 @@ public class ConsoleReporter extends ScheduledReporter {
   private final Clock clock;
   private final DateFormat dateFormat;
 
-  private ConsoleReporter(MetricRegistry registry, PrintStreamFactory printStreamFactory, Locale locale, Clock clock,
+  private TextReporter(MetricRegistry registry, PrintStreamFactory printStreamFactory, Locale locale, Clock clock,
       TimeZone timeZone, TimeUnit rateUnit, TimeUnit durationUnit, MetricFilter filter,
       ScheduledExecutorService executor, boolean shutdownExecutorOnStop,
       Set<MetricAttribute> disabledMetricAttributes) {

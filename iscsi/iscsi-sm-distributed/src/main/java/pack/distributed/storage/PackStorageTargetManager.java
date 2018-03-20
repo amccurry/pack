@@ -34,9 +34,10 @@ import pack.distributed.storage.http.PackDao;
 import pack.distributed.storage.http.TargetServerInfo;
 import pack.distributed.storage.http.Volume;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
-import pack.distributed.storage.metrics.ConsoleReporter;
 import pack.distributed.storage.metrics.MetricsStorageModule;
-import pack.distributed.storage.metrics.PrintStreamFactory;
+import pack.distributed.storage.metrics.json.JsonReporter;
+import pack.distributed.storage.metrics.text.PrintStreamFactory;
+import pack.distributed.storage.metrics.text.TextReporter;
 import pack.distributed.storage.monitor.PackWriteBlockMonitorFactory;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.status.PackServerStatusManager;
@@ -69,14 +70,18 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
   private final long _delayBeforeRemoval;
   private final MetricRegistry _registry;
+  private final JsonReporter _jsonReporter;
 
   public PackStorageTargetManager() throws IOException {
 
     MetricRegistry registry = MetricsRegistrySingleton.getInstance();
     _registry = registry;
+    _jsonReporter = new JsonReporter(_registry);
+    _jsonReporter.start(3, TimeUnit.SECONDS);
+    PackUtils.closeOnShutdown(_jsonReporter);
 
     AtomicReference<byte[]> metricsOutput = new AtomicReference<>();
-    setupReporter(registry, metricsOutput);
+    setupTextReporter(metricsOutput);
 
     int httpPort = Integer.parseInt(PackUtils.getEnv(PACK_HTTP_PORT, PACK_HTTP_PORT_DEFAULT));
 
@@ -86,7 +91,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
                                                         .textMetricsOutput(metricsOutput)
                                                         .packDao(packDao)
                                                         .build();
-    HttpServer.startHttpServer(httpServerConfig);
+    HttpServer.startHttpServer(httpServerConfig, _jsonReporter);
 
     _cacheDir = PackConfig.getWalCachePath();
     _ugi = PackConfig.getUgi();
@@ -194,7 +199,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
     }
   }
 
-  private static void setupReporter(MetricRegistry registry, AtomicReference<byte[]> ref) {
+  private void setupTextReporter(AtomicReference<byte[]> ref) {
     PrintStreamFactory printStreamFactory = () -> {
       ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
       return new PrintStream(outputStream) {
@@ -205,12 +210,13 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         }
       };
     };
-    ConsoleReporter reporter = ConsoleReporter.forRegistry(registry)
-                                              .convertRatesTo(TimeUnit.SECONDS)
-                                              .convertDurationsTo(TimeUnit.MILLISECONDS)
-                                              .outputTo(printStreamFactory)
-                                              .build();
+    TextReporter reporter = TextReporter.forRegistry(_registry)
+                                        .convertRatesTo(TimeUnit.SECONDS)
+                                        .convertDurationsTo(TimeUnit.MILLISECONDS)
+                                        .outputTo(printStreamFactory)
+                                        .build();
     reporter.start(3, TimeUnit.SECONDS);
+
     PackUtils.closeOnShutdown(reporter);
   }
 

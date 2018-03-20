@@ -24,6 +24,8 @@ public class MetricsStorageModule implements IStorageModule {
   private final Timer _flushTimer;
   private final Meter _writerMeter;
   private final Meter _readMeter;
+  private final Meter _readIops;
+  private final Meter _writeIops;
 
   public static IStorageModule wrap(String name, MetricRegistry registry, IStorageModule module) {
     LOGGER.info("Adding metrics to {} {}", name, module);
@@ -38,6 +40,8 @@ public class MetricsStorageModule implements IStorageModule {
     _flushTimer = _registry.timer(name + "." + "flush.latency");
     _writerMeter = _registry.meter(name + "." + "write.throughput");
     _readMeter = _registry.meter(name + "." + "read.throughput");
+    _readIops = _registry.meter(name + "." + "read.iops");
+    _writeIops = _registry.meter(name + "." + "write.iops");
   }
 
   @Override
@@ -56,6 +60,7 @@ public class MetricsStorageModule implements IStorageModule {
       _delegate.read(bytes, storageIndex);
     }
     _readMeter.mark(bytes.length);
+    _readIops.mark();
   }
 
   @Override
@@ -65,6 +70,7 @@ public class MetricsStorageModule implements IStorageModule {
       _delegate.read(bytes, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber);
     }
     _readMeter.mark(bytes.length);
+    _readIops.mark();
   }
 
   @Override
@@ -73,6 +79,7 @@ public class MetricsStorageModule implements IStorageModule {
       _delegate.write(bytes, storageIndex);
     }
     _writerMeter.mark(bytes.length);
+    _writeIops.mark();
   }
 
   @Override
@@ -83,6 +90,7 @@ public class MetricsStorageModule implements IStorageModule {
           targetTransferTag);
     }
     _writerMeter.mark(bytes.length);
+    _writeIops.mark();
   }
 
   @Override

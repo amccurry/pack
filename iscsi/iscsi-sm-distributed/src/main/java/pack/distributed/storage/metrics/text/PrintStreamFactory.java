@@ -1,4 +1,4 @@
-package pack.distributed.storage.metrics;
+package pack.distributed.storage.metrics.text;
 
 import java.io.PrintStream;
 
