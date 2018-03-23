@@ -1,12 +1,19 @@
 package pack.distributed.storage;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.nio.channels.SocketChannel;
 import java.security.PrivilegedExceptionAction;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -16,11 +23,19 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.ZooDefs.Ids;
+import org.apache.zookeeper.data.Stat;
+import org.jscsi.target.Target;
+import org.jscsi.target.connection.Connection;
+import org.jscsi.target.connection.TargetSession;
 import org.jscsi.target.storage.IStorageModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.MetricRegistry;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
@@ -51,6 +66,14 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackStorageTargetManager extends BaseStorageTargetManager {
 
+  private static final String CLIENT_ADDRESS = "clientAddress";
+
+  private static final String TARGET_SERVER_ADDRESS = "targetServerAddress";
+
+  private static final ObjectMapper MAPPER = new ObjectMapper();
+
+  private static final String TARGET_SESSIONS = "/target-sessions";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(PackStorageTargetManager.class);
 
   private static final String PACK_HTTP_PORT_DEFAULT = "8642";
@@ -71,8 +94,12 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final long _delayBeforeRemoval;
   private final MetricRegistry _registry;
   private final JsonReporter _jsonReporter;
+  private final String _hostAddress;
 
   public PackStorageTargetManager() throws IOException {
+
+    _hostAddress = InetAddress.getLocalHost()
+                              .getHostAddress();
 
     MetricRegistry registry = MetricsRegistrySingleton.getInstance();
     _registry = registry;
@@ -140,6 +167,120 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
                            .hostname(InetAddress.getLocalHost()
                                                 .getHostName())
                            .build();
+  }
+
+  @Override
+  public Target getTarget(String targetName) {
+    // try {
+    // if (!validateSession(targetName)) {
+    // // try again
+    // if (!validateSession(targetName)) {
+    // // give up
+    // throw new RuntimeException("Could not get lock on target " + targetName);
+    // }
+    // }
+    // } catch (IOException | KeeperException | InterruptedException e) {
+    // throw new RuntimeException(e);
+    // }
+    return super.getTarget(targetName);
+  }
+
+  private boolean validateSession(String targetName) throws IOException, KeeperException, InterruptedException {
+    if (isSessionValid()) {
+      return true;
+    }
+    TargetSession session = getSession();
+    if (session == null) {
+      throw new RuntimeException("TargetSession missing.");
+    }
+    Connection connection = session.getConnection();
+    if (connection == null) {
+      throw new RuntimeException("Connection missing.");
+    }
+    SocketChannel socketChannel = connection.getSocketChannel();
+    if (socketChannel == null) {
+      throw new RuntimeException("SocketChannel missing.");
+    }
+    InetSocketAddress remoteAddress = (InetSocketAddress) socketChannel.getRemoteAddress();
+    String hostAddress = remoteAddress.getAddress()
+                                      .getHostAddress();
+
+    String path = TARGET_SESSIONS + "/" + targetName;
+    ZkUtils.mkNodesStr(_zk, path);
+
+    LOGGER.info("Trying to lock zk path {} to validate session", path);
+
+    String newPath = _zk.create(path + "/lock_", getDataForTargetLock(_hostAddress, hostAddress), Ids.OPEN_ACL_UNSAFE,
+        CreateMode.EPHEMERAL_SEQUENTIAL);
+
+    Closeable closeable = (Closeable) () -> {
+      try {
+        _zk.delete(newPath, -1);
+      } catch (InterruptedException | KeeperException e) {
+        throw new IOException(e);
+      }
+    };
+
+    List<String> list = new ArrayList<>(_zk.getChildren(path, false));
+    Collections.sort(list);
+
+    String lockPath = path + "/" + list.get(0);
+
+    LOGGER.info("Lock zk path {}", lockPath);
+
+    if (lockPath.equals(newPath)) {
+      // we got the lock
+      LOGGER.info("Lock obtained for {}", targetName);
+      _zk.setData(path, hostAddress.getBytes(), -1);
+      getCloser().register(closeable);
+      setSessionValid(true);
+      return true;
+    } else {
+      // we didn't get the lock
+      Stat lockStat = _zk.exists(lockPath, false);
+      long lockMzxid = lockStat.getMzxid();
+
+      LOGGER.info("Lock not obtained for {}, waiting for data in path {} to be updated, lockpath {}", targetName, path,
+          lockPath);
+
+      // wait until data version after lock version?
+      Stat pathStat = null;
+      boolean dataUpdated = false;
+      for (int i = 0; i < 10; i++) {
+        pathStat = _zk.exists(path, false);
+        if (pathStat.getMzxid() > lockMzxid) {
+          dataUpdated = true;
+          break;
+        }
+        LOGGER.info("Waiting for data in path {} to be updated", path);
+        Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+      }
+
+      if (!dataUpdated) {
+        LOGGER.error("Data was not updated, failing {}", targetName);
+        PackUtils.close(LOGGER, closeable);
+        return false;
+      }
+      // check that the node data is a match to the host name
+      byte[] data = _zk.getData(path, false, pathStat);
+      String hostAddressHoldingLock = new String(data);
+      if (hostAddress.equals(hostAddressHoldingLock)) {
+        LOGGER.info("Host names match {}", hostAddress);
+        getCloser().register(closeable);
+        setSessionValid(true);
+        return true;
+      } else {
+        PackUtils.close(LOGGER, closeable);
+        throw new IOException("Host " + hostAddressHoldingLock + " already logged into target " + targetName);
+      }
+    }
+  }
+
+  private byte[] getDataForTargetLock(String targetServerAddress, String clientAddress) throws IOException {
+    Map<String, String> map = new TreeMap<>();
+    map.put(TARGET_SERVER_ADDRESS, targetServerAddress);
+    map.put(CLIENT_ADDRESS, clientAddress);
+    return MAPPER.writeValueAsBytes(map);
   }
 
   @Override

@@ -9,13 +9,12 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import org.jscsi.target.TargetServer;
 
 import com.google.common.base.Splitter;
-
-import pack.iscsi.storage.concurrent.Executors;
 
 public class IscsiServer implements Closeable {
 
@@ -35,7 +34,8 @@ public class IscsiServer implements Closeable {
       _targetServers.put(address, new TargetServer(InetAddress.getByName(address), config.getPort(),
           config.getIscsiTargetManager(), InetAddress.getByName(bindAddress), config.getPort()));
     }
-    _executorService = Executors.newCachedThreadPool("iscsiserver");
+    // _executorService = Executors.newCachedThreadPool("iscsiserver");
+    _executorService = Executors.newFixedThreadPool(100);
   }
 
   public void start() {

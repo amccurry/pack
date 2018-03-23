@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PARCEL_FILE=$(ls iscsi-server/target/*.tar.gz)
-PACK_NAME="PACK"
+PACK_NAME="PACK_ISCSI"
 PACK_VERSION=$(echo ${PARCEL_FILE##*/} | sed "s#${PACK_NAME}-##g" | sed 's#\.tar\.gz##g')
 PROJECT_DIR="./target/http"
 

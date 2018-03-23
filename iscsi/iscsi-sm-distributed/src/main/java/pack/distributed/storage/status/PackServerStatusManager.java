@@ -66,7 +66,7 @@ public class PackServerStatusManager implements ServerStatusManager {
     }
     _serverSocket = new ServerSocket();
     _serverSocket.bind(new InetSocketAddress(_writeBlockMonitorAddress, _writeBlockMonitorPort));
-    _service = Executors.newCachedThreadPool();
+    _service = Executors.newFixedThreadPool(100);
     startReceiver();
     startServerWatcher();
   }
@@ -158,9 +158,9 @@ public class PackServerStatusManager implements ServerStatusManager {
       batch.add(readUpdateBlockId(input));
     }
     return BlockUpdateInfoBatch.builder()
-                             .batch(batch)
-                             .volume(volume)
-                             .build();
+                               .batch(batch)
+                               .volume(volume)
+                               .build();
   }
 
   private BlockUpdateInfo readUpdateBlockId(DataInput input) throws IOException {

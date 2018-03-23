@@ -2,7 +2,6 @@ package pack.iscsi.docker;
 
 import static pack.iscsi.docker.Utils.getEnv;
 import static pack.iscsi.docker.Utils.getIqn;
-import static pack.iscsi.docker.Utils.getMultiPathDevice;
 import static pack.iscsi.docker.Utils.iscsiDeleteSession;
 import static pack.iscsi.docker.Utils.iscsiDiscovery;
 import static pack.iscsi.docker.Utils.iscsiLoginSession;
@@ -15,6 +14,7 @@ import java.security.PrivilegedExceptionAction;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -61,6 +61,7 @@ public class DockerVolumePluginServerMain {
     private final String _rootMount;
     private final String _zkConn;
     private final int _zkTimeout;
+    private final Object _lock = new Object();
 
     public IscsiVolumeStorageControl() throws IOException {
       _configuration = PackConfig.getConfiguration();
@@ -73,9 +74,9 @@ public class DockerVolumePluginServerMain {
 
     @Override
     public void create(String volumeName, Map<String, Object> options) throws Exception {
-      _ugi.doAs(new PrivilegedExceptionAction<Void>() {
+      PackMetaData metaData = _ugi.doAs(new PrivilegedExceptionAction<PackMetaData>() {
         @Override
-        public Void run() throws Exception {
+        public PackMetaData run() throws Exception {
           String newTopicId = PackUtils.getTopic(volumeName, UUID.randomUUID()
                                                                  .toString());
           String serialId = PackUtils.generateSerialId()
@@ -85,9 +86,30 @@ public class DockerVolumePluginServerMain {
                                               .topicId(newTopicId)
                                               .build();
           metaData.write(_configuration, new Path(_hdfsTarget, volumeName));
-          return null;
+          return metaData;
         }
       });
+
+      String dev = metaData.getSerialId();
+      String iqn = getIqn(volumeName);
+      List<TargetServerInfo> targetServers = getTargetServers();
+
+      try {
+        synchronized (_lock) {
+          iscsiDiscovery(targetServers);
+          iscsiLoginSession(iqn);
+        }
+        Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+        Result fsFormatResult = Utils.execAsResult(LOGGER, "mkfs.xfs", "/dev/mapper/" + dev);
+        if (fsFormatResult.exitCode != 0) {
+          throw new Exception("Format failed " + volumeName + " @ /dev/mapper/" + dev);
+        }
+      } finally {
+        synchronized (_lock) {
+          iscsiLogoutSession(iqn);
+          iscsiDeleteSession(iqn);
+        }
+      }
     }
 
     @Override
@@ -99,24 +121,23 @@ public class DockerVolumePluginServerMain {
     public String mount(String volumeName, String id) throws Exception {
       String iqn = getIqn(volumeName);
       List<TargetServerInfo> targetServers = getTargetServers();
-      iscsiDiscovery(targetServers);
-      iscsiLoginSession(iqn);
-      String dev = getMultiPathDevice(targetServers, iqn);
-      waitUntilBlockDeviceIsOnline("/dev/mapper/" + dev);
 
-      // Result fsFormatResult = Utils.execAsResult(LOGGER, "mkfs.xfs",
-      // "/dev/mapper/" + dev);
-      // if (fsFormatResult.exitCode != 0) {
-      // throw new Exception("Not FS found and format failed " + volumeName + "
-      // @ /dev/mapper/" + dev);
-      // }
+      PackMetaData metaData = _ugi.doAs(
+          (PrivilegedExceptionAction<PackMetaData>) () -> PackMetaData.read(_configuration,
+              new Path(_hdfsTarget, volumeName)));
+      String dev = metaData.getSerialId();
+      synchronized (_lock) {
+        iscsiDiscovery(targetServers);
+        iscsiLoginSession(iqn);
+      }
+      waitUntilBlockDeviceIsOnline("/dev/mapper/" + dev);
       String mountPoint = getMountPoint(volumeName);
       File mountFile = new File(mountPoint);
       mountFile.mkdirs();
       if (!mountFile.exists()) {
         throw new Exception("Mount point does not exist " + mountFile);
       }
-      Result result = Utils.execAsResult(LOGGER, "mount", "-o", "sync,noatime", "/dev/mapper/" + dev,
+      Result result = Utils.execAsResult(LOGGER, "mount", "-o", "async,noatime", "/dev/mapper/" + dev,
           mountFile.getAbsolutePath());
       if (result.exitCode == 0) {
         return mountFile.getAbsolutePath();
@@ -138,8 +159,10 @@ public class DockerVolumePluginServerMain {
         throw new Exception(result.stderr);
       }
       String iqn = getIqn(volumeName);
-      iscsiLogoutSession(iqn);
-      iscsiDeleteSession(iqn);
+      synchronized (_lock) {
+        iscsiLogoutSession(iqn);
+        iscsiDeleteSession(iqn);
+      }
     }
 
     @Override

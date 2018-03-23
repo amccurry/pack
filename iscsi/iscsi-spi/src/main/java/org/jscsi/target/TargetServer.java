@@ -37,6 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
 
+import pack.iscsi.storage.BaseStorageTargetManager;
 import pack.iscsi.storage.StorageTargetManager;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -241,10 +242,13 @@ public final class TargetServer implements Callable<Void> {
           sessions.add(session);
           threadPool.submit(() -> {
             try {
+              BaseStorageTargetManager.startSession(session);
               return connection.call();
             } catch (Throwable e) {
               LOGGER.error("Unknown error", e);
               throw e;
+            } finally {
+              BaseStorageTargetManager.endSession(session);
             }
           });
         } catch (DigestException | InternetSCSIException | SettingsException | IOException e) {

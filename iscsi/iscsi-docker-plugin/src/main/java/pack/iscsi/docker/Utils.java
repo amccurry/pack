@@ -21,6 +21,7 @@ import pack.distributed.storage.http.TargetServerInfo;
 
 public class Utils {
 
+  private static final String ISCSIADM = "iscsiadm";
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
 
   public static String getEnv(String env) {
@@ -188,7 +189,7 @@ public class Utils {
   }
 
   public static void iscsiLoginSession(String iqn) throws IOException {
-    Result result = Utils.execAsResult(LOGGER, "sudo", "iscsiadm", "-m", "node", "-T", iqn, "-l");
+    Result result = Utils.execAsResult(LOGGER, "sudo", ISCSIADM, "-m", "node", "-T", iqn, "-l");
     if (result.exitCode != 0) {
       LOGGER.error("Error during login to iqn {} {}", iqn, result.stderr);
     } else {
@@ -197,7 +198,7 @@ public class Utils {
   }
 
   public static void iscsiLogoutSession(String iqn) throws IOException {
-    Result result = Utils.execAsResult(LOGGER, "sudo", "iscsiadm", "-m", "node", "-T", iqn, "-u");
+    Result result = Utils.execAsResult(LOGGER, "sudo", ISCSIADM, "-m", "node", "-T", iqn, "-u");
     if (result.exitCode != 0) {
       LOGGER.error("Error during logout to iqn {} {}", iqn, result.stderr);
     } else {
@@ -206,7 +207,7 @@ public class Utils {
   }
 
   public static void iscsiDeleteSession(String iqn) throws IOException {
-    Result result = Utils.execAsResult(LOGGER, "sudo", "iscsiadm", "-m", "node", "-T", iqn, "-o", "delete");
+    Result result = Utils.execAsResult(LOGGER, "sudo", ISCSIADM, "-m", "node", "-T", iqn, "-o", "delete");
     if (result.exitCode != 0) {
       LOGGER.error("Error during logout to iqn {} {}", iqn, result.stderr);
     } else {
@@ -226,12 +227,12 @@ public class Utils {
   }
 
   public static String getIqn(String name) {
-    return "iqn.2018-02.pack.hdfs:" + name;
+    return "iqn.2018-02.pack.hdfs." + name;
   }
 
   public static void iscsiDiscovery(List<TargetServerInfo> list) throws IOException {
     for (TargetServerInfo info : list) {
-      Result result = Utils.execAsResult(LOGGER, "sudo", "iscsiadm", "-m", "discovery", "-t", "st", "-p",
+      Result result = Utils.execAsResult(LOGGER, "sudo", ISCSIADM, "-m", "discovery", "-t", "st", "-p",
           info.getHostname());
       if (result.exitCode != 0) {
         LOGGER.error("Error during discovery of server {} {}", info.getHostname(), result.stderr);

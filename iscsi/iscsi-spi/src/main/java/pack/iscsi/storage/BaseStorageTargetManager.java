@@ -6,11 +6,17 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.jscsi.target.Target;
+import org.jscsi.target.connection.TargetSession;
 import org.jscsi.target.storage.IStorageModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.io.Closer;
+
+import pack.iscsi.storage.utils.PackUtils;
 
 public abstract class BaseStorageTargetManager implements StorageTargetManager {
 
@@ -65,11 +71,50 @@ public abstract class BaseStorageTargetManager implements StorageTargetManager {
 
   @Override
   public String getFullName(String name) {
-    return getTargetPrefix() + ":" + name;
+    return getTargetPrefix() + "." + name;
   }
 
   protected String getTargetPrefix() {
     return TARGET_PREFIX + "." + getType();
+  }
+
+  private static final ThreadLocal<InternalSession> _session = new ThreadLocal<>();
+
+  private static class InternalSession {
+    final Closer closer = Closer.create();
+    final TargetSession session;
+    final AtomicBoolean valid = new AtomicBoolean();
+
+    InternalSession(TargetSession session) {
+      this.session = session;
+    }
+
+  }
+
+  public static boolean isSessionValid() {
+    return _session.get().valid.get();
+  }
+
+  public static void setSessionValid(boolean valid) {
+    _session.get().valid.set(valid);
+  }
+
+  public static TargetSession getSession() {
+    return _session.get().session;
+  }
+
+  public static Closer getCloser() {
+    return _session.get().closer;
+  }
+
+  public static void startSession(TargetSession session) {
+    _session.set(new InternalSession(session));
+  }
+
+  public static void endSession(TargetSession session) {
+    InternalSession internalSession = _session.get();
+    _session.set(null);
+    PackUtils.close(LOGGER, internalSession.closer);
   }
 
 }

@@ -66,6 +66,8 @@ public interface Connection extends Callable<Void> {
 
   public boolean stop();
 
+  SocketChannel getSocketChannel();
+
   public static class TargetConnection implements Connection {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TargetConnection.class);
@@ -120,6 +122,8 @@ public interface Connection extends Callable<Void> {
      */
     private ProtocolDataUnit lastReceivedPDU;
 
+    private SocketChannel socketChannel;
+
     /**
      * The {@link TargetConnection} constructor.
      * 
@@ -130,6 +134,7 @@ public interface Connection extends Callable<Void> {
      *          connection associated with its enclosing session
      */
     public TargetConnection(SocketChannel socketChannel, final boolean isLeadingConnection) {
+      this.socketChannel = socketChannel;
       this.isLeadingConnection = isLeadingConnection;
       senderWorker = new TargetSenderWorker(this, socketChannel);
     }
@@ -321,6 +326,11 @@ public interface Connection extends Callable<Void> {
       }
 
       return false;
+    }
+
+    @Override
+    public SocketChannel getSocketChannel() {
+      return socketChannel;
     }
   }
 }
