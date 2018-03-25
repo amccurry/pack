@@ -2,6 +2,7 @@ package pack.iscsi.storage.utils;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -23,6 +24,8 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Splitter;
 
 public class PackUtils {
+
+  private static final String ISCSI_PROPERTY_FILE = "ISCSI_PROPERTY_FILE";
 
   private static final String XML = ".xml";
 
@@ -150,28 +153,31 @@ public class PackUtils {
     }
   }
 
-  public static String getEnvFailIfMissing(String name) {
-    String value = getEnv(name, null);
+  public static String getPropertyFailIfMissing(String name) {
+    String value = getProperty(name, null);
     if (value == null) {
-      throw new RuntimeException("required ENV var " + name + " missing");
+      throw new RuntimeException("required ENV/Property var " + name + " missing");
     }
     return value;
   }
 
-  public static String getEnv(String name) {
-    return getEnv(name, null);
+  public static String getProperty(String name) {
+    return getProperty(name, null);
   }
 
-  public static String getEnv(String name, String defaultValue) {
+  public static String getProperty(String name, String defaultValue) {
     String value = System.getenv(name);
     if (value == null) {
-      return defaultValue;
+      value = System.getProperty(name);
+      if (value == null) {
+        return defaultValue;
+      }
     }
     return value;
   }
 
-  public static List<String> getEnvList(String name) {
-    String value = getEnv(name);
+  public static List<String> getPropertyList(String name) {
+    String value = getProperty(name);
     if (value == null) {
       return null;
     }
@@ -179,16 +185,20 @@ public class PackUtils {
                    .splitToList(value);
   }
 
-  public static List<String> getEnvListFailIfMissing(String name) {
-    List<String> list = getEnvList(name);
+  public static List<String> getPropertyListFailIfMissing(String name) {
+    List<String> list = getPropertyList(name);
     if (list == null) {
-      throw new RuntimeException("required ENV var " + name + " missing");
+      throw new RuntimeException("required ENV/Property var " + name + " missing");
     }
     return list;
   }
 
-  public static boolean isEnvSet(String name) {
-    return System.getenv(name) != null;
+  public static boolean isPropertySet(String name) {
+    String env = System.getenv(name);
+    if (env == null) {
+      env = System.getProperty(name);
+    }
+    return env != null;
   }
 
   public static String getTopic(String name, String id) {
@@ -287,6 +297,17 @@ public class PackUtils {
   public static void closeOnShutdown(Closeable... closeables) {
     Runtime.getRuntime()
            .addShutdownHook(new Thread(() -> PackUtils.closeQuietly(closeables)));
+  }
+
+  public static void bootStrapProtpertyFile() throws IOException {
+    String file = getProperty(ISCSI_PROPERTY_FILE);
+    if (file == null) {
+      return;
+    }
+    try (InputStream input = new FileInputStream(new File(file))) {
+      System.getProperties()
+            .load(input);
+    }
   }
 
 }

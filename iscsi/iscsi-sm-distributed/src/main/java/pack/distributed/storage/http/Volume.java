@@ -8,6 +8,7 @@ import lombok.Value;
 public class Volume {
   String name;
   long size;
+  String serialId;
   String iqn;
   String hdfsPath;
   String kafkaTopic;

@@ -28,8 +28,17 @@ case $CMD in
   (compactor)
     exec -a pack-compactor java -Xmx1g -Xms1g $JAVA_OPTIONS pack.distributed.storage.compactor.PackCompactorServer
     ;;
-  (docker-plugin)
-    exec -a pack-docker-plugin java -Xmx64m -Xms64m $JAVA_OPTIONS pack.iscsi.docker.DockerVolumePluginServerMain
+  (volume-manager)
+    if [ -z ${DOCKER_PLUGIN_SOCK_PATH+x} ] ; then
+      export DOCKER_PLUGIN_SOCK_PATH="/var/lib/pack/pack.sock"
+    fi
+    if ! sudo mkdir -p /etc/docker/plugins/ ; then
+      echo "WARNING: Cannot sudo to write spec file out for docker."
+    fi
+    if ! sudo echo "unix://${DOCKER_PLUGIN_SOCK_PATH}" > /etc/docker/plugins/pack.spec ; then
+      echo "WARNING: Cannot sudo to write spec file out for docker."
+    fi
+    exec -a pack-volume-manager java -Xmx64m -Xms64m $JAVA_OPTIONS pack.iscsi.docker.DockerVolumePluginServerMain
     ;;
   (*)
     echo "Don't understand [$CMD]"

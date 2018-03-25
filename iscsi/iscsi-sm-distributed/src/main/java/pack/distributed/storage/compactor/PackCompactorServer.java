@@ -2,6 +2,7 @@ package pack.distributed.storage.compactor;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.security.PrivilegedExceptionAction;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -19,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.io.Closer;
 
 import pack.distributed.storage.PackConfig;
+import pack.distributed.storage.http.CompactorServerInfo;
 import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.distributed.storage.zk.ZooKeeperLockManager;
@@ -68,6 +70,7 @@ public class PackCompactorServer implements Closeable {
   private final long _maxBlockFileSize;
   private final double _maxObsoleteRatio;
   private final Configuration _configuration;
+  private final ZooKeeperClient _zooKeeper;
 
   public PackCompactorServer(Configuration configuration, Path path, String zkConnectionString, int sessionTimeout,
       long maxBlockFileSize, double maxObsoleteRatio) throws IOException {
@@ -78,9 +81,13 @@ public class PackCompactorServer implements Closeable {
     _closer = Closer.create();
     _configuration = configuration;
     _path = path;
-    try (ZooKeeperClient zooKeeper = getZk()) {
-      ZkUtils.mkNodesStr(zooKeeper, COMPACTION + "/lock");
-    }
+    _zooKeeper = _closer.register(getZk());
+    ZkUtils.mkNodesStr(_zooKeeper, COMPACTION + "/lock");
+    InetAddress localHost = InetAddress.getLocalHost();
+    CompactorServerInfo.register(_zooKeeper, CompactorServerInfo.builder()
+                                                                .address(localHost.getHostAddress())
+                                                                .hostname(localHost.getHostName())
+                                                                .build());
     _compactionLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout, COMPACTION + "/lock");
   }
 

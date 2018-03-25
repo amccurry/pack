@@ -4,7 +4,9 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
+import org.jscsi.target.Target;
 import org.jscsi.target.storage.IStorageModule;
 
 import com.google.common.collect.ImmutableList;
@@ -23,10 +25,21 @@ public class FileStorageTargetManager extends BaseStorageTargetManager {
   private final int _blockSize;
 
   public FileStorageTargetManager() {
-    String filePath = PackUtils.getEnvFailIfMissing(LOCAL_TARGET_PATH);
-    _blockSize = Integer.parseInt(PackUtils.getEnv(LOCAL_BLOCK_SIZE, DEFAULT_BLOCK_SIZE));
+    String filePath = PackUtils.getPropertyFailIfMissing(LOCAL_TARGET_PATH);
+    _blockSize = Integer.parseInt(PackUtils.getProperty(LOCAL_BLOCK_SIZE, DEFAULT_BLOCK_SIZE));
     _file = new File(filePath);
     _file.mkdirs();
+  }
+
+  @Override
+  public Target getTarget(String targetName) {
+    try {
+      Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+    } catch (InterruptedException e) {
+      throw new RuntimeException(e);
+    }
+    throw new RuntimeException("Unknown");
+//    return super.getTarget(targetName);
   }
 
   @Override

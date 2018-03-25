@@ -5,8 +5,6 @@ import java.nio.channels.SocketChannel;
 import java.security.DigestException;
 import java.util.concurrent.Callable;
 
-import javax.naming.OperationNotSupportedException;
-
 import org.jscsi.exception.InternetSCSIException;
 import org.jscsi.parser.OperationCode;
 import org.jscsi.parser.ProtocolDataUnit;
@@ -256,13 +254,12 @@ public interface Connection extends Callable<Void> {
           phase = new TargetFullFeaturePhase(this);
           phase.execute();
         }
-      } catch (OperationNotSupportedException | IOException | InterruptedException | InternetSCSIException
-          | DigestException | SettingsException e) {
-        if (e.getMessage() != null && e.getMessage()
+      } catch (Throwable t) {
+        if (t.getMessage() != null && t.getMessage()
                                        .equals("Connection reset by peer")) {
-          LOGGER.debug("Exception throws", e);
+          LOGGER.debug("Exception throws", t);
         } else {
-          LOGGER.error("Exception throws", e);
+          LOGGER.error("Exception throws", t);
         }
       } finally {
         PackUtils.closeQuietly(senderWorker);

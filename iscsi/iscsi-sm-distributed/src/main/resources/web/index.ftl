@@ -22,20 +22,13 @@
             <li class="active"><a href="index.html">Cluster</a></li>
             <li><a href="volumes.html">Volumes</a></li>
             <li><a href="sessions.html">Sessions</a></li>
+            <li><a href="metrics.html">Metrics</a></li>
           </ul>
         </div>
       </div>
     </div>
     <div class="container bs-docs-container">
       <div class="row">
-        <div class="col-md-3">
-          <div class="bs-sidebar hidden-print affix" role="complementary">
-            <ul class="nav bs-sidenav">
-              <li><a href="#targets">Targets</a></li>
-              <li><a href="#compactors">Compactors</a></li>
-            </ul>
-          </div>
-        </div>
         <div class="col-md-9" role="main">
           <section>
             <div class="page-header">
@@ -74,8 +67,8 @@
             <tbody>
 <#list compactors as compactor>
                 <tr>
-                  <td>${compactor.hostname}</td>
-                  <td>${compactor.address}</td>
+                  <td nowrap>${compactor.hostname}</td>
+                  <td nowrap>${compactor.address}</td>
                 </tr>
 </#list>
             </tbody>

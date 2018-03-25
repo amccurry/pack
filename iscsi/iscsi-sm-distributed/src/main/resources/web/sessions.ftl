@@ -23,68 +23,39 @@
             <li><a href="index.html">Cluster</a></li>
             <li><a href="volumes.html">Volumes</a></li>
             <li class="active"><a href="sessions.html">Sessions</a></li>
+            <li><a href="metrics.html">Metrics</a></li>
           </ul>
         </div>
       </div>
     </div>
     <div class="container bs-docs-container">
       <div class="row">
-        <div class="col-md-3">
-          <div class="bs-sidebar hidden-print affix" role="complementary">
-            <ul class="nav bs-sidenav">
-              <li><a href="#sessions">Sessions</a></li>
-            </ul>
-          </div>
-        </div>
         <div class="col-md-9" role="main">
           <section>
             <div class="page-header">
               <h1 id="sessions">Sessions</h1>
             </div>
-            <p class="lead">
-              Text
-            </p>
             <h3>Base Settings</h3>
             <table class="table table-bordered table-striped table-condensed">
               <thead>
                 <tr>
-                  <th>Volume</th>
-                  <th>Size</th>
                   <th>IQN</th>
-                  <th>Hdfs Path</th>
-                  <th>Kafka Topic</th>
+                  <th>Client</th>
+                  <th>Writable Client</th>
+                  <th>Server</th>
                 </tr>
               </thead>
               <tbody>
+<#list sessions as session>
                 <tr>
-                  <td>test</td>
-                  <td>100000</td>
-                  <td>iqn.test</td>
-                  <td>/pack/test</td>
-                  <td>pack.test.blah</td>
-                </tr>
+                  <td nowrap>${session.iqn?if_exists}</td>
+                  <td nowrap>${session.clientAddress?if_exists}</td>
+                  <td nowrap>${session.writeLockClientAddress?if_exists}</td>
+                  <td nowrap>${session.targetServerAddress?if_exists}</td>                 
                 <tr>
+</#list>
               </tbody>
             </table>
-        </section>
-        <section>
-          <div class="page-header">
-            <h1 id="compactors">Compactors</h1>
-          </div>
-          <table class="table table-bordered table-striped table-condensed">
-            <thead>
-              <tr>
-                <th>Role</th>
-                <th>Description</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>admin</td>
-                <td>Grants permission to ALL functionality of the console.</td>
-              </tr>
-            </tbody>
-          </table>
         </section>
       </div>
     </div>

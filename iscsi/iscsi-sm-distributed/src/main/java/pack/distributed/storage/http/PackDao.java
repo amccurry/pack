@@ -1,9 +1,6 @@
 package pack.distributed.storage.http;
 
-import java.io.IOException;
 import java.util.List;
-
-import pack.distributed.storage.PackMetaData;
 
 public interface PackDao {
 
@@ -13,8 +10,8 @@ public interface PackDao {
 
   List<CompactorServerInfo> getCompactors();
 
-  default void createVolume(String name, PackMetaData metaData) throws IOException {
-
-  }
+  List<Metric> getMetrics();
+  
+  List<Session> getSessions();
 
 }

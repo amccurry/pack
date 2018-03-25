@@ -22,11 +22,15 @@
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
+			<artifactId>iscsi-sm-file</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
 			<artifactId>iscsi-cli</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
-			<artifactId>iscsi-docker-plugin</artifactId>
+			<artifactId>iscsi-volume-manager</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>junit</groupId>

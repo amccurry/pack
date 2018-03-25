@@ -22,19 +22,13 @@
             <li><a href="index.html">Cluster</a></li>
             <li class="active"><a href="volumes.html">Volumes</a></li>
             <li><a href="sessions.html">Sessions</a></li>
+            <li><a href="metrics.html">Metrics</a></li>
           </ul>
         </div>
       </div>
     </div>
     <div class="container bs-docs-container">
       <div class="row">
-        <div class="col-md-3">
-          <div class="bs-sidebar hidden-print affix" role="complementary">
-            <ul class="nav bs-sidenav">
-              <li><a href="#volumes">Volumes</a></li>
-            </ul>
-          </div>
-        </div>
         <div class="col-md-9" role="main">
           <section>
             <div class="page-header">
@@ -45,6 +39,7 @@
                 <tr>
                   <th>Volume</th>
                   <th>Size</th>
+                  <th>Serial Id</th>
                   <th>IQN</th>
                   <th>Hdfs Path</th>
                   <th>Kafka Topic</th>
@@ -53,11 +48,12 @@
               <tbody>
 <#list volumes as volume>
                 <tr>
-                  <td>${volume.name}</td>
-                  <td>${volume.size}</td>
-                  <td>${volume.iqn}</td>
-                  <td>${volume.hdfsPath}</td>
-                  <td>${volume.kafkaTopic}</td>
+                  <td nowrap>${volume.name}</td>
+                  <td nowrap>${volume.size}</td>
+                  <td nowrap>${volume.serialId}</td>
+                  <td nowrap>${volume.iqn}</td>
+                  <td nowrap>${volume.hdfsPath}</td>
+                  <td nowrap>${volume.kafkaTopic}</td>
                 </tr>
 </#list>
               </tbody>

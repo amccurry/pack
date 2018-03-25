@@ -1,5 +1,6 @@
 package pack.distributed.storage.metrics.json;
 
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.SortedMap;
 import java.util.concurrent.TimeUnit;
@@ -13,23 +14,30 @@ import com.codahale.metrics.MetricFilter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.ScheduledReporter;
 import com.codahale.metrics.Timer;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
 
+import pack.distributed.storage.http.Metric;
 import pack.distributed.storage.metrics.json.JsonReport.JsonReportBuilder;
 
 @SuppressWarnings("rawtypes")
 public class JsonReporter extends ScheduledReporter {
 
-  private final AtomicReference<JsonReport> _ref = new AtomicReference<JsonReport>(JsonReport.builder()
-                                                                                             .build());
+  private final AtomicReference<JsonReport> _reportRef = new AtomicReference<JsonReport>(JsonReport.builder()
+                                                                                                   .build());
+  private final AtomicReference<List<Metric>> _metricRef = new AtomicReference<>(ImmutableList.of());
 
   public JsonReporter(MetricRegistry registry) {
     super(registry, "json-reporter", MetricFilter.ALL, TimeUnit.SECONDS, TimeUnit.MILLISECONDS);
   }
 
   public JsonReport getReport() {
-    return _ref.get();
+    return _reportRef.get();
+  }
+
+  public List<Metric> getMetricRef() {
+    return _metricRef.get();
   }
 
   @Override
@@ -71,7 +79,9 @@ public class JsonReporter extends ScheduledReporter {
       }
       reportBuilder.timers(builder.build());
     }
-    _ref.set(reportBuilder.build());
+    JsonReport report = reportBuilder.build();
+    _reportRef.set(report);
+    _metricRef.set(Metric.flatten(report));
   }
 
 }

@@ -21,14 +21,19 @@ public class IscsiServerMain {
 
   public static void main(String[] args) throws Exception {
     PackUtils.setupLog4j();
-    List<String> addresses = PackUtils.getEnvListFailIfMissing(PACK_ISCSI_ADDRESS);
+    PackUtils.bootStrapProtpertyFile();
+    List<String> addresses = PackUtils.getPropertyListFailIfMissing(PACK_ISCSI_ADDRESS);
 
     List<StorageTargetManager> targetManagers = new ArrayList<>();
     ServiceLoader<StorageTargetManagerFactory> loader = ServiceLoader.load(StorageTargetManagerFactory.class);
     for (StorageTargetManagerFactory factory : loader) {
       LOGGER.info("Loading factory {} {}", factory.getClass(), factory);
-      StorageTargetManager manager = factory.create();
-      targetManagers.add(manager);
+      try {
+        StorageTargetManager manager = factory.create();
+        targetManagers.add(manager);
+      } catch (Throwable t) {
+        LOGGER.error("Could not create manager from factory {} error {}", factory.getClass(), t.getMessage());
+      }
     }
 
     StorageTargetManager manager = StorageTargetManager.merge(targetManagers);
@@ -42,6 +47,7 @@ public class IscsiServerMain {
 
   public static void runServer(IscsiServerConfig config) throws Exception {
     try (IscsiServer iscsiServer = new IscsiServer(config)) {
+      LOGGER.info("Starting Iscsi Server on port {}", config.getPort());
       iscsiServer.start();
       iscsiServer.join();
     }

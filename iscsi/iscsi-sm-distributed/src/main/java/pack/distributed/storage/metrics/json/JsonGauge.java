@@ -13,16 +13,13 @@ import lombok.Value;
 @AllArgsConstructor
 @JsonInclude(Include.NON_NULL)
 public class JsonGauge {
-  
-  String value;
+
+  Object value;
 
   @SuppressWarnings("rawtypes")
   public static JsonGauge toJsonGauge(Gauge value) {
-    Object v = value.getValue();
-    JsonGaugeBuilder builder = JsonGauge.builder();
-    if (v != null) {
-      builder.value(v.toString());
-    }
-    return builder.build();
+    return JsonGauge.builder()
+                    .value(value.getValue())
+                    .build();
   }
 }

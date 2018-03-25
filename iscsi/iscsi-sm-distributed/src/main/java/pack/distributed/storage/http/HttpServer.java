@@ -4,14 +4,19 @@ import static spark.Spark.get;
 import static spark.Spark.port;
 import static spark.Spark.staticFileLocation;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Random;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import javax.servlet.ServletOutputStream;
 
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Histogram;
+import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -19,6 +24,8 @@ import com.google.common.collect.ImmutableMap;
 import freemarker.cache.ClassTemplateLoader;
 import freemarker.template.Configuration;
 import pack.distributed.storage.metrics.json.JsonReporter;
+import pack.distributed.storage.metrics.json.SetupJvmMetrics;
+import pack.iscsi.storage.utils.PackUtils;
 import spark.ModelAndView;
 import spark.TemplateViewRoute;
 import spark.template.freemarker.FreeMarkerEngine;
@@ -29,6 +36,14 @@ public class HttpServer {
   private static final String WEB = "/web";
 
   public static void main(String[] args) {
+
+    MetricRegistry registry = new MetricRegistry();
+    JsonReporter jsonReporter = new JsonReporter(registry);
+    jsonReporter.start(3, TimeUnit.SECONDS);
+    PackUtils.closeOnShutdown(jsonReporter);
+
+    SetupJvmMetrics.setup(registry);
+
     AtomicReference<byte[]> textMetricsOutput = new AtomicReference<byte[]>("stats".getBytes());
     ImmutableList<CompactorServerInfo> compactors = ImmutableList.of(CompactorServerInfo.builder()
                                                                                         .address("address1")
@@ -48,6 +63,33 @@ public class HttpServer {
                                                            .size(10000000000L)
                                                            .build());
 
+    Thread thread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        registry.gauge("g1", () -> () -> UUID.randomUUID()
+                                             .toString());
+        Random random = new Random();
+        while (true) {
+          Counter counter = registry.counter("c1");
+          counter.inc(random.nextInt(100000));
+          Meter meter = registry.meter("m1");
+          meter.mark(random.nextInt(100000));
+          Histogram histogram = registry.histogram("h1");
+          histogram.update(random.nextInt(100000));
+          Timer timer = registry.timer("t1");
+          timer.update(random.nextInt(100000), TimeUnit.NANOSECONDS);
+          try {
+            Thread.sleep(10);
+          } catch (InterruptedException e) {
+            return;
+          }
+        }
+
+      }
+    });
+    thread.setDaemon(true);
+    thread.start();
+
     PackDao packDao = new PackDao() {
 
       @Override
@@ -63,6 +105,16 @@ public class HttpServer {
       @Override
       public List<CompactorServerInfo> getCompactors() {
         return compactors;
+      }
+
+      @Override
+      public List<Metric> getMetrics() {
+        return Metric.flatten(jsonReporter.getReport());
+      }
+
+      @Override
+      public List<Session> getSessions() {
+        return ImmutableList.of();
       }
     };
     HttpServerConfig config = HttpServerConfig.builder()
@@ -93,13 +145,16 @@ public class HttpServer {
     get("/", overview, engine);
     get("/index.html", overview, engine);
     get("/sessions.html", (request, response) -> {
-      Map<String, String> attributes = new HashMap<>();
-      attributes.put("test", "cool");
-      return new ModelAndView(attributes, "sessions.ftl");
+      List<Session> sessions = dao.getSessions();
+      return new ModelAndView(ImmutableMap.of("sessions", sessions), "sessions.ftl");
     }, engine);
     get("/volumes.html", (request, response) -> {
       List<Volume> volumes = dao.getVolumes();
       return new ModelAndView(ImmutableMap.of("volumes", volumes), "volumes.ftl");
+    }, engine);
+    get("/metrics.html", (request, response) -> {
+      List<Metric> metrics = dao.getMetrics();
+      return new ModelAndView(ImmutableMap.of("metrics", metrics), "metrics.ftl");
     }, engine);
     get("/metrics/text", (request, response) -> {
       response.type("text/plain");
@@ -116,10 +171,9 @@ public class HttpServer {
                                                  .getOutputStream();
       MAPPER.writeValue(outputStream, jsonReporter.getReport());
       outputStream.flush();
-      
+
       return "";
     });
-    
 
   }
 

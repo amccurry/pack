@@ -46,28 +46,28 @@ public class PackConfig {
   public static final long HDFS_BLOCK_GC_DELAY_DEAULT = TimeUnit.MINUTES.toMillis(10);
 
   public static Path getHdfsTarget() {
-    return new Path(PackUtils.getEnvFailIfMissing(HDFS_TARGET_PATH));
+    return new Path(PackUtils.getPropertyFailIfMissing(HDFS_TARGET_PATH));
   }
 
   public static UserGroupInformation getUgi() throws IOException {
     UserGroupInformation.setConfiguration(getConfiguration());
-    if (PackUtils.isEnvSet(HDFS_UGI_CURRENT_USER)) {
+    if (PackUtils.isPropertySet(HDFS_UGI_CURRENT_USER)) {
       return UserGroupInformation.getCurrentUser();
     }
-    String remoteUser = PackUtils.getEnv(HDFS_UGI_REMOTE_USER);
+    String remoteUser = PackUtils.getProperty(HDFS_UGI_REMOTE_USER);
     if (remoteUser != null) {
       return UserGroupInformation.createRemoteUser(remoteUser);
     }
-    String user = PackUtils.getEnv(HDFS_KERBEROS_PRINCIPAL);
+    String user = PackUtils.getProperty(HDFS_KERBEROS_PRINCIPAL);
     if (user != null) {
-      String path = PackUtils.getEnvFailIfMissing(HDFS_KERBEROS_KEYTAB);
+      String path = PackUtils.getPropertyFailIfMissing(HDFS_KERBEROS_KEYTAB);
       return UserGroupInformation.loginUserFromKeytabAndReturnUGI(user, path);
     }
     return UserGroupInformation.getLoginUser();
   }
 
   public static Configuration getConfiguration() throws IOException {
-    String configPath = PackUtils.getEnvFailIfMissing(HDFS_CONF_PATH);
+    String configPath = PackUtils.getPropertyFailIfMissing(HDFS_CONF_PATH);
     Configuration configuration = new Configuration();
     File file = new File(configPath);
     if (file.isDirectory()) {
@@ -80,44 +80,44 @@ public class PackConfig {
   }
 
   public static String getKafkaZkConnection() {
-    return PackUtils.getEnvFailIfMissing(KAFKA_ZK_CONNECTION);
+    return PackUtils.getPropertyFailIfMissing(KAFKA_ZK_CONNECTION);
   }
 
   public static File getWalCachePath() {
-    return new File(PackUtils.getEnvFailIfMissing(WAL_CACHE_DIR));
+    return new File(PackUtils.getPropertyFailIfMissing(WAL_CACHE_DIR));
   }
 
   public static long getMaxWalSize() {
-    return Long.parseLong(PackUtils.getEnv(WAL_MAX_SIZE, Long.toString(WAL_MAX_SIZE_DEFAULT)));
+    return Long.parseLong(PackUtils.getProperty(WAL_MAX_SIZE, Long.toString(WAL_MAX_SIZE_DEFAULT)));
   }
 
   public static long getMaxWalLifeTime() {
-    return Long.parseLong(PackUtils.getEnv(WAL_MAX_LIFE_TIME, Long.toString(WAL_MAX_LIFE_TIME_DEAULT)));
+    return Long.parseLong(PackUtils.getProperty(WAL_MAX_LIFE_TIME, Long.toString(WAL_MAX_LIFE_TIME_DEAULT)));
   }
 
   public static int getZooKeeperSessionTimeout() {
-    return Integer.parseInt(PackUtils.getEnv(ZK_TIMEOUT, Integer.toString(ZK_TIMEOUT_DEAULT)));
+    return Integer.parseInt(PackUtils.getProperty(ZK_TIMEOUT, Integer.toString(ZK_TIMEOUT_DEAULT)));
   }
 
   public static String getZooKeeperConnection() {
-    return PackUtils.getEnvFailIfMissing(ZK_CONNECTION);
+    return PackUtils.getPropertyFailIfMissing(ZK_CONNECTION);
   }
 
   public static long getMaxBlockFileSize() {
-    return Long.parseLong(PackUtils.getEnv(MAX_BLOCK_FILE_SIZE, Long.toString(MAX_BLOCK_FILE_SIZE_DEAULT)));
+    return Long.parseLong(PackUtils.getProperty(MAX_BLOCK_FILE_SIZE, Long.toString(MAX_BLOCK_FILE_SIZE_DEAULT)));
   }
 
   public static double getMaxObsoleteRatio() {
-    return Double.parseDouble(PackUtils.getEnv(MAX_OBSOLETE_RATIO, Double.toString(MAX_OBSOLETE_RATIO_DEAULT)));
+    return Double.parseDouble(PackUtils.getProperty(MAX_OBSOLETE_RATIO, Double.toString(MAX_OBSOLETE_RATIO_DEAULT)));
   }
 
   public static int getWriteBlockMonitorPort() {
     return Integer.parseInt(
-        PackUtils.getEnv(WRITE_BLOCK_MONITOR_PORT, Integer.toString(WRITE_BLOCK_MONITOR_PORT_DEAULT)));
+        PackUtils.getProperty(WRITE_BLOCK_MONITOR_PORT, Integer.toString(WRITE_BLOCK_MONITOR_PORT_DEAULT)));
   }
 
   public static String getWriteBlockMonitorBindAddress() {
-    return PackUtils.getEnv(WRITE_BLOCK_MONITOR_BIND_ADDRESS, WRITE_BLOCK_MONITOR_BIND_ADDRESS_DEFAULT);
+    return PackUtils.getProperty(WRITE_BLOCK_MONITOR_BIND_ADDRESS, WRITE_BLOCK_MONITOR_BIND_ADDRESS_DEFAULT);
   }
 
   public static String getWriteBlockMonitorAddress() {
@@ -126,13 +126,13 @@ public class PackConfig {
       address = InetAddress.getLocalHost()
                            .getHostAddress();
     } catch (UnknownHostException e) {
-      return PackUtils.getEnvFailIfMissing(WRITE_BLOCK_MONITOR_ADDRESS);
+      return PackUtils.getPropertyFailIfMissing(WRITE_BLOCK_MONITOR_ADDRESS);
     }
-    return PackUtils.getEnv(WRITE_BLOCK_MONITOR_ADDRESS, address);
+    return PackUtils.getProperty(WRITE_BLOCK_MONITOR_ADDRESS, address);
   }
 
   public static long getHdfsBlockGCDelay() {
-    return Long.parseLong(PackUtils.getEnv(HDFS_BLOCK_GC_DELAY, Long.toString(HDFS_BLOCK_GC_DELAY_DEAULT)));
+    return Long.parseLong(PackUtils.getProperty(HDFS_BLOCK_GC_DELAY, Long.toString(HDFS_BLOCK_GC_DELAY_DEAULT)));
   }
 
 }

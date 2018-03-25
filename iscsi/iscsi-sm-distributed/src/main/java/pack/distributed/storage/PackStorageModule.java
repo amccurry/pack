@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,6 +28,7 @@ import pack.distributed.storage.wal.PackWalCacheFactory;
 import pack.distributed.storage.wal.PackWalCacheManager;
 import pack.distributed.storage.wal.WalCacheFactory;
 import pack.distributed.storage.wal.WalCacheManager;
+import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.iscsi.storage.BaseStorageModule;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -47,12 +49,17 @@ public class PackStorageModule extends BaseStorageModule {
   private final String _name;
   private final ServerStatusManager _serverStatusManager;
   private final Object _lock = new Object();
+  private final ZooKeeperClient _zk;
+  private final String _targetHostAddress;
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
       PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
       WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager,
-      HdfsBlockGarbageCollector hdfsBlockGarbageCollector, long maxWalSize, long maxWalLifeTime) throws IOException {
+      HdfsBlockGarbageCollector hdfsBlockGarbageCollector, long maxWalSize, long maxWalLifeTime, ZooKeeperClient zk,
+      String targetHostAddress) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize());
+    _zk = zk;
+    _targetHostAddress = targetHostAddress;
     _name = name;
     _serialId = UUID.fromString(metaData.getSerialId());
     _topic = metaData.getTopicId();
@@ -114,6 +121,7 @@ public class PackStorageModule extends BaseStorageModule {
   @Override
   public void write(byte[] bytes, long storageIndex) throws IOException {
     synchronized (_lock) {
+      setupSessionWritablity();
       try (PackTracer tracer = PackTracer.create(LOGGER, "write")) {
         int len = bytes.length;
         int off = 0;
@@ -136,6 +144,16 @@ public class PackStorageModule extends BaseStorageModule {
           pos += blockSize;
         }
       }
+    }
+  }
+
+  private void setupSessionWritablity() throws IOException {
+    try {
+      PackStorageTargetManager.checkSessionWritablity(_zk, _targetHostAddress, _name);
+    } catch (IOException | KeeperException | InterruptedException e) {
+      LOGGER.error("Unknown error while checking for writablity", e);
+      PackStorageTargetManager.setSessionWritable(false);
+      throw new IOException("Read only mode.");
     }
   }
 

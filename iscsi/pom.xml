@@ -25,7 +25,7 @@
 		<module>iscsi-sm-file</module>
 		<module>iscsi-sm-distributed</module>
 		<module>iscsi-cli</module>
-		<module>iscsi-docker-plugin</module>
+		<module>iscsi-volume-manager</module>
 	</modules>
 
 	<dependencyManagement>
@@ -47,7 +47,7 @@
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>iscsi-docker-plugin</artifactId>
+				<artifactId>iscsi-volume-manager</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>

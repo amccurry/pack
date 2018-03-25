@@ -83,7 +83,7 @@ public abstract class BaseStorageTargetManager implements StorageTargetManager {
   private static class InternalSession {
     final Closer closer = Closer.create();
     final TargetSession session;
-    final AtomicBoolean valid = new AtomicBoolean();
+    final AtomicBoolean writable = new AtomicBoolean();
 
     InternalSession(TargetSession session) {
       this.session = session;
@@ -91,12 +91,12 @@ public abstract class BaseStorageTargetManager implements StorageTargetManager {
 
   }
 
-  public static boolean isSessionValid() {
-    return _session.get().valid.get();
+  public static boolean isSessionWritable() {
+    return _session.get().writable.get();
   }
 
-  public static void setSessionValid(boolean valid) {
-    _session.get().valid.set(valid);
+  public static void setSessionWritable(boolean valid) {
+    _session.get().writable.set(valid);
   }
 
   public static TargetSession getSession() {
