@@ -21,6 +21,9 @@ case $CMD in
   (compactor)
     exec -a pack ${PACK_PARCEL}/bin/run.sh compactor
     ;;
+  (volume-manager)
+    exec -a pack ${PACK_PARCEL}/bin/run.sh volume-manager
+    ;;
   (*)
     echo "Don't understand [$CMD]"
     ;;

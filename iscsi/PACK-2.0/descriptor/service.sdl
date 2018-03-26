@@ -90,6 +90,16 @@
       "type": "string"
     },
     {
+      "name": "ISCSI_ROOT_MOUNT",
+      "label": "Pack Docker Plugin Mount Directory",
+      "description": "Pack docker plugin mount directory.",
+      "configName": "ISCSI_ROOT_MOUNT",
+      "required": true,
+      "configurableInWizard": true,
+      "default": "/var/lib/pack/mount",
+      "type": "string"
+    },
+    {
       "name": "WAL_MAX_SIZE",
       "label": "Max WAL File Size",
       "description": "Max WAL file size before moving to HDFS.",
@@ -223,6 +233,38 @@
       "logging": {
         "dir": "/var/log/pack",
         "filename": "pack-compactor.log",
+        "modifiable": true,
+        "configName": "log.dir",
+        "loggingType": "log4j"
+      }
+    },
+    {
+      "name": "PACKVOLUMEMANAGER",
+      "label": "Pack Volume Manager",
+      "pluralLabel": "Pack Volume Manager",
+      "startRunner": {
+        "program": "scripts/control.sh",
+        "args": [
+          "volume-manager"
+        ],
+        "environmentVariables": {
+          "PACK_ZK_CHROOT": "${PACK_ZK_CHROOT}",
+          "KAFKA_ZK_CHROOT": "${KAFKA_ZK_CHROOT}",
+          "HDFS_TARGET_PATH": "${HDFS_TARGET_PATH}",
+          "WAL_CACHE_DIR": "${WAL_CACHE_DIR}",
+          "WAL_MAX_SIZE": "${WAL_MAX_SIZE}",
+          "WAL_MAX_LIFE_TIME": "${WAL_MAX_LIFE_TIME}",
+          "ZK_TIMEOUT": "${ZK_TIMEOUT}",
+          "MAX_BLOCK_FILE_SIZE": "${MAX_BLOCK_FILE_SIZE}",
+          "MAX_OBSOLETE_RATIO": "${MAX_OBSOLETE_RATIO}",
+          "WRITE_BLOCK_MONITOR_PORT": "${WRITE_BLOCK_MONITOR_PORT}",
+          "PACK_HTTP_PORT": "${PACK_HTTP_PORT}",
+          "ISCSI_ROOT_MOUNT": "${ISCSI_ROOT_MOUNT}"
+        }
+      },
+      "logging": {
+        "dir": "/var/log/pack",
+        "filename": "pack-docker-plugin.log",
         "modifiable": true,
         "configName": "log.dir",
         "loggingType": "log4j"
