@@ -8,7 +8,6 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.security.DigestException;
 import java.util.Collection;
 import java.util.UUID;
 import java.util.Vector;
@@ -27,12 +26,10 @@ import org.jscsi.parser.OperationCode;
 import org.jscsi.parser.ProtocolDataUnit;
 import org.jscsi.parser.login.ISID;
 import org.jscsi.parser.login.LoginRequestParser;
-import org.jscsi.target.connection.Connection;
 import org.jscsi.target.connection.Connection.TargetConnection;
 import org.jscsi.target.connection.TargetSession;
 import org.jscsi.target.scsi.inquiry.DeviceIdentificationVpdPage;
 import org.jscsi.target.scsi.inquiry.UnitSerialNumberVpdPage;
-import org.jscsi.target.settings.SettingsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.SAXException;
@@ -80,10 +77,10 @@ public final class TargetServer implements Callable<Void> {
    */
   private static final AtomicInteger nextTargetTransferTag = new AtomicInteger();
 
-  /**
-   * The connection the target server is using.
-   */
-  private Connection connection;
+  // /**
+  // * The connection the target server is using.
+  // */
+  // private Connection connection;
 
   /**
    * while this value is true, the target is active.
@@ -218,7 +215,7 @@ public final class TargetServer implements Callable<Void> {
         socketChannel.socket()
                      .setTcpNoDelay(true);
 
-        connection = new TargetConnection(socketChannel, true);
+        TargetConnection connection = new TargetConnection(socketChannel, true);
         try {
           final ProtocolDataUnit pdu = connection.receivePdu();
           // confirm OpCode-
@@ -251,8 +248,9 @@ public final class TargetServer implements Callable<Void> {
               BaseStorageTargetManager.endSession(session);
             }
           });
-        } catch (DigestException | InternetSCSIException | SettingsException | IOException e) {
-          LOGGER.info("Throws Exception", e);
+        } catch (Throwable t) {
+          PackUtils.closeQuietly(socketChannel);
+          LOGGER.debug("Throws Exception", t);
           continue;
         }
       }
@@ -318,9 +316,9 @@ public final class TargetServer implements Callable<Void> {
    * 
    * @return the connection the target server established.
    */
-  public Connection getConnection() {
-    return this.connection;
-  }
+  // public Connection getConnection() {
+  // return this.connection;
+  // }
 
   /**
    * Stop this target server
