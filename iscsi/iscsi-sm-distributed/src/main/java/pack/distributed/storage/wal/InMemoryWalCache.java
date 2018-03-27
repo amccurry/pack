@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.io.BytesWritable;
@@ -24,6 +25,7 @@ public class InMemoryWalCache implements WalCache {
   private final AtomicLong _maxLayer = new AtomicLong();
   private final Map<Integer, byte[]> _cache = new ConcurrentHashMap<>();
   private final int _blockSize;
+  private final AtomicInteger _ref = new AtomicInteger();
 
   public InMemoryWalCache(long layer, int blockSize) {
     _blockSize = blockSize;
@@ -92,4 +94,20 @@ public class InMemoryWalCache implements WalCache {
   public boolean isClosed() {
     return true;
   }
+
+  @Override
+  public void incRef() {
+    _ref.incrementAndGet();
+  }
+
+  @Override
+  public void decRef() {
+    _ref.decrementAndGet();
+  }
+
+  @Override
+  public int refCount() {
+    return _ref.get();
+  }
+
 }

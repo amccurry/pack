@@ -32,11 +32,14 @@ case $CMD in
     if [ -z ${DOCKER_PLUGIN_SOCK_PATH+x} ] ; then
       export DOCKER_PLUGIN_SOCK_PATH="/var/lib/pack/pack.sock"
     fi
-    if ! sudo mkdir -p /etc/docker/plugins/ ; then
-      echo "WARNING: Cannot sudo to write spec file out for docker."
-    fi
-    if ! sudo echo "unix://${DOCKER_PLUGIN_SOCK_PATH}" > /etc/docker/plugins/pack.spec ; then
-      echo "WARNING: Cannot sudo to write spec file out for docker."
+
+    if [ "$(dirname $DOCKER_PLUGIN_SOCK_PATH)" != "/run/docker/plugins" ] ; then
+      if ! sudo mkdir -p /etc/docker/plugins/ ; then
+        echo "WARNING: Cannot sudo to write spec file out for docker."
+      fi
+      if ! sudo echo "unix://${DOCKER_PLUGIN_SOCK_PATH}" > /etc/docker/plugins/pack.spec ; then
+        echo "WARNING: Cannot sudo to write spec file out for docker."
+      fi
     fi
     exec -a pack-volume-manager java -Xmx64m -Xms64m $JAVA_OPTIONS pack.iscsi.docker.DockerVolumePluginServerMain
     ;;

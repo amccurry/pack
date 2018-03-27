@@ -224,6 +224,7 @@ public class Utils {
       LOGGER.info("Waiting for device {} to come online.", dev);
       Thread.sleep(TimeUnit.SECONDS.toMillis(3));
     }
+    LOGGER.error("Timeout, device {} did not come online", dev);
     throw new IOException("Timeout, device " + dev + " did not come online");
   }
 

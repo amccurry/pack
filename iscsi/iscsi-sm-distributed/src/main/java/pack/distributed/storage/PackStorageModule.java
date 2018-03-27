@@ -21,6 +21,7 @@ import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.kafka.PackKafkaReader;
 import pack.distributed.storage.kafka.PackKafkaWriter;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
 import pack.distributed.storage.status.ServerStatusManager;
 import pack.distributed.storage.trace.PackTracer;
@@ -102,7 +103,9 @@ public class PackStorageModule extends BaseStorageModule {
         }
         boolean moreToRead;
         try (PackTracer span = tracer.span(LOGGER, "wal cache read")) {
-          moreToRead = _walCacheManager.readBlocks(requests);
+          try (BlockReader blockReader = _walCacheManager.getBlockReader()) {
+            moreToRead = blockReader.readBlocks(requests);
+          }
         }
         if (moreToRead) {
           try (PackTracer span = tracer.span(LOGGER, "block read")) {
@@ -121,7 +124,7 @@ public class PackStorageModule extends BaseStorageModule {
   @Override
   public void write(byte[] bytes, long storageIndex) throws IOException {
     synchronized (_lock) {
-      setupSessionWritablity();
+      // setupSessionWritablity();
       try (PackTracer tracer = PackTracer.create(LOGGER, "write")) {
         int len = bytes.length;
         int off = 0;

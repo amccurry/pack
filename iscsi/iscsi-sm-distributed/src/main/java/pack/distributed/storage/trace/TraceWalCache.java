@@ -89,4 +89,19 @@ public class TraceWalCache implements WalCache {
     return _delegate.isClosed();
   }
 
+  @Override
+  public void incRef() {
+    _delegate.incRef();
+  }
+
+  @Override
+  public void decRef() {
+    _delegate.decRef();
+  }
+
+  @Override
+  public int refCount() {
+    return _delegate.refCount();
+  }
+
 }

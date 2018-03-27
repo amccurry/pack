@@ -42,6 +42,7 @@ public class PackWalCache implements WalCache {
   private final Cache<Integer, byte[]> _cache;
   private final AtomicInteger _count = new AtomicInteger();
   private final AtomicBoolean _closed = new AtomicBoolean(false);
+  private final AtomicInteger _ref = new AtomicInteger();
 
   public PackWalCache(File dirFile, long startingLayer, long length, int blockSize) throws IOException {
     this(dirFile, startingLayer, length, blockSize, true);
@@ -146,7 +147,7 @@ public class PackWalCache implements WalCache {
       if (LOGGER.isTraceEnabled()) {
         LOGGER.trace("wal write blockId {} md5 {}", blockId, PackUtils.toMd5(value));
       }
-      _cache.put(blockId, value);
+      _cache.put(blockId, PackUtils.copy(value, 0, value.length));
     }
     long pos = PackUtils.getPosition(blockId, _blockSize);
     if (LOGGER.isTraceEnabled()) {
@@ -218,6 +219,21 @@ public class PackWalCache implements WalCache {
         writer.append(id, new BytesWritable(buf));
       }
     }
+  }
+
+  @Override
+  public void incRef() {
+    _ref.incrementAndGet();
+  }
+
+  @Override
+  public void decRef() {
+    _ref.decrementAndGet();
+  }
+
+  @Override
+  public int refCount() {
+    return _ref.get();
   }
 
 }

@@ -4,9 +4,12 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -41,7 +44,6 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   private final static Logger LOGGER = LoggerFactory.getLogger(PackWalCacheManager.class);
 
   private final PackHdfsReader _hdfsReader;
-  private final AtomicReference<WalCache> _currentWalCache = new AtomicReference<>();
   private final AtomicReference<List<WalCache>> _currentWalCacheReaderList = new AtomicReference<>(ImmutableList.of());
   private final Cache<Long, WalCache> _walCache;
   private final PackMetaData _metaData;
@@ -58,10 +60,20 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   private final String _volumeName;
   private final long _maxWalLifeTime;
   private final ServerStatusManager _serverStatusManager;
+  private final Set<WalCache> _toBeClosed = Collections.newSetFromMap(new ConcurrentHashMap<>());
+  private final Thread _closeOldWalFiles;
+  private final Object _closeOldWalFileLock = new Object();
 
   public PackWalCacheManager(String volumeName, WriteBlockMonitor writeBlockMonitor, WalCacheFactory cacheFactory,
       PackHdfsReader hdfsReader, ServerStatusManager serverStatusManager, PackMetaData metaData,
       Configuration configuration, Path volumeDir, long maxWalSize, long maxWalLifeTime) {
+    this(volumeName, writeBlockMonitor, cacheFactory, hdfsReader, serverStatusManager, metaData, configuration,
+        volumeDir, maxWalSize, maxWalLifeTime, true);
+  }
+
+  public PackWalCacheManager(String volumeName, WriteBlockMonitor writeBlockMonitor, WalCacheFactory cacheFactory,
+      PackHdfsReader hdfsReader, ServerStatusManager serverStatusManager, PackMetaData metaData,
+      Configuration configuration, Path volumeDir, long maxWalSize, long maxWalLifeTime, boolean enableAutoHdfsWrite) {
     _serverStatusManager = serverStatusManager;
     _maxWalLifeTime = maxWalLifeTime;
     _volumeName = volumeName;
@@ -72,12 +84,60 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
     _configuration = configuration;
     _metaData = metaData;
     _hdfsReader = hdfsReader;
-    RemovalListener<Long, WalCache> readerListener = n -> PackUtils.closeQuietly(n.getValue());
+    RemovalListener<Long, WalCache> readerListener = notification -> _toBeClosed.add(notification.getValue());
     _walCache = CacheBuilder.newBuilder()
                             .removalListener(readerListener)
                             .build();
     _updateHdfsThread = createUpdateHdfsThread(volumeName);
-    _updateHdfsThread.start();
+    if (enableAutoHdfsWrite) {
+      _updateHdfsThread.start();
+    }
+    _closeOldWalFiles = createCloseOldWalFileThread(volumeName);
+    _closeOldWalFiles.start();
+  }
+
+  private Thread createCloseOldWalFileThread(String volumeName) {
+    Thread thread = new Thread(() -> {
+      closeOldWalFilesAsync();
+    });
+    thread.setName("close-old-wal-" + volumeName);
+    thread.setDaemon(true);
+    return thread;
+  }
+
+  private void closeOldWalFilesAsync() {
+    while (_running.get()) {
+      synchronized (_closeOldWalFileLock) {
+        try {
+          closeOldWalFiles();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error while closing old wal files", t);
+        }
+        try {
+          _closeOldWalFileLock.wait();
+        } catch (InterruptedException e) {
+          LOGGER.error("Unknown error", e);
+        }
+      }
+    }
+  }
+
+  private void startCloseOldWalFiles() {
+    synchronized (_closeOldWalFileLock) {
+      _closeOldWalFileLock.notifyAll();
+    }
+  }
+
+  private void closeOldWalFiles() {
+    Iterator<WalCache> iterator = _toBeClosed.iterator();
+    while (iterator.hasNext()) {
+      WalCache walCache = iterator.next();
+      if (walCache.refCount() == 0) {
+        LOGGER.info("Removing old wal file {} {}", _volumeName, walCache.getId());
+        iterator.remove();
+        PackUtils.close(LOGGER, walCache);
+      }
+    }
   }
 
   private Thread createUpdateHdfsThread(String volumeName) {
@@ -122,11 +182,23 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   }
 
   public long getMaxLayer() {
-    WalCache walCache = _currentWalCache.get();
+    WalCache walCache = getCurrentWalCache();
     if (walCache == null) {
       return -1L;
     }
     return walCache.getMaxLayer();
+  }
+
+  private WalCache getCurrentWalCache() {
+    List<WalCache> list;
+    synchronized (_currentWalCacheLock) {
+      list = _currentWalCacheReaderList.get();
+    }
+    if (list == null || list.isEmpty()) {
+      return null;
+    } else {
+      return list.get(0);
+    }
   }
 
   @Override
@@ -137,19 +209,43 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   }
 
   @Override
-  public boolean readBlocks(List<ReadRequest> requests) throws IOException {
+  public BlockReader getBlockReader() throws IOException {
     List<WalCache> list = _currentWalCacheReaderList.get();
-    if (list.isEmpty()) {
-      return true;
-    }
-    return BlockReader.mergeInOrder(list)
-                      .readBlocks(requests);
+    incrementRefs(list);
+    return new BlockReader() {
+      @Override
+      public boolean readBlocks(List<ReadRequest> requests) throws IOException {
+        if (list.isEmpty()) {
+          return true;
+        }
+        return BlockReader.mergeInOrder(list)
+                          .readBlocks(requests);
+      }
+
+      @Override
+      public List<BlockReader> getLeaves() {
+        return new ArrayList<>(list);
+      }
+
+      @Override
+      public void close() throws IOException {
+        decrementRefs(list);
+        startCloseOldWalFiles();
+      }
+
+    };
   }
 
-  @Override
-  public List<BlockReader> getLeaves() {
-    List<WalCache> list = _currentWalCacheReaderList.get();
-    return new ArrayList<>(list);
+  private void decrementRefs(List<WalCache> list) {
+    for (WalCache walCache : list) {
+      walCache.decRef();
+    }
+  }
+
+  private void incrementRefs(List<WalCache> list) {
+    for (WalCache walCache : list) {
+      walCache.incRef();
+    }
   }
 
   @Override
@@ -161,7 +257,7 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
 
   public void writeWalCacheToHdfs() throws IOException {
     LOGGER.debug("Writing wal cache to hdfs {}", _volumeName);
-    WalCache walCache = _currentWalCache.get();
+    WalCache walCache = getCurrentWalCache();
     List<WalCache> list = new ArrayList<>();
     for (Entry<Long, WalCache> e : _walCache.asMap()
                                             .entrySet()) {
@@ -206,7 +302,7 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
     long maxLayer = _hdfsReader.getMaxLayer();
 
     List<Long> walIdsToInvalidate = new ArrayList<>();
-    WalCache current = _currentWalCache.get();
+    WalCache current = getCurrentWalCache();
     for (Entry<Long, WalCache> e : _walCache.asMap()
                                             .entrySet()) {
       WalCache cache = e.getValue();
@@ -224,32 +320,31 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   }
 
   private void updateFromReadList(WalCache walCache, boolean remove) {
-    List<WalCache> list = new ArrayList<>(_currentWalCacheReaderList.get());
-    if (remove) {
-      list.remove(walCache);
-    } else {
-      list.add(walCache);
-    }
-    Collections.sort(list);
-    if (list.isEmpty()) {
-      _currentWalCacheReaderList.set(ImmutableList.of());
-    } else {
-      _currentWalCacheReaderList.set(ImmutableList.copyOf(list));
+    synchronized (_currentWalCacheLock) {
+      List<WalCache> list = new ArrayList<>(_currentWalCacheReaderList.get());
+      if (remove) {
+        list.remove(walCache);
+      } else {
+        list.add(walCache);
+      }
+      Collections.sort(list);
+      if (list.isEmpty()) {
+        _currentWalCacheReaderList.set(ImmutableList.of());
+      } else {
+        _currentWalCacheReaderList.set(ImmutableList.copyOf(list));
+      }
     }
   }
 
   private WalCache getCurrentWalCache(long layer) throws IOException {
-    synchronized (_currentWalCacheLock) {
-      WalCache walCache = _currentWalCache.get();
-      if (shouldRollWal(walCache)) {
-        walCache = TraceWalCache.traceIfEnabled(_cacheFactory.create(layer));
-        _walCache.put(layer, walCache);
-        _currentWalCache.set(walCache);
-        updateFromReadList(walCache, false);
-        startHdfsUpdate();
-      }
-      return walCache;
+    WalCache walCache = getCurrentWalCache();
+    if (shouldRollWal(walCache)) {
+      walCache = TraceWalCache.traceIfEnabled(_cacheFactory.create(layer));
+      _walCache.put(layer, walCache);
+      updateFromReadList(walCache, false);
+      startHdfsUpdate();
     }
+    return walCache;
   }
 
   private boolean shouldRollWal(WalCache walCache) {

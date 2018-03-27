@@ -26,4 +26,10 @@ public interface WalCache extends Comparable<WalCache>, BlockReader {
 
   boolean isClosed();
 
+  void incRef();
+
+  void decRef();
+  
+  int refCount();
+
 }

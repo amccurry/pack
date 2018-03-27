@@ -21,6 +21,8 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.roaringbitmap.RoaringBitmap;
 
+import com.amazonaws.util.Md5Utils;
+
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.HdfsBlockGarbageCollector;
 import pack.distributed.storage.hdfs.HdfsMiniClusterUtil;
@@ -32,7 +34,7 @@ import pack.distributed.storage.status.ServerStatusManager;
 import pack.distributed.storage.status.BlockUpdateInfoBatch;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class WalCacheManagerTest {
+public class PackWalCacheManagerTest {
 
   private static final File TMPDIR = new File(
       System.getProperty("hdfs.tmp.dir", "./target/tmp/PackWalCacheManagerTest/hdfs"));
@@ -60,10 +62,10 @@ public class WalCacheManagerTest {
 
   @Test
   public void testPackWalCacheManager() throws IOException {
-    Random random = new Random();
+    Random random = new Random(1);
     int blockSize = 1000;
     int maxNumberOfBlocks = 10000;
-    int maxNumberOfBlocksToWrite = 100;
+    int maxNumberOfBlocksToWrite = 10;
     int rollInterval = 11;
     long length = (long) maxNumberOfBlocks * (long) blockSize;
     PackMetaData metaData = PackMetaData.builder()
@@ -80,7 +82,7 @@ public class WalCacheManagerTest {
       WalCacheFactory cacheFactory = new PackWalCacheFactory(metaData, _dirFile);
       ServerStatusManager ssm = newServerStatusManager();
       try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, WriteBlockMonitor.NO_OP, cacheFactory,
-          hdfsReader, ssm, metaData, configuration, volumeDir, 1_000_000, TimeUnit.SECONDS.toMillis(10))) {
+          hdfsReader, ssm, metaData, configuration, volumeDir, 1_000_000, TimeUnit.SECONDS.toMillis(10), false)) {
         File file = new File("./target/tmp/PackWalCacheManagerTest/test");
         byte[] buffer = new byte[blockSize];
         long layer = 0;
@@ -93,6 +95,9 @@ public class WalCacheManagerTest {
             int blockId = random.nextInt(maxNumberOfBlocks);
             roaringBitmap.add(blockId);
             random.nextBytes(buffer);
+
+            System.out.println(blockId + " write " + Md5Utils.md5AsBase64(buffer));
+
             long pos = (long) blockId * (long) blockSize;
             rand.seek(pos);
             rand.write(buffer, 0, blockSize);
@@ -107,7 +112,14 @@ public class WalCacheManagerTest {
 
             byte[] buf2 = new byte[blockSize];
             ByteBuffer dest = ByteBuffer.wrap(buf2);
-            assertFalse(manager.readBlocks(Arrays.asList(new ReadRequest(blockId, 0, dest))));
+            try (BlockReader blockReader = manager.getBlockReader()) {
+              List<ReadRequest> list = Arrays.asList(new ReadRequest(blockId, 0, dest));
+              boolean readBlocks = blockReader.readBlocks(list);
+              assertFalse(readBlocks);
+            }
+
+            System.out.println(blockId + " const " + Md5Utils.md5AsBase64(buf));
+            System.out.println(blockId + " wal   " + Md5Utils.md5AsBase64(buf2) + " " + Arrays.toString(buf2));
 
             assertTrue(Arrays.equals(buf, buf2));
           }
@@ -116,11 +128,13 @@ public class WalCacheManagerTest {
 
           long maxLayer = hdfsReader.getMaxLayer();
 
-          List<BlockReader> leaves = manager.getLeaves();
-          for (BlockReader blockReader : leaves) {
-            PackWalCache cache = (PackWalCache) blockReader;
-            long cachemaxLayer = cache.getMaxLayer();
-            assertTrue(maxLayer + "<" + cachemaxLayer, maxLayer < cachemaxLayer);
+          try (BlockReader reader = manager.getBlockReader()) {
+            List<BlockReader> leaves = reader.getLeaves();
+            for (BlockReader blockReader : leaves) {
+              PackWalCache cache = (PackWalCache) blockReader;
+              long cachemaxLayer = cache.getMaxLayer();
+              assertTrue(maxLayer + "<" + cachemaxLayer, maxLayer < cachemaxLayer);
+            }
           }
         }
       }

@@ -2,7 +2,6 @@ package pack.iscsi.docker;
 
 import static pack.iscsi.docker.Utils.getEnv;
 import static pack.iscsi.docker.Utils.getIqn;
-import static pack.iscsi.docker.Utils.iscsiDeleteSession;
 import static pack.iscsi.docker.Utils.iscsiDiscovery;
 import static pack.iscsi.docker.Utils.iscsiLoginSession;
 import static pack.iscsi.docker.Utils.iscsiLogoutSession;
@@ -94,7 +93,7 @@ public class DockerVolumePluginServerMain {
       } finally {
         synchronized (_lock) {
           iscsiLogoutSession(iqn);
-          iscsiDeleteSession(iqn);
+          // iscsiDeleteSession(iqn);
         }
       }
     }
@@ -122,7 +121,7 @@ public class DockerVolumePluginServerMain {
       if (!mountFile.exists()) {
         throw new Exception("Mount point does not exist " + mountFile);
       }
-      Result result = Utils.execAsResult(LOGGER, "sudo", "mount", "-o", "async,noatime", "/dev/mapper/" + dev,
+      Result result = Utils.execAsResult(LOGGER, "sudo", "mount", "-o", "sync,noatime", "/dev/mapper/" + dev,
           mountFile.getAbsolutePath());
       if (result.exitCode == 0) {
         return mountFile.getAbsolutePath();
@@ -146,7 +145,7 @@ public class DockerVolumePluginServerMain {
       String iqn = getIqn(volumeName);
       synchronized (_lock) {
         iscsiLogoutSession(iqn);
-        iscsiDeleteSession(iqn);
+        // iscsiDeleteSession(iqn);
       }
       PackUtils.rmr(new File(mountPoint));
     }

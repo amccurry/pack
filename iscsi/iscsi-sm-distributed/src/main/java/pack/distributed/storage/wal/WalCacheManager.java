@@ -5,7 +5,9 @@ import java.io.IOException;
 
 import pack.distributed.storage.read.BlockReader;
 
-public interface WalCacheManager extends Closeable, BlockReader {
+public interface WalCacheManager extends Closeable {
+
+  BlockReader getBlockReader() throws IOException;
 
   long getMaxLayer();
 
