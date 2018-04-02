@@ -1,6 +1,5 @@
 package pack.distributed.storage.kafka;
 
-import java.io.Closeable;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -16,19 +15,19 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
 
-import pack.distributed.storage.hdfs.PackHdfsReader;
+import pack.distributed.storage.broadcast.Block;
+import pack.distributed.storage.broadcast.Blocks;
+import pack.distributed.storage.broadcast.PackBroadcastReader;
+import pack.distributed.storage.hdfs.MaxBlockLayer;
 import pack.distributed.storage.wal.WalCacheManager;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class PackKafkaReader implements Closeable {
+public class PackKafkaReader extends PackBroadcastReader {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackKafkaReader.class);
 
   private final PackKafkaClientFactory _kafkaClientFactory;
-  private final WalCacheManager _walCacheManager;
-  private final PackHdfsReader _hdfsReader;
-  private final String _name;
-  private final Thread _kafkaReader;
+  private final MaxBlockLayer _maxBlockLayer;
   private final AtomicBoolean _running = new AtomicBoolean(true);
   private final String _serialId;
   private final String _topic;
@@ -39,28 +38,16 @@ public class PackKafkaReader implements Closeable {
   private final long _syncDelay;
 
   public PackKafkaReader(String name, String serialId, PackKafkaClientFactory kafkaClientFactory,
-      WalCacheManager walCacheManager, PackHdfsReader hdfsReader, String topic, Integer partition) {
+      WalCacheManager walCacheManager, MaxBlockLayer maxBlockLayer, String topic, Integer partition) {
+    super(name, walCacheManager);
     _syncDelay = TimeUnit.MILLISECONDS.toMillis(10);
-    _name = name;
     _serialId = serialId;
     _topic = topic;
     _partition = partition;
     _kafkaClientFactory = kafkaClientFactory;
-    _walCacheManager = walCacheManager;
-    _hdfsReader = hdfsReader;
+    _maxBlockLayer = maxBlockLayer;
     _endPointLookup = new EndPointLookup(name, kafkaClientFactory, _serialId, topic, partition);
     _kafkaPollTimeout = TimeUnit.MILLISECONDS.toMillis(10);
-    _kafkaReader = new Thread(() -> {
-      while (_running.get()) {
-        try {
-          writeDataToWal();
-        } catch (Throwable t) {
-          LOGGER.error("Unknown error", t);
-        }
-      }
-    });
-    _kafkaReader.setDaemon(true);
-    _kafkaReader.setName("PackKafkaReader-" + _name);
   }
 
   public void sync() throws IOException {
@@ -75,10 +62,11 @@ public class PackKafkaReader implements Closeable {
     }
   }
 
-  private void writeDataToWal() throws IOException {
+  @Override
+  protected void writeDataToWal(WalCacheManager walCacheManager) throws IOException {
     try (KafkaConsumer<byte[], Blocks> consumer = _kafkaClientFactory.createConsumer(_serialId)) {
       TopicPartition partition = new TopicPartition(_topic, _partition);
-      long maxLayer = _hdfsReader.getMaxLayer();
+      long maxLayer = _maxBlockLayer.getMaxLayer();
       ImmutableList<TopicPartition> partitions = ImmutableList.of(partition);
       consumer.assign(partitions);
       consumer.seek(partition, maxLayer);
@@ -88,7 +76,7 @@ public class PackKafkaReader implements Closeable {
         for (ConsumerRecord<byte[], Blocks> record : records) {
           Blocks blocks = record.value();
           for (Block block : blocks.getBlocks()) {
-            _walCacheManager.write(block.getTransId(), record.offset(), block.getBlockId(), block.getData());
+            walCacheManager.write(block.getTransId(), record.offset(), block.getBlockId(), block.getData());
           }
         }
         setEndOffset(consumer, partition, partitions);
@@ -107,15 +95,10 @@ public class PackKafkaReader implements Closeable {
     }
   }
 
-  public void start() {
-    _kafkaReader.start();
-  }
-
   @Override
   public void close() throws IOException {
+    super.close();
     PackUtils.closeQuietly(_endPointLookup);
-    _running.set(false);
-    _kafkaReader.interrupt();
   }
 
 }

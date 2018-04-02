@@ -181,7 +181,7 @@ public class PackWalCache implements WalCache {
 
   @Override
   public void close() throws IOException {
-    LOGGER.info("Closing wal file {}", _file);
+    LOGGER.info("Closing wal file {} max layer {}", _file, _layer.get());
     _closed.set(true);
     PackUtils.close(LOGGER, _channel);
     PackUtils.close(LOGGER, _rnd);

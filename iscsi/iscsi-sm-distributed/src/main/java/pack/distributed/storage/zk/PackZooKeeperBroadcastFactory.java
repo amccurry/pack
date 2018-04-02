@@ -1,0 +1,172 @@
+package pack.distributed.storage.zk;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import org.apache.zookeeper.CreateMode;
+import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooDefs.Ids;
+import org.apache.zookeeper.data.Stat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.amazonaws.util.Md5Utils;
+import com.google.common.collect.ImmutableList;
+
+import pack.distributed.storage.PackMetaData;
+import pack.distributed.storage.broadcast.Block;
+import pack.distributed.storage.broadcast.Blocks;
+import pack.distributed.storage.broadcast.PackBroadcastFactory;
+import pack.distributed.storage.broadcast.PackBroadcastReader;
+import pack.distributed.storage.broadcast.PackBroadcastWriter;
+import pack.distributed.storage.hdfs.MaxBlockLayer;
+import pack.distributed.storage.monitor.WriteBlockMonitor;
+import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.wal.WalCacheManager;
+
+public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackZooKeeperBroadcastFactory.class);
+
+  private final ZooKeeperClient _zk;
+
+  public PackZooKeeperBroadcastFactory(ZooKeeperClient zk) {
+    _zk = zk;
+  }
+
+  @Override
+  public PackBroadcastWriter createPackBroadcastWriter(String name, PackMetaData metaData,
+      WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager) throws IOException {
+    return new PackZooKeeperBroadcastWriter(name, writeBlockMonitor, serverStatusManager, _zk);
+  }
+
+  @Override
+  public PackBroadcastReader createPackBroadcastReader(String name, PackMetaData metaData,
+      WalCacheManager walCacheManager, MaxBlockLayer maxBlockLayer) throws IOException {
+    return new PackZooKeeperBroadcastReader(name, metaData, walCacheManager, _zk, maxBlockLayer);
+  }
+
+  public static String getVolumePath(String volumeName) {
+    return "/data/" + volumeName;
+  }
+
+  static class PackZooKeeperBroadcastWriter extends PackBroadcastWriter {
+
+    private final ZooKeeperClient _zk;
+    private final String _zkPath;
+
+    public PackZooKeeperBroadcastWriter(String volumeName, WriteBlockMonitor writeBlockMonitor,
+        ServerStatusManager serverStatusManager, ZooKeeperClient zk) {
+      super(volumeName, writeBlockMonitor, serverStatusManager);
+      _zk = zk;
+      _zkPath = getVolumePath(volumeName);
+      ZkUtils.mkNodesStr(_zk, _zkPath);
+    }
+
+    @Override
+    protected void writeBlocks(Blocks blocks) throws IOException {
+      byte[] bs = Blocks.toBytes(blocks);
+      try {
+        String path = _zk.create(_zkPath + "/", bs, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT_SEQUENTIAL);
+        // LOGGER.info("write blocks {} {} {}", Md5Utils.md5AsBase64(bs),
+        // blocks.hashCode(), path);
+      } catch (KeeperException | InterruptedException e) {
+        throw new IOException(e);
+      }
+    }
+
+    @Override
+    protected void internalFlush() throws IOException {
+
+    }
+
+    @Override
+    protected void internalClose() throws IOException {
+
+    }
+
+  }
+
+  static class PackZooKeeperBroadcastReader extends PackBroadcastReader {
+
+    private final ZooKeeperClient _zk;
+    private final String _zkPath;
+    private final MaxBlockLayer _maxBlockLayer;
+
+    public PackZooKeeperBroadcastReader(String volumeName, PackMetaData metaData, WalCacheManager walCacheManager,
+        ZooKeeperClient zk, MaxBlockLayer maxBlockLayer) {
+      super(volumeName, walCacheManager);
+      _zk = zk;
+      _zkPath = getVolumePath(volumeName);
+      _maxBlockLayer = maxBlockLayer;
+      ZkUtils.mkNodesStr(_zk, _zkPath);
+    }
+
+    @Override
+    public void sync() throws IOException {
+
+    }
+
+    @Override
+    protected void writeDataToWal(WalCacheManager walCacheManager) throws IOException {
+      Object lock = new Object();
+
+      Watcher watcher = event -> {
+        synchronized (lock) {
+          lock.notify();
+        }
+      };
+
+      List<String> prev = ImmutableList.of();
+      while (isRunning()) {
+        try {
+          synchronized (lock) {
+            List<String> allChildren = ImmutableList.copyOf(_zk.getChildren(_zkPath, watcher));
+            cleanupOldData(allChildren);
+            List<String> delta = new ArrayList<>(allChildren);
+            delta.removeAll(prev);
+            Collections.sort(delta);
+            for (String s : delta) {
+              Stat stat = _zk.exists(_zkPath + "/" + s, false);
+              if (stat != null) {
+                byte[] bs = _zk.getData(_zkPath + "/" + s, false, stat);
+                Blocks blocks = Blocks.toBlocks(bs);
+                // LOGGER.info("read blocks {} {} {}", Md5Utils.md5AsBase64(bs),
+                // blocks.hashCode(), _zkPath + "/" + s);
+                List<Block> blocksList = blocks.getBlocks();
+                long offset = getOffset(s);
+                for (Block block : blocksList) {
+                  int blockId = block.getBlockId();
+                  long transId = block.getTransId();
+                  byte[] data = block.getData();
+                  walCacheManager.write(transId, offset, blockId, data);
+                }
+              }
+            }
+            prev = allChildren;
+            lock.wait();
+          }
+        } catch (KeeperException | InterruptedException e) {
+          throw new IOException(e);
+        }
+      }
+    }
+
+    private long getOffset(String s) {
+      return Long.parseLong(s);
+    }
+
+    private void cleanupOldData(List<String> allChildren) throws InterruptedException, KeeperException {
+      long maxLayer = _maxBlockLayer.getMaxLayer();
+      for (String s : allChildren) {
+        long offset = getOffset(s);
+        if (offset < maxLayer) {
+          _zk.delete(_zkPath + "/" + s, -1);
+        }
+      }
+    }
+  }
+}

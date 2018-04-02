@@ -40,6 +40,7 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.distributed.storage.broadcast.PackBroadcastFactory;
 import pack.distributed.storage.hdfs.HdfsBlockGarbageCollector;
 import pack.distributed.storage.hdfs.PackHdfsBlockGarbageCollector;
 import pack.distributed.storage.http.CompactorServerInfo;
@@ -50,6 +51,7 @@ import pack.distributed.storage.http.PackDao;
 import pack.distributed.storage.http.Session;
 import pack.distributed.storage.http.TargetServerInfo;
 import pack.distributed.storage.http.Volume;
+import pack.distributed.storage.kafka.PackKafkaBroadcastFactory;
 import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.metrics.MetricsStorageModule;
 import pack.distributed.storage.metrics.json.JsonReporter;
@@ -61,13 +63,15 @@ import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.status.PackServerStatusManager;
 import pack.distributed.storage.status.ServerStatusManager;
 import pack.distributed.storage.trace.TraceStorageModule;
+import pack.distributed.storage.zk.PackZooKeeperBroadcastFactory;
 import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
+import pack.iscsi.error.NoExceptions;
 import pack.iscsi.metrics.MetricsRegistrySingleton;
 import pack.iscsi.storage.BaseStorageTargetManager;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class PackStorageTargetManager extends BaseStorageTargetManager {
+public class PackStorageTargetManager extends BaseStorageTargetManager implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackStorageTargetManager.class);
 
@@ -84,18 +88,19 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
   private final UserGroupInformation _ugi;
   private final Path _rootPath;
   private final Configuration _conf;
-  private final PackKafkaClientFactory _packKafkaClientFactory;
   private final File _cacheDir;
-  private final PackWriteBlockMonitorFactory _packWriteBlockMonitorFactory;
   private final long _maxWalSize;
   private final long _maxWalLifeTime;
   private final ZooKeeperClient _zk;
-  private final ServerStatusManager _serverStatusManager;
-  private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
   private final long _delayBeforeRemoval;
   private final MetricRegistry _registry;
   private final JsonReporter _jsonReporter;
   private final String _hostAddress;
+
+  private final PackWriteBlockMonitorFactory _packWriteBlockMonitorFactory;
+  private final PackBroadcastFactory _broadcastFactory;
+  private final ServerStatusManager _serverStatusManager;
+  private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
 
   public PackStorageTargetManager() throws IOException {
 
@@ -139,7 +144,12 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
     _hdfsBlockGarbageCollector = new PackHdfsBlockGarbageCollector(_ugi, _conf, _delayBeforeRemoval);
 
     String kafkaZkConnection = PackConfig.getKafkaZkConnection();
-    _packKafkaClientFactory = new PackKafkaClientFactory(kafkaZkConnection);
+    if (kafkaZkConnection != null) {
+      _broadcastFactory = new PackKafkaBroadcastFactory(new PackKafkaClientFactory(kafkaZkConnection));
+    } else {
+      _broadcastFactory = new PackZooKeeperBroadcastFactory(_zk);
+    }
+
     _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory();
 
     TargetServerInfo info = getInfo();
@@ -197,11 +207,11 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         cacheDir.mkdirs();
         WriteBlockMonitor monitor = _packWriteBlockMonitorFactory.create(targetName);
         _serverStatusManager.register(targetName, monitor);
-        PackStorageModule module = new PackStorageModule(targetName, metaData, _conf, volumeDir,
-            _packKafkaClientFactory, _ugi, cacheDir, monitor, _serverStatusManager, _hdfsBlockGarbageCollector,
-            _maxWalSize, _maxWalLifeTime, _zk, _hostAddress);
+        PackStorageModule module = new PackStorageModule(targetName, metaData, _conf, volumeDir, _broadcastFactory,
+            _ugi, cacheDir, monitor, _serverStatusManager, _hdfsBlockGarbageCollector, _maxWalSize, _maxWalLifeTime,
+            _zk, _hostAddress);
         IStorageModule storageModule = MetricsStorageModule.wrap(targetName, _registry, module);
-        return TraceStorageModule.traceIfEnabled(storageModule);
+        return NoExceptions.retryForever(TraceStorageModule.traceIfEnabled(storageModule));
       });
     } catch (InterruptedException e) {
       throw new IOException(e);
@@ -459,5 +469,10 @@ public class PackStorageTargetManager extends BaseStorageTargetManager {
         return false;
       }
     }
+  }
+
+  @Override
+  public void close() throws IOException {
+    PackUtils.close(LOGGER, _serverStatusManager, _hdfsBlockGarbageCollector);
   }
 }

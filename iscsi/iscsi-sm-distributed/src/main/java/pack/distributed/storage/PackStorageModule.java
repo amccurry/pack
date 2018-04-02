@@ -15,11 +15,11 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.distributed.storage.broadcast.PackBroadcastFactory;
+import pack.distributed.storage.broadcast.PackBroadcastReader;
+import pack.distributed.storage.broadcast.PackBroadcastWriter;
 import pack.distributed.storage.hdfs.HdfsBlockGarbageCollector;
 import pack.distributed.storage.hdfs.PackHdfsReader;
-import pack.distributed.storage.kafka.PackKafkaClientFactory;
-import pack.distributed.storage.kafka.PackKafkaReader;
-import pack.distributed.storage.kafka.PackKafkaWriter;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
@@ -37,13 +37,10 @@ public class PackStorageModule extends BaseStorageModule {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackStorageModule.class);
 
-  private final AtomicReference<PackKafkaWriter> _packKafkaWriter = new AtomicReference<PackKafkaWriter>();
-  private final PackKafkaClientFactory _kafkaClientFactory;
+  private final AtomicReference<PackBroadcastWriter> _packBroadcastWriter = new AtomicReference<PackBroadcastWriter>();
   private final PackHdfsReader _hdfsReader;
   private final WalCacheManager _walCacheManager;
-  private final Integer _topicPartition = 0;
-  private final String _topic;
-  private final PackKafkaReader _packKafkaReader;
+  private final PackBroadcastReader _packBroadcastReader;
   private final WriteBlockMonitor _writeBlockMonitor;
   private final WalCacheFactory _cacheFactory;
   private final UUID _serialId;
@@ -52,29 +49,31 @@ public class PackStorageModule extends BaseStorageModule {
   private final Object _lock = new Object();
   private final ZooKeeperClient _zk;
   private final String _targetHostAddress;
+  private final PackBroadcastFactory _broadcastFactory;
+  private final PackMetaData _metaData;
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
-      PackKafkaClientFactory kafkaClientFactory, UserGroupInformation ugi, File cacheDir,
+      PackBroadcastFactory broadcastFactory, UserGroupInformation ugi, File cacheDir,
       WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager,
       HdfsBlockGarbageCollector hdfsBlockGarbageCollector, long maxWalSize, long maxWalLifeTime, ZooKeeperClient zk,
       String targetHostAddress) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize());
     _zk = zk;
+    _metaData = metaData;
     _targetHostAddress = targetHostAddress;
     _name = name;
     _serialId = UUID.fromString(metaData.getSerialId());
-    _topic = metaData.getTopicId();
-    _kafkaClientFactory = kafkaClientFactory;
+    _broadcastFactory = broadcastFactory;
     _hdfsReader = new PackHdfsReader(conf, volumeDir, ugi, hdfsBlockGarbageCollector);
     _hdfsReader.refresh();
     _writeBlockMonitor = writeBlockMonitor;
     _serverStatusManager = serverStatusManager;
     _cacheFactory = new PackWalCacheFactory(metaData, cacheDir);
+    // _cacheFactory = new InMemoryWalCacheFactory(metaData);
     _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader,
         _serverStatusManager, metaData, conf, volumeDir, maxWalSize, maxWalLifeTime);
-    _packKafkaReader = new PackKafkaReader(name, metaData.getSerialId(), _kafkaClientFactory, _walCacheManager,
-        _hdfsReader, _topic, _topicPartition);
-    _packKafkaReader.start();
+    _packBroadcastReader = broadcastFactory.createPackBroadcastReader(name, metaData, _walCacheManager, _hdfsReader);
+    _packBroadcastReader.start();
   }
 
   @Override
@@ -97,19 +96,23 @@ public class PackStorageModule extends BaseStorageModule {
         }
         List<ReadRequest> requests = createRequests(ByteBuffer.wrap(bytes), storageIndex);
         for (ReadRequest request : requests) {
-          if (_writeBlockMonitor.waitIfNeededForSync(request.getBlockId())) {
+          while (_writeBlockMonitor.waitIfNeededForSync(request.getBlockId())) {
             fullSyncAndClearMonitor();
           }
         }
         boolean moreToRead;
         try (PackTracer span = tracer.span(LOGGER, "wal cache read")) {
           try (BlockReader blockReader = _walCacheManager.getBlockReader()) {
-            moreToRead = blockReader.readBlocks(requests);
+            if (!(moreToRead = blockReader.readBlocks(requests))) {
+              return;
+            }
           }
         }
         if (moreToRead) {
           try (PackTracer span = tracer.span(LOGGER, "block read")) {
-            _hdfsReader.readBlocks(requests);
+            if (!_hdfsReader.readBlocks(requests)) {
+              return;
+            }
           }
         }
       }
@@ -117,8 +120,9 @@ public class PackStorageModule extends BaseStorageModule {
   }
 
   private void fullSyncAndClearMonitor() throws IOException {
-    _writeBlockMonitor.clearAllLocks();
-    _packKafkaReader.sync();
+    LOGGER.debug("full sync");
+    // _writeBlockMonitor.clearAllLocks();
+    _packBroadcastReader.sync();
   }
 
   @Override
@@ -130,7 +134,7 @@ public class PackStorageModule extends BaseStorageModule {
         int off = 0;
         long pos = storageIndex;
         int blockSize = _blockSize;
-        PackKafkaWriter packKafkaWriter = getPackKafkaWriter();
+        PackBroadcastWriter packBroadcastWriter = getPackBroadcastWriter();
 
         while (len > 0) {
           int blockOffset = getBlockOffset(pos);
@@ -141,7 +145,7 @@ public class PackStorageModule extends BaseStorageModule {
           if (blockOffset != 0) {
             throw new IOException("block offset not 0");
           }
-          packKafkaWriter.write(tracer, blockId, bytes, off, blockSize);
+          packBroadcastWriter.write(tracer, blockId, bytes, off, blockSize);
           len -= blockSize;
           off += blockSize;
           pos += blockSize;
@@ -164,7 +168,7 @@ public class PackStorageModule extends BaseStorageModule {
   public void flushWrites() throws IOException {
     synchronized (_lock) {
       try (PackTracer tracer = PackTracer.create(LOGGER, "flush")) {
-        getPackKafkaWriter().flush(tracer);
+        getPackBroadcastWriter().flush(tracer);
       }
     }
   }
@@ -172,24 +176,24 @@ public class PackStorageModule extends BaseStorageModule {
   @Override
   public void close() throws IOException {
     LOGGER.info("Closing storage module {}", _name);
-    PackUtils.close(LOGGER, _packKafkaWriter.get(), _packKafkaReader, _walCacheManager, _hdfsReader);
+    PackUtils.close(LOGGER, _packBroadcastWriter.get(), _packBroadcastReader, _walCacheManager, _hdfsReader);
   }
 
-  private PackKafkaWriter getPackKafkaWriter() {
-    PackKafkaWriter packKafkaWriter = _packKafkaWriter.get();
-    if (packKafkaWriter == null) {
-      return createPackKafkaWriter();
+  private PackBroadcastWriter getPackBroadcastWriter() throws IOException {
+    PackBroadcastWriter packBroadcastWriter = _packBroadcastWriter.get();
+    if (packBroadcastWriter == null) {
+      return createPackBroadcastWriter();
     }
-    return packKafkaWriter;
+    return packBroadcastWriter;
   }
 
-  private synchronized PackKafkaWriter createPackKafkaWriter() {
-    PackKafkaWriter packKafkaWriter = _packKafkaWriter.get();
-    if (packKafkaWriter == null) {
-      _packKafkaWriter.set(packKafkaWriter = new PackKafkaWriter(_name, _kafkaClientFactory.createProducer(), _topic,
-          _topicPartition, _writeBlockMonitor, _serverStatusManager));
+  private synchronized PackBroadcastWriter createPackBroadcastWriter() throws IOException {
+    PackBroadcastWriter packBroadcastWriter = _packBroadcastWriter.get();
+    if (packBroadcastWriter == null) {
+      _packBroadcastWriter.set(packBroadcastWriter = _broadcastFactory.createPackBroadcastWriter(_name, _metaData,
+          _writeBlockMonitor, _serverStatusManager));
     }
-    return packKafkaWriter;
+    return packBroadcastWriter;
   }
 
   public List<ReadRequest> createRequests(ByteBuffer byteBuffer, long storageIndex) {

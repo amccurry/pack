@@ -32,7 +32,7 @@ import pack.distributed.storage.read.ReadRequest;
 import pack.distributed.storage.trace.TraceHdfsBlockReader;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class PackHdfsReader implements BlockReader, Closeable {
+public class PackHdfsReader implements BlockReader, MaxBlockLayer, Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackHdfsReader.class);
 
@@ -112,6 +112,7 @@ public class PackHdfsReader implements BlockReader, Closeable {
     _readerCache.invalidateAll();
   }
 
+  @Override
   public long getMaxLayer() {
     return _maxLayer.get();
   }

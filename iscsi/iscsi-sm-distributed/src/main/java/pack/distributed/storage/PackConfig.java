@@ -80,7 +80,7 @@ public class PackConfig {
   }
 
   public static String getKafkaZkConnection() {
-    return PackUtils.getPropertyFailIfMissing(KAFKA_ZK_CONNECTION);
+    return PackUtils.getProperty(KAFKA_ZK_CONNECTION);
   }
 
   public static File getWalCachePath() {

@@ -5,8 +5,8 @@ import java.util.Map;
 
 import org.apache.kafka.common.serialization.Serializer;
 
-import pack.distributed.storage.kafka.Block;
-import pack.distributed.storage.kafka.Blocks;
+import pack.distributed.storage.broadcast.Block;
+import pack.distributed.storage.broadcast.Blocks;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackBlockSerializer implements Serializer<Blocks> {

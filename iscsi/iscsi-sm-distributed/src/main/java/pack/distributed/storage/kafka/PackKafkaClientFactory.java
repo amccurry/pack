@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Joiner;
 
+import pack.distributed.storage.broadcast.Blocks;
 import pack.distributed.storage.kafka.serialization.PackBlockDeserializer;
 import pack.distributed.storage.kafka.serialization.PackBlockSerializer;
 import pack.distributed.storage.kafka.util.LookupKafkaBrokers;

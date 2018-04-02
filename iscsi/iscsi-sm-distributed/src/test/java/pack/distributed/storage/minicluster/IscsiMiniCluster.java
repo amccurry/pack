@@ -45,7 +45,8 @@ public class IscsiMiniCluster {
     }
   }
 
-  private static void writeConfig(Configuration conf, File hadoopConf) throws IOException {
+  public static void writeConfig(Configuration conf, File hadoopConf) throws IOException {
+    hadoopConf.mkdirs();
     try (FileOutputStream out = new FileOutputStream(new File(hadoopConf, "hdfs-site.xml"))) {
       conf.writeXml(out);
     }

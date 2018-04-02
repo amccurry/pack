@@ -148,6 +148,11 @@ public class PackWalCacheManagerTest {
       public void add(Path path) {
 
       }
+
+      @Override
+      public void close() throws IOException {
+
+      }
     };
   }
 
