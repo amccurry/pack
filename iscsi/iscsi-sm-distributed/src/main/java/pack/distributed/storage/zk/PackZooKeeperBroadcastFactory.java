@@ -32,7 +32,6 @@ import pack.distributed.storage.wal.WalCacheManager;
 public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackZooKeeperBroadcastFactory.class);
-
   private final ZooKeeperClient _zk;
 
   public PackZooKeeperBroadcastFactory(ZooKeeperClient zk) {
@@ -188,4 +187,5 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
       }
     }
   }
+
 }
