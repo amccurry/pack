@@ -79,8 +79,6 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
   private static final String CLIENT_ADDRESS = "clientAddress";
   private static final String TARGET_SERVER_ADDRESS = "targetServerAddress";
   private static final String TARGET_SESSIONS = "/target-sessions";
-  private static final String PACK_HTTP_PORT_DEFAULT = "8642";
-  private static final String PACK_HTTP_PORT = "PACK_HTTP_PORT";
   private static final String HDFS = "hdfs";
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -103,10 +101,12 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
   private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
 
   public PackStorageTargetManager() throws IOException {
+    this(InetAddress.getLocalHost()
+                    .getHostAddress());
+  }
 
-    _hostAddress = InetAddress.getLocalHost()
-                              .getHostAddress();
-
+  public PackStorageTargetManager(String hostAddress) throws IOException {
+    _hostAddress = hostAddress;
     MetricRegistry registry = MetricsRegistrySingleton.getInstance();
     _registry = registry;
     _jsonReporter = new JsonReporter(_registry);
@@ -117,8 +117,6 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
 
     AtomicReference<byte[]> metricsOutput = new AtomicReference<>();
     setupTextReporter(metricsOutput);
-
-    int httpPort = Integer.parseInt(PackUtils.getProperty(PACK_HTTP_PORT, PACK_HTTP_PORT_DEFAULT));
 
     _cacheDir = PackConfig.getWalCachePath();
     _ugi = PackConfig.getUgi();
@@ -156,7 +154,11 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
     TargetServerInfo.register(_zk, info);
 
     PackDao packDao = newPackDao();
+
+    int httpPort = PackConfig.getHttpPort();
+    String httpAddress = PackConfig.getHttpAddress();
     HttpServerConfig httpServerConfig = HttpServerConfig.builder()
+                                                        .address(httpAddress)
                                                         .port(httpPort)
                                                         .textMetricsOutput(metricsOutput)
                                                         .packDao(packDao)

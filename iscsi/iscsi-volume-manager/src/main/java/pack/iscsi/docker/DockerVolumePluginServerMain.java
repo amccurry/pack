@@ -2,6 +2,7 @@ package pack.iscsi.docker;
 
 import static pack.iscsi.docker.Utils.getEnv;
 import static pack.iscsi.docker.Utils.getIqn;
+import static pack.iscsi.docker.Utils.iscsiDeleteSession;
 import static pack.iscsi.docker.Utils.iscsiDiscovery;
 import static pack.iscsi.docker.Utils.iscsiLoginSession;
 import static pack.iscsi.docker.Utils.iscsiLogoutSession;
@@ -10,8 +11,14 @@ import static pack.iscsi.docker.Utils.waitUntilBlockDeviceIsOnline;
 import java.io.File;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
@@ -62,6 +69,11 @@ public class DockerVolumePluginServerMain {
     private final String _zkConn;
     private final int _zkTimeout;
     private final Object _lock = new Object();
+    private final Map<String, Long> _logoutTimers = new ConcurrentHashMap<String, Long>();
+    private final Map<String, Long> _deleteTimers = new ConcurrentHashMap<String, Long>();
+    private final Timer _timer;
+    private final long _logoutWaitTime;
+    private final long _deleteWaitTime;
 
     public IscsiVolumeStorageControl() throws IOException {
       _configuration = PackConfig.getConfiguration();
@@ -70,6 +82,13 @@ public class DockerVolumePluginServerMain {
       _rootMount = getEnv(ISCSI_ROOT_MOUNT);
       _zkConn = PackConfig.getZooKeeperConnection();
       _zkTimeout = PackConfig.getZooKeeperSessionTimeout();
+
+      _timer = new Timer("background-timer", true);
+      _logoutWaitTime = TimeUnit.MINUTES.toMillis(5);
+      _deleteWaitTime = TimeUnit.MINUTES.toMillis(5);
+      long delay = TimeUnit.MINUTES.toMillis(1);
+      _timer.schedule(getLogoutTimerTask(), delay, delay);
+      _timer.schedule(getDeleteTimerTask(), delay, delay);
     }
 
     @Override
@@ -78,23 +97,33 @@ public class DockerVolumePluginServerMain {
       String dev = metaData.getSerialId();
       String iqn = getIqn(volumeName);
       List<TargetServerInfo> targetServers = getTargetServers();
+      discoverAndLogin(iqn, targetServers);
+      String devicePath = "/dev/mapper/" + dev;
+      waitUntilFileExists(devicePath);
+      Result fsFormatResult = Utils.execAsResult(LOGGER, "sudo", "mkfs.xfs", devicePath);
+      if (fsFormatResult.exitCode != 0) {
+        throw new Exception("Format failed " + volumeName + " @ " + devicePath);
+      }
+    }
 
-      try {
-        synchronized (_lock) {
-          iscsiDiscovery(targetServers);
-          iscsiLoginSession(iqn);
-        }
-        String devicePath = "/dev/mapper/" + dev;
-        waitUntilFileExists(devicePath);
-        Result fsFormatResult = Utils.execAsResult(LOGGER, "sudo", "mkfs.xfs", devicePath);
-        if (fsFormatResult.exitCode != 0) {
-          throw new Exception("Format failed " + volumeName + " @ " + devicePath);
-        }
-      } finally {
-        synchronized (_lock) {
-          iscsiLogoutSession(iqn);
-          // iscsiDeleteSession(iqn);
-        }
+    private void discoverAndLogin(String iqn, List<TargetServerInfo> targetServers) throws IOException {
+      synchronized (_lock) {
+        removeTimers(iqn);
+        iscsiDiscovery(targetServers);
+        iscsiLoginSession(iqn);
+      }
+    }
+
+    private void addLogoutTimer(String iqn) {
+      synchronized (_lock) {
+        _logoutTimers.put(iqn, System.currentTimeMillis());
+      }
+    }
+
+    private void removeTimers(String iqn) {
+      synchronized (_lock) {
+        _logoutTimers.remove(iqn);
+        _deleteTimers.remove(iqn);
       }
     }
 
@@ -107,13 +136,9 @@ public class DockerVolumePluginServerMain {
     public String mount(String volumeName, String id) throws Exception {
       String iqn = getIqn(volumeName);
       List<TargetServerInfo> targetServers = getTargetServers();
-
       PackMetaData metaData = getPackMetaData(volumeName);
       String dev = metaData.getSerialId();
-      synchronized (_lock) {
-        iscsiDiscovery(targetServers);
-        iscsiLoginSession(iqn);
-      }
+      discoverAndLogin(iqn, targetServers);
       waitUntilBlockDeviceIsOnline("/dev/mapper/" + dev);
       String mountPoint = getMountPoint(volumeName);
       File mountFile = new File(mountPoint);
@@ -143,10 +168,7 @@ public class DockerVolumePluginServerMain {
         throw new Exception(result.stderr);
       }
       String iqn = getIqn(volumeName);
-      synchronized (_lock) {
-        iscsiLogoutSession(iqn);
-        // iscsiDeleteSession(iqn);
-      }
+      addLogoutTimer(iqn);
       PackUtils.rmr(new File(mountPoint));
     }
 
@@ -219,6 +241,75 @@ public class DockerVolumePluginServerMain {
         Thread.sleep(TimeUnit.SECONDS.toMillis(3));
       }
     }
+
+    private TimerTask getDeleteTimerTask() {
+      return new TimerTask() {
+        @Override
+        public void run() {
+          try {
+            synchronized (_lock) {
+              Set<Entry<String, Long>> set = _deleteTimers.entrySet();
+              Iterator<Entry<String, Long>> iterator = set.iterator();
+              while (iterator.hasNext()) {
+                Entry<String, Long> entry = iterator.next();
+                if (shouldDelete(entry.getValue())) {
+                  iterator.remove();
+                  String iqn = entry.getKey();
+                  LOGGER.info("Delete of iscsi session {}", iqn);
+                  try {
+                    iscsiDeleteSession(iqn);
+                  } catch (IOException e) {
+                    LOGGER.error("Unknown error during delete", e);
+                  }
+                }
+              }
+            }
+          } catch (Throwable e) {
+            LOGGER.error("Unknown error", e);
+          }
+        }
+
+      };
+    }
+
+    private TimerTask getLogoutTimerTask() {
+      return new TimerTask() {
+        @Override
+        public void run() {
+          try {
+            synchronized (_lock) {
+              Set<Entry<String, Long>> set = _logoutTimers.entrySet();
+              Iterator<Entry<String, Long>> iterator = set.iterator();
+              while (iterator.hasNext()) {
+                Entry<String, Long> entry = iterator.next();
+                if (shouldLogout(entry.getValue())) {
+                  iterator.remove();
+                  String iqn = entry.getKey();
+                  LOGGER.info("Logout of iscsi session {}", iqn);
+                  try {
+                    iscsiLogoutSession(iqn);
+                    _deleteTimers.put(iqn, System.currentTimeMillis());
+                  } catch (IOException e) {
+                    LOGGER.error("Unknown error during logout", e);
+                  }
+                }
+              }
+            }
+          } catch (Throwable e) {
+            LOGGER.error("Unknown error", e);
+          }
+        }
+      };
+    }
+
+    private boolean shouldDelete(long ts) {
+      return ts + _deleteWaitTime < System.currentTimeMillis();
+    }
+
+    private boolean shouldLogout(long ts) {
+      return ts + _logoutWaitTime < System.currentTimeMillis();
+    }
+
   }
 
 }

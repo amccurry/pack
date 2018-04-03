@@ -11,5 +11,6 @@ public class HttpServerConfig {
 
   PackDao packDao;
   int port;
+  String address;
   AtomicReference<byte[]> textMetricsOutput;
 }

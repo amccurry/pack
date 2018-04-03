@@ -79,6 +79,7 @@ public class PackCompactorServer implements Closeable {
     _zkConnectionString = zkConnectionString;
     _sessionTimeout = sessionTimeout;
     _closer = Closer.create();
+    PackUtils.closeOnShutdown(_closer);
     _configuration = configuration;
     _path = path;
     _zooKeeper = _closer.register(getZk());

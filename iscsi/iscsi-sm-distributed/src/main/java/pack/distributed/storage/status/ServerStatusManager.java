@@ -10,6 +10,6 @@ public interface ServerStatusManager extends Closeable {
 
   void register(String name, WriteBlockMonitor monitor);
 
-  void broadcastToAllServers(BlockUpdateInfoBatch updateBlockIdBatch);
+  void broadcastToAllServers(BlockUpdateInfoBatch updateBlockIdBatch) throws InterruptedException;
 
 }

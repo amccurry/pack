@@ -40,14 +40,17 @@ public class PackWriteBlockMonitorEmbedded implements WriteBlockMonitor {
 
   @Override
   public void addDirtyBlock(int blockId, long transId) {
+    LOGGER.info("add dirty block {} {}", transId, blockId);
     List<Long> value = new ArrayList<>();
     List<Long> list = _map.putIfAbsent(blockId, value);
     if (list == null) {
       list = value;
     }
     synchronized (list) {
-      list.add(transId);
-      list.notifyAll();
+      if (!list.contains(transId)) {
+        list.add(transId);
+        list.notifyAll();
+      }
     }
   }
 

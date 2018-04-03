@@ -4,9 +4,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.data.Stat;
@@ -71,8 +73,7 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
       byte[] bs = Blocks.toBytes(blocks);
       try {
         String path = _zk.create(_zkPath + "/", bs, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT_SEQUENTIAL);
-        // LOGGER.info("write blocks {} {} {}", Md5Utils.md5AsBase64(bs),
-        // blocks.hashCode(), path);
+        LOGGER.info("write blocks {} {} {}", Md5Utils.md5AsBase64(bs), blocks.hashCode(), path);
       } catch (KeeperException | InterruptedException e) {
         throw new IOException(e);
       }
@@ -95,6 +96,7 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
     private final ZooKeeperClient _zk;
     private final String _zkPath;
     private final MaxBlockLayer _maxBlockLayer;
+    private final AtomicLong _lastOffset = new AtomicLong(-1L);
 
     public PackZooKeeperBroadcastReader(String volumeName, PackMetaData metaData, WalCacheManager walCacheManager,
         ZooKeeperClient zk, MaxBlockLayer maxBlockLayer) {
@@ -107,7 +109,17 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
 
     @Override
     public void sync() throws IOException {
-
+      try {
+        List<String> allChildren = new ArrayList<>(_zk.getChildren(_zkPath, false));
+        Collections.sort(allChildren);
+        String last = allChildren.get(allChildren.size() - 1);
+        long latestOffset = getOffset(last);
+        while (latestOffset > _lastOffset.get()) {
+          Thread.sleep(10);
+        }
+      } catch (KeeperException | InterruptedException e) {
+        throw new IOException(e);
+      }
     }
 
     @Override
@@ -134,14 +146,15 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
               if (stat != null) {
                 byte[] bs = _zk.getData(_zkPath + "/" + s, false, stat);
                 Blocks blocks = Blocks.toBlocks(bs);
-                // LOGGER.info("read blocks {} {} {}", Md5Utils.md5AsBase64(bs),
-                // blocks.hashCode(), _zkPath + "/" + s);
+                LOGGER.info("read blocks {} {} {}", Md5Utils.md5AsBase64(bs), blocks.hashCode(), _zkPath + "/" + s);
                 List<Block> blocksList = blocks.getBlocks();
                 long offset = getOffset(s);
+                _lastOffset.set(offset);
                 for (Block block : blocksList) {
                   int blockId = block.getBlockId();
                   long transId = block.getTransId();
                   byte[] data = block.getData();
+                  LOGGER.info("wal write {} {} {}", transId, offset, blockId);
                   walCacheManager.write(transId, offset, blockId, data);
                 }
               }
@@ -164,7 +177,13 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
       for (String s : allChildren) {
         long offset = getOffset(s);
         if (offset < maxLayer) {
-          _zk.delete(_zkPath + "/" + s, -1);
+          try {
+            _zk.delete(_zkPath + "/" + s, -1);
+          } catch (KeeperException e) {
+            if (e.code() != Code.NONODE) {
+              throw e;
+            }
+          }
         }
       }
     }

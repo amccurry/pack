@@ -69,7 +69,6 @@ public class PackStorageModule extends BaseStorageModule {
     _writeBlockMonitor = writeBlockMonitor;
     _serverStatusManager = serverStatusManager;
     _cacheFactory = new PackWalCacheFactory(metaData, cacheDir);
-    // _cacheFactory = new InMemoryWalCacheFactory(metaData);
     _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader,
         _serverStatusManager, metaData, conf, volumeDir, maxWalSize, maxWalLifeTime);
     _packBroadcastReader = broadcastFactory.createPackBroadcastReader(name, metaData, _walCacheManager, _hdfsReader);
@@ -96,7 +95,7 @@ public class PackStorageModule extends BaseStorageModule {
         }
         List<ReadRequest> requests = createRequests(ByteBuffer.wrap(bytes), storageIndex);
         for (ReadRequest request : requests) {
-          while (_writeBlockMonitor.waitIfNeededForSync(request.getBlockId())) {
+          if (_writeBlockMonitor.waitIfNeededForSync(request.getBlockId())) {
             fullSyncAndClearMonitor();
           }
         }
@@ -121,7 +120,7 @@ public class PackStorageModule extends BaseStorageModule {
 
   private void fullSyncAndClearMonitor() throws IOException {
     LOGGER.debug("full sync");
-    // _writeBlockMonitor.clearAllLocks();
+    _writeBlockMonitor.clearAllLocks();
     _packBroadcastReader.sync();
   }
 
@@ -168,7 +167,11 @@ public class PackStorageModule extends BaseStorageModule {
   public void flushWrites() throws IOException {
     synchronized (_lock) {
       try (PackTracer tracer = PackTracer.create(LOGGER, "flush")) {
-        getPackBroadcastWriter().flush(tracer);
+        try {
+          getPackBroadcastWriter().flush(tracer);
+        } catch (InterruptedException e) {
+          throw new IOException(e);
+        }
       }
     }
   }

@@ -77,7 +77,7 @@ public abstract class PackBroadcastWriter implements Closeable {
     }
   }
 
-  public void flush(PackTracer tracer) throws IOException {
+  public void flush(PackTracer tracer) throws IOException, InterruptedException {
     writeBlocks(tracer);
     try (Context time = _kafkaFlush.time()) {
       internalFlush();
@@ -87,7 +87,7 @@ public abstract class PackBroadcastWriter implements Closeable {
     }
   }
 
-  private void notifyOtherServers() {
+  private void notifyOtherServers() throws InterruptedException {
     BlockUpdateInfoBatch batch = BlockUpdateInfoBatch.builder()
                                                      .batch(ImmutableList.copyOf(_transBlockInfoBatch))
                                                      .volume(_volumeName)
