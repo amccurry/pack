@@ -28,7 +28,7 @@ public class PackZooKeeperClusterTest {
     PackUtils.rmr(root);
 
     List<String> serverList = new ArrayList<>();
-    List<PackZooKeeperCluster> cluster = new ArrayList<>();
+    List<PackZooKeeperServer> cluster = new ArrayList<>();
     List<PackZooKeeperServerConfig> configs = new ArrayList<>();
     for (int i = 0; i < 3; i++) {
       configs.add(PackZooKeeperServerConfig.builder()
@@ -42,7 +42,7 @@ public class PackZooKeeperClusterTest {
 
     for (PackZooKeeperServerConfig config : configs) {
       File dir = new File(root, "zk-" + config.getId());
-      cluster.add(new PackZooKeeperCluster(dir, config, configs));
+      cluster.add(new PackZooKeeperServer(dir, config, configs));
       serverList.add(config.getHostname() + ":" + config.getClientPort());
     }
 
@@ -56,7 +56,7 @@ public class PackZooKeeperClusterTest {
       assertEquals("test", new String(data));
     }
 
-    for (PackZooKeeperCluster keeperCluster : cluster) {
+    for (PackZooKeeperServer keeperCluster : cluster) {
       keeperCluster.close();
     }
   }

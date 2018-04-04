@@ -2,8 +2,6 @@
 set -e
 set -x
 
-mkdir -p ${WAL_CACHE_DIR}
-
 export HDFS_CONF_PATH="./hadoop-conf/"
 export PACK_LOG4J_CONFIG="./log4j.properties"
 export KAFKA_ZK_CONNECTION="${ZK_QUORUM}${KAFKA_ZK_CHROOT}"
@@ -16,6 +14,8 @@ CMD=$1
 
 case $CMD in
   (iscsi)
+    mkdir -p ${WAL_CACHE_DIR}
+    export SERVER_ID_LIST="${PWD}/targethost.properties"
     exec -a pack ${PACK_PARCEL}/bin/run.sh iscsi
     ;;
   (compactor)

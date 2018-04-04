@@ -51,8 +51,6 @@ import pack.distributed.storage.http.PackDao;
 import pack.distributed.storage.http.Session;
 import pack.distributed.storage.http.TargetServerInfo;
 import pack.distributed.storage.http.Volume;
-import pack.distributed.storage.kafka.PackKafkaBroadcastFactory;
-import pack.distributed.storage.kafka.PackKafkaClientFactory;
 import pack.distributed.storage.metrics.MetricsStorageModule;
 import pack.distributed.storage.metrics.json.JsonReporter;
 import pack.distributed.storage.metrics.json.SetupJvmMetrics;
@@ -64,6 +62,8 @@ import pack.distributed.storage.status.PackServerStatusManager;
 import pack.distributed.storage.status.ServerStatusManager;
 import pack.distributed.storage.trace.TraceStorageModule;
 import pack.distributed.storage.zk.PackZooKeeperBroadcastFactory;
+import pack.distributed.storage.zk.PackZooKeeperServer;
+import pack.distributed.storage.zk.PackZooKeeperServerConfig;
 import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.iscsi.error.NoExceptions;
@@ -99,6 +99,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
   private final PackBroadcastFactory _broadcastFactory;
   private final ServerStatusManager _serverStatusManager;
   private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
+  private final PackZooKeeperServer _zooKeeperServer;
 
   public PackStorageTargetManager() throws IOException {
     this(InetAddress.getLocalHost()
@@ -107,6 +108,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
 
   public PackStorageTargetManager(String hostAddress) throws IOException {
     _hostAddress = hostAddress;
+
     MetricRegistry registry = MetricsRegistrySingleton.getInstance();
     _registry = registry;
     _jsonReporter = new JsonReporter(_registry);
@@ -118,7 +120,14 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
     AtomicReference<byte[]> metricsOutput = new AtomicReference<>();
     setupTextReporter(metricsOutput);
 
-    _cacheDir = PackConfig.getWalCachePath();
+    File walCacheDir = PackConfig.getWalCachePath();
+    _cacheDir = new File(walCacheDir, "wal-cache");
+    _cacheDir.mkdirs();
+    File zkDir = new File(walCacheDir, "zk");
+    zkDir.mkdirs();
+    PackZooKeeperServerConfig myConfig = PackConfig.getPackZooKeeperServerConfig();
+    _zooKeeperServer = new PackZooKeeperServer(zkDir, myConfig, PackConfig.getAllPackZooKeeperServerConfig());
+
     _ugi = PackConfig.getUgi();
     _conf = PackConfig.getConfiguration();
     _rootPath = PackConfig.getHdfsTarget();
@@ -140,15 +149,11 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
     PackUtils.closeOnShutdown(_serverStatusManager, _zk);
 
     _hdfsBlockGarbageCollector = new PackHdfsBlockGarbageCollector(_ugi, _conf, _delayBeforeRemoval);
-
-    // String kafkaZkConnection = PackConfig.getKafkaZkConnection();
-    // if (kafkaZkConnection != null) {
-    // _broadcastFactory = new PackKafkaBroadcastFactory(new
-    // PackKafkaClientFactory(kafkaZkConnection));
-    // } else {
-    _broadcastFactory = new PackZooKeeperBroadcastFactory(_zk);
-    // }
-
+    
+    ZooKeeperClient zkBroadCast = ZkUtils.addOnShutdownCloseTrigger(
+        ZkUtils.newZooKeeper(_zooKeeperServer.getLocalConnection(), sessionTimeout));
+    _broadcastFactory = new PackZooKeeperBroadcastFactory(zkBroadCast);
+    
     _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory();
 
     TargetServerInfo info = getInfo();
@@ -476,6 +481,6 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
 
   @Override
   public void close() throws IOException {
-    PackUtils.close(LOGGER, _serverStatusManager, _hdfsBlockGarbageCollector);
+    PackUtils.close(LOGGER, _serverStatusManager, _hdfsBlockGarbageCollector, _zooKeeperServer);
   }
 }

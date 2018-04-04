@@ -15,17 +15,17 @@ import org.apache.zookeeper.server.quorum.QuorumPeerMain;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class PackZooKeeperCluster implements Closeable {
+public class PackZooKeeperServer implements Closeable {
 
-  private static Logger LOGGER = LoggerFactory.getLogger(PackZooKeeperCluster.class);
+  private static Logger LOGGER = LoggerFactory.getLogger(PackZooKeeperServer.class);
 
   private static final String MYID = "myid";
   private final Thread _serverThread;
   private final PackQuorumPeerMain _quorumPeerMain;
   private final int _clientPort;
 
-  public PackZooKeeperCluster(File dir, PackZooKeeperServerConfig myConfig, List<PackZooKeeperServerConfig> configs)
-      throws IOException, ConfigException {
+  public PackZooKeeperServer(File dir, PackZooKeeperServerConfig myConfig, List<PackZooKeeperServerConfig> configs)
+      throws IOException {
     _clientPort = myConfig.getClientPort();
     dir.mkdirs();
     writeMyIdIfNeeded(dir, myConfig.getId());
@@ -46,7 +46,11 @@ public class PackZooKeeperCluster implements Closeable {
     }
 
     QuorumPeerConfig config = new QuorumPeerConfig();
-    config.parseProperties(zkProp);
+    try {
+      config.parseProperties(zkProp);
+    } catch (ConfigException e) {
+      throw new IOException(e);
+    }
 
     _quorumPeerMain = new PackQuorumPeerMain();
     _serverThread =

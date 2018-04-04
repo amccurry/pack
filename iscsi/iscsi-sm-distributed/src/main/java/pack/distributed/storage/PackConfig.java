@@ -1,21 +1,36 @@
 package pack.distributed.storage;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMap.Builder;
+
+import pack.distributed.storage.zk.PackZooKeeperServerConfig;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
+  public static final String SERVER_ID = "SERVER_ID";
+  public static final String SERVER_LEADER_ELECT_PORT = "SERVER_LEADER_ELECT_PORT";
+  public static final String SERVER_PEER_PORT = "SERVER_PEER_PORT";
+  public static final String SERVER_CLIENT_PORT = "SERVER_CLIENT_PORT";
+  public static final String SERVER_ID_LIST = "SERVER_ID_LIST";
   public static final String HDFS_BLOCK_GC_DELAY = "HDFS_BLOCK_GC_DELAY";
   public static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS = "WRITE_BLOCK_MONITOR_BIND_ADDRESS";
   public static final String WRITE_BLOCK_MONITOR_ADDRESS = "WRITE_BLOCK_MONITOR_ADDRESS";
@@ -146,6 +161,55 @@ public class PackConfig {
 
   public static int getHttpPort() {
     return Integer.parseInt(PackUtils.getProperty(PACK_HTTP_PORT, PACK_HTTP_PORT_DEFAULT));
+  }
+
+  public static PackZooKeeperServerConfig getPackZooKeeperServerConfig() {
+    long serverId = Long.parseLong(PackUtils.getPropertyFailIfMissing(SERVER_ID));
+    return createPackZooKeeperServerConfig(serverId);
+  }
+
+  private static PackZooKeeperServerConfig createPackZooKeeperServerConfig(long serverId) {
+    return PackZooKeeperServerConfig.builder()
+                                    .clientPort(
+                                        Integer.parseInt(PackUtils.getPropertyFailIfMissing(SERVER_CLIENT_PORT)))
+                                    .peerPort(Integer.parseInt(PackUtils.getPropertyFailIfMissing(SERVER_PEER_PORT)))
+                                    .leaderElectPort(
+                                        Integer.parseInt(PackUtils.getPropertyFailIfMissing(SERVER_LEADER_ELECT_PORT)))
+                                    .id(serverId)
+                                    .hostname(findHostName(serverId))
+                                    .build();
+  }
+
+  private static String findHostName(long serverId) {
+    Map<Long, String> serverToId = getServerToId();
+    return serverToId.get(serverId);
+  }
+
+  private static Map<Long, String> getServerToId() {
+    File file = new File(PackUtils.getPropertyFailIfMissing(SERVER_ID_LIST));
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file)))) {
+      String line;
+      Builder<Long, String> builder = ImmutableMap.builder();
+      while ((line = reader.readLine()) != null) {
+        int indexOf1 = line.indexOf(':');
+        int indexOf2 = line.indexOf('=');
+        String server = line.substring(0, indexOf1);
+        String id = line.substring(indexOf2 + 1);
+        builder.put(Long.parseLong(id), server);
+      }
+      return builder.build();
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  public static List<PackZooKeeperServerConfig> getAllPackZooKeeperServerConfig() {
+    Map<Long, String> serverToId = getServerToId();
+    ImmutableList.Builder<PackZooKeeperServerConfig> builder = ImmutableList.builder();
+    for (Entry<Long, String> e : serverToId.entrySet()) {
+      builder.add(createPackZooKeeperServerConfig(e.getKey()));
+    }
+    return builder.build();
   }
 
 }
