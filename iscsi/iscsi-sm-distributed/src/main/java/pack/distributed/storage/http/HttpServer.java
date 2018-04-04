@@ -1,9 +1,5 @@
 package pack.distributed.storage.http;
 
-import static spark.Spark.get;
-import static spark.Spark.port;
-import static spark.Spark.staticFileLocation;
-
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -27,6 +23,7 @@ import pack.distributed.storage.metrics.json.JsonReporter;
 import pack.distributed.storage.metrics.json.SetupJvmMetrics;
 import pack.iscsi.storage.utils.PackUtils;
 import spark.ModelAndView;
+import spark.Service;
 import spark.TemplateViewRoute;
 import spark.template.freemarker.FreeMarkerEngine;
 
@@ -126,8 +123,11 @@ public class HttpServer {
     startHttpServer(config, new JsonReporter(new MetricRegistry()));
   }
 
-  public static void startHttpServer(HttpServerConfig httpServerConfig, JsonReporter jsonReporter) {
-    port(httpServerConfig.getPort());
+  public static Service startHttpServer(HttpServerConfig httpServerConfig, JsonReporter jsonReporter) {
+    Service service = Service.ignite();
+
+    service.ipAddress(httpServerConfig.getAddress());
+    service.port(httpServerConfig.getPort());
 
     PackDao dao = httpServerConfig.getPackDao();
 
@@ -135,28 +135,28 @@ public class HttpServer {
     config.setTemplateLoader(new ClassTemplateLoader(HttpServer.class, WEB));
     FreeMarkerEngine engine = new FreeMarkerEngine(config);
 
-    staticFileLocation(WEB);
+    service.staticFileLocation(WEB);
 
     TemplateViewRoute overview = (TemplateViewRoute) (request, response) -> {
       List<TargetServerInfo> targets = dao.getTargets();
       List<CompactorServerInfo> compactors = dao.getCompactors();
       return new ModelAndView(ImmutableMap.of("targets", targets, "compactors", compactors), "index.ftl");
     };
-    get("/", overview, engine);
-    get("/index.html", overview, engine);
-    get("/sessions.html", (request, response) -> {
+    service.get("/", overview, engine);
+    service.get("/index.html", overview, engine);
+    service.get("/sessions.html", (request, response) -> {
       List<Session> sessions = dao.getSessions();
       return new ModelAndView(ImmutableMap.of("sessions", sessions), "sessions.ftl");
     }, engine);
-    get("/volumes.html", (request, response) -> {
+    service.get("/volumes.html", (request, response) -> {
       List<Volume> volumes = dao.getVolumes();
       return new ModelAndView(ImmutableMap.of("volumes", volumes), "volumes.ftl");
     }, engine);
-    get("/metrics.html", (request, response) -> {
+    service.get("/metrics.html", (request, response) -> {
       List<Metric> metrics = dao.getMetrics();
       return new ModelAndView(ImmutableMap.of("metrics", metrics), "metrics.ftl");
     }, engine);
-    get("/metrics/text", (request, response) -> {
+    service.get("/metrics/text", (request, response) -> {
       response.type("text/plain");
       ServletOutputStream outputStream = response.raw()
                                                  .getOutputStream();
@@ -165,7 +165,7 @@ public class HttpServer {
       outputStream.flush();
       return "";
     });
-    get("/metrics/json", (request, response) -> {
+    service.get("/metrics/json", (request, response) -> {
       response.type("application/javascript");
       ServletOutputStream outputStream = response.raw()
                                                  .getOutputStream();
@@ -174,6 +174,8 @@ public class HttpServer {
 
       return "";
     });
+
+    return service;
 
   }
 

@@ -49,7 +49,7 @@ public class PackServerStatusManager implements ServerStatusManager {
   private final int _writeBlockMonitorPort;
   private final String _writeBlockMonitorAddress;
   private final Object _serverLock = new Object();
-  private final Map<String, BlockingQueue<BlockUpdateInfoBatch>> _sendingQueue = new ConcurrentHashMap<>();
+  private final Map<String, BlockingQueue<BlockUpdateInfoBatchStatus>> _sendingQueue = new ConcurrentHashMap<>();
   private final int _queueDepth = 64;
   private final ServerSocket _serverSocket;
 
@@ -71,7 +71,8 @@ public class PackServerStatusManager implements ServerStatusManager {
     startServerWatcher();
   }
 
-  private BlockingQueue<BlockUpdateInfoBatch> startSender(String server, BlockingQueue<BlockUpdateInfoBatch> queue) {
+  private BlockingQueue<BlockUpdateInfoBatchStatus> startSender(String server,
+      BlockingQueue<BlockUpdateInfoBatchStatus> queue) {
     _service.submit(() -> {
       while (_running.get()) {
         try {
@@ -108,28 +109,40 @@ public class PackServerStatusManager implements ServerStatusManager {
     });
   }
 
-  private void send(String server, BlockingQueue<BlockUpdateInfoBatch> queue) throws IOException, InterruptedException {
+  private void send(String server, BlockingQueue<BlockUpdateInfoBatchStatus> queue)
+      throws IOException, InterruptedException {
     try (Socket socket = new Socket(server, _writeBlockMonitorPort)) {
       socket.setTcpNoDelay(true);
       socket.setKeepAlive(true);
       try (DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream())) {
-        List<BlockUpdateInfoBatch> drain = new ArrayList<>();
+        List<BlockUpdateInfoBatchStatus> drain = new ArrayList<>();
+        List<BlockUpdateInfoBatchStatus> sent = new ArrayList<>();
         while (_running.get()) {
           {
-            BlockUpdateInfoBatch ubib = queue.take();
+            BlockUpdateInfoBatchStatus ubibs = queue.take();
             queue.drainTo(drain);
-            write(outputStream, ubib);
+            write(outputStream, ubibs);
+            sent.add(ubibs);
           }
-          for (BlockUpdateInfoBatch ubib : drain) {
-            write(outputStream, ubib);
+          for (BlockUpdateInfoBatchStatus ubibs : drain) {
+            write(outputStream, ubibs);
+            sent.add(ubibs);
           }
           drain.clear();
+          // for (BlockUpdateInfoBatchStatus status : sent) {
+          // synchronized (status) {
+          // status._sent.set(true);
+          // status.notify();
+          // }
+          // }
+          outputStream.flush();
         }
       }
     }
   }
 
-  private void write(DataOutput output, BlockUpdateInfoBatch updateBlockIdBatch) throws IOException {
+  private void write(DataOutput output, BlockUpdateInfoBatchStatus updateBlockIdBatchStatus) throws IOException {
+    BlockUpdateInfoBatch updateBlockIdBatch = updateBlockIdBatchStatus._batch;
     write(output, updateBlockIdBatch.getVolume());
     List<BlockUpdateInfo> batch = updateBlockIdBatch.getBatch();
     int size = batch.size();
@@ -211,34 +224,63 @@ public class PackServerStatusManager implements ServerStatusManager {
   }
 
   @Override
-  public void broadcastToAllServers(BlockUpdateInfoBatch updateBlockIdBatch) {
+  public void broadcastToAllServers(BlockUpdateInfoBatch updateBlockIdBatch) throws InterruptedException {
     Set<String> servers = _servers.get();
     if (servers == null || servers.isEmpty()) {
       return;
     } else if (servers.size() == 1 && servers.contains(_writeBlockMonitorAddress)) {
       return;
     }
+    List<BlockUpdateInfoBatchStatus> statusList = new ArrayList<>();
     try {
       for (String server : servers) {
-        BlockingQueue<BlockUpdateInfoBatch> queue = getSendingQueue(server);
-        queue.put(updateBlockIdBatch);
+        // don't send to your self
+        if (!server.equals(_writeBlockMonitorAddress)) {
+          BlockingQueue<BlockUpdateInfoBatchStatus> queue = getSendingQueue(server);
+          BlockUpdateInfoBatchStatus status = new BlockUpdateInfoBatchStatus(updateBlockIdBatch);
+          statusList.add(status);
+          queue.put(status);
+        }
       }
     } catch (InterruptedException e) {
       LOGGER.error("Unknown error trying to send block update info", e);
     }
+    // boolean done = false;
+    // WAIT: while (!done) {
+    // done = true;
+    // for (BlockUpdateInfoBatchStatus status : statusList) {
+    // synchronized (status) {
+    // done = status._sent.get();
+    // if (!done) {
+    // status.wait();
+    // continue WAIT;
+    // }
+    // }
+    // }
+    // }
   }
 
-  private BlockingQueue<BlockUpdateInfoBatch> getSendingQueue(String server) {
-    BlockingQueue<BlockUpdateInfoBatch> queue = _sendingQueue.get(server);
+  static class BlockUpdateInfoBatchStatus {
+    final AtomicBoolean _sent = new AtomicBoolean(false);
+    final BlockUpdateInfoBatch _batch;
+
+    BlockUpdateInfoBatchStatus(BlockUpdateInfoBatch batch) {
+      _batch = batch;
+    }
+
+  }
+
+  private BlockingQueue<BlockUpdateInfoBatchStatus> getSendingQueue(String server) {
+    BlockingQueue<BlockUpdateInfoBatchStatus> queue = _sendingQueue.get(server);
     if (queue == null) {
       return newSendingQueue(server);
     }
     return queue;
   }
 
-  private BlockingQueue<BlockUpdateInfoBatch> newSendingQueue(String server) {
-    BlockingQueue<BlockUpdateInfoBatch> newQueue = new ArrayBlockingQueue<>(_queueDepth);
-    BlockingQueue<BlockUpdateInfoBatch> current = _sendingQueue.putIfAbsent(server, newQueue);
+  private BlockingQueue<BlockUpdateInfoBatchStatus> newSendingQueue(String server) {
+    BlockingQueue<BlockUpdateInfoBatchStatus> newQueue = new ArrayBlockingQueue<>(_queueDepth);
+    BlockingQueue<BlockUpdateInfoBatchStatus> current = _sendingQueue.putIfAbsent(server, newQueue);
     if (current == null) {
       return startSender(server, newQueue);
     }

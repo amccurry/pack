@@ -16,7 +16,7 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
-  private static final String HDFS_BLOCK_GC_DELAY = "HDFS_BLOCK_GC_DELAY";
+  public static final String HDFS_BLOCK_GC_DELAY = "HDFS_BLOCK_GC_DELAY";
   public static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS = "WRITE_BLOCK_MONITOR_BIND_ADDRESS";
   public static final String WRITE_BLOCK_MONITOR_ADDRESS = "WRITE_BLOCK_MONITOR_ADDRESS";
   public static final String MAX_BLOCK_FILE_SIZE = "MAX_BLOCK_FILE_SIZE";
@@ -44,6 +44,11 @@ public class PackConfig {
   public static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS_DEFAULT = "0.0.0.0";
   public static final int SERVER_STATUS_PORT_DEAULT = 9753;
   public static final long HDFS_BLOCK_GC_DELAY_DEAULT = TimeUnit.MINUTES.toMillis(10);
+  public static final String PACK_ISCSI_ADDRESS = "PACK_ISCSI_ADDRESS";
+  public static final String PACK_HTTP_ADDRESS = "PACK_HTTP_ADDRESS";
+  public static final String PACK_HTTP_ADDRESS_DEFAULT = "0.0.0.0";
+  public static final String PACK_HTTP_PORT_DEFAULT = "8642";
+  public static final String PACK_HTTP_PORT = "PACK_HTTP_PORT";
 
   public static Path getHdfsTarget() {
     return new Path(PackUtils.getPropertyFailIfMissing(HDFS_TARGET_PATH));
@@ -133,6 +138,14 @@ public class PackConfig {
 
   public static long getHdfsBlockGCDelay() {
     return Long.parseLong(PackUtils.getProperty(HDFS_BLOCK_GC_DELAY, Long.toString(HDFS_BLOCK_GC_DELAY_DEAULT)));
+  }
+
+  public static String getHttpAddress() {
+    return PackUtils.getProperty(PACK_HTTP_ADDRESS, PACK_HTTP_ADDRESS_DEFAULT);
+  }
+
+  public static int getHttpPort() {
+    return Integer.parseInt(PackUtils.getProperty(PACK_HTTP_PORT, PACK_HTTP_PORT_DEFAULT));
   }
 
 }

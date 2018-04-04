@@ -1,12 +1,13 @@
 package pack.distributed.storage.zk;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.apache.zookeeper.server.quorum.QuorumPeerConfig.ConfigException;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -34,18 +35,18 @@ public class PackZooKeeperBroadcastFactoryTest {
   private static EmbeddedZookeeper ZOOKEEPER;
 
   @BeforeClass
-  public static void setup() throws IOException {
+  public static void setupClass() throws IOException {
     ZOOKEEPER = new EmbeddedZookeeper();
     ZOOKEEPER.startup();
   }
 
   @AfterClass
-  public static void teardown() {
+  public static void teardownClass() {
     ZOOKEEPER.shutdown();
   }
 
   @Test
-  public void testPackZooKeeperBroadcastFactory() throws IOException, InterruptedException {
+  public void testPackZooKeeperBroadcastFactory() throws IOException, InterruptedException, ConfigException {
     String connection = ZOOKEEPER.getConnection();
     Random random = new Random();
     try (PackTracer tracer = PackTracer.create(LOGGER, "test")) {
