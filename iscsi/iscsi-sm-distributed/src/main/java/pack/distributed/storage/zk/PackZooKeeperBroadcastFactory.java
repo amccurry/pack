@@ -71,8 +71,7 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
       byte[] bs = Blocks.toBytes(blocks);
       try {
         String path = _zk.create(_zkPath + "/", bs, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT_SEQUENTIAL);
-        // LOGGER.info("write blocks {} {} {}", Md5Utils.md5AsBase64(bs),
-        // blocks.hashCode(), path);
+        LOGGER.info("write blocks {} {} {}", Md5Utils.md5AsBase64(bs), blocks.hashCode(), path);
       } catch (KeeperException | InterruptedException e) {
         throw new IOException(e);
       }
@@ -134,8 +133,7 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
               if (stat != null) {
                 byte[] bs = _zk.getData(_zkPath + "/" + s, false, stat);
                 Blocks blocks = Blocks.toBlocks(bs);
-                // LOGGER.info("read blocks {} {} {}", Md5Utils.md5AsBase64(bs),
-                // blocks.hashCode(), _zkPath + "/" + s);
+                LOGGER.info("read blocks {} {} {}", Md5Utils.md5AsBase64(bs), blocks.hashCode(), _zkPath + "/" + s);
                 List<Block> blocksList = blocks.getBlocks();
                 long offset = getOffset(s);
                 for (Block block : blocksList) {

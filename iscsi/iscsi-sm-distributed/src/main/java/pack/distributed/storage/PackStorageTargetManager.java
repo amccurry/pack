@@ -143,12 +143,13 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
 
     _hdfsBlockGarbageCollector = new PackHdfsBlockGarbageCollector(_ugi, _conf, _delayBeforeRemoval);
 
-    String kafkaZkConnection = PackConfig.getKafkaZkConnection();
-    if (kafkaZkConnection != null) {
-      _broadcastFactory = new PackKafkaBroadcastFactory(new PackKafkaClientFactory(kafkaZkConnection));
-    } else {
-      _broadcastFactory = new PackZooKeeperBroadcastFactory(_zk);
-    }
+    // String kafkaZkConnection = PackConfig.getKafkaZkConnection();
+    // if (kafkaZkConnection != null) {
+    // _broadcastFactory = new PackKafkaBroadcastFactory(new
+    // PackKafkaClientFactory(kafkaZkConnection));
+    // } else {
+    _broadcastFactory = new PackZooKeeperBroadcastFactory(_zk);
+    // }
 
     _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory();
 
