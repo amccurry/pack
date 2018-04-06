@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PARCEL_FILE=$(ls iscsi-server/target/*.tar.gz)
-if [ -z ${PARCEL_NAME+x} ] ; then
+if [ -z ${PACK_NAME+x} ] ; then
   PACK_NAME="PACK"
 fi
 PACK_VERSION=$(echo ${PARCEL_FILE##*/} | sed "s#${PACK_NAME}-##g" | sed 's#\.tar\.gz##g')

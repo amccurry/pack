@@ -283,7 +283,13 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
       Path commit = fileSystem.makeQualified(new Path(blockDir, cache.getMaxLayer() + ".block"));
       CommitFile commitFile = () -> {
         if (!fileSystem.rename(path, commit)) {
-          throw new IOException("Could not commit file " + commit);
+          if (fileSystem.exists(commit)) {
+            fileSystem.delete(path, false);
+            LOGGER.info("File {} was already written", commit);
+            return;
+          } else {
+            throw new IOException("Could not commit file " + commit);
+          }
         }
         LOGGER.info("Block file added {}", commit);
       };

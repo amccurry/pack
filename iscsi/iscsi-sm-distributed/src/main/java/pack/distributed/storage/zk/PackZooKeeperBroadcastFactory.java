@@ -12,8 +12,6 @@ import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.data.Stat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
 
@@ -30,7 +28,9 @@ import pack.distributed.storage.wal.WalCacheManager;
 
 public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(PackZooKeeperBroadcastFactory.class);
+  // private static final Logger LOGGER =
+  // LoggerFactory.getLogger(PackZooKeeperBroadcastFactory.class);
+  
   private final ZooKeeperClient _zk;
 
   public PackZooKeeperBroadcastFactory(ZooKeeperClient zk) {
@@ -70,7 +70,9 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
     protected void writeBlocks(Blocks blocks) throws IOException {
       byte[] bs = Blocks.toBytes(blocks);
       try {
-        String path = _zk.create(_zkPath + "/", bs, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT_SEQUENTIAL);
+        _zk.create(_zkPath + "/", bs, Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT_SEQUENTIAL);
+        // String path = _zk.create(_zkPath + "/", bs, Ids.OPEN_ACL_UNSAFE,
+        // CreateMode.PERSISTENT_SEQUENTIAL);
         // LOGGER.info("write blocks {} {} {}", Md5Utils.md5AsBase64(bs),
         // blocks.hashCode(), path);
       } catch (KeeperException | InterruptedException e) {

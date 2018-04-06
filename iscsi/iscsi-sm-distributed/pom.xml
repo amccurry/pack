@@ -57,6 +57,8 @@
 			<artifactId>kafka-clients</artifactId>
 			<version>1.0.0</version>
 		</dependency>
+		<!-- <dependency> <groupId>com.github.zk1931</groupId> <artifactId>jzab</artifactId> 
+			<version>0.3.0</version> </dependency> -->
 		<dependency>
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-minicluster</artifactId>

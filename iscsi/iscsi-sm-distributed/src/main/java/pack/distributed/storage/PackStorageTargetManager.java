@@ -61,6 +61,7 @@ import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.status.PackServerStatusManager;
 import pack.distributed.storage.status.ServerStatusManager;
 import pack.distributed.storage.trace.TraceStorageModule;
+import pack.distributed.storage.zk.EmbeddedZookeeper;
 import pack.distributed.storage.zk.PackZooKeeperBroadcastFactory;
 import pack.distributed.storage.zk.PackZooKeeperServer;
 import pack.distributed.storage.zk.PackZooKeeperServerConfig;
@@ -99,7 +100,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
   private final PackBroadcastFactory _broadcastFactory;
   private final ServerStatusManager _serverStatusManager;
   private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
-  private final PackZooKeeperServer _zooKeeperServer;
+  private final Closeable _zooKeeperServerClosable;
 
   public PackStorageTargetManager() throws IOException {
     this(InetAddress.getLocalHost()
@@ -123,10 +124,21 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
     File walCacheDir = PackConfig.getWalCachePath();
     _cacheDir = new File(walCacheDir, "wal-cache");
     _cacheDir.mkdirs();
-    File zkDir = new File(walCacheDir, "zk");
-    zkDir.mkdirs();
-    PackZooKeeperServerConfig myConfig = PackConfig.getPackZooKeeperServerConfig();
-    _zooKeeperServer = new PackZooKeeperServer(zkDir, myConfig, PackConfig.getAllPackZooKeeperServerConfig());
+    String dataZkConnection;
+    if (PackConfig.isDataZkEmbedded()) {
+      EmbeddedZookeeper zookeeper = new EmbeddedZookeeper();
+      zookeeper.startup();
+      _zooKeeperServerClosable = () -> zookeeper.shutdown();
+      dataZkConnection = zookeeper.getConnection();
+    } else {
+      File zkDir = PackConfig.getZkPath();
+      zkDir.mkdirs();
+      PackZooKeeperServerConfig myConfig = PackConfig.getPackZooKeeperServerConfig();
+      PackZooKeeperServer zooKeeperServer = new PackZooKeeperServer(zkDir, myConfig,
+          PackConfig.getAllPackZooKeeperServerConfig());
+      _zooKeeperServerClosable = zooKeeperServer;
+      dataZkConnection = zooKeeperServer.getLocalConnection();
+    }
 
     _ugi = PackConfig.getUgi();
     _conf = PackConfig.getConfiguration();
@@ -149,11 +161,11 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
     PackUtils.closeOnShutdown(_serverStatusManager, _zk);
 
     _hdfsBlockGarbageCollector = new PackHdfsBlockGarbageCollector(_ugi, _conf, _delayBeforeRemoval);
-    
+
     ZooKeeperClient zkBroadCast = ZkUtils.addOnShutdownCloseTrigger(
-        ZkUtils.newZooKeeper(_zooKeeperServer.getLocalConnection(), sessionTimeout));
+        ZkUtils.newZooKeeper(dataZkConnection, sessionTimeout));
     _broadcastFactory = new PackZooKeeperBroadcastFactory(zkBroadCast);
-    
+
     _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory();
 
     TargetServerInfo info = getInfo();
@@ -481,6 +493,6 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
 
   @Override
   public void close() throws IOException {
-    PackUtils.close(LOGGER, _serverStatusManager, _hdfsBlockGarbageCollector, _zooKeeperServer);
+    PackUtils.close(LOGGER, _serverStatusManager, _hdfsBlockGarbageCollector, _zooKeeperServerClosable);
   }
 }

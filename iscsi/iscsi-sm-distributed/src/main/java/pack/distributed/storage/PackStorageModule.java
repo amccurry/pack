@@ -153,7 +153,7 @@ public class PackStorageModule extends BaseStorageModule {
     }
   }
 
-  private void setupSessionWritablity() throws IOException {
+  public void setupSessionWritablity() throws IOException {
     try {
       PackStorageTargetManager.checkSessionWritablity(_zk, _targetHostAddress, _name);
     } catch (IOException | KeeperException | InterruptedException e) {

@@ -26,6 +26,7 @@ import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
+  private static final String ZK_DIR = "ZK_DIR";
   public static final String SERVER_ID = "SERVER_ID";
   public static final String SERVER_LEADER_ELECT_PORT = "SERVER_LEADER_ELECT_PORT";
   public static final String SERVER_PEER_PORT = "SERVER_PEER_PORT";
@@ -105,6 +106,10 @@ public class PackConfig {
 
   public static File getWalCachePath() {
     return new File(PackUtils.getPropertyFailIfMissing(WAL_CACHE_DIR));
+  }
+
+  public static File getZkPath() {
+    return new File(PackUtils.getPropertyFailIfMissing(ZK_DIR));
   }
 
   public static long getMaxWalSize() {
@@ -210,6 +215,10 @@ public class PackConfig {
       builder.add(createPackZooKeeperServerConfig(e.getKey()));
     }
     return builder.build();
+  }
+
+  public static boolean isDataZkEmbedded() {
+    return PackUtils.getProperty(ZK_DIR) == null;
   }
 
 }

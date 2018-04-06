@@ -6,7 +6,11 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.List;
 import java.util.Properties;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
 
+import org.apache.zookeeper.server.PurgeTxnLog;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.quorum.QuorumPeer;
 import org.apache.zookeeper.server.quorum.QuorumPeerConfig;
@@ -23,6 +27,8 @@ public class PackZooKeeperServer implements Closeable {
   private final Thread _serverThread;
   private final PackQuorumPeerMain _quorumPeerMain;
   private final int _clientPort;
+
+  private Timer _purgeTimer;
 
   public PackZooKeeperServer(File dir, PackZooKeeperServerConfig myConfig, List<PackZooKeeperServerConfig> configs)
       throws IOException {
@@ -52,6 +58,10 @@ public class PackZooKeeperServer implements Closeable {
       throw new IOException(e);
     }
 
+    PurgeTask purgeTask = new PurgeTask(config.getDataDir(), config.getDataLogDir(), config.getSnapRetainCount());
+    _purgeTimer = new Timer("purge-timer", true);
+    _purgeTimer.schedule(purgeTask, TimeUnit.MINUTES.toMillis(1), TimeUnit.MINUTES.toMillis(1));
+
     _quorumPeerMain = new PackQuorumPeerMain();
     _serverThread =
 
@@ -65,6 +75,7 @@ public class PackZooKeeperServer implements Closeable {
 
   @Override
   public void close() throws IOException {
+    _purgeTimer.cancel();
     QuorumPeer quorumPeer = _quorumPeerMain.getQuorumPeer();
     ServerCnxnFactory factory = quorumPeer.getCnxnFactory();
     factory.shutdown();
@@ -95,6 +106,29 @@ public class PackZooKeeperServer implements Closeable {
   static class PackQuorumPeerMain extends QuorumPeerMain {
     QuorumPeer getQuorumPeer() {
       return this.quorumPeer;
+    }
+  }
+
+  static class PurgeTask extends TimerTask {
+    private String logsDir;
+    private String snapsDir;
+    private int snapRetainCount;
+
+    public PurgeTask(String dataDir, String snapDir, int count) {
+      logsDir = dataDir;
+      snapsDir = snapDir;
+      snapRetainCount = count;
+    }
+
+    @Override
+    public void run() {
+      LOGGER.info("Purge task started.");
+      try {
+        PurgeTxnLog.purge(new File(logsDir), new File(snapsDir), snapRetainCount);
+      } catch (Exception e) {
+        LOGGER.error("Error occurred while purging.", e);
+      }
+      LOGGER.info("Purge task completed.");
     }
   }
 

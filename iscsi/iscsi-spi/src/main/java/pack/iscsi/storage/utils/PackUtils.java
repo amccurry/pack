@@ -6,9 +6,12 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.management.ManagementFactory;
 import java.math.BigInteger;
+import java.net.ServerSocket;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -16,7 +19,12 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
+import javax.management.JMException;
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
+
 import org.apache.log4j.PropertyConfigurator;
+import org.apache.log4j.jmx.HierarchyDynamicMBean;
 import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -250,6 +258,45 @@ public class PackUtils {
     } else {
       PropertyConfigurator.configure(log4jConfigFile);
     }
+    try {
+      registerLog4jMBeans();
+    } catch (JMException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  /**
+   * Register the log4j JMX mbeans. Set environment variable
+   * "pack.jmx.log4j.disable" to true to disable registration.
+   */
+  public static void registerLog4jMBeans() throws JMException {
+    if (Boolean.getBoolean("pack.jmx.log4j.disable") == true) {
+      return;
+    }
+
+    MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+
+    // Create and Register the top level Log4J MBean
+    org.apache.log4j.jmx.HierarchyDynamicMBean hdm = new HierarchyDynamicMBean();
+
+    ObjectName mbo = new ObjectName("log4j:hiearchy=default");
+    mbs.registerMBean(hdm, mbo);
+
+    // Add the root logger to the Hierarchy MBean
+    org.apache.log4j.Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
+    hdm.addLoggerMBean(rootLogger.getName());
+
+    // Get each logger from the Log4J Repository and add it to
+    // the Hierarchy MBean created above.
+    org.apache.log4j.spi.LoggerRepository r = org.apache.log4j.LogManager.getLoggerRepository();
+    Enumeration<?> enumer = r.getCurrentLoggers();
+    org.apache.log4j.Logger logger = null;
+
+    while (enumer.hasMoreElements()) {
+      logger = (org.apache.log4j.Logger) enumer.nextElement();
+      hdm.addLoggerMBean(logger.getName());
+    }
+
   }
 
   public static String getMapName(String name) {
@@ -257,13 +304,11 @@ public class PackUtils {
   }
 
   public static long getRandomLong() {
-    return _random.get()
-                  .nextLong();
+    return getRandom().nextLong();
   }
 
   public static int getRandomInt() {
-    return _random.get()
-                  .nextInt();
+    return getRandom().nextInt();
   }
 
   public static void putInt(byte[] b, int off, int val) {
@@ -310,4 +355,29 @@ public class PackUtils {
     }
   }
 
+  public static int getAvailablePort() {
+    try {
+      ServerSocket socket = new ServerSocket(0);
+      try {
+        return socket.getLocalPort();
+      } finally {
+        socket.close();
+      }
+    } catch (IOException e) {
+      throw new IllegalStateException("Cannot find available port: " + e.getMessage(), e);
+    }
+  }
+
+  public static File constructTempDir(String dirPrefix) {
+    File file = new File(System.getProperty("java.io.tmpdir"), dirPrefix + getRandom().nextInt(10000000));
+    if (!file.mkdirs()) {
+      throw new RuntimeException("could not create temp directory: " + file.getAbsolutePath());
+    }
+    file.deleteOnExit();
+    return file;
+  }
+
+  public static Random getRandom() {
+    return _random.get();
+  }
 }
