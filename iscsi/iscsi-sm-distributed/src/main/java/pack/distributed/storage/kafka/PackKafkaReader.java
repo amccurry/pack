@@ -15,14 +15,14 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
 
-import pack.distributed.storage.broadcast.Block;
-import pack.distributed.storage.broadcast.Blocks;
-import pack.distributed.storage.broadcast.PackBroadcastReader;
 import pack.distributed.storage.hdfs.MaxBlockLayer;
-import pack.distributed.storage.wal.WalCacheManager;
+import pack.distributed.storage.wal.Block;
+import pack.distributed.storage.wal.Blocks;
+import pack.distributed.storage.wal.PackWalReader;
+import pack.distributed.storage.walcache.WalCacheManager;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class PackKafkaReader extends PackBroadcastReader {
+public class PackKafkaReader extends PackWalReader {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackKafkaReader.class);
 

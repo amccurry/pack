@@ -16,35 +16,35 @@ import org.apache.zookeeper.data.Stat;
 import com.google.common.collect.ImmutableList;
 
 import pack.distributed.storage.PackMetaData;
-import pack.distributed.storage.broadcast.Block;
-import pack.distributed.storage.broadcast.Blocks;
-import pack.distributed.storage.broadcast.PackBroadcastFactory;
-import pack.distributed.storage.broadcast.PackBroadcastReader;
-import pack.distributed.storage.broadcast.PackBroadcastWriter;
 import pack.distributed.storage.hdfs.MaxBlockLayer;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
-import pack.distributed.storage.status.ServerStatusManager;
-import pack.distributed.storage.wal.WalCacheManager;
+import pack.distributed.storage.status.BroadcastServerManager;
+import pack.distributed.storage.wal.Block;
+import pack.distributed.storage.wal.Blocks;
+import pack.distributed.storage.wal.PackWalFactory;
+import pack.distributed.storage.wal.PackWalReader;
+import pack.distributed.storage.wal.PackWalWriter;
+import pack.distributed.storage.walcache.WalCacheManager;
 
-public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
+public class PackZooKeeperWalFactory extends PackWalFactory {
 
   // private static final Logger LOGGER =
   // LoggerFactory.getLogger(PackZooKeeperBroadcastFactory.class);
   
   private final ZooKeeperClient _zk;
 
-  public PackZooKeeperBroadcastFactory(ZooKeeperClient zk) {
+  public PackZooKeeperWalFactory(ZooKeeperClient zk) {
     _zk = zk;
   }
 
   @Override
-  public PackBroadcastWriter createPackBroadcastWriter(String name, PackMetaData metaData,
-      WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager) throws IOException {
+  public PackWalWriter createPackWalWriter(String name, PackMetaData metaData,
+      WriteBlockMonitor writeBlockMonitor, BroadcastServerManager serverStatusManager) throws IOException {
     return new PackZooKeeperBroadcastWriter(name, writeBlockMonitor, serverStatusManager, _zk);
   }
 
   @Override
-  public PackBroadcastReader createPackBroadcastReader(String name, PackMetaData metaData,
+  public PackWalReader createPackWalReader(String name, PackMetaData metaData,
       WalCacheManager walCacheManager, MaxBlockLayer maxBlockLayer) throws IOException {
     return new PackZooKeeperBroadcastReader(name, metaData, walCacheManager, _zk, maxBlockLayer);
   }
@@ -53,13 +53,13 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
     return "/data/" + volumeName;
   }
 
-  static class PackZooKeeperBroadcastWriter extends PackBroadcastWriter {
+  static class PackZooKeeperBroadcastWriter extends PackWalWriter {
 
     private final ZooKeeperClient _zk;
     private final String _zkPath;
 
     public PackZooKeeperBroadcastWriter(String volumeName, WriteBlockMonitor writeBlockMonitor,
-        ServerStatusManager serverStatusManager, ZooKeeperClient zk) {
+        BroadcastServerManager serverStatusManager, ZooKeeperClient zk) {
       super(volumeName, writeBlockMonitor, serverStatusManager);
       _zk = zk;
       _zkPath = getVolumePath(volumeName);
@@ -92,7 +92,7 @@ public class PackZooKeeperBroadcastFactory extends PackBroadcastFactory {
 
   }
 
-  static class PackZooKeeperBroadcastReader extends PackBroadcastReader {
+  static class PackZooKeeperBroadcastReader extends PackWalReader {
 
     private final ZooKeeperClient _zk;
     private final String _zkPath;

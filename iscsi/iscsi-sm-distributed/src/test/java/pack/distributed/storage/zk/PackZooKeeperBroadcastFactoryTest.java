@@ -17,16 +17,16 @@ import org.slf4j.LoggerFactory;
 import com.amazonaws.util.Md5Utils;
 
 import pack.distributed.storage.PackMetaData;
-import pack.distributed.storage.broadcast.PackBroadcastReader;
-import pack.distributed.storage.broadcast.PackBroadcastWriter;
 import pack.distributed.storage.hdfs.MaxBlockLayer;
 import pack.distributed.storage.minicluster.EmbeddedZookeeper;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.status.BlockUpdateInfoBatch;
-import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.BroadcastServerManager;
 import pack.distributed.storage.trace.PackTracer;
-import pack.distributed.storage.wal.WalCacheManager;
+import pack.distributed.storage.wal.PackWalReader;
+import pack.distributed.storage.wal.PackWalWriter;
+import pack.distributed.storage.walcache.WalCacheManager;
 
 public class PackZooKeeperBroadcastFactoryTest {
 
@@ -51,13 +51,13 @@ public class PackZooKeeperBroadcastFactoryTest {
     Random random = new Random();
     try (PackTracer tracer = PackTracer.create(LOGGER, "test")) {
       try (ZooKeeperClient zk = ZkUtils.newZooKeeper(connection, 30000)) {
-        PackZooKeeperBroadcastFactory factory = new PackZooKeeperBroadcastFactory(zk);
+        PackZooKeeperWalFactory factory = new PackZooKeeperWalFactory(zk);
 
         PackMetaData metaData = PackMetaData.builder()
                                             .build();
         WriteBlockMonitor writeBlockMonitor = getWriteBlockMonitor();
-        ServerStatusManager serverStatusManager = getServerStatusManager();
-        try (PackBroadcastWriter writer = factory.createPackBroadcastWriter("test", metaData, writeBlockMonitor,
+        BroadcastServerManager serverStatusManager = getServerStatusManager();
+        try (PackWalWriter writer = factory.createPackWalWriter("test", metaData, writeBlockMonitor,
             serverStatusManager)) {
 
           int blockId = random.nextInt(Integer.MAX_VALUE);
@@ -68,7 +68,7 @@ public class PackZooKeeperBroadcastFactoryTest {
 
           WalCacheManager walCacheManager = getWalCacheManager(blockId, bs, test);
           MaxBlockLayer maxBlockLayer = getMaxBlockLayer();
-          try (PackBroadcastReader reader = factory.createPackBroadcastReader("test", metaData, walCacheManager,
+          try (PackWalReader reader = factory.createPackWalReader("test", metaData, walCacheManager,
               maxBlockLayer)) {
             reader.start();
 
@@ -135,8 +135,8 @@ public class PackZooKeeperBroadcastFactoryTest {
     };
   }
 
-  private ServerStatusManager getServerStatusManager() {
-    return new ServerStatusManager() {
+  private BroadcastServerManager getServerStatusManager() {
+    return new BroadcastServerManager() {
 
       @Override
       public void close() throws IOException {

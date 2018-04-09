@@ -4,7 +4,7 @@ import java.io.Closeable;
 
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 
-public interface ServerStatusManager extends Closeable {
+public interface BroadcastServerManager extends Closeable {
 
   boolean isLeader(String name);
 

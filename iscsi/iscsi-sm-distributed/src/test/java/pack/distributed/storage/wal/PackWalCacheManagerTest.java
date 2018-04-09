@@ -30,7 +30,11 @@ import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
-import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.BroadcastServerManager;
+import pack.distributed.storage.walcache.PackWalCache;
+import pack.distributed.storage.walcache.PackWalCacheFactory;
+import pack.distributed.storage.walcache.PackWalCacheManager;
+import pack.distributed.storage.walcache.WalCacheFactory;
 import pack.distributed.storage.status.BlockUpdateInfoBatch;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -80,7 +84,7 @@ public class PackWalCacheManagerTest {
     try (PackHdfsReader hdfsReader = new PackHdfsReader(configuration, volumeDir, UserGroupInformation.getCurrentUser(),
         getHdfsBlockGC())) {
       WalCacheFactory cacheFactory = new PackWalCacheFactory(metaData, _dirFile);
-      ServerStatusManager ssm = newServerStatusManager();
+      BroadcastServerManager ssm = newServerStatusManager();
       try (PackWalCacheManager manager = new PackWalCacheManager(volumeName, WriteBlockMonitor.NO_OP, cacheFactory,
           hdfsReader, ssm, metaData, configuration, volumeDir, 1_000_000, TimeUnit.SECONDS.toMillis(10), false)) {
         File file = new File("./target/tmp/PackWalCacheManagerTest/test");
@@ -156,8 +160,8 @@ public class PackWalCacheManagerTest {
     };
   }
 
-  private ServerStatusManager newServerStatusManager() {
-    return new ServerStatusManager() {
+  private BroadcastServerManager newServerStatusManager() {
+    return new BroadcastServerManager() {
 
       @Override
       public void register(String name, WriteBlockMonitor monitor) {

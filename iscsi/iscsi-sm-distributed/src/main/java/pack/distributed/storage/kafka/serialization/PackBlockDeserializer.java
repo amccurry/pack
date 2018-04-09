@@ -6,9 +6,9 @@ import java.util.Map;
 
 import org.apache.kafka.common.serialization.Deserializer;
 
-import pack.distributed.storage.broadcast.Block;
-import pack.distributed.storage.broadcast.Blocks;
-import pack.distributed.storage.broadcast.Block.BlockBuilder;
+import pack.distributed.storage.wal.Block;
+import pack.distributed.storage.wal.Blocks;
+import pack.distributed.storage.wal.Block.BlockBuilder;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackBlockDeserializer implements Deserializer<Blocks> {

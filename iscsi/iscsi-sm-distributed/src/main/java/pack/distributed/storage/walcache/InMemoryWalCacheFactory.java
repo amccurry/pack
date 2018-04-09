@@ -1,4 +1,4 @@
-package pack.distributed.storage.wal;
+package pack.distributed.storage.walcache;
 
 import java.io.IOException;
 

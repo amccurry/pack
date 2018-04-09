@@ -1,4 +1,4 @@
-package pack.distributed.storage.broadcast;
+package pack.distributed.storage.wal;
 
 import lombok.Builder;
 import lombok.EqualsAndHashCode;

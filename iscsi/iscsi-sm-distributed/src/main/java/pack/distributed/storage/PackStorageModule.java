@@ -15,20 +15,20 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.distributed.storage.broadcast.PackBroadcastFactory;
-import pack.distributed.storage.broadcast.PackBroadcastReader;
-import pack.distributed.storage.broadcast.PackBroadcastWriter;
 import pack.distributed.storage.hdfs.HdfsBlockGarbageCollector;
 import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
-import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.BroadcastServerManager;
 import pack.distributed.storage.trace.PackTracer;
-import pack.distributed.storage.wal.PackWalCacheFactory;
-import pack.distributed.storage.wal.PackWalCacheManager;
-import pack.distributed.storage.wal.WalCacheFactory;
-import pack.distributed.storage.wal.WalCacheManager;
+import pack.distributed.storage.wal.PackWalFactory;
+import pack.distributed.storage.wal.PackWalReader;
+import pack.distributed.storage.wal.PackWalWriter;
+import pack.distributed.storage.walcache.PackWalCacheFactory;
+import pack.distributed.storage.walcache.PackWalCacheManager;
+import pack.distributed.storage.walcache.WalCacheFactory;
+import pack.distributed.storage.walcache.WalCacheManager;
 import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.iscsi.storage.BaseStorageModule;
 import pack.iscsi.storage.utils.PackUtils;
@@ -37,24 +37,24 @@ public class PackStorageModule extends BaseStorageModule {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackStorageModule.class);
 
-  private final AtomicReference<PackBroadcastWriter> _packBroadcastWriter = new AtomicReference<PackBroadcastWriter>();
+  private final AtomicReference<PackWalWriter> _packBroadcastWriter = new AtomicReference<PackWalWriter>();
   private final PackHdfsReader _hdfsReader;
   private final WalCacheManager _walCacheManager;
-  private final PackBroadcastReader _packBroadcastReader;
+  private final PackWalReader _packBroadcastReader;
   private final WriteBlockMonitor _writeBlockMonitor;
   private final WalCacheFactory _cacheFactory;
   private final UUID _serialId;
   private final String _name;
-  private final ServerStatusManager _serverStatusManager;
+  private final BroadcastServerManager _serverStatusManager;
   private final Object _lock = new Object();
   private final ZooKeeperClient _zk;
   private final String _targetHostAddress;
-  private final PackBroadcastFactory _broadcastFactory;
+  private final PackWalFactory _broadcastFactory;
   private final PackMetaData _metaData;
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
-      PackBroadcastFactory broadcastFactory, UserGroupInformation ugi, File cacheDir,
-      WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager,
+      PackWalFactory broadcastFactory, UserGroupInformation ugi, File cacheDir,
+      WriteBlockMonitor writeBlockMonitor, BroadcastServerManager serverStatusManager,
       HdfsBlockGarbageCollector hdfsBlockGarbageCollector, long maxWalSize, long maxWalLifeTime, ZooKeeperClient zk,
       String targetHostAddress) throws IOException {
     super(metaData.getLength(), metaData.getBlockSize());
@@ -71,7 +71,7 @@ public class PackStorageModule extends BaseStorageModule {
     _cacheFactory = new PackWalCacheFactory(metaData, cacheDir);
     _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader,
         _serverStatusManager, metaData, conf, volumeDir, maxWalSize, maxWalLifeTime);
-    _packBroadcastReader = broadcastFactory.createPackBroadcastReader(name, metaData, _walCacheManager, _hdfsReader);
+    _packBroadcastReader = broadcastFactory.createPackWalReader(name, metaData, _walCacheManager, _hdfsReader);
     _packBroadcastReader.start();
   }
 
@@ -133,7 +133,7 @@ public class PackStorageModule extends BaseStorageModule {
         int off = 0;
         long pos = storageIndex;
         int blockSize = _blockSize;
-        PackBroadcastWriter packBroadcastWriter = getPackBroadcastWriter();
+        PackWalWriter packBroadcastWriter = getPackBroadcastWriter();
 
         while (len > 0) {
           int blockOffset = getBlockOffset(pos);
@@ -182,18 +182,18 @@ public class PackStorageModule extends BaseStorageModule {
     PackUtils.close(LOGGER, _packBroadcastWriter.get(), _packBroadcastReader, _walCacheManager, _hdfsReader);
   }
 
-  private PackBroadcastWriter getPackBroadcastWriter() throws IOException {
-    PackBroadcastWriter packBroadcastWriter = _packBroadcastWriter.get();
+  private PackWalWriter getPackBroadcastWriter() throws IOException {
+    PackWalWriter packBroadcastWriter = _packBroadcastWriter.get();
     if (packBroadcastWriter == null) {
       return createPackBroadcastWriter();
     }
     return packBroadcastWriter;
   }
 
-  private synchronized PackBroadcastWriter createPackBroadcastWriter() throws IOException {
-    PackBroadcastWriter packBroadcastWriter = _packBroadcastWriter.get();
+  private synchronized PackWalWriter createPackBroadcastWriter() throws IOException {
+    PackWalWriter packBroadcastWriter = _packBroadcastWriter.get();
     if (packBroadcastWriter == null) {
-      _packBroadcastWriter.set(packBroadcastWriter = _broadcastFactory.createPackBroadcastWriter(_name, _metaData,
+      _packBroadcastWriter.set(packBroadcastWriter = _broadcastFactory.createPackWalWriter(_name, _metaData,
           _writeBlockMonitor, _serverStatusManager));
     }
     return packBroadcastWriter;

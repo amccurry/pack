@@ -21,6 +21,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
 
+import pack.distributed.storage.wal.WalFactoryType;
 import pack.distributed.storage.zk.PackZooKeeperServerConfig;
 import pack.iscsi.storage.utils.PackUtils;
 
@@ -219,6 +220,21 @@ public class PackConfig {
 
   public static boolean isDataZkEmbedded() {
     return PackUtils.getProperty(ZK_DIR) == null;
+  }
+
+  public static WalFactoryType getBroadcastFactoryType() {
+    // TODO Auto-generated method stub
+    return null;
+  }
+
+  public static long getHdfsWalMaxTimeOpenForWriting(long defaultMaxOpenForWriting) {
+    // TODO Auto-generated method stub
+    return 0;
+  }
+
+  public static long getHdfsWalMaxAmountAllowedPerFile(int defaultMaxAmountAllowedPerFile) {
+    // TODO Auto-generated method stub
+    return 0;
   }
 
 }

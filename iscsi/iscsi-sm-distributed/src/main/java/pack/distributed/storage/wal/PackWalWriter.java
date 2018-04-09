@@ -1,4 +1,4 @@
-package pack.distributed.storage.broadcast;
+package pack.distributed.storage.wal;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -16,16 +16,16 @@ import com.google.common.collect.ImmutableList;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.status.BlockUpdateInfo;
 import pack.distributed.storage.status.BlockUpdateInfoBatch;
-import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.BroadcastServerManager;
 import pack.distributed.storage.trace.PackTracer;
 import pack.iscsi.metrics.MetricsRegistrySingleton;
 import pack.iscsi.storage.utils.PackUtils;
 
-public abstract class PackBroadcastWriter implements Closeable {
+public abstract class PackWalWriter implements Closeable {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(PackBroadcastWriter.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackWalWriter.class);
   private final WriteBlockMonitor _writeBlockMonitor;
-  private final ServerStatusManager _serverStatusManager;
+  private final BroadcastServerManager _serverStatusManager;
   private final String _volumeName;
 
   private final Timer _kafkaFlush;
@@ -35,8 +35,8 @@ public abstract class PackBroadcastWriter implements Closeable {
 
   private final Object _writeLock = new Object();
 
-  public PackBroadcastWriter(String volumeName, WriteBlockMonitor writeBlockMonitor,
-      ServerStatusManager serverStatusManager) {
+  public PackWalWriter(String volumeName, WriteBlockMonitor writeBlockMonitor,
+      BroadcastServerManager serverStatusManager) {
     _volumeName = volumeName;
     _serverStatusManager = serverStatusManager;
     _writeBlockMonitor = writeBlockMonitor;

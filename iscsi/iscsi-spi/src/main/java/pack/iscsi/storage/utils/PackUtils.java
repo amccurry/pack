@@ -1,6 +1,8 @@
 package pack.iscsi.storage.utils;
 
 import java.io.Closeable;
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -379,5 +381,18 @@ public class PackUtils {
 
   public static Random getRandom() {
     return _random.get();
+  }
+
+  public static void write(DataOutput output, String s) throws IOException {
+    byte[] bs = s.getBytes();
+    output.writeInt(bs.length);
+    output.write(bs);
+  }
+
+  public static String readString(DataInput input) throws IOException {
+    int len = input.readInt();
+    byte[] buf = new byte[len];
+    input.readFully(buf);
+    return new String(buf);
   }
 }

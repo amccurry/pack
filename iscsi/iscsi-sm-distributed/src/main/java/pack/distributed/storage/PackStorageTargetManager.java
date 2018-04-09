@@ -39,8 +39,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
+import com.google.common.io.Closer;
 
-import pack.distributed.storage.broadcast.PackBroadcastFactory;
 import pack.distributed.storage.hdfs.HdfsBlockGarbageCollector;
 import pack.distributed.storage.hdfs.PackHdfsBlockGarbageCollector;
 import pack.distributed.storage.http.CompactorServerInfo;
@@ -58,13 +58,11 @@ import pack.distributed.storage.metrics.text.PrintStreamFactory;
 import pack.distributed.storage.metrics.text.TextReporter;
 import pack.distributed.storage.monitor.PackWriteBlockMonitorFactory;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
-import pack.distributed.storage.status.PackServerStatusManager;
-import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.PackBroadcastServerManager;
+import pack.distributed.storage.status.BroadcastServerManager;
 import pack.distributed.storage.trace.TraceStorageModule;
-import pack.distributed.storage.zk.EmbeddedZookeeper;
-import pack.distributed.storage.zk.PackZooKeeperBroadcastFactory;
-import pack.distributed.storage.zk.PackZooKeeperServer;
-import pack.distributed.storage.zk.PackZooKeeperServerConfig;
+import pack.distributed.storage.wal.WalFactoryType;
+import pack.distributed.storage.wal.PackWalFactory;
 import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.iscsi.error.NoExceptions;
@@ -97,10 +95,10 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
   private final String _hostAddress;
 
   private final PackWriteBlockMonitorFactory _packWriteBlockMonitorFactory;
-  private final PackBroadcastFactory _broadcastFactory;
-  private final ServerStatusManager _serverStatusManager;
+  private final PackWalFactory _broadcastFactory;
+  private final BroadcastServerManager _serverStatusManager;
   private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
-  private final Closeable _zooKeeperServerClosable;
+  private final Closer _closer = Closer.create();
 
   public PackStorageTargetManager() throws IOException {
     this(InetAddress.getLocalHost()
@@ -108,13 +106,14 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
   }
 
   public PackStorageTargetManager(String hostAddress) throws IOException {
+    PackUtils.closeOnShutdown(this);
+
     _hostAddress = hostAddress;
 
     MetricRegistry registry = MetricsRegistrySingleton.getInstance();
     _registry = registry;
-    _jsonReporter = new JsonReporter(_registry);
+    _jsonReporter = _closer.register(new JsonReporter(_registry));
     _jsonReporter.start(3, TimeUnit.SECONDS);
-    PackUtils.closeOnShutdown(_jsonReporter);
 
     SetupJvmMetrics.setup(_registry);
 
@@ -124,21 +123,6 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
     File walCacheDir = PackConfig.getWalCachePath();
     _cacheDir = new File(walCacheDir, "wal-cache");
     _cacheDir.mkdirs();
-    String dataZkConnection;
-    if (PackConfig.isDataZkEmbedded()) {
-      EmbeddedZookeeper zookeeper = new EmbeddedZookeeper();
-      zookeeper.startup();
-      _zooKeeperServerClosable = () -> zookeeper.shutdown();
-      dataZkConnection = zookeeper.getConnection();
-    } else {
-      File zkDir = PackConfig.getZkPath();
-      zkDir.mkdirs();
-      PackZooKeeperServerConfig myConfig = PackConfig.getPackZooKeeperServerConfig();
-      PackZooKeeperServer zooKeeperServer = new PackZooKeeperServer(zkDir, myConfig,
-          PackConfig.getAllPackZooKeeperServerConfig());
-      _zooKeeperServerClosable = zooKeeperServer;
-      dataZkConnection = zooKeeperServer.getLocalConnection();
-    }
 
     _ugi = PackConfig.getUgi();
     _conf = PackConfig.getConfiguration();
@@ -150,21 +134,18 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
     String zkConnectionString = PackConfig.getZooKeeperConnection();
     int sessionTimeout = PackConfig.getZooKeeperSessionTimeout();
 
+    WalFactoryType type = PackConfig.getBroadcastFactoryType();
+    _broadcastFactory = type.create(_closer);
+
     String writeBlockMonitorBindAddress = PackConfig.getWriteBlockMonitorBindAddress();
     int writeBlockMonitorPort = PackConfig.getWriteBlockMonitorPort();
     String writeBlockMonitorAddress = PackConfig.getWriteBlockMonitorAddress();
 
-    _zk = ZkUtils.addOnShutdownCloseTrigger(ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout));
-    _serverStatusManager = new PackServerStatusManager(_zk, writeBlockMonitorBindAddress, writeBlockMonitorPort,
-        writeBlockMonitorAddress);
-
-    PackUtils.closeOnShutdown(_serverStatusManager, _zk);
+    _zk = _closer.register(ZkUtils.addOnShutdownCloseTrigger(ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout)));
+    _serverStatusManager = _closer.register(new PackBroadcastServerManager(_zk, writeBlockMonitorBindAddress,
+        writeBlockMonitorPort, writeBlockMonitorAddress));
 
     _hdfsBlockGarbageCollector = new PackHdfsBlockGarbageCollector(_ugi, _conf, _delayBeforeRemoval);
-
-    ZooKeeperClient zkBroadCast = ZkUtils.addOnShutdownCloseTrigger(
-        ZkUtils.newZooKeeper(dataZkConnection, sessionTimeout));
-    _broadcastFactory = new PackZooKeeperBroadcastFactory(zkBroadCast);
 
     _packWriteBlockMonitorFactory = new PackWriteBlockMonitorFactory();
 
@@ -493,6 +474,6 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
 
   @Override
   public void close() throws IOException {
-    PackUtils.close(LOGGER, _serverStatusManager, _hdfsBlockGarbageCollector, _zooKeeperServerClosable);
+    PackUtils.close(LOGGER, _serverStatusManager, _hdfsBlockGarbageCollector, _closer);
   }
 }

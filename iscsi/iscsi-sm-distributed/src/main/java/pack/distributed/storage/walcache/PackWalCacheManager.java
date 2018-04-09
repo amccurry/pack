@@ -1,4 +1,4 @@
-package pack.distributed.storage.wal;
+package pack.distributed.storage.walcache;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -32,7 +32,7 @@ import pack.distributed.storage.hdfs.PackHdfsReader;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.read.ReadRequest;
-import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.BroadcastServerManager;
 import pack.distributed.storage.trace.TraceHdfsBlockReader;
 import pack.distributed.storage.trace.TraceWalCache;
 import pack.iscsi.storage.utils.PackUtils;
@@ -59,20 +59,20 @@ public class PackWalCacheManager implements Closeable, WalCacheManager {
   private final AtomicBoolean _running = new AtomicBoolean(true);
   private final String _volumeName;
   private final long _maxWalLifeTime;
-  private final ServerStatusManager _serverStatusManager;
+  private final BroadcastServerManager _serverStatusManager;
   private final Set<WalCache> _toBeClosed = Collections.newSetFromMap(new ConcurrentHashMap<>());
   private final Thread _closeOldWalFiles;
   private final Object _closeOldWalFileLock = new Object();
 
   public PackWalCacheManager(String volumeName, WriteBlockMonitor writeBlockMonitor, WalCacheFactory cacheFactory,
-      PackHdfsReader hdfsReader, ServerStatusManager serverStatusManager, PackMetaData metaData,
+      PackHdfsReader hdfsReader, BroadcastServerManager serverStatusManager, PackMetaData metaData,
       Configuration configuration, Path volumeDir, long maxWalSize, long maxWalLifeTime) {
     this(volumeName, writeBlockMonitor, cacheFactory, hdfsReader, serverStatusManager, metaData, configuration,
         volumeDir, maxWalSize, maxWalLifeTime, true);
   }
 
   public PackWalCacheManager(String volumeName, WriteBlockMonitor writeBlockMonitor, WalCacheFactory cacheFactory,
-      PackHdfsReader hdfsReader, ServerStatusManager serverStatusManager, PackMetaData metaData,
+      PackHdfsReader hdfsReader, BroadcastServerManager serverStatusManager, PackMetaData metaData,
       Configuration configuration, Path volumeDir, long maxWalSize, long maxWalLifeTime, boolean enableAutoHdfsWrite) {
     _serverStatusManager = serverStatusManager;
     _maxWalLifeTime = maxWalLifeTime;

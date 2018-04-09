@@ -5,19 +5,19 @@ import java.io.IOException;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
-import pack.distributed.storage.broadcast.Blocks;
-import pack.distributed.storage.broadcast.PackBroadcastWriter;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
-import pack.distributed.storage.status.ServerStatusManager;
+import pack.distributed.storage.status.BroadcastServerManager;
+import pack.distributed.storage.wal.Blocks;
+import pack.distributed.storage.wal.PackWalWriter;
 
-public class PackKafkaWriter extends PackBroadcastWriter {
+public class PackKafkaWriter extends PackWalWriter {
 
   private final Producer<byte[], Blocks> _producer;
   private final String _topic;
   private final Integer _partition;
 
   public PackKafkaWriter(String volumeName, Producer<byte[], Blocks> producer, String topic, Integer partition,
-      WriteBlockMonitor writeBlockMonitor, ServerStatusManager serverStatusManager) {
+      WriteBlockMonitor writeBlockMonitor, BroadcastServerManager serverStatusManager) {
     super(volumeName, writeBlockMonitor, serverStatusManager);
     _producer = producer;
     _topic = topic;

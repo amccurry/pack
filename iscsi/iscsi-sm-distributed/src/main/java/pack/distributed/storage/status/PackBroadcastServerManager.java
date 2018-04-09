@@ -36,9 +36,9 @@ import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
 import pack.iscsi.storage.utils.PackUtils;
 
-public class PackServerStatusManager implements ServerStatusManager {
+public class PackBroadcastServerManager implements BroadcastServerManager {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(PackServerStatusManager.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackBroadcastServerManager.class);
 
   private static final String STATUS_SERVERS = "/status-servers";
   private final AtomicReference<Set<String>> _servers = new AtomicReference<Set<String>>();
@@ -53,7 +53,7 @@ public class PackServerStatusManager implements ServerStatusManager {
   private final int _queueDepth = 64;
   private final ServerSocket _serverSocket;
 
-  public PackServerStatusManager(ZooKeeperClient zk, String writeBlockMonitorBindAddress, int writeBlockMonitorPort,
+  public PackBroadcastServerManager(ZooKeeperClient zk, String writeBlockMonitorBindAddress, int writeBlockMonitorPort,
       String writeBlockMonitorAddress) throws IOException {
     _writeBlockMonitorPort = writeBlockMonitorPort;
     _zk = zk;
@@ -143,51 +143,11 @@ public class PackServerStatusManager implements ServerStatusManager {
 
   private void write(DataOutput output, BlockUpdateInfoBatchStatus updateBlockIdBatchStatus) throws IOException {
     BlockUpdateInfoBatch updateBlockIdBatch = updateBlockIdBatchStatus._batch;
-    write(output, updateBlockIdBatch.getVolume());
-    List<BlockUpdateInfo> batch = updateBlockIdBatch.getBatch();
-    int size = batch.size();
-    output.writeInt(size);
-    for (int i = 0; i < size; i++) {
-      write(output, batch.get(i));
-    }
-  }
-
-  private void write(DataOutput output, BlockUpdateInfo updateBlockId) throws IOException {
-    output.writeInt(updateBlockId.getBlockId());
-    output.writeLong(updateBlockId.getTransId());
-  }
-
-  private void write(DataOutput output, String s) throws IOException {
-    byte[] bs = s.getBytes();
-    output.writeInt(bs.length);
-    output.write(bs);
+    updateBlockIdBatch.write(output);
   }
 
   private BlockUpdateInfoBatch readUpdateBlockIdBatch(DataInput input) throws IOException {
-    String volume = readString(input);
-    List<BlockUpdateInfo> batch = new ArrayList<>();
-    int count = input.readInt();
-    for (int i = 0; i < count; i++) {
-      batch.add(readUpdateBlockId(input));
-    }
-    return BlockUpdateInfoBatch.builder()
-                               .batch(batch)
-                               .volume(volume)
-                               .build();
-  }
-
-  private BlockUpdateInfo readUpdateBlockId(DataInput input) throws IOException {
-    return BlockUpdateInfo.builder()
-                          .blockId(input.readInt())
-                          .transId(input.readLong())
-                          .build();
-  }
-
-  private String readString(DataInput input) throws IOException {
-    int len = input.readInt();
-    byte[] buf = new byte[len];
-    input.readFully(buf);
-    return new String(buf);
+    return BlockUpdateInfoBatch.read(input);
   }
 
   private void receive(Socket socket) throws IOException {

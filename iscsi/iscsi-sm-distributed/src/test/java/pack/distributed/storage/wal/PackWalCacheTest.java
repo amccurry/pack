@@ -13,6 +13,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import pack.distributed.storage.read.ReadRequest;
+import pack.distributed.storage.walcache.PackWalCache;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackWalCacheTest {

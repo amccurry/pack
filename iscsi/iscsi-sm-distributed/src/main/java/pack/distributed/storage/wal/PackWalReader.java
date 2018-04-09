@@ -1,4 +1,4 @@
-package pack.distributed.storage.broadcast;
+package pack.distributed.storage.wal;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -7,16 +7,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.distributed.storage.wal.WalCacheManager;
+import pack.distributed.storage.walcache.WalCacheManager;
 
-public abstract class PackBroadcastReader implements Closeable {
+public abstract class PackWalReader implements Closeable {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(PackBroadcastReader.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackWalReader.class);
 
   private final Thread _readerThread;
   private final AtomicBoolean _running = new AtomicBoolean(true);
 
-  public PackBroadcastReader(String name, WalCacheManager walCacheManager) {
+  public PackWalReader(String name, WalCacheManager walCacheManager) {
     _readerThread = new Thread(() -> {
       while (isRunning()) {
         try {
