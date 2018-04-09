@@ -23,18 +23,20 @@ import java.util.Map.Entry;
 public interface Store extends Closeable {
 
   boolean isOwner() throws IOException;
-  
+
   BytesRef lastKey() throws IOException;
-  
-  void sync() throws IOException;
+
+  void sync(TransId transId) throws IOException;
 
   Iterable<Entry<BytesRef, BytesRef>> scan(BytesRef key) throws IOException;
 
-  void put(BytesRef key, BytesRef value) throws IOException;
+  TransId put(BytesRef key, BytesRef value) throws IOException;
 
   boolean get(BytesRef key, BytesRef value) throws IOException;
 
-  void delete(BytesRef key) throws IOException;
+  TransId delete(BytesRef key) throws IOException;
+
+  TransId deleteRange(BytesRef fromInclusive, BytesRef toExclusive) throws IOException;
 
   void close() throws IOException;
 

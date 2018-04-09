@@ -104,6 +104,37 @@ public class HdfsKeyValueStoreTest {
   }
 
   @Test
+  public void testPutGetDeleteRange() throws IOException {
+    HdfsKeyValueStore store = new HdfsKeyValueStore(false, _timer, _configuration, _path);
+    store.put(toBytesRef("a"), toBytesRef("value1"));
+    store.put(toBytesRef("b"), toBytesRef("value2"));
+    store.put(toBytesRef("c"), toBytesRef("value3"));
+    store.put(toBytesRef("d"), toBytesRef("value4"));
+    store.put(toBytesRef("e"), toBytesRef("value5"));
+    store.sync();
+    BytesRef value = new BytesRef();
+    store.get(toBytesRef("a"), value);
+    assertEquals(new BytesRef("value1"), value);
+    store.get(toBytesRef("b"), value);
+    assertEquals(new BytesRef("value2"), value);
+    store.get(toBytesRef("c"), value);
+    assertEquals(new BytesRef("value3"), value);
+    store.get(toBytesRef("d"), value);
+    assertEquals(new BytesRef("value4"), value);
+    store.get(toBytesRef("e"), value);
+    assertEquals(new BytesRef("value5"), value);
+
+    store.deleteRange(toBytesRef("b"), toBytesRef("d"));
+    store.sync();
+    assertTrue(store.get(toBytesRef("a"), value));
+    assertFalse(store.get(toBytesRef("b"), value));
+    assertFalse(store.get(toBytesRef("c"), value));
+    assertTrue(store.get(toBytesRef("d"), value));
+    assertTrue(store.get(toBytesRef("e"), value));
+    store.close();
+  }
+
+  @Test
   public void testPutGetReopen() throws IOException {
     HdfsKeyValueStore store1 = new HdfsKeyValueStore(false, _timer, _configuration, _path);
     store1.put(toBytesRef("a"), toBytesRef("value1"));

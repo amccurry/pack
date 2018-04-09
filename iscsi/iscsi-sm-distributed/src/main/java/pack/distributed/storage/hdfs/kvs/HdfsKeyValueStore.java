@@ -62,7 +62,7 @@ public class HdfsKeyValueStore implements Store {
 
   private static final String UTF_8 = "UTF-8";
   private static final String BLUR_KEY_VALUE = "blur_key_value";
-  private static final Logger LOG = LoggerFactory.getLogger(HdfsKeyValueStore.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(HdfsKeyValueStore.class);
   private static final byte[] MAGIC;
   private static final int VERSION = 1;
   private static final long DAEMON_POLL_TIME = TimeUnit.SECONDS.toMillis(5);
@@ -77,7 +77,37 @@ public class HdfsKeyValueStore implements Store {
   }
 
   static enum OperationType {
-    PUT, DELETE
+    PUT {
+      @Override
+      public Operation createOperation(BytesRef key, BytesRef value) {
+        Operation operation = new Operation();
+        operation.type = OperationType.PUT;
+        operation.key.set(key.bytes, key.offset, key.length);
+        operation.value.set(value.bytes, value.offset, value.length);
+        return operation;
+      }
+    },
+    DELETE {
+      @Override
+      public Operation createOperation(BytesRef key, BytesRef value) {
+        Operation operation = new Operation();
+        operation.type = OperationType.DELETE;
+        operation.key.set(key.bytes, key.offset, key.length);
+        return operation;
+      }
+    },
+    DELETE_RANGE {
+      @Override
+      public Operation createOperation(BytesRef fromInclusive, BytesRef toExclusive) {
+        Operation operation = new Operation();
+        operation.type = OperationType.DELETE_RANGE;
+        operation.key.set(fromInclusive.bytes, fromInclusive.offset, fromInclusive.length);
+        operation.value.set(toExclusive.bytes, toExclusive.offset, toExclusive.length);
+        return operation;
+      }
+    };
+
+    public abstract Operation createOperation(BytesRef key, BytesRef value);
   }
 
   static class Operation implements Writable {
@@ -95,6 +125,10 @@ public class HdfsKeyValueStore implements Store {
         out.write(1);
         key.write(out);
         value.write(out);
+      } else if (type == OperationType.DELETE_RANGE) {
+        out.write(2);
+        key.write(out);
+        value.write(out);
       } else {
         throw new RuntimeException("Not supported [" + type + "]");
       }
@@ -110,6 +144,11 @@ public class HdfsKeyValueStore implements Store {
         return;
       case 1:
         type = OperationType.PUT;
+        key.readFields(in);
+        value.readFields(in);
+        return;
+      case 2:
+        type = OperationType.DELETE_RANGE;
         key.readFields(in);
         value.readFields(in);
         return;
@@ -146,6 +185,7 @@ public class HdfsKeyValueStore implements Store {
   private final Timer _hdfsKeyValueTimer;
   private final long _maxTimeOpenForWriting;
   private final boolean _readOnly;
+  private final AtomicLong _lastSyncPosition = new AtomicLong();
 
   private FSDataOutputStream _output;
   private Path _outputPath;
@@ -167,8 +207,8 @@ public class HdfsKeyValueStore implements Store {
     _readOnly = readOnly;
     _maxTimeOpenForWriting = maxTimeOpenForWriting;
     _maxAmountAllowedPerFile = maxAmountAllowedPerFile;
-    _path = path;
-    _fileSystem = _path.getFileSystem(configuration);
+    _fileSystem = path.getFileSystem(configuration);
+    _path = path.makeQualified(_fileSystem.getUri(), _fileSystem.getWorkingDirectory());
     _fileSystem.mkdirs(_path);
     _readWriteLock = new ReentrantReadWriteLock();
     _writeLock = _readWriteLock.writeLock();
@@ -205,7 +245,7 @@ public class HdfsKeyValueStore implements Store {
       inputStream.close();
       if (len < MAGIC.length + VERSION_LENGTH) {
         // Remove invalid file
-        LOG.warn("Removing file [{0}] because length of [{1}] is less than MAGIC plus version length of [{2}]", path,
+        LOGGER.warn("Removing file [{}] because length of [{}] is less than MAGIC plus version length of [{}]", path,
             len, MAGIC.length + VERSION_LENGTH);
         _fileSystem.delete(path, false);
       }
@@ -219,7 +259,7 @@ public class HdfsKeyValueStore implements Store {
         try {
           cleanupOldFiles();
         } catch (Throwable e) {
-          LOG.error("Unknown error while trying to clean up old files.", e);
+          LOGGER.error("Unknown error while trying to clean up old files.", e);
         }
       }
     };
@@ -232,20 +272,19 @@ public class HdfsKeyValueStore implements Store {
         try {
           closeLogFileIfIdle();
         } catch (Throwable e) {
-          LOG.error("Unknown error while trying to close output file.", e);
+          LOGGER.error("Unknown error while trying to close output file.", e);
         }
       }
-
     };
   }
 
   @Override
-  public void sync() throws IOException {
+  public void sync(TransId transId) throws IOException {
     ensureOpen();
     _writeLock.lock();
     ensureOpenForWriting();
     try {
-      syncInternal();
+      syncInternal(transId);
     } catch (RemoteException e) {
       throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
     } catch (LeaseExpiredException e) {
@@ -334,23 +373,18 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
-  public void put(BytesRef key, BytesRef value) throws IOException {
+  public TransId put(BytesRef key, BytesRef value) throws IOException {
     ensureOpen();
     if (value == null) {
-      delete(key);
-      return;
+      return delete(key);
     }
     _writeLock.lock();
     ensureOpenForWriting();
     try {
-      Operation op = getPutOperation(OperationType.PUT, key, value);
-      Path path = write(op);
-      BytesRef deepCopyOf = BytesRef.deepCopyOf(value);
-      _size.addAndGet(deepCopyOf.bytes.length);
-      Value old = _pointers.put(BytesRef.deepCopyOf(key), new Value(deepCopyOf, path));
-      if (old != null) {
-        _size.addAndGet(-old._bytesRef.bytes.length);
-      }
+      Operation op = OperationType.PUT.createOperation(key, value);
+      TransId transId = write(op);
+      doPut(key, value, transId.getPath());
+      return transId;
     } catch (RemoteException e) {
       throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
     } catch (LeaseExpiredException e) {
@@ -360,25 +394,39 @@ public class HdfsKeyValueStore implements Store {
     }
   }
 
+  private void doPut(BytesRef key, BytesRef value, Path path) {
+    BytesRef deepCopyOf = BytesRef.deepCopyOf(value);
+    _size.addAndGet(deepCopyOf.bytes.length);
+    Value old = _pointers.put(BytesRef.deepCopyOf(key), new Value(deepCopyOf, path));
+    if (old != null) {
+      _size.addAndGet(-old._bytesRef.bytes.length);
+    }
+  }
+
   private void ensureOpenForWriting() throws IOException {
     if (_output == null) {
       openWriter();
     }
   }
 
-  private Path write(Operation op) throws IOException {
+  private TransId write(Operation op) throws IOException {
     op.write(_output);
     Path p = _outputPath;
-    if (_output.getPos() >= _maxAmountAllowedPerFile) {
+    long pos = _output.getPos();
+    if (pos >= _maxAmountAllowedPerFile) {
       rollFile();
     }
-    return p;
+    return TransId.builder()
+                  .path(p)
+                  .position(pos)
+                  .build();
   }
 
   private void rollFile() throws IOException {
-    LOG.info("Rolling file [" + _outputPath + "]");
+    LOGGER.info("Rolling file [{}]", _outputPath);
     _output.close();
     _output = null;
+    _lastSyncPosition.set(0);
     openWriter();
   }
 
@@ -395,7 +443,8 @@ public class HdfsKeyValueStore implements Store {
       Path newestGen = fileStatusSet.last()
                                     .getPath();
       if (!newestGen.equals(_outputPath)) {
-        throw new IOException("No longer the owner of [" + _path + "]");
+        throw new IOException(
+            "No longer the owner of [" + _path + "] output [" + _outputPath + "] newestGen [" + newestGen + "]");
       }
       Set<Path> existingFiles = new HashSet<Path>();
       for (FileStatus fileStatus : fileStatusSet) {
@@ -408,7 +457,7 @@ public class HdfsKeyValueStore implements Store {
         existingFiles.remove(p);
       }
       for (Path p : existingFiles) {
-        LOG.info("Removing file no longer referenced [{0}]", p);
+        LOGGER.info("Removing file no longer referenced [{}]", p);
         _fileSystem.delete(p, false);
       }
     } finally {
@@ -421,7 +470,7 @@ public class HdfsKeyValueStore implements Store {
     try {
       if (_output != null && _lastWrite.get() + _maxTimeOpenForWriting < System.currentTimeMillis()) {
         // Close writer
-        LOG.info("Closing KV log due to inactivity [{0}].", _path);
+        LOGGER.info("Closing KV log due to inactivity [{}].", _path);
         try {
           _output.close();
         } finally {
@@ -435,21 +484,6 @@ public class HdfsKeyValueStore implements Store {
 
   private boolean isOpenForWriting() {
     return _output != null;
-  }
-
-  private Operation getPutOperation(OperationType put, BytesRef key, BytesRef value) {
-    Operation operation = new Operation();
-    operation.type = put;
-    operation.key.set(key.bytes, key.offset, key.length);
-    operation.value.set(value.bytes, value.offset, value.length);
-    return operation;
-  }
-
-  private Operation getDeleteOperation(OperationType delete, BytesRef key) {
-    Operation operation = new Operation();
-    operation.type = delete;
-    operation.key.set(key.bytes, key.offset, key.length);
-    return operation;
   }
 
   @Override
@@ -469,23 +503,56 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
-  public void delete(BytesRef key) throws IOException {
+  public TransId delete(BytesRef key) throws IOException {
     ensureOpen();
     _writeLock.lock();
     ensureOpenForWriting();
     try {
-      Operation op = getDeleteOperation(OperationType.DELETE, key);
-      write(op);
-      Value old = _pointers.remove(key);
-      if (old != null) {
-        _size.addAndGet(-old._bytesRef.bytes.length);
-      }
+      Operation op = OperationType.DELETE.createOperation(key, null);
+      TransId transId = write(op);
+      doDelete(key);
+      return transId;
     } catch (RemoteException e) {
       throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
     } catch (LeaseExpiredException e) {
       throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
     } finally {
       _writeLock.unlock();
+    }
+  }
+
+  private void doDelete(BytesRef key) {
+    Value old = _pointers.remove(key);
+    if (old != null) {
+      _size.addAndGet(-old._bytesRef.bytes.length);
+    }
+  }
+
+  @Override
+  public TransId deleteRange(BytesRef fromInclusive, BytesRef toExclusive) throws IOException {
+    ensureOpen();
+    _writeLock.lock();
+    ensureOpenForWriting();
+    try {
+      Operation op = OperationType.DELETE_RANGE.createOperation(fromInclusive, toExclusive);
+      TransId transId = write(op);
+      doDeleteRange(fromInclusive, toExclusive);
+      return transId;
+    } catch (RemoteException e) {
+      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+    } catch (LeaseExpiredException e) {
+      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+    } finally {
+      _writeLock.unlock();
+    }
+  }
+
+  private void doDeleteRange(BytesRef fromInclusive, BytesRef toExclusive) {
+    for (Entry<BytesRef, Value> e : _pointers.entrySet()) {
+      BytesRef key = e.getKey();
+      if (key.compareTo(fromInclusive) >= 0 && key.compareTo(toExclusive) < 0) {
+        doDelete(key);
+      }
     }
   }
 
@@ -506,7 +573,7 @@ public class HdfsKeyValueStore implements Store {
       try {
         if (isOpenForWriting()) {
           try {
-            syncInternal();
+            syncInternal(null);
           } finally {
             IOUtils.closeQuietly(_output);
             _output = null;
@@ -523,11 +590,11 @@ public class HdfsKeyValueStore implements Store {
       throw new IOException("Key value store is set in read only mode.");
     }
     _outputPath = getSegmentPath(_currentFileCounter.incrementAndGet());
-    LOG.info("Opening for writing [{0}].", _outputPath);
+    LOGGER.info("Opening for writing [{}].", _outputPath);
     _output = _fileSystem.create(_outputPath, false);
     _output.write(MAGIC);
     _output.writeInt(VERSION);
-    syncInternal();
+    syncInternal(null);
   }
 
   private Path getSegmentPath(long segment) {
@@ -556,10 +623,31 @@ public class HdfsKeyValueStore implements Store {
     }
   }
 
-  private void syncInternal() throws IOException {
+  private void syncInternal(TransId transId) throws IOException {
+    if (!needsToSync(transId)) {
+      // Another thread performed a sync that covered this transaction.
+      LOGGER.debug("sync not needed");
+      return;
+    }
     validateNextSegmentHasNotStarted();
+    long pos = _output.getPos();
     _output.hflush();
+    _lastSyncPosition.set(pos);
     _lastWrite.set(System.currentTimeMillis());
+  }
+
+  private boolean needsToSync(TransId transId) {
+    if (transId == null) {
+      return true;
+    }
+    if (!_outputPath.equals(transId.getPath())) {
+      // Log has rolled, and it syncs during roll.
+      return false;
+    } else if (_lastSyncPosition.get() >= transId.getPosition()) {
+      return false;
+    } else {
+      return true;
+    }
   }
 
   private void validateNextSegmentHasNotStarted() throws IOException {
@@ -598,21 +686,18 @@ public class HdfsKeyValueStore implements Store {
   }
 
   private void loadIndex(Path path, Operation operation) {
-    Value old;
     switch (operation.type) {
     case PUT:
-      BytesRef deepCopyOf = BytesRef.deepCopyOf(getKey(operation.value));
-      _size.addAndGet(deepCopyOf.bytes.length);
-      old = _pointers.put(BytesRef.deepCopyOf(getKey(operation.key)), new Value(deepCopyOf, path));
+      doPut(getKey(operation.key), getKey(operation.value), path);
       break;
     case DELETE:
-      old = _pointers.remove(getKey(operation.key));
+      doDelete(getKey(operation.key));
+      break;
+    case DELETE_RANGE:
+      doDeleteRange(getKey(operation.key), getKey(operation.value));
       break;
     default:
       throw new RuntimeException("Not supported [" + operation.type + "]");
-    }
-    if (old != null) {
-      _size.addAndGet(-old._bytesRef.bytes.length);
     }
   }
 
