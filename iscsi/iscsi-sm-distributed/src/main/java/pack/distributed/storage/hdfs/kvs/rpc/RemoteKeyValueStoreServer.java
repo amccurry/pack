@@ -27,7 +27,6 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
@@ -64,13 +63,40 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
 
       RPC.setProtocolEngine(configuration, RemoteKeyValueStore.class, WritableRpcEngine.class);
 
-      try (RemoteKeyValueStoreServer remoteKeyValueStoreServer = new RemoteKeyValueStoreServer(configuration,
-          bindAddress, port, zooKeeper, rootKvs, ugi)) {
-        remoteKeyValueStoreServer.start();
-        remoteKeyValueStoreServer.join();
+      try (RemoteKeyValueStoreServer remoteKeyValueStoreServer = RemoteKeyValueStoreServer.createInstance(bindAddress,
+          port, configuration, zooKeeper, rootKvs, ugi)) {
+        RemoteKeyValueStoreServer instance = lookupInstance(bindAddress, port);
+        instance.start();
+        instance.join();
       }
       return null;
     });
+  }
+
+  private static final Map<String, RemoteKeyValueStoreServer> _instances = new ConcurrentHashMap<>();
+
+  public static synchronized RemoteKeyValueStoreServer lookupInstance(String address, int port) throws IOException {
+    return _instances.get(getKey(address, port));
+  }
+
+  public static synchronized RemoteKeyValueStoreServer createInstance(String bindAddress, int port,
+      Configuration configuration, ZooKeeperClient zooKeeper, Path rootKvs, UserGroupInformation ugi)
+      throws IOException {
+    String key = getKey(bindAddress, port);
+    RemoteKeyValueStoreServer server = _instances.get(key);
+    if (server == null) {
+      server = new RemoteKeyValueStoreServer(configuration, bindAddress, port, zooKeeper, rootKvs, ugi);
+      _instances.put(key, server);
+    }
+    return server;
+  }
+
+  private static String getKey(String address, int port) throws IOException {
+    if (address.equals("0.0.0.0")) {
+      address = InetAddress.getLocalHost()
+                           .getHostName();
+    }
+    return address + ":" + port;
   }
 
   private final Configuration _configuration;
@@ -85,7 +111,7 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
   private final String _serverAddress;
   private final UserGroupInformation _ugi;
 
-  public RemoteKeyValueStoreServer(Configuration configuration, String bindAddress, int port, ZooKeeperClient zooKeeper,
+  RemoteKeyValueStoreServer(Configuration configuration, String bindAddress, int port, ZooKeeperClient zooKeeper,
       Path rootKvs, UserGroupInformation ugi) throws IOException {
     _ugi = ugi;
     _rootKvs = rootKvs;
@@ -95,10 +121,7 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
     _configuration = configuration;
     _bindAddress = bindAddress;
     _port = port;
-    _serverAddress = Joiner.on(':')
-                           .join(InetAddress.getLocalHost()
-                                            .getHostName(),
-                               _port);
+    _serverAddress = getKey(bindAddress, port);
     _hdfsKeyValueTimer = new Timer(KVS_TIMER, true);
     _server = new RPC.Builder(_configuration).setBindAddress(_bindAddress)
                                              .setPort(_port)
@@ -107,6 +130,10 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
                                              .build();
     ServiceAuthorizationManager serviceAuthorizationManager = _server.getServiceAuthorizationManager();
     serviceAuthorizationManager.refresh(_configuration, new RemoteKeyValueStorePolicyProvider());
+  }
+
+  public String getServerAddress() {
+    return _serverAddress;
   }
 
   public void join() throws InterruptedException {
