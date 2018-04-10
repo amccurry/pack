@@ -1,5 +1,7 @@
 package pack.distributed.storage.kafka;
 
+import java.io.IOException;
+
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.MaxBlockLayer;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
@@ -18,16 +20,21 @@ public class PackKafkaWalFactory extends PackWalFactory {
     _kafkaClientFactory = kafkaClientFactory;
   }
 
-  public PackWalWriter createPackWalWriter(String name, PackMetaData metaData,
-      WriteBlockMonitor writeBlockMonitor, BroadcastServerManager serverStatusManager) {
+  public PackWalWriter createPackWalWriter(String name, PackMetaData metaData, WriteBlockMonitor writeBlockMonitor,
+      BroadcastServerManager serverStatusManager) {
     return new PackKafkaWriter(name, _kafkaClientFactory.createProducer(), metaData.getTopicId(), _topicPartition,
         writeBlockMonitor, serverStatusManager);
   }
 
-  public PackWalReader createPackWalReader(String name, PackMetaData metaData,
-      WalCacheManager walCacheManager, MaxBlockLayer maxBlockLayer) {
+  public PackWalReader createPackWalReader(String name, PackMetaData metaData, WalCacheManager walCacheManager,
+      MaxBlockLayer maxBlockLayer) {
     return new PackKafkaReader(name, metaData.getSerialId(), _kafkaClientFactory, walCacheManager, maxBlockLayer,
         metaData.getTopicId(), _topicPartition);
+  }
+
+  @Override
+  public void close() throws IOException {
+
   }
 
 }

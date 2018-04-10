@@ -30,7 +30,7 @@ public class PackZooKeeperWalFactory extends PackWalFactory {
 
   // private static final Logger LOGGER =
   // LoggerFactory.getLogger(PackZooKeeperBroadcastFactory.class);
-  
+
   private final ZooKeeperClient _zk;
 
   public PackZooKeeperWalFactory(ZooKeeperClient zk) {
@@ -38,14 +38,14 @@ public class PackZooKeeperWalFactory extends PackWalFactory {
   }
 
   @Override
-  public PackWalWriter createPackWalWriter(String name, PackMetaData metaData,
-      WriteBlockMonitor writeBlockMonitor, BroadcastServerManager serverStatusManager) throws IOException {
+  public PackWalWriter createPackWalWriter(String name, PackMetaData metaData, WriteBlockMonitor writeBlockMonitor,
+      BroadcastServerManager serverStatusManager) throws IOException {
     return new PackZooKeeperBroadcastWriter(name, writeBlockMonitor, serverStatusManager, _zk);
   }
 
   @Override
-  public PackWalReader createPackWalReader(String name, PackMetaData metaData,
-      WalCacheManager walCacheManager, MaxBlockLayer maxBlockLayer) throws IOException {
+  public PackWalReader createPackWalReader(String name, PackMetaData metaData, WalCacheManager walCacheManager,
+      MaxBlockLayer maxBlockLayer) throws IOException {
     return new PackZooKeeperBroadcastReader(name, metaData, walCacheManager, _zk, maxBlockLayer);
   }
 
@@ -193,6 +193,11 @@ public class PackZooKeeperWalFactory extends PackWalFactory {
         }
       }
     }
+  }
+
+  @Override
+  public void close() throws IOException {
+
   }
 
 }

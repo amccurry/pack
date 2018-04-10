@@ -92,4 +92,10 @@ public class TraceStorageModule implements IStorageModule {
   public UUID getSerialId() {
     return _delegate.getSerialId();
   }
+
+  @Override
+  public void flushWrites() throws IOException {
+    _delegate.flushWrites();
+  }
+
 }

@@ -68,6 +68,22 @@ public class PackUtils {
       }
     }
   }
+  
+  public static void close(Logger logger, Object... objects) {
+    if (objects == null) {
+      return;
+    }
+    for (Object object : objects) {
+      if (object != null && object instanceof Closeable) {
+        Closeable closeable = (Closeable) object;
+        try {
+          closeable.close();
+        } catch (IOException e) {
+          logger.error("Unknown error", e);
+        }
+      }
+    }
+  }
 
   public static void close(Logger logger, Closeable... closeables) {
     if (closeables == null) {

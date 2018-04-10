@@ -102,19 +102,19 @@ public class Testing {
     BytesRef startKey = new BytesRef(offset);
     while (true) {
       {
-        TransId transId = store.put(new BytesRef(offset++), new BytesRef(buf1));
+        KeyValueStoreTransId transId = store.put(new BytesRef(offset++), new BytesRef(buf1));
         Thread.sleep(delay);
         store.sync(transId);
         totalDataAtomic.addAndGet(buf1.length);
       }
       {
-        TransId transId = store.put(new BytesRef(offset++), new BytesRef(buf2));
+        KeyValueStoreTransId transId = store.put(new BytesRef(offset++), new BytesRef(buf2));
         Thread.sleep(delay);
         store.sync(transId);
         totalDataAtomic.addAndGet(buf2.length);
       }
       {
-        TransId transId = store.put(new BytesRef(offset++), new BytesRef(buf3));
+        KeyValueStoreTransId transId = store.put(new BytesRef(offset++), new BytesRef(buf3));
         Thread.sleep(delay);
         store.sync(transId);
         totalDataAtomic.addAndGet(buf3.length);

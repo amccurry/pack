@@ -1,4 +1,4 @@
-package pack.distributed.storage.zk;
+package pack.distributed.storage.wal;
 
 import static org.junit.Assert.assertTrue;
 
@@ -7,51 +7,44 @@ import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.zookeeper.server.quorum.QuorumPeerConfig.ConfigException;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.amazonaws.util.Md5Utils;
+import com.google.common.io.Closer;
 
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.MaxBlockLayer;
-import pack.distributed.storage.minicluster.EmbeddedZookeeper;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.read.BlockReader;
 import pack.distributed.storage.status.BlockUpdateInfoBatch;
 import pack.distributed.storage.status.BroadcastServerManager;
 import pack.distributed.storage.trace.PackTracer;
-import pack.distributed.storage.wal.PackWalReader;
-import pack.distributed.storage.wal.PackWalWriter;
 import pack.distributed.storage.walcache.WalCacheManager;
 
-public class PackZooKeeperBroadcastFactoryTest {
+public abstract class PackWalFactoryTestBase {
 
-  private static Logger LOGGER = LoggerFactory.getLogger(PackZooKeeperBroadcastFactoryTest.class);
+  private static Logger LOGGER = LoggerFactory.getLogger(PackWalFactoryTestBase.class);
+  protected Closer _closer;
 
-  private static EmbeddedZookeeper ZOOKEEPER;
-
-  @BeforeClass
-  public static void setupClass() throws IOException {
-    ZOOKEEPER = new EmbeddedZookeeper();
-    ZOOKEEPER.startup();
+  @Before
+  public void setup() {
+    _closer = Closer.create();
   }
 
-  @AfterClass
-  public static void teardownClass() {
-    ZOOKEEPER.shutdown();
+  @After
+  public void teardown() throws IOException {
+    _closer.close();
   }
 
   @Test
-  public void testPackZooKeeperBroadcastFactory() throws IOException, InterruptedException, ConfigException {
-    String connection = ZOOKEEPER.getConnection();
+  public void testPackWalFactory() throws Exception {
     Random random = new Random();
     try (PackTracer tracer = PackTracer.create(LOGGER, "test")) {
-      try (ZooKeeperClient zk = ZkUtils.newZooKeeper(connection, 30000)) {
-        PackZooKeeperWalFactory factory = new PackZooKeeperWalFactory(zk);
+      try (PackWalFactory factory = createPackWalFactory()) {
 
         PackMetaData metaData = PackMetaData.builder()
                                             .build();
@@ -68,10 +61,8 @@ public class PackZooKeeperBroadcastFactoryTest {
 
           WalCacheManager walCacheManager = getWalCacheManager(blockId, bs, test);
           MaxBlockLayer maxBlockLayer = getMaxBlockLayer();
-          try (PackWalReader reader = factory.createPackWalReader("test", metaData, walCacheManager,
-              maxBlockLayer)) {
+          try (PackWalReader reader = factory.createPackWalReader("test", metaData, walCacheManager, maxBlockLayer)) {
             reader.start();
-
             writer.write(tracer, blockId, bs, 0, bs.length);
             writer.flush(tracer);
             Thread.sleep(1000);
@@ -81,6 +72,8 @@ public class PackZooKeeperBroadcastFactoryTest {
       }
     }
   }
+
+  protected abstract PackWalFactory createPackWalFactory() throws Exception;
 
   private MaxBlockLayer getMaxBlockLayer() {
     return new MaxBlockLayer() {

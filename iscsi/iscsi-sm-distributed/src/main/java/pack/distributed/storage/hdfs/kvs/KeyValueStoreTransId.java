@@ -7,7 +7,7 @@ import lombok.Value;
 
 @Value
 @Builder
-public class TransId {
+public class KeyValueStoreTransId {
 
   long position;
   Path path;

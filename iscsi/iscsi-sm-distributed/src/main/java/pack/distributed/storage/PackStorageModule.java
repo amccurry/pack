@@ -37,7 +37,7 @@ public class PackStorageModule extends BaseStorageModule {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackStorageModule.class);
 
-  private final AtomicReference<PackWalWriter> _packBroadcastWriter = new AtomicReference<PackWalWriter>();
+  private final AtomicReference<PackWalWriter> _packWalWriter = new AtomicReference<PackWalWriter>();
   private final PackHdfsReader _hdfsReader;
   private final WalCacheManager _walCacheManager;
   private final PackWalReader _packBroadcastReader;
@@ -49,11 +49,11 @@ public class PackStorageModule extends BaseStorageModule {
   private final Object _lock = new Object();
   private final ZooKeeperClient _zk;
   private final String _targetHostAddress;
-  private final PackWalFactory _broadcastFactory;
+  private final PackWalFactory _walFactory;
   private final PackMetaData _metaData;
 
   public PackStorageModule(String name, PackMetaData metaData, Configuration conf, Path volumeDir,
-      PackWalFactory broadcastFactory, UserGroupInformation ugi, File cacheDir,
+      PackWalFactory walFactory, UserGroupInformation ugi, File cacheDir,
       WriteBlockMonitor writeBlockMonitor, BroadcastServerManager serverStatusManager,
       HdfsBlockGarbageCollector hdfsBlockGarbageCollector, long maxWalSize, long maxWalLifeTime, ZooKeeperClient zk,
       String targetHostAddress) throws IOException {
@@ -63,7 +63,7 @@ public class PackStorageModule extends BaseStorageModule {
     _targetHostAddress = targetHostAddress;
     _name = name;
     _serialId = UUID.fromString(metaData.getSerialId());
-    _broadcastFactory = broadcastFactory;
+    _walFactory = walFactory;
     _hdfsReader = new PackHdfsReader(conf, volumeDir, ugi, hdfsBlockGarbageCollector);
     _hdfsReader.refresh();
     _writeBlockMonitor = writeBlockMonitor;
@@ -71,7 +71,7 @@ public class PackStorageModule extends BaseStorageModule {
     _cacheFactory = new PackWalCacheFactory(metaData, cacheDir);
     _walCacheManager = new PackWalCacheManager(name, _writeBlockMonitor, _cacheFactory, _hdfsReader,
         _serverStatusManager, metaData, conf, volumeDir, maxWalSize, maxWalLifeTime);
-    _packBroadcastReader = broadcastFactory.createPackWalReader(name, metaData, _walCacheManager, _hdfsReader);
+    _packBroadcastReader = walFactory.createPackWalReader(name, metaData, _walCacheManager, _hdfsReader);
     _packBroadcastReader.start();
   }
 
@@ -133,7 +133,7 @@ public class PackStorageModule extends BaseStorageModule {
         int off = 0;
         long pos = storageIndex;
         int blockSize = _blockSize;
-        PackWalWriter packBroadcastWriter = getPackBroadcastWriter();
+        PackWalWriter packWalWriter = getPackWalWriter();
 
         while (len > 0) {
           int blockOffset = getBlockOffset(pos);
@@ -144,7 +144,7 @@ public class PackStorageModule extends BaseStorageModule {
           if (blockOffset != 0) {
             throw new IOException("block offset not 0");
           }
-          packBroadcastWriter.write(tracer, blockId, bytes, off, blockSize);
+          packWalWriter.write(tracer, blockId, bytes, off, blockSize);
           len -= blockSize;
           off += blockSize;
           pos += blockSize;
@@ -168,7 +168,7 @@ public class PackStorageModule extends BaseStorageModule {
     synchronized (_lock) {
       try (PackTracer tracer = PackTracer.create(LOGGER, "flush")) {
         try {
-          getPackBroadcastWriter().flush(tracer);
+          getPackWalWriter().flush(tracer);
         } catch (InterruptedException e) {
           throw new IOException(e);
         }
@@ -179,11 +179,11 @@ public class PackStorageModule extends BaseStorageModule {
   @Override
   public void close() throws IOException {
     LOGGER.info("Closing storage module {}", _name);
-    PackUtils.close(LOGGER, _packBroadcastWriter.get(), _packBroadcastReader, _walCacheManager, _hdfsReader);
+    PackUtils.close(LOGGER, _packWalWriter.get(), _packBroadcastReader, _walCacheManager, _hdfsReader);
   }
 
-  private PackWalWriter getPackBroadcastWriter() throws IOException {
-    PackWalWriter packBroadcastWriter = _packBroadcastWriter.get();
+  private PackWalWriter getPackWalWriter() throws IOException {
+    PackWalWriter packBroadcastWriter = _packWalWriter.get();
     if (packBroadcastWriter == null) {
       return createPackBroadcastWriter();
     }
@@ -191,12 +191,12 @@ public class PackStorageModule extends BaseStorageModule {
   }
 
   private synchronized PackWalWriter createPackBroadcastWriter() throws IOException {
-    PackWalWriter packBroadcastWriter = _packBroadcastWriter.get();
-    if (packBroadcastWriter == null) {
-      _packBroadcastWriter.set(packBroadcastWriter = _broadcastFactory.createPackWalWriter(_name, _metaData,
+    PackWalWriter packWalWriter = _packWalWriter.get();
+    if (packWalWriter == null) {
+      _packWalWriter.set(packWalWriter = _walFactory.createPackWalWriter(_name, _metaData,
           _writeBlockMonitor, _serverStatusManager));
     }
-    return packBroadcastWriter;
+    return packWalWriter;
   }
 
   public List<ReadRequest> createRequests(ByteBuffer byteBuffer, long storageIndex) {

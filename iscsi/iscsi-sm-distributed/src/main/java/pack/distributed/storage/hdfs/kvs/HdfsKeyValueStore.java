@@ -16,6 +16,7 @@
  */
 package pack.distributed.storage.hdfs.kvs;
 
+import java.io.Closeable;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -56,7 +57,7 @@ import org.slf4j.LoggerFactory;
 
 import pack.distributed.storage.hdfs.HdfsUtils;
 
-public class HdfsKeyValueStore implements Store {
+public class HdfsKeyValueStore implements KeyValueStore, Closeable {
 
   public static final int DEFAULT_MAX_AMOUNT_ALLOWED_PER_FILE = 64 * 1024 * 1024;
   public static final long DEFAULT_MAX_OPEN_FOR_WRITING = TimeUnit.MINUTES.toMillis(1);
@@ -285,7 +286,7 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
-  public void sync(TransId transId) throws IOException {
+  public void sync(KeyValueStoreTransId transId) throws IOException {
     ensureOpen();
     _writeLock.lock();
     ensureOpenForWriting();
@@ -311,6 +312,9 @@ public class HdfsKeyValueStore implements Store {
   public BytesRef lastKey() throws IOException {
     _writeLock.lock();
     try {
+      if (_pointers.isEmpty()) {
+        return null;
+      }
       return _pointers.lastKey();
     } finally {
       _writeLock.unlock();
@@ -379,7 +383,7 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
-  public TransId put(BytesRef key, BytesRef value) throws IOException {
+  public KeyValueStoreTransId put(BytesRef key, BytesRef value) throws IOException {
     ensureOpen();
     if (value == null) {
       return delete(key);
@@ -388,7 +392,7 @@ public class HdfsKeyValueStore implements Store {
     ensureOpenForWriting();
     try {
       Operation op = OperationType.PUT.createOperation(key, value);
-      TransId transId = write(op);
+      KeyValueStoreTransId transId = write(op);
       doPut(key, value, transId.getPath());
       return transId;
     } catch (RemoteException e) {
@@ -415,17 +419,17 @@ public class HdfsKeyValueStore implements Store {
     }
   }
 
-  private TransId write(Operation op) throws IOException {
+  private KeyValueStoreTransId write(Operation op) throws IOException {
     op.write(_output);
     Path p = _outputPath;
     long pos = _output.getPos();
     if (pos >= _maxAmountAllowedPerFile) {
       rollFile();
     }
-    return TransId.builder()
-                  .path(p)
-                  .position(pos)
-                  .build();
+    return KeyValueStoreTransId.builder()
+                               .path(p)
+                               .position(pos)
+                               .build();
   }
 
   private void rollFile() throws IOException {
@@ -509,13 +513,13 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
-  public TransId delete(BytesRef key) throws IOException {
+  public KeyValueStoreTransId delete(BytesRef key) throws IOException {
     ensureOpen();
     _writeLock.lock();
     ensureOpenForWriting();
     try {
       Operation op = OperationType.DELETE.createOperation(key, null);
-      TransId transId = write(op);
+      KeyValueStoreTransId transId = write(op);
       doDelete(key);
       return transId;
     } catch (RemoteException e) {
@@ -535,13 +539,13 @@ public class HdfsKeyValueStore implements Store {
   }
 
   @Override
-  public TransId deleteRange(BytesRef fromInclusive, BytesRef toExclusive) throws IOException {
+  public KeyValueStoreTransId deleteRange(BytesRef fromInclusive, BytesRef toExclusive) throws IOException {
     ensureOpen();
     _writeLock.lock();
     ensureOpenForWriting();
     try {
       Operation op = OperationType.DELETE_RANGE.createOperation(fromInclusive, toExclusive);
-      TransId transId = write(op);
+      KeyValueStoreTransId transId = write(op);
       doDeleteRange(fromInclusive, toExclusive);
       return transId;
     } catch (RemoteException e) {
@@ -629,7 +633,7 @@ public class HdfsKeyValueStore implements Store {
     }
   }
 
-  private void syncInternal(TransId transId) throws IOException {
+  private void syncInternal(KeyValueStoreTransId transId) throws IOException {
     if (!needsToSync(transId)) {
       // Another thread performed a sync that covered this transaction.
       LOGGER.debug("sync not needed");
@@ -642,7 +646,7 @@ public class HdfsKeyValueStore implements Store {
     _lastWrite.set(System.currentTimeMillis());
   }
 
-  private boolean needsToSync(TransId transId) {
+  private boolean needsToSync(KeyValueStoreTransId transId) {
     if (transId == null) {
       return true;
     }

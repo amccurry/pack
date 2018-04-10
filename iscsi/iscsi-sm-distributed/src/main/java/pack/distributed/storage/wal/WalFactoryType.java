@@ -3,13 +3,17 @@ package pack.distributed.storage.wal;
 import java.io.File;
 import java.io.IOException;
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+
 import com.google.common.io.Closer;
 
 import pack.distributed.storage.PackConfig;
+import pack.distributed.storage.hdfs.PackHdfsWalFactory;
 import pack.distributed.storage.zk.EmbeddedZookeeper;
-import pack.distributed.storage.zk.PackZooKeeperWalFactory;
 import pack.distributed.storage.zk.PackZooKeeperServer;
 import pack.distributed.storage.zk.PackZooKeeperServerConfig;
+import pack.distributed.storage.zk.PackZooKeeperWalFactory;
 import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
 
@@ -47,8 +51,9 @@ public enum WalFactoryType {
   HDFS {
     @Override
     public PackWalFactory create(Closer closer) throws IOException {
-      // TODO Auto-generated method stub
-      return null;
+      Configuration configuration = PackConfig.getConfiguration();
+      Path rootWal = PackConfig.getHdfsWalDir();
+      return new PackHdfsWalFactory(configuration, rootWal);
     }
   };
 

@@ -95,7 +95,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
   private final String _hostAddress;
 
   private final PackWriteBlockMonitorFactory _packWriteBlockMonitorFactory;
-  private final PackWalFactory _broadcastFactory;
+  private final PackWalFactory _walFactory;
   private final BroadcastServerManager _serverStatusManager;
   private final HdfsBlockGarbageCollector _hdfsBlockGarbageCollector;
   private final Closer _closer = Closer.create();
@@ -135,7 +135,7 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
     int sessionTimeout = PackConfig.getZooKeeperSessionTimeout();
 
     WalFactoryType type = PackConfig.getBroadcastFactoryType();
-    _broadcastFactory = type.create(_closer);
+    _walFactory = _closer.register(type.create(_closer));
 
     String writeBlockMonitorBindAddress = PackConfig.getWriteBlockMonitorBindAddress();
     int writeBlockMonitorPort = PackConfig.getWriteBlockMonitorPort();
@@ -208,9 +208,9 @@ public class PackStorageTargetManager extends BaseStorageTargetManager implement
         cacheDir.mkdirs();
         WriteBlockMonitor monitor = _packWriteBlockMonitorFactory.create(targetName);
         _serverStatusManager.register(targetName, monitor);
-        PackStorageModule module = new PackStorageModule(targetName, metaData, _conf, volumeDir, _broadcastFactory,
-            _ugi, cacheDir, monitor, _serverStatusManager, _hdfsBlockGarbageCollector, _maxWalSize, _maxWalLifeTime,
-            _zk, _hostAddress);
+        PackStorageModule module = new PackStorageModule(targetName, metaData, _conf, volumeDir, _walFactory, _ugi,
+            cacheDir, monitor, _serverStatusManager, _hdfsBlockGarbageCollector, _maxWalSize, _maxWalLifeTime, _zk,
+            _hostAddress);
         IStorageModule storageModule = MetricsStorageModule.wrap(targetName, _registry, module);
         return NoExceptions.retryForever(TraceStorageModule.traceIfEnabled(storageModule));
       });

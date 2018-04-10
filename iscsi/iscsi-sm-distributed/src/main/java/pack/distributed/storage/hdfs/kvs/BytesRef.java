@@ -138,4 +138,8 @@ public class BytesRef implements Comparable<BytesRef> {
     }
   }
 
+  public static BytesRef value(long l) {
+    return new BytesRef(l);
+  }
+
 }

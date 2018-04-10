@@ -21,13 +21,22 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
 
+import pack.distributed.storage.hdfs.kvs.rpc.RemoteKeyValueStore;
 import pack.distributed.storage.wal.WalFactoryType;
 import pack.distributed.storage.zk.PackZooKeeperServerConfig;
 import pack.iscsi.storage.utils.PackUtils;
 
 public class PackConfig {
 
-  private static final String ZK_DIR = "ZK_DIR";
+  public static final String HDFS_ZK_CONNECTION = "HDFS_ZK_CONNECTION";
+  public static final String HDFS_WAL_PORT = "HDFS_WAL_PORT";
+  public static final String HDFS_WAL_BIND_ADDRESS_DEFAULT = "0.0.0.0";
+  public static final String HDFS_WAL_BIND_ADDRESS = "HDFS_WAL_BIND_ADDRESS";
+  public static final String WAL_TYPE = "WAL_TYPE";
+  public static final String HDFS_WAL_PATH = "HDFS_WAL_PATH";
+  public static final String HDFS_WAL_MAX_SIZE_PER_FILE = "HDFS_WAL_MAX_SIZE_PER_FILE";
+  public static final String HDFS_WAL_MAX_TIME_OPEN_FOR_WRITING = "HDFS_WAL_MAX_TIME_OPEN_FOR_WRITING";
+  public static final String ZK_DIR = "ZK_DIR";
   public static final String SERVER_ID = "SERVER_ID";
   public static final String SERVER_LEADER_ELECT_PORT = "SERVER_LEADER_ELECT_PORT";
   public static final String SERVER_PEER_PORT = "SERVER_PEER_PORT";
@@ -42,7 +51,7 @@ public class PackConfig {
   public static final String ZK_CONNECTION = "ZK_CONNECTION";
   public static final String ZK_TIMEOUT = "ZK_TIMEOUT";
   public static final long WAL_MAX_LIFE_TIME_DEAULT = TimeUnit.MINUTES.toMillis(1);
-  public static final int WAL_MAX_SIZE_DEFAULT = 10_000_000;
+  public static final int WAL_MAX_SIZE_DEFAULT = 1_000_000;
   public static final String WAL_MAX_LIFE_TIME = "WAL_MAX_LIFE_TIME";
   public static final String WAL_MAX_SIZE = "WAL_MAX_SIZE";
   public static final String WAL_CACHE_DIR = "WAL_CACHE_DIR";
@@ -58,14 +67,15 @@ public class PackConfig {
   public static final long MAX_BLOCK_FILE_SIZE_DEAULT = 10_737_418_240L;
   public static final double MAX_OBSOLETE_RATIO_DEAULT = 0.5;
   public static final int WRITE_BLOCK_MONITOR_PORT_DEAULT = 9753;
-  public static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS_DEFAULT = "0.0.0.0";
+  public static final String WRITE_BLOCK_MONITOR_BIND_ADDRESS_DEFAULT = HDFS_WAL_BIND_ADDRESS_DEFAULT;
   public static final int SERVER_STATUS_PORT_DEAULT = 9753;
   public static final long HDFS_BLOCK_GC_DELAY_DEAULT = TimeUnit.MINUTES.toMillis(10);
   public static final String PACK_ISCSI_ADDRESS = "PACK_ISCSI_ADDRESS";
   public static final String PACK_HTTP_ADDRESS = "PACK_HTTP_ADDRESS";
-  public static final String PACK_HTTP_ADDRESS_DEFAULT = "0.0.0.0";
+  public static final String PACK_HTTP_ADDRESS_DEFAULT = HDFS_WAL_BIND_ADDRESS_DEFAULT;
   public static final String PACK_HTTP_PORT_DEFAULT = "8642";
   public static final String PACK_HTTP_PORT = "PACK_HTTP_PORT";
+  public static final int HDFS_WAL_PORT_DEFAULT = 5678;
 
   public static Path getHdfsTarget() {
     return new Path(PackUtils.getPropertyFailIfMissing(HDFS_TARGET_PATH));
@@ -96,6 +106,13 @@ public class PackConfig {
       File[] listFiles = file.listFiles((FilenameFilter) (dir, name) -> name.endsWith(XML));
       for (File f : listFiles) {
         configuration.addResource(new FileInputStream(f));
+      }
+    }
+    UserGroupInformation.setConfiguration(configuration);
+    if (UserGroupInformation.isSecurityEnabled()) {
+      if (configuration.get(RemoteKeyValueStore.REMOTE_KEY_VALUE_STORE_KERBEROS_PRINCIPAL_KEY) == null) {
+        configuration.set(RemoteKeyValueStore.REMOTE_KEY_VALUE_STORE_KERBEROS_PRINCIPAL_KEY,
+            PackUtils.getProperty(HDFS_KERBEROS_PRINCIPAL));
       }
     }
     return configuration;
@@ -223,18 +240,34 @@ public class PackConfig {
   }
 
   public static WalFactoryType getBroadcastFactoryType() {
-    // TODO Auto-generated method stub
-    return null;
+    return WalFactoryType.valueOf(PackUtils.getPropertyFailIfMissing(WAL_TYPE)
+                                           .toUpperCase());
   }
 
   public static long getHdfsWalMaxTimeOpenForWriting(long defaultMaxOpenForWriting) {
-    // TODO Auto-generated method stub
-    return 0;
+    return Long.parseLong(
+        PackUtils.getProperty(HDFS_WAL_MAX_TIME_OPEN_FOR_WRITING, Long.toString(defaultMaxOpenForWriting)));
   }
 
   public static long getHdfsWalMaxAmountAllowedPerFile(int defaultMaxAmountAllowedPerFile) {
-    // TODO Auto-generated method stub
-    return 0;
+    return Long.parseLong(
+        PackUtils.getProperty(HDFS_WAL_MAX_SIZE_PER_FILE, Long.toString(defaultMaxAmountAllowedPerFile)));
+  }
+
+  public static Path getHdfsWalDir() {
+    return new Path(PackUtils.getPropertyFailIfMissing(HDFS_WAL_PATH));
+  }
+
+  public static String getHdfsWalBindAddress() {
+    return PackUtils.getProperty(HDFS_WAL_BIND_ADDRESS, HDFS_WAL_BIND_ADDRESS_DEFAULT);
+  }
+
+  public static int getHdfsWalPort() {
+    return Integer.parseInt(PackUtils.getProperty(HDFS_WAL_PORT, Integer.toString(HDFS_WAL_PORT_DEFAULT)));
+  }
+
+  public static String getHdfsWalZooKeeperConnection() {
+    return PackUtils.getProperty(HDFS_ZK_CONNECTION, getZooKeeperConnection() + "/wal");
   }
 
 }
