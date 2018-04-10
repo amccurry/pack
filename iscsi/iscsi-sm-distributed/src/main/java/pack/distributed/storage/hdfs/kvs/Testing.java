@@ -21,8 +21,9 @@ public class Testing {
     Configuration configuration = PackConfig.getConfiguration();
     UserGroupInformation.setConfiguration(configuration);
 
+    int c = 0;
     Timer hdfsKeyValueTimer = new Timer(true);
-    Path path = new Path("/tmp/apm/test-hdfs-kv");
+    Path path = new Path(args[c++]);
     Random random = new Random();
     byte[] buf1 = new byte[256 * 1024];
     random.nextBytes(buf1);
@@ -30,6 +31,12 @@ public class Testing {
     random.nextBytes(buf2);
     byte[] buf3 = new byte[4096];
     random.nextBytes(buf3);
+
+    int threadCount = Integer.parseInt(args[c++]);
+
+    long maxAmountAllowedPerFile = Long.parseLong(args[c++]);
+
+    long delay = Long.parseLong(args[c++]);
 
     FileSystem fileSystem = path.getFileSystem(configuration);
     fileSystem.delete(path, true);
@@ -60,17 +67,18 @@ public class Testing {
     thread.setName("report");
     thread.start();
 
-    try (HdfsKeyValueStore store = new HdfsKeyValueStore(false, hdfsKeyValueTimer, configuration, path)) {
+    try (HdfsKeyValueStore store = new HdfsKeyValueStore(false, hdfsKeyValueTimer, configuration, path,
+        maxAmountAllowedPerFile)) {
       List<Thread> threads = new ArrayList<>();
       long offset = 0;
-      int threadCount = 50;
+
       for (int i = 0; i < threadCount; i++) {
         long o = offset;
         Thread t = new Thread(new Runnable() {
           @Override
           public void run() {
             try {
-              runThroughputTest(buf1, buf2, buf3, store, totalDataAtomic, o);
+              runThroughputTest(buf1, buf2, buf3, store, totalDataAtomic, o, delay);
             } catch (Exception e) {
               e.printStackTrace();
               return;
@@ -90,9 +98,8 @@ public class Testing {
   }
 
   private static void runThroughputTest(byte[] buf1, byte[] buf2, byte[] buf3, HdfsKeyValueStore store,
-      AtomicLong totalDataAtomic, long offset) throws IOException, InterruptedException {
+      AtomicLong totalDataAtomic, long offset, long delay) throws IOException, InterruptedException {
     BytesRef startKey = new BytesRef(offset);
-    int delay = 5;
     while (true) {
       {
         TransId transId = store.put(new BytesRef(offset++), new BytesRef(buf1));

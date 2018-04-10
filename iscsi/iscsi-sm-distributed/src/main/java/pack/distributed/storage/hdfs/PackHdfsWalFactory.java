@@ -14,6 +14,7 @@ import pack.distributed.storage.PackConfig;
 import pack.distributed.storage.PackMetaData;
 import pack.distributed.storage.hdfs.kvs.BytesRef;
 import pack.distributed.storage.hdfs.kvs.HdfsKeyValueStore;
+import pack.distributed.storage.hdfs.kvs.TransId;
 import pack.distributed.storage.monitor.WriteBlockMonitor;
 import pack.distributed.storage.status.BroadcastServerManager;
 import pack.distributed.storage.wal.Block;
@@ -49,10 +50,12 @@ public class PackHdfsWalFactory extends PackWalFactory {
     Path path = new Path(_root, name);
     return new PackWalWriter(name, writeBlockMonitor, serverStatusManager) {
 
+      private TransId transId;
+
       @Override
       protected synchronized void writeBlocks(Blocks blocks) throws IOException {
         HdfsKeyValueStore store = getStore(path);
-        store.put(getKey(store), new BytesRef(Blocks.toBytes(blocks)));
+        transId = store.put(getKey(store), new BytesRef(Blocks.toBytes(blocks)));
       }
 
       private BytesRef getKey(HdfsKeyValueStore store) throws IOException {
@@ -66,7 +69,7 @@ public class PackHdfsWalFactory extends PackWalFactory {
 
       @Override
       protected void internalFlush() throws IOException {
-        getStore(path).sync();
+        getStore(path).sync(transId);
       }
 
       @Override

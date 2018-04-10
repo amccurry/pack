@@ -33,6 +33,7 @@ import java.util.TreeSet;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -186,10 +187,10 @@ public class HdfsKeyValueStore implements Store {
   private final long _maxTimeOpenForWriting;
   private final boolean _readOnly;
   private final AtomicLong _lastSyncPosition = new AtomicLong();
+  private final AtomicBoolean _isClosed = new AtomicBoolean(false);
 
   private FSDataOutputStream _output;
   private Path _outputPath;
-  private boolean _isClosed;
 
   public HdfsKeyValueStore(boolean readOnly, Timer hdfsKeyValueTimer, Configuration configuration, Path path)
       throws IOException {
@@ -276,6 +277,11 @@ public class HdfsKeyValueStore implements Store {
         }
       }
     };
+  }
+
+  @Override
+  public void sync() throws IOException {
+    sync(null);
   }
 
   @Override
@@ -558,8 +564,8 @@ public class HdfsKeyValueStore implements Store {
 
   @Override
   public void close() throws IOException {
-    if (!_isClosed) {
-      _isClosed = true;
+    if (!_isClosed.get()) {
+      _isClosed.set(true);
       if (_idleLogTimerTask != null) {
         _idleLogTimerTask.cancel();
       }
@@ -618,7 +624,7 @@ public class HdfsKeyValueStore implements Store {
   }
 
   private void ensureOpen() throws IOException {
-    if (_isClosed) {
+    if (_isClosed.get()) {
       throw new IOException("Already closed.");
     }
   }

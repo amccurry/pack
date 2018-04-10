@@ -25,6 +25,8 @@ public interface Store extends Closeable {
   boolean isOwner() throws IOException;
 
   BytesRef lastKey() throws IOException;
+  
+  void sync() throws IOException;
 
   void sync(TransId transId) throws IOException;
 
@@ -39,5 +41,7 @@ public interface Store extends Closeable {
   TransId deleteRange(BytesRef fromInclusive, BytesRef toExclusive) throws IOException;
 
   void close() throws IOException;
+
+  
 
 }
