@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.security.PrivilegedExceptionAction;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -37,6 +38,7 @@ import pack.distributed.storage.hdfs.kvs.KeyValueStore;
 import pack.distributed.storage.hdfs.kvs.KeyValueStoreTransId;
 import pack.distributed.storage.zk.ZkUtils;
 import pack.distributed.storage.zk.ZooKeeperClient;
+import pack.iscsi.storage.utils.PackUtils;
 
 public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable {
 
@@ -295,9 +297,15 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
 
   @Override
   public void close() throws IOException {
+    _instances.remove(_serverAddress);
     _hdfsKeyValueTimer.cancel();
     _hdfsKeyValueTimer.purge();
     _server.stop();
+
+    Collection<KeyValueStore> values = _stores.values();
+    for (KeyValueStore keyValueStore : values) {
+      PackUtils.close(LOGGER, keyValueStore);
+    }
   }
 
 }

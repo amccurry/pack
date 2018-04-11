@@ -11,7 +11,10 @@ import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.net.SocketFactory;
+
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.ipc.ProtocolProxy;
 import org.apache.hadoop.ipc.RPC;
 import org.apache.hadoop.ipc.WritableRpcEngine;
 import org.apache.hadoop.net.NetUtils;
@@ -39,7 +42,6 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
     Configuration configuration = PackConfig.getConfiguration();
     UserGroupInformation.setConfiguration(configuration);
     UserGroupInformation ugi = PackConfig.getUgi();
-    RPC.setProtocolEngine(configuration, RemoteKeyValueStore.class, WritableRpcEngine.class);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       String zooKeeperConnection = PackConfig.getHdfsWalZooKeeperConnection();
       int sessionTimeout = PackConfig.getZooKeeperSessionTimeout();
@@ -83,6 +85,7 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
   private final Map<String, RemoteKeyValueStore> _serverToClientMap = new ConcurrentHashMap<>();
 
   private RemoteKeyValueStoreClient(Configuration configuration, ZooKeeperClient zk) throws IOException {
+    RPC.setProtocolEngine(configuration, RemoteKeyValueStore.class, WritableRpcEngine.class);
     _configuration = configuration;
     _zk = zk;
     ZkUtils.mkNodes(_zk, RemoteKeyValueStoreServer.SERVERS);
@@ -229,7 +232,13 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
     String portStr = server.substring(indexOf + 1);
     RemoteKeyValueStore rkvs = _serverToClientMap.get(server);
     if (rkvs == null) {
-      _serverToClientMap.put(server, rkvs = createRemoteKeyValueStoreRpc(address, Integer.parseInt(portStr)));
+      // try to see if this instance is embedded
+      rkvs = RemoteKeyValueStoreServer.lookupInstance(address, Integer.parseInt(portStr));
+      if (rkvs == null) {
+        // connect remotely
+        rkvs = createRemoteKeyValueStoreRpc(address, Integer.parseInt(portStr));
+      }
+      _serverToClientMap.put(server, rkvs);
     }
     return rkvs;
   }
@@ -237,10 +246,12 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
   private RemoteKeyValueStore createRemoteKeyValueStoreRpc(String address, int port)
       throws IOException, InterruptedException {
     InetSocketAddress dataNodeAddress = new InetSocketAddress(address, port);
-    return RPC.getProtocolProxy(RemoteKeyValueStore.class, RPC.getProtocolVersion(RemoteKeyValueStore.class),
-        dataNodeAddress, UserGroupInformation.getCurrentUser(), _configuration,
-        NetUtils.getDefaultSocketFactory(_configuration))
-              .getProxy();
+    long protocolVersion = RPC.getProtocolVersion(RemoteKeyValueStore.class);
+    UserGroupInformation ugi = UserGroupInformation.getCurrentUser();
+    SocketFactory socketFactory = NetUtils.getDefaultSocketFactory(_configuration);
+    ProtocolProxy<RemoteKeyValueStore> proxy = RPC.getProtocolProxy(RemoteKeyValueStore.class, protocolVersion,
+        dataNodeAddress, ugi, _configuration, socketFactory);
+    return proxy.getProxy();
   }
 
   private boolean isRunning() {
