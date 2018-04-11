@@ -17,6 +17,8 @@
 package pack.distributed.storage.hdfs.kvs;
 
 import java.io.UnsupportedEncodingException;
+import java.math.BigInteger;
+import java.util.Arrays;
 
 import org.apache.hadoop.io.WritableComparator;
 
@@ -142,4 +144,22 @@ public class BytesRef implements Comparable<BytesRef> {
     return new BytesRef(l);
   }
 
+  public byte[] getBytes() {
+    byte[] buf = new byte[length];
+    System.arraycopy(bytes, offset, buf, 0, length);
+    return buf;
+  }
+
+  @Override
+  public String toString() {
+    return "BytesRef [bytes=" + Arrays.toString(bytes) + ", offset=" + offset + ", length=" + length + "]";
+  }
+
+  public static void increment(BytesRef bytesRef) {
+    BigInteger bigInteger = new BigInteger(bytesRef.getBytes());
+    byte[] bs = bigInteger.add(BigInteger.ONE)
+                          .toByteArray();
+    int off = bytesRef.length - bs.length + bytesRef.offset;
+    System.arraycopy(bs, 0, bytesRef.bytes, off, bs.length);
+  }
 }

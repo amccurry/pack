@@ -47,7 +47,7 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
       int sessionTimeout = PackConfig.getZooKeeperSessionTimeout();
       ZooKeeperClient zk = ZkUtils.newZooKeeper(zooKeeperConnection, sessionTimeout);
       try (RemoteKeyValueStoreClient rkvs = RemoteKeyValueStoreClient.create(configuration, zk)) {
-        Key key = Key.toKey(BytesRef.value(123L));
+        BytesReference key = BytesReference.toBytesReference(BytesRef.value(123L));
         {
           GetResult result = rkvs.get("test", key);
           if (result.isFound()) {
@@ -59,7 +59,7 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
         }
 
         TransId transId = rkvs.put("test", key,
-            Key.toKey(new BytesRef("test hi there! " + System.currentTimeMillis())));
+            BytesReference.toBytesReference(new BytesRef("test hi there! " + System.currentTimeMillis())));
 
         rkvs.sync("test", transId);
 
@@ -79,7 +79,7 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
 
   private final Configuration _configuration;
   private final ZooKeeperClient _zk;
-  private final Thread _watchThread;
+  private final Thread _watchKvsThread;
   private final AtomicBoolean _running = new AtomicBoolean(true);
   private final Map<String, String> _storeToServerMap = new ConcurrentHashMap<>();
   private final Map<String, RemoteKeyValueStore> _serverToClientMap = new ConcurrentHashMap<>();
@@ -90,20 +90,20 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
     _zk = zk;
     ZkUtils.mkNodes(_zk, RemoteKeyValueStoreServer.SERVERS);
     ZkUtils.mkNodes(_zk, RemoteKeyValueStoreServer.STORES);
-    _watchThread = new Thread(() -> {
+    _watchKvsThread = new Thread(() -> {
       while (isRunning()) {
         try {
-          watchForKvs();
+          watchKvs();
         } catch (Throwable t) {
           LOGGER.error("Unknown error", t);
         }
       }
     });
-    _watchThread.setDaemon(true);
-    _watchThread.start();
+    _watchKvsThread.setDaemon(true);
+    _watchKvsThread.start();
   }
 
-  private void watchForKvs() throws KeeperException, InterruptedException {
+  private void watchKvs() throws KeeperException, InterruptedException {
     Object lock = new Object();
     Watcher watch = event -> {
       synchronized (lock) {
@@ -139,7 +139,7 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
   @Override
   public void close() throws IOException {
     _running.set(false);
-    _watchThread.interrupt();
+    _watchKvsThread.interrupt();
   }
 
   @Override
@@ -154,45 +154,73 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
   }
 
   @Override
-  public ScanResult scan(String store, Key key) throws IOException {
-    RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
-    return rkvs.scan(store, key);
+  public ScanResult scan(String store, BytesReference key) throws IOException {
+    return execute(() -> {
+      RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
+      return rkvs.scan(store, key);
+    });
   }
 
   @Override
-  public Key lastKey(String store) throws IOException {
-    RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
-    return rkvs.lastKey(store);
+  public BytesReference lastKey(String store) throws IOException {
+    return execute(() -> {
+      RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
+      return rkvs.lastKey(store);
+    });
   }
 
   @Override
-  public GetResult get(String store, Key key) throws IOException {
-    RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
-    return rkvs.get(store, key);
+  public GetResult get(String store, BytesReference key) throws IOException {
+    return execute(() -> {
+      RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
+      return rkvs.get(store, key);
+    });
   }
 
   @Override
-  public TransId put(String store, Key key, Key value) throws IOException {
-    RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
-    return rkvs.put(store, key, value);
+  public TransId put(String store, BytesReference key, BytesReference value) throws IOException {
+    return execute(() -> {
+      RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
+      return rkvs.put(store, key, value);
+    });
+  }
+
+  private void inValidateClientCache() {
+    _serverToClientMap.clear();
   }
 
   @Override
-  public TransId delete(String store, Key key) throws IOException {
-    RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
-    return rkvs.delete(store, key);
+  public TransId delete(String store, BytesReference key) throws IOException {
+    return execute(() -> {
+      RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
+      return rkvs.delete(store, key);
+    });
   }
 
   @Override
-  public TransId deleteRange(String store, Key fromInclusive, Key toExclusive) throws IOException {
-    RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
-    return rkvs.deleteRange(store, fromInclusive, toExclusive);
+  public TransId deleteRange(String store, BytesReference fromInclusive, BytesReference toExclusive)
+      throws IOException {
+    return execute(() -> {
+      RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
+      return rkvs.deleteRange(store, fromInclusive, toExclusive);
+    });
   }
 
   @Override
   public void sync(String store, TransId transId) throws IOException {
-    RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
-    rkvs.sync(store, transId);
+    execute(() -> {
+      RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
+      rkvs.sync(store, transId);
+      return null;
+    });
+  }
+
+  @Override
+  public TransId putIncrement(String store, int keySize, BytesReference value) throws IOException {
+    return execute(() -> {
+      RemoteKeyValueStore rkvs = getRemoteKeyValueStore(store);
+      return rkvs.putIncrement(store, keySize, value);
+    });
   }
 
   private RemoteKeyValueStore getRemoteKeyValueStore(String store) throws IOException {
@@ -257,4 +285,29 @@ public class RemoteKeyValueStoreClient implements RemoteKeyValueStore, Closeable
   private boolean isRunning() {
     return _running.get();
   }
+
+  interface RemoteCall<T> {
+    T execute() throws IOException;
+  }
+
+  private <T> T execute(RemoteCall<T> remoteCall) throws IOException {
+    long sleep = 10;
+    while (true) {
+      try {
+        return remoteCall.execute();
+      } catch (Exception e) {
+        LOGGER.warn(e.getMessage());
+        inValidateClientCache();
+        try {
+          Thread.sleep(sleep);
+          if (sleep < 1000) {
+            sleep += 10;
+          }
+        } catch (InterruptedException ex) {
+          throw new IOException(ex);
+        }
+      }
+    }
+  }
+
 }

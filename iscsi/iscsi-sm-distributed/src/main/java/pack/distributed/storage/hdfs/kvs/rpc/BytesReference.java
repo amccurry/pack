@@ -16,24 +16,24 @@ import pack.distributed.storage.hdfs.kvs.BytesRef;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Key implements Writable {
+public class BytesReference implements Writable {
 
-  BytesRef key;
+  BytesRef bytesRef;
 
-  public static Key toKey(BytesRef key) {
-    return Key.builder()
-              .key(key)
-              .build();
+  public static BytesReference toBytesReference(BytesRef bytesRef) {
+    return BytesReference.builder()
+                         .bytesRef(bytesRef)
+                         .build();
   }
 
   @Override
   public void write(DataOutput out) throws IOException {
-    RpcUtil.write(out, key);
+    RpcUtil.write(out, bytesRef);
   }
 
   @Override
   public void readFields(DataInput in) throws IOException {
-    key = RpcUtil.readBytesRef(in);
+    bytesRef = RpcUtil.readBytesRef(in);
   }
 
 }

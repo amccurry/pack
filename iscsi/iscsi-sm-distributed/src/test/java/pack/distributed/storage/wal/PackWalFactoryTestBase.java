@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.After;
@@ -43,6 +44,7 @@ public abstract class PackWalFactoryTestBase {
   @Test
   public void testPackWalFactory() throws Exception {
     Random random = new Random();
+    Object lock = new Object();
     try (PackTracer tracer = PackTracer.create(LOGGER, "test")) {
       try (PackWalFactory factory = createPackWalFactory()) {
 
@@ -59,13 +61,15 @@ public abstract class PackWalFactoryTestBase {
 
           AtomicBoolean test = new AtomicBoolean();
 
-          WalCacheManager walCacheManager = getWalCacheManager(blockId, bs, test);
+          WalCacheManager walCacheManager = getWalCacheManager(blockId, bs, test, lock);
           MaxBlockLayer maxBlockLayer = getMaxBlockLayer();
           try (PackWalReader reader = factory.createPackWalReader("test", metaData, walCacheManager, maxBlockLayer)) {
             reader.start();
-            writer.write(tracer, blockId, bs, 0, bs.length);
-            writer.flush(tracer);
-            Thread.sleep(1000);
+            synchronized (lock) {
+              writer.write(tracer, blockId, bs, 0, bs.length);
+              writer.flush(tracer);
+              lock.wait(TimeUnit.MINUTES.toMillis(1));
+            }
             assertTrue(test.get());
           }
         }
@@ -84,7 +88,7 @@ public abstract class PackWalFactoryTestBase {
     };
   }
 
-  private WalCacheManager getWalCacheManager(int bid, byte[] data, AtomicBoolean test) {
+  private WalCacheManager getWalCacheManager(int bid, byte[] data, AtomicBoolean test, Object lock) {
     return new WalCacheManager() {
 
       @Override
@@ -103,6 +107,9 @@ public abstract class PackWalFactoryTestBase {
         System.out.printf("t:%20d o:%20d b:%20d d:%s%n", 0, 0, bid, Md5Utils.md5AsBase64(data));
         if (blockId == bid && Arrays.equals(bs, data)) {
           test.set(true);
+        }
+        synchronized (lock) {
+          lock.notify();
         }
       }
 

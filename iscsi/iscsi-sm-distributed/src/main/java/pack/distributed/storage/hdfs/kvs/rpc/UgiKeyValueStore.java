@@ -124,4 +124,13 @@ public class UgiKeyValueStore implements KeyValueStore {
     }
   }
 
+  @Override
+  public KeyValueStoreTransId putIncrement(int keySize, BytesRef value) throws IOException {
+    try {
+      return _ugi.doAs((PrivilegedExceptionAction<KeyValueStoreTransId>) () -> _delegate.putIncrement(keySize, value));
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
+  }
+
 }

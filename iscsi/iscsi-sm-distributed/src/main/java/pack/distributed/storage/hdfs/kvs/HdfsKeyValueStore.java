@@ -315,7 +315,7 @@ public class HdfsKeyValueStore implements KeyValueStore, Closeable {
       if (_pointers.isEmpty()) {
         return null;
       }
-      return _pointers.lastKey();
+      return BytesRef.deepCopyOf(_pointers.lastKey());
     } finally {
       _writeLock.unlock();
     }
@@ -380,6 +380,34 @@ public class HdfsKeyValueStore implements KeyValueStore, Closeable {
         };
       }
     };
+  }
+
+  @Override
+  public KeyValueStoreTransId putIncrement(int keySize, BytesRef value) throws IOException {
+    ensureOpen();
+    if (value == null) {
+      throw new IOException("Null value is not allowed");
+    }
+    _writeLock.lock();
+    ensureOpenForWriting();
+    try {
+      BytesRef lastKey = lastKey();
+      if (lastKey == null) {
+        lastKey = new BytesRef(new byte[keySize]);
+      } else {
+        BytesRef.increment(lastKey);
+      }
+      Operation op = OperationType.PUT.createOperation(lastKey, value);
+      KeyValueStoreTransId transId = write(op);
+      doPut(lastKey, value, transId.getPath());
+      return transId;
+    } catch (RemoteException e) {
+      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+    } catch (LeaseExpiredException e) {
+      throw new IOException("Another HDFS KeyStore has taken ownership of this key value store.", e);
+    } finally {
+      _writeLock.unlock();
+    }
   }
 
   @Override

@@ -5,6 +5,7 @@ import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.security.UserGroupInformation;
 
 import com.google.common.io.Closer;
 
@@ -52,8 +53,14 @@ public enum WalFactoryType {
     @Override
     public PackWalFactory create(Closer closer) throws IOException {
       Configuration configuration = PackConfig.getConfiguration();
-      Path rootWal = PackConfig.getHdfsWalDir();
-      return new PackHdfsWalFactory(configuration, rootWal);
+      String zkConnection = PackConfig.getHdfsWalZooKeeperConnection();
+      int sessionTimeout = PackConfig.getZooKeeperSessionTimeout();
+      String hdfsWalBindAddress = PackConfig.getHdfsWalBindAddress();
+      int hdfsWalPort = PackConfig.getHdfsWalPort();
+      Path hdfsWalDir = PackConfig.getHdfsWalDir();
+      UserGroupInformation ugi = PackConfig.getUgi();
+      return new PackHdfsWalFactory(configuration, zkConnection, sessionTimeout, hdfsWalBindAddress, hdfsWalPort,
+          hdfsWalDir, ugi);
     }
   };
 

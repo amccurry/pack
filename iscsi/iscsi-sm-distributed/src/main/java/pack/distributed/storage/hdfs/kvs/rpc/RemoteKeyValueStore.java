@@ -15,17 +15,19 @@ public interface RemoteKeyValueStore {
 
   StoreList storeList() throws IOException;
 
-  ScanResult scan(String store, Key key) throws IOException;
+  ScanResult scan(String store, BytesReference key) throws IOException;
 
-  Key lastKey(String store) throws IOException;
+  BytesReference lastKey(String store) throws IOException;
 
-  GetResult get(String store, Key key) throws IOException;
+  GetResult get(String store, BytesReference key) throws IOException;
 
-  TransId put(String store, Key key, Key value) throws IOException;
+  TransId put(String store, BytesReference key, BytesReference value) throws IOException;
 
-  TransId delete(String store, Key key) throws IOException;
+  TransId putIncrement(String store, int keySize, BytesReference value) throws IOException;
 
-  TransId deleteRange(String store, Key fromInclusive, Key toExclusive) throws IOException;
+  TransId delete(String store, BytesReference key) throws IOException;
+
+  TransId deleteRange(String store, BytesReference fromInclusive, BytesReference toExclusive) throws IOException;
 
   void sync(String store, TransId transId) throws IOException;
 

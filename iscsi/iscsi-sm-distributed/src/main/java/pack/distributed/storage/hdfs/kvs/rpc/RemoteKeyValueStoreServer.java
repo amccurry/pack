@@ -48,6 +48,7 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
   private static final Logger LOGGER = LoggerFactory.getLogger(RemoteKeyValueStoreServer.class);
 
   private static final String KVS_TIMER = "kvs-timer";
+  private static boolean _embeddedLookup = true;
 
   public static void main(String[] args) throws IOException, InterruptedException {
     Path rootKvs = PackConfig.getHdfsWalDir();
@@ -75,9 +76,20 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
     });
   }
 
+  public static boolean isEmbeddedLookup() {
+    return _embeddedLookup;
+  }
+
+  public static void setEmbeddedLookup(boolean embeddedLookup) {
+    _embeddedLookup = embeddedLookup;
+  }
+
   private static final Map<String, RemoteKeyValueStoreServer> _instances = new ConcurrentHashMap<>();
 
   public static synchronized RemoteKeyValueStoreServer lookupInstance(String address, int port) throws IOException {
+    if (!_embeddedLookup) {
+      return null;
+    }
     return _instances.get(getKey(address, port));
   }
 
@@ -176,11 +188,11 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
   }
 
   @Override
-  public ScanResult scan(String store, Key key) throws IOException {
+  public ScanResult scan(String store, BytesReference key) throws IOException {
     KeyValueStore kvs = getStore(store);
     Builder<Pair<BytesRef, BytesRef>> builder = ImmutableList.builder();
     long responseSize = 0;
-    for (Entry<BytesRef, BytesRef> e : kvs.scan(key.getKey())) {
+    for (Entry<BytesRef, BytesRef> e : kvs.scan(key.getBytesRef())) {
       BytesRef value = e.getValue();
       responseSize += value.length;
       builder.add(Pair.create(e.getKey(), value));
@@ -194,16 +206,16 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
   }
 
   @Override
-  public Key lastKey(String store) throws IOException {
+  public BytesReference lastKey(String store) throws IOException {
     KeyValueStore kvs = getStore(store);
-    return Key.toKey(kvs.lastKey());
+    return BytesReference.toBytesReference(kvs.lastKey());
   }
 
   @Override
-  public GetResult get(String store, Key key) throws IOException {
+  public GetResult get(String store, BytesReference key) throws IOException {
     KeyValueStore kvs = getStore(store);
     BytesRef value = new BytesRef();
-    boolean found = kvs.get(key.getKey(), value);
+    boolean found = kvs.get(key.getBytesRef(), value);
     return GetResult.builder()
                     .found(found)
                     .value(value)
@@ -211,23 +223,31 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
   }
 
   @Override
-  public TransId put(String store, Key key, Key value) throws IOException {
+  public TransId putIncrement(String store, int keySize, BytesReference value) throws IOException {
     KeyValueStore kvs = getStore(store);
-    KeyValueStoreTransId transId = kvs.put(key.getKey(), value.getKey());
+    KeyValueStoreTransId transId = kvs.putIncrement(keySize, value.getBytesRef());
     return TransId.toTransId(transId);
   }
 
   @Override
-  public TransId delete(String store, Key key) throws IOException {
+  public TransId put(String store, BytesReference key, BytesReference value) throws IOException {
     KeyValueStore kvs = getStore(store);
-    KeyValueStoreTransId transId = kvs.delete(key.getKey());
+    KeyValueStoreTransId transId = kvs.put(key.getBytesRef(), value.getBytesRef());
     return TransId.toTransId(transId);
   }
 
   @Override
-  public TransId deleteRange(String store, Key fromInclusive, Key toExclusive) throws IOException {
+  public TransId delete(String store, BytesReference key) throws IOException {
     KeyValueStore kvs = getStore(store);
-    KeyValueStoreTransId transId = kvs.deleteRange(fromInclusive.getKey(), toExclusive.getKey());
+    KeyValueStoreTransId transId = kvs.delete(key.getBytesRef());
+    return TransId.toTransId(transId);
+  }
+
+  @Override
+  public TransId deleteRange(String store, BytesReference fromInclusive, BytesReference toExclusive)
+      throws IOException {
+    KeyValueStore kvs = getStore(store);
+    KeyValueStoreTransId transId = kvs.deleteRange(fromInclusive.getBytesRef(), toExclusive.getBytesRef());
     return TransId.toTransId(transId);
   }
 
@@ -297,6 +317,12 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
 
   @Override
   public void close() throws IOException {
+    try {
+      _zooKeeper.delete(SERVERS + "/" + _serverAddress, -1);
+    } catch (InterruptedException | KeeperException e) {
+      LOGGER.info("Error while removing entry in zk", e);
+    }
+
     _instances.remove(_serverAddress);
     _hdfsKeyValueTimer.cancel();
     _hdfsKeyValueTimer.purge();
