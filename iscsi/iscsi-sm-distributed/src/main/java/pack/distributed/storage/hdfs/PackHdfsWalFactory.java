@@ -59,7 +59,8 @@ public class PackHdfsWalFactory extends PackWalFactory {
       @Override
       protected synchronized void writeBlocks(Blocks blocks) throws IOException {
         byte[] bytes = Blocks.toBytes(blocks);
-        _transId = _client.putIncrement(name, LONG_TYPE_SIZE, BytesReference.toBytesReference(new BytesRef(bytes)));
+        _transId = _client.putIncrement(name, BytesReference.toBytesReference(new BytesRef(LONG_TYPE_SIZE)),
+            BytesReference.toBytesReference(new BytesRef(bytes)));
       }
 
       @Override

@@ -223,9 +223,9 @@ public class RemoteKeyValueStoreServer implements RemoteKeyValueStore, Closeable
   }
 
   @Override
-  public TransId putIncrement(String store, int keySize, BytesReference value) throws IOException {
+  public TransId putIncrement(String store, BytesReference initialKey, BytesReference value) throws IOException {
     KeyValueStore kvs = getStore(store);
-    KeyValueStoreTransId transId = kvs.putIncrement(keySize, value.getBytesRef());
+    KeyValueStoreTransId transId = kvs.putIncrement(initialKey.getBytesRef(), value.getBytesRef());
     return TransId.toTransId(transId);
   }
 

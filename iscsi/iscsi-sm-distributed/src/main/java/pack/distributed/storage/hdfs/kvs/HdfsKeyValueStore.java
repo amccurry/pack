@@ -383,7 +383,7 @@ public class HdfsKeyValueStore implements KeyValueStore, Closeable {
   }
 
   @Override
-  public KeyValueStoreTransId putIncrement(int keySize, BytesRef value) throws IOException {
+  public KeyValueStoreTransId putIncrement(BytesRef initialKey, BytesRef value) throws IOException {
     ensureOpen();
     if (value == null) {
       throw new IOException("Null value is not allowed");
@@ -393,7 +393,7 @@ public class HdfsKeyValueStore implements KeyValueStore, Closeable {
     try {
       BytesRef lastKey = lastKey();
       if (lastKey == null) {
-        lastKey = new BytesRef(new byte[keySize]);
+        lastKey = initialKey;
       } else {
         BytesRef.increment(lastKey);
       }

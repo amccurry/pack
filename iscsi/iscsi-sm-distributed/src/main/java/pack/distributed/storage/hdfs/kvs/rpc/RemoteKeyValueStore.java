@@ -23,7 +23,7 @@ public interface RemoteKeyValueStore {
 
   TransId put(String store, BytesReference key, BytesReference value) throws IOException;
 
-  TransId putIncrement(String store, int keySize, BytesReference value) throws IOException;
+  TransId putIncrement(String store, BytesReference initialKey, BytesReference value) throws IOException;
 
   TransId delete(String store, BytesReference key) throws IOException;
 

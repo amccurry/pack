@@ -42,6 +42,6 @@ public interface KeyValueStore extends Closeable {
 
   void close() throws IOException;
 
-  KeyValueStoreTransId putIncrement(int keySize, BytesRef value) throws IOException;
+  KeyValueStoreTransId putIncrement(BytesRef initialKey, BytesRef value) throws IOException;
 
 }
