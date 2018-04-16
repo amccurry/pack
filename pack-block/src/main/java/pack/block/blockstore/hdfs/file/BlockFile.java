@@ -1,11 +1,18 @@
 package pack.block.blockstore.hdfs.file;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel.MapMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -25,16 +32,19 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.roaringbitmap.RoaringBitmap;
+import org.roaringbitmap.buffer.ImmutableRoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
+import com.google.common.io.Closer;
 
 import pack.block.util.Utils;
 
 public class BlockFile {
 
+  private static final String PACK_BLOCK_FILE_OFFHEAP_PATH = "pack.block.file.offheap.path";
   private static final int DEFAULT_MERGE_READ_BATCH_SIZE = 32;
   private static final String BLOCK = ".block";
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFile.class);
@@ -42,7 +52,18 @@ public class BlockFile {
   private static final String UTF_8 = "UTF-8";
   private static final byte[] MAGIC_STR;
 
+  private static final boolean OFF_HEAP_BITMAPS;
+  private static final File INDEX_DIR;
+
   static {
+    String path = System.getProperty(PACK_BLOCK_FILE_OFFHEAP_PATH);
+    if (path == null) {
+      OFF_HEAP_BITMAPS = false;
+    } else {
+      OFF_HEAP_BITMAPS = true;
+    }
+    INDEX_DIR = new File(path);
+    INDEX_DIR.mkdirs();
     try {
       MAGIC_STR = HDFS_BLOCK_FILE_V1.getBytes(UTF_8);
     } catch (UnsupportedEncodingException e) {
@@ -568,6 +589,8 @@ public class BlockFile {
 
     public abstract List<String> getSourceBlockFiles();
 
+    public abstract int getHeapSize();
+
     @Override
     public String toString() {
       Path path = getPath();
@@ -720,12 +743,21 @@ public class BlockFile {
       }
       return builder.build();
     }
+
+    @Override
+    public int getHeapSize() {
+      int total = 0;
+      for (RandomAccessReaderOrdered rand : _orderedReaders) {
+        total += rand.getHeapSize();
+      }
+      return total;
+    }
   }
 
   public abstract static class ReaderOrdered extends Reader {
 
-    protected final RoaringBitmap _blocks;
-    protected final RoaringBitmap _emptyBlocks;
+    protected final ImmutableRoaringBitmap _blocks;
+    protected final ImmutableRoaringBitmap _emptyBlocks;
     protected final FSDataInputStream _inputStream;
     protected final int _blockSize;
     protected final Path _path;
@@ -734,11 +766,12 @@ public class BlockFile {
     protected final long _last;
     protected final long _startingPosition;
     protected final long _endingPosition;
+    protected final Closer _closer = Closer.create();
 
     protected ReaderOrdered(ReaderOrdered reader, FSDataInputStream inputStream) throws IOException {
       _blocks = reader._blocks;
       _emptyBlocks = reader._emptyBlocks;
-      _inputStream = inputStream;
+      _inputStream = _closer.register(inputStream);
       _blockSize = reader._blockSize;
       _path = reader._path;
       _sourceFiles = reader._sourceFiles;
@@ -749,22 +782,52 @@ public class BlockFile {
     }
 
     protected ReaderOrdered(FSDataInputStream inputStream, Path path, long endingPosition) throws IOException {
-      _blocks = new RoaringBitmap();
-      _emptyBlocks = new RoaringBitmap();
       _endingPosition = endingPosition;
       _path = path;
-      _inputStream = inputStream;
+      _inputStream = _closer.register(inputStream);
       _inputStream.seek(endingPosition - 16);
       _startingPosition = _inputStream.readLong();
       long metaDataPosition = _inputStream.readLong();
       _inputStream.seek(metaDataPosition);
-      _blocks.deserialize(_inputStream);
-      _emptyBlocks.deserialize(_inputStream);
+
+      _blocks = load(_inputStream);
+      _emptyBlocks = load(_inputStream);
+
       _blockSize = _inputStream.readInt();
       _sourceFiles = readStringList(_inputStream);
       _first = getFirst();
       _last = getLast();
       // @TODO read and validate the magic string
+    }
+
+    private ImmutableRoaringBitmap load(FSDataInputStream input) throws IOException {
+      RoaringBitmap bitset = new RoaringBitmap();
+      bitset.deserialize(_inputStream);
+      if (OFF_HEAP_BITMAPS) {
+        File file = File.createTempFile("index-", ".block", INDEX_DIR);
+        _closer.register((Closeable) () -> file.delete());
+        file.deleteOnExit();
+        try (DataOutputStream out = new DataOutputStream(new FileOutputStream(file))) {
+          bitset.serialize(out);
+        }
+        RandomAccessFile rand = _closer.register(new RandomAccessFile(file, "r"));
+        MappedByteBuffer byteBuffer = rand.getChannel()
+                                          .map(MapMode.READ_ONLY, 0, file.length());
+        return new ImmutableRoaringBitmap(byteBuffer);
+      } else {
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(byteArrayOutputStream)) {
+          bitset.serialize(out);
+        }
+        return new ImmutableRoaringBitmap(ByteBuffer.wrap(byteArrayOutputStream.toByteArray()));
+      }
+    }
+
+    @Override
+    public int getHeapSize() {
+      int total = _blocks.getSizeInBytes();
+      total += _emptyBlocks.getSizeInBytes();
+      return total;
     }
 
     public long getStartingPosition() {
@@ -888,11 +951,11 @@ public class BlockFile {
     }
 
     public void orDataBlocks(RoaringBitmap bitmap) {
-      bitmap.or(_blocks);
+      bitmap.or(_blocks.toRoaringBitmap());
     }
 
     public void orEmptyBlocks(RoaringBitmap bitmap) {
-      bitmap.or(_emptyBlocks);
+      bitmap.or(_emptyBlocks.toRoaringBitmap());
     }
 
     @Override
@@ -928,7 +991,7 @@ public class BlockFile {
 
     @Override
     public void close() throws IOException {
-      _inputStream.close();
+      _closer.close();
     }
 
     @Override
