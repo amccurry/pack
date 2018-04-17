@@ -26,4 +26,5 @@ public class BlockPackStorageConfig {
   int volumeMissingCountBeforeAutoShutdown;
   boolean countDockerDownAsMissing;
   boolean nohupProcess;
+  boolean fileSystemMount;
 }

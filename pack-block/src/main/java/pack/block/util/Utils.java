@@ -28,6 +28,8 @@ import pack.block.server.BlockPackFuse;
 
 public class Utils {
 
+  private static final String PACK_FILE_SYSTEM_MOUNT = "PACK_FILE_SYSTEM_MOUNT";
+
   private static final String PACK_NOHUP_PROCESS = "PACK_NOHUP_PROCESS";
 
   public interface TimerWithException<T, E extends Throwable> {
@@ -209,6 +211,14 @@ public class Utils {
       return VAR_LIB_PACK;
     }
     return v;
+  }
+
+  public static boolean getFileSystemMount() {
+    String v = System.getenv(PACK_FILE_SYSTEM_MOUNT);
+    if (v == null) {
+      return false;
+    }
+    return Boolean.parseBoolean(v.toLowerCase());
   }
 
   public static String getLocalLogPath() {

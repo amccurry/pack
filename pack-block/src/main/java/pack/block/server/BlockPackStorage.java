@@ -34,6 +34,7 @@ import pack.block.server.admin.Status;
 import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
+import pack.block.server.fs.LinuxFileSystem;
 
 public class BlockPackStorage implements PackStorage {
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
@@ -57,6 +58,7 @@ public class BlockPackStorage implements PackStorage {
   protected final boolean _countDockerDownAsMissing;
   protected final boolean _nohupProcess;
   protected final File _workingDir;
+  protected final boolean _fileSystemMount;
 
   public BlockPackStorage(BlockPackStorageConfig config) throws IOException, InterruptedException {
     _nohupProcess = config.isNohupProcess();
@@ -64,6 +66,7 @@ public class BlockPackStorage implements PackStorage {
     _volumeMissingPollingPeriod = config.getVolumeMissingPollingPeriod();
     _volumeMissingCountBeforeAutoShutdown = config.getVolumeMissingCountBeforeAutoShutdown();
     _countDockerDownAsMissing = config.isCountDockerDownAsMissing();
+    _fileSystemMount = config.isFileSystemMount();
 
     Closer closer = Closer.create();
     closer.register((Closeable) () -> {
@@ -260,11 +263,37 @@ public class BlockPackStorage implements PackStorage {
         localFileSystemMount.getAbsolutePath(), localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path,
         _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(),
         libDir.getAbsolutePath(), _numberOfMountSnapshots, _volumeMissingPollingPeriod,
-        _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing, null);
+        _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing, null, _fileSystemMount);
 
-    waitForMount(localFileSystemMount, unixSockFile);
+    if (_fileSystemMount) {
+      waitForMount(localFileSystemMount, unixSockFile, Status.FS_MOUNT_COMPLETED);
+    } else {
+      waitForMount(localDevice, unixSockFile, Status.FUSE_MOUNT_COMPLETE);
+      mkfsIfNeeded(volumeName, localDevice);
+      mountFs(localDevice, localFileSystemMount);
+    }
     incrementMountCount(unixSockFile);
     return localFileSystemMount.getAbsolutePath();
+  }
+
+  private void umountFs(File localFileSystemMount) {
+    // TODO Auto-generated method stub
+
+  }
+
+  private void mountFs(File localDevice, File localFileSystemMount) throws IOException {
+
+  }
+
+  private void mkfsIfNeeded(String volumeName, File localDevice) throws IOException {
+    Path volumePath = getVolumePath(volumeName);
+    FileSystem fileSystem = getFileSystem(volumePath);
+    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+    LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
+                                              .getLinuxFileSystem();
+    if (!linuxFileSystem.isFileSystemExists(localDevice)) {
+      linuxFileSystem.mkfs(localDevice, metaData.getFileSystemBlockSize());
+    }
   }
 
   private File getLibDir(String volumeName) {
@@ -307,7 +336,8 @@ public class BlockPackStorage implements PackStorage {
     return logDir;
   }
 
-  public static void waitForMount(File localFileSystemMount, File sockFile) throws InterruptedException, IOException {
+  public static void waitForMount(File mountDir, File sockFile, Status desiredStatus)
+      throws InterruptedException, IOException {
     Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
     for (int i = 0; i < 15; i++) {
       if (sockFile.exists()) {
@@ -320,20 +350,24 @@ public class BlockPackStorage implements PackStorage {
     while (true) {
       try {
         Status status = client.getStatus();
-        if (status == Status.FS_MOUNT_COMPLETED) {
-          LOGGER.info("mount complete {}", localFileSystemMount);
+        if (status == desiredStatus) {
+          LOGGER.info("startup complete {}", mountDir);
           return;
         }
-        LOGGER.info("Waiting for mount {} status {}", localFileSystemMount, status);
+        LOGGER.info("Waiting for status {}", mountDir, status);
         Thread.sleep(TimeUnit.SECONDS.toMillis(1));
       } catch (NoFileException e) {
-        throw new IOException("Unknown error while waiting on mount " + localFileSystemMount, e);
+        throw new IOException("Unknown error while waiting on mount " + mountDir, e);
       }
     }
   }
 
   protected void umountVolume(String volumeName, String id)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
+    if (!_fileSystemMount) {
+      File localFileSystemMount = getLocalFileSystemMount(volumeName);
+      umountFs(localFileSystemMount);
+    }
     LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
     File unixSockFile = getUnixSocketFile(volumeName);
     if (unixSockFile.exists()) {
@@ -341,7 +375,7 @@ public class BlockPackStorage implements PackStorage {
       LOGGER.info("Mount count {}", count);
       if (count <= 0) {
         try {
-          umountVolume(unixSockFile);
+          shutdownVolume(unixSockFile);
         } catch (NoFileException e) {
           LOGGER.info("fuse process seems to be gone {}", unixSockFile);
           return;
@@ -363,7 +397,7 @@ public class BlockPackStorage implements PackStorage {
     return client.incrementCounter(MOUNT_COUNT);
   }
 
-  public static void umountVolume(File unixSockFile) throws IOException, InterruptedException {
+  public static void shutdownVolume(File unixSockFile) throws IOException, InterruptedException {
     BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
     while (true) {
       Status status = client.getStatus();

@@ -57,7 +57,7 @@ public class BlockPackFuseProcessBuilder {
       String fsMetricsLocation, String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout,
       String volumeName, String logOutput, String unixSock, String libDir, int numberOfMountSnapshots,
       long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
-      List<String> classPathExtras) throws IOException {
+      List<String> classPathExtras, boolean fileSystemMount) throws IOException {
     String javaHome = System.getProperty(JAVA_HOME);
 
     String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir, classPathExtras);
@@ -95,6 +95,7 @@ public class BlockPackFuseProcessBuilder {
            .add(Long.toString(volumeMissingPollingPeriod))
            .add(Integer.toString(volumeMissingCountBeforeAutoShutdown))
            .add(Boolean.toString(countDockerDownAsMissing))
+           .add(Boolean.toString(fileSystemMount))
            .add(STDOUT_REDIRECT + logOutput + STDOUT)
            .add(STDERR_REDIRECT + logOutput + STDERR);
     if (nohupProcess) {

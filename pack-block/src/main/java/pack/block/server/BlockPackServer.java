@@ -29,11 +29,12 @@ public class BlockPackServer extends PackServer {
     int volumeMissingCountBeforeAutoShutdown = Utils.getVolumeMissingCountBeforeAutoShutdown();
     boolean countDockerDownAsMissing = Utils.getCountDockerDownAsMissing();
     boolean nohupProcess = Utils.getNohupProcess();
+    boolean fileSystemMount = Utils.getFileSystemMount();
 
     String sockerFile = "/run/docker/plugins/pack.sock";
     BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localWorkingDir, localLogDir, remotePath,
         ugi, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
-        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess);
+        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, fileSystemMount);
     packServer.runServer();
   }
 
@@ -49,11 +50,12 @@ public class BlockPackServer extends PackServer {
   private final int _volumeMissingCountBeforeAutoShutdown;
   private final boolean _countDockerDownAsMissing;
   private final boolean _nohupProcess;
+  private final boolean _fileSystemMount;
 
   public BlockPackServer(boolean global, String sockFile, File localWorkingDir, File localLogDir, Path remotePath,
       UserGroupInformation ugi, String zkConnection, int zkTimeout, int numberOfMountSnapshots,
       long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
-      boolean nohupProcess) {
+      boolean nohupProcess, boolean fileSystemMount) {
     super(global, sockFile);
     _nohupProcess = nohupProcess;
     _numberOfMountSnapshots = numberOfMountSnapshots;
@@ -66,6 +68,7 @@ public class BlockPackServer extends PackServer {
     _ugi = ugi;
     _zkConnection = zkConnection;
     _zkTimeout = zkTimeout;
+    _fileSystemMount = fileSystemMount;
     localWorkingDir.mkdirs();
     localLogDir.mkdirs();
   }
@@ -86,6 +89,7 @@ public class BlockPackServer extends PackServer {
            .nohupProcess(_nohupProcess)
            .countDockerDownAsMissing(_countDockerDownAsMissing)
            .volumeMissingCountBeforeAutoShutdown(_volumeMissingCountBeforeAutoShutdown)
+           .fileSystemMount(_fileSystemMount)
            .build();
     return new BlockPackStorage(builder.build());
   }

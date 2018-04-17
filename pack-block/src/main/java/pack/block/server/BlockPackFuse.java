@@ -81,6 +81,7 @@ public class BlockPackFuse implements Closeable {
       long volumeMissingPollingPeriod = Long.parseLong(args[10]);
       int volumeMissingCountBeforeAutoShutdown = Integer.parseInt(args[11]);
       boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
+      boolean fileSystemMount = Boolean.parseBoolean(args[13]);
 
       HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
 
@@ -111,7 +112,7 @@ public class BlockPackFuse implements Closeable {
                                                   .fsLocalCache(fsLocalCache)
                                                   .zkConnectionString(zkConnection)
                                                   .zkSessionTimeout(zkTimeout)
-                                                  .fileSystemMount(true)
+                                                  .fileSystemMount(fileSystemMount)
                                                   .blockStoreFactory(BlockStoreFactory.DEFAULT)
                                                   .volumeName(volumeName)
                                                   .maxVolumeMissingCount(volumeMissingCountBeforeAutoShutdown)
