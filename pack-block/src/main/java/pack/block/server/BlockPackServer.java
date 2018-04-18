@@ -75,7 +75,6 @@ public class BlockPackServer extends PackServer {
 
   @Override
   protected PackStorage getPackStorage() throws Exception {
-
     BlockPackStorageConfigBuilder builder = BlockPackStorageConfig.builder();
     builder.ugi(_ugi)
            .configuration(configuration)

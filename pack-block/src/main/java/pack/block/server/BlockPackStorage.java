@@ -30,6 +30,7 @@ import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
+import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
@@ -267,32 +268,39 @@ public class BlockPackStorage implements PackStorage {
 
     if (_fileSystemMount) {
       waitForMount(localFileSystemMount, unixSockFile, Status.FS_MOUNT_COMPLETED);
+      incrementMountCount(unixSockFile);
+      return localFileSystemMount.getAbsolutePath();
     } else {
+      FileSystem fileSystem = getFileSystem(volumePath);
+      HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
       waitForMount(localDevice, unixSockFile, Status.FUSE_MOUNT_COMPLETE);
-      mkfsIfNeeded(volumeName, localDevice);
-      mountFs(localDevice, localFileSystemMount);
+      File device = new File(localDevice, FuseFileSystemSingleMount.BRICK);
+      mkfsIfNeeded(metaData, volumeName, device);
+      mountFs(metaData, device, localFileSystemMount);
+      incrementMountCount(unixSockFile);
+      return localFileSystemMount.getAbsolutePath();
     }
-    incrementMountCount(unixSockFile);
-    return localFileSystemMount.getAbsolutePath();
   }
 
-  private void umountFs(File localFileSystemMount) {
-    // TODO Auto-generated method stub
-
-  }
-
-  private void mountFs(File localDevice, File localFileSystemMount) throws IOException {
-
-  }
-
-  private void mkfsIfNeeded(String volumeName, File localDevice) throws IOException {
-    Path volumePath = getVolumePath(volumeName);
-    FileSystem fileSystem = getFileSystem(volumePath);
-    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+  private void umountFs(HdfsMetaData metaData, File localFileSystemMount) throws IOException {
     LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
                                               .getLinuxFileSystem();
-    if (!linuxFileSystem.isFileSystemExists(localDevice)) {
-      linuxFileSystem.mkfs(localDevice, metaData.getFileSystemBlockSize());
+    linuxFileSystem.umount(localFileSystemMount);
+  }
+
+  private void mountFs(HdfsMetaData metaData, File device, File localFileSystemMount) throws IOException {
+    String mountOptions = metaData.getMountOptions();
+    LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
+                                              .getLinuxFileSystem();
+    linuxFileSystem.mount(device, localFileSystemMount, mountOptions);
+
+  }
+
+  private void mkfsIfNeeded(HdfsMetaData metaData, String volumeName, File device) throws IOException {
+    LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
+                                              .getLinuxFileSystem();
+    if (!linuxFileSystem.isFileSystemExists(device)) {
+      linuxFileSystem.mkfs(device, metaData.getFileSystemBlockSize());
     }
   }
 
@@ -364,16 +372,19 @@ public class BlockPackStorage implements PackStorage {
 
   protected void umountVolume(String volumeName, String id)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
-    if (!_fileSystemMount) {
-      File localFileSystemMount = getLocalFileSystemMount(volumeName);
-      umountFs(localFileSystemMount);
-    }
     LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
     File unixSockFile = getUnixSocketFile(volumeName);
     if (unixSockFile.exists()) {
       long count = decrementMountCount(unixSockFile);
       LOGGER.info("Mount count {}", count);
       if (count <= 0) {
+        if (!_fileSystemMount) {
+          Path volumePath = getVolumePath(volumeName);
+          FileSystem fileSystem = getFileSystem(volumePath);
+          HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+          File localFileSystemMount = getLocalFileSystemMount(volumeName);
+          umountFs(metaData, localFileSystemMount);
+        }
         try {
           shutdownVolume(unixSockFile);
         } catch (NoFileException e) {

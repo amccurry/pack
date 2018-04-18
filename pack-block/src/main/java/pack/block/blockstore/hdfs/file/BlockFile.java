@@ -59,11 +59,12 @@ public class BlockFile {
     String path = System.getProperty(PACK_BLOCK_FILE_OFFHEAP_PATH);
     if (path == null) {
       OFF_HEAP_BITMAPS = false;
+      INDEX_DIR = null;
     } else {
       OFF_HEAP_BITMAPS = true;
+      INDEX_DIR = new File(path);
+      INDEX_DIR.mkdirs();
     }
-    INDEX_DIR = new File(path);
-    INDEX_DIR.mkdirs();
     try {
       MAGIC_STR = HDFS_BLOCK_FILE_V1.getBytes(UTF_8);
     } catch (UnsupportedEncodingException e) {
