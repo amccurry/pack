@@ -1,6 +1,5 @@
 package pack.block.blockstore.compactor;
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
@@ -54,8 +53,7 @@ public class BlockFileCompactorUsing {
                                                                  .maxObsoleteRatio(-0.1)
                                                                  .build();
 
-        File cacheDir = new File("./target/tmp/BlockFileCompactorUsing");
-        try (BlockFileCompactor compactor = new BlockFileCompactor(cacheDir, fileSystem, path, newMetaData, null)) {
+        try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
           compactor.runCompaction();
         }
         return null;

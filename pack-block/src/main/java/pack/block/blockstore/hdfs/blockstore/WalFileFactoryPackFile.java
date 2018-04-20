@@ -188,14 +188,20 @@ public class WalFileFactoryPackFile extends WalFileFactory {
       try (Reader reader = open(src)) {
         WalKeyWritable key = new WalKeyWritable();
         BytesWritable value = new BytesWritable();
-        try {
-          while (reader.next(key, value)) {
+        while (true) {
+          boolean next;
+          try {
+            next = reader.next(key, value);
+          } catch (EOFException e) {
+            LOGGER.info("EOF reached for {}", src);
+            return;
+          }
+          if (next) {
             key.write(outputStream);
             value.write(outputStream);
+          } else {
+            return;
           }
-        } catch (EOFException e) {
-          LOGGER.info("EOF reached for {}", src);
-          return;
         }
       }
     }

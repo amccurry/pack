@@ -9,6 +9,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
+import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 
 @Value
 @AllArgsConstructor
@@ -27,4 +28,5 @@ public class BlockPackStorageConfig {
   boolean countDockerDownAsMissing;
   boolean nohupProcess;
   boolean fileSystemMount;
+  HdfsSnapshotStrategy strategy;
 }

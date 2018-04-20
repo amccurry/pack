@@ -29,7 +29,10 @@ import com.google.common.io.Closer;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
+import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
+import pack.block.blockstore.hdfs.util.TimeBasedHdfsSnapshotStrategy;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.BlockPackFuseConfig.BlockPackFuseConfigBuilder;
 import pack.block.server.admin.BlockPackAdmin;
@@ -83,6 +86,10 @@ public class BlockPackFuse implements Closeable {
       boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
       boolean fileSystemMount = Boolean.parseBoolean(args[13]);
 
+      HdfsSnapshotStrategy strategy = getHdfsSnapshotStrategy();
+
+      LastestHdfsSnapshotStrategy.setMaxNumberOfMountSnapshots(numberOfMountSnapshots);
+
       HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
 
       // {
@@ -95,7 +102,7 @@ public class BlockPackFuse implements Closeable {
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
         FileSystem fileSystem = FileSystem.get(conf);
         HdfsSnapshotUtil.enableSnapshots(fileSystem, path);
-        HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName());
+        HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName(strategy));
         try (Closer closer = autoClose(Closer.create())) {
           LOGGER.info("Using {} as unix domain socket", unixSock);
           BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdminServer.startAdminServer(unixSock));
@@ -119,6 +126,7 @@ public class BlockPackFuse implements Closeable {
                                                   .volumeMissingPollingPeriod(volumeMissingPollingPeriod)
                                                   .maxNumberOfMountSnapshots(numberOfMountSnapshots)
                                                   .countDockerDownAsMissing(countDockerDownAsMissing)
+                                                  .strategy(strategy)
                                                   .build();
 
           BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
@@ -130,6 +138,10 @@ public class BlockPackFuse implements Closeable {
       LOGGER.error("Unknown error", e);
       e.printStackTrace();
     }
+  }
+
+  private static HdfsSnapshotStrategy getHdfsSnapshotStrategy() {
+    return new TimeBasedHdfsSnapshotStrategy();
   }
 
   private final HdfsBlockStore _blockStore;
@@ -152,13 +164,14 @@ public class BlockPackFuse implements Closeable {
   private final Timer _timer;
   private final String _volumeName;
   private final FileSystem _fileSystem;
-  private final int _maxNumberOfMountSnapshots;
   private final long _period;
   private final boolean _countDockerDownAsMissing;
   private final String _zkConnectionString;
   private final int _zkSessionTimeout;
+  private final HdfsSnapshotStrategy _snapshotStrategy;
 
   public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws Exception {
+    _snapshotStrategy = packFuseConfig.getStrategy();
     _zkConnectionString = packFuseConfig.getZkConnectionString();
     _zkSessionTimeout = packFuseConfig.getZkSessionTimeout();
     try (ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(_zkConnectionString, _zkSessionTimeout)) {
@@ -166,7 +179,6 @@ public class BlockPackFuse implements Closeable {
     }
     _countDockerDownAsMissing = packFuseConfig.isCountDockerDownAsMissing();
     _period = packFuseConfig.getVolumeMissingPollingPeriod();
-    _maxNumberOfMountSnapshots = packFuseConfig.getMaxNumberOfMountSnapshots();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
     _ugi = packFuseConfig.getUgi();
     _fileSystemMount = packFuseConfig.isFileSystemMount();
@@ -175,10 +187,12 @@ public class BlockPackFuse implements Closeable {
     _lockManager = createLockmanager(_zkConnectionString, _zkSessionTimeout);
     boolean lock = _lockManager.tryToLock(Utils.getLockName(_path));
 
-    for (int i = 0; i < 10 && !lock; i++) {
-      Thread.sleep(TimeUnit.SECONDS.toMillis(6));
-      LOGGER.info("trying to lock volume {}", _path);
-      lock = _lockManager.tryToLock(Utils.getLockName(_path));
+    if (!lock) {
+      for (int i = 0; i < 60 && !lock; i++) {
+        Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+        LOGGER.info("trying to lock volume {}", _path);
+        lock = _lockManager.tryToLock(Utils.getLockName(_path));
+      }
     }
     if (lock) {
       _closer = Closer.create();
@@ -285,7 +299,7 @@ public class BlockPackFuse implements Closeable {
       _linuxFileSystem.mount(device, _fsLocalPath, mountOptions);
       _blockPackAdmin.setStatus(Status.FS_MOUNT_COMPLETED, "Mounted " + device + " => " + _fsLocalPath);
       LOGGER.info("fs mount {} complete", _fsLocalPath);
-      HdfsSnapshotUtil.cleanupOldMountSnapshots(_fileSystem, _path, _maxNumberOfMountSnapshots);
+      HdfsSnapshotUtil.cleanupOldMountSnapshots(_fileSystem, _path, _snapshotStrategy);
     }
     startDockerMonitorIfNeeded(_period);
     if (blocking) {

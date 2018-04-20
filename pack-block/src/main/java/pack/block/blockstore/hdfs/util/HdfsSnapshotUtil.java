@@ -2,10 +2,10 @@ package pack.block.blockstore.hdfs.util;
 
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
-import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.Collection;
 import java.util.Date;
+import java.util.Set;
+import java.util.TreeSet;
 
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -20,12 +20,7 @@ public class HdfsSnapshotUtil {
   private static final String SNAPSHOT = ".snapshot";
   private static final String HDFS = "hdfs";
   private static final String PACK_HDFS_SUPER_USER = "PACK_HDFS_SUPER_USER";
-  private static final String YYYYMMDDKKMMSS = "yyyyMMddkkmmssSSS";
   private static final Logger LOGGER = LoggerFactory.getLogger(HdfsSnapshotUtil.class);
-
-  public static void main(String[] args) {
-    System.out.println(getMountSnapshotName());
-  }
 
   public static void enableSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
     enableSnapshots(fileSystem, path, getUgi());
@@ -52,24 +47,31 @@ public class HdfsSnapshotUtil {
   public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName, UserGroupInformation ugi)
       throws IOException, InterruptedException {
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
-    if (dfs.exists(new Path(path, SNAPSHOT))) {
+    if (!dfs.exists(new Path(path, SNAPSHOT))) {
       return;
     }
     LOGGER.info("Using ugi {} to create volume snapshots", ugi);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-      dfs.createSnapshot(path, snapshotName);
+      LOGGER.info("Created snapshot {}", dfs.createSnapshot(path, snapshotName));
       return null;
     });
   }
 
-  public static String getMountSnapshotName() {
-    String now = new SimpleDateFormat(YYYYMMDDKKMMSS).format(new Date());
-    return ".mount." + now;
+  public static String getMountSnapshotName(HdfsSnapshotStrategy strategy) {
+    return getMountSnapshotName(strategy, new Date());
   }
 
-  public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, int maxNumberOfMountSnapshots)
+  public static String getMountSnapshotName(HdfsSnapshotStrategy strategy, Date date) {
+    return strategy.getMountSnapshotName(date);
+  }
+
+  public static String getMountSnapshotName(HdfsSnapshotStrategy strategy, long timestamp) {
+    return getMountSnapshotName(strategy, new Date(timestamp));
+  }
+
+  public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, HdfsSnapshotStrategy strategy)
       throws IOException, InterruptedException {
-    cleanupOldMountSnapshots(fileSystem, path, maxNumberOfMountSnapshots, getUgi());
+    cleanupOldMountSnapshots(fileSystem, path, getUgi(), strategy);
   }
 
   public static UserGroupInformation getUgi() throws IOException {
@@ -84,17 +86,22 @@ public class HdfsSnapshotUtil {
     }
   }
 
-  public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, int maxNumberOfMountSnapshots,
-      UserGroupInformation ugi) throws IOException, InterruptedException {
+  public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi,
+      HdfsSnapshotStrategy strategy) throws IOException, InterruptedException {
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       FileStatus[] listStatus = dfs.listStatus(new Path(path, SNAPSHOT));
-      Arrays.sort(listStatus, Collections.reverseOrder());
-      for (int i = maxNumberOfMountSnapshots; i < listStatus.length; i++) {
-        String name = listStatus[i].getPath()
-                                   .getName();
-        LOGGER.info("Removing old snapshot {} {}", path, name);
-        dfs.deleteSnapshot(path, name);
+      Set<String> currentSnapshots = new TreeSet<>();
+      for (FileStatus fileStatus : listStatus) {
+        String name = fileStatus.getPath()
+                                .getName();
+        currentSnapshots.add(name);
+      }
+
+      Collection<String> snapshotsToRemove = strategy.getSnapshotsToRemove(currentSnapshots);
+      for (String snapshot : snapshotsToRemove) {
+        LOGGER.info("Removing old snapshot {} {}", path, snapshot);
+        dfs.deleteSnapshot(path, snapshot);
       }
       return null;
     });
@@ -120,13 +127,13 @@ public class HdfsSnapshotUtil {
   }
 
   public static void disableSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
-    removeSnapshot(fileSystem, path, getUgi());
+    disableSnapshots(fileSystem, path, getUgi());
   }
 
-  public static void removeSnapshot(FileSystem fileSystem, Path path, UserGroupInformation ugi)
+  public static void disableSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
       throws IOException, InterruptedException {
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
-    if (dfs.exists(new Path(path, SNAPSHOT))) {
+    if (!dfs.exists(new Path(path, SNAPSHOT))) {
       return;
     }
     LOGGER.info("Using ugi {} to disable volume snapshots", ugi);

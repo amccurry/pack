@@ -93,6 +93,9 @@ public class HdfsBlockStoreAdmin {
   }
 
   public static HdfsMetaData readMetaData(FileSystem fileSystem, Path volumePath) throws IOException {
+    if (!fileSystem.exists(new Path(volumePath, METADATA))) {
+      return null;
+    }
     try (InputStream input = fileSystem.open(new Path(volumePath, METADATA))) {
       return MAPPER.readValue(input, HdfsMetaData.class);
     }

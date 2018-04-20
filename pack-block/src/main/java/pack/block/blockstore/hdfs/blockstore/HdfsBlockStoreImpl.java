@@ -111,6 +111,9 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     _fileSystem = fileSystem;
     _path = Utils.qualify(fileSystem, path);
     _metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
+    if (_metaData == null) {
+      throw new IOException("No metadata found for path " + _path);
+    }
 
     _walFactory = WalFileFactory.create(_fileSystem, _metaData);
 

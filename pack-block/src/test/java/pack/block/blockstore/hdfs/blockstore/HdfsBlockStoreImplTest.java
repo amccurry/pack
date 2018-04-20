@@ -20,6 +20,7 @@ import org.junit.Test;
 import com.codahale.metrics.MetricRegistry;
 
 import pack.block.blockstore.compactor.BlockFileCompactor;
+import pack.block.blockstore.compactor.WalToBlockFileConverter;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
@@ -118,8 +119,12 @@ public class HdfsBlockStoreImplTest {
                                        .maxObsoleteRatio(-0.1)
                                        .build();
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(new File(storePathDir, "cache"), fileSystem, path,
-        newMetaData, null)) {
+    try (WalToBlockFileConverter converter = new WalToBlockFileConverter(new File(storePathDir, "cache"), fileSystem,
+        path, newMetaData, null);) {
+      converter.runConverter();
+    }
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
       compactor.runCompaction();
     }
 
@@ -283,7 +288,12 @@ public class HdfsBlockStoreImplTest {
       System.out.println("Run time " + (e - s) / 1_000_000.0 + " ms");
     }
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(getCacheDir(), fileSystem, path, metaData, null)) {
+    try (WalToBlockFileConverter converter = new WalToBlockFileConverter(getCacheDir(), fileSystem, path, metaData,
+        null)) {
+      converter.runConverter();
+    }
+
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, metaData, null)) {
       compactor.runCompaction();
     }
 

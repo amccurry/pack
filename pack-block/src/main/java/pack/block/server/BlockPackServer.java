@@ -8,6 +8,8 @@ import org.apache.hadoop.security.UserGroupInformation;
 
 import pack.PackServer;
 import pack.PackStorage;
+import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
+import pack.block.blockstore.hdfs.util.TimeBasedHdfsSnapshotStrategy;
 import pack.block.server.BlockPackStorageConfig.BlockPackStorageConfigBuilder;
 import pack.block.util.Utils;
 
@@ -30,12 +32,17 @@ public class BlockPackServer extends PackServer {
     boolean countDockerDownAsMissing = Utils.getCountDockerDownAsMissing();
     boolean nohupProcess = Utils.getNohupProcess();
     boolean fileSystemMount = Utils.getFileSystemMount();
+    HdfsSnapshotStrategy strategy = getStrategy();
 
     String sockerFile = "/run/docker/plugins/pack.sock";
     BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localWorkingDir, localLogDir, remotePath,
         ugi, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
-        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, fileSystemMount);
+        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, fileSystemMount, strategy);
     packServer.runServer();
+  }
+
+  private static HdfsSnapshotStrategy getStrategy() {
+    return new TimeBasedHdfsSnapshotStrategy();
   }
 
   private final File _localWorkingDir;
@@ -51,12 +58,14 @@ public class BlockPackServer extends PackServer {
   private final boolean _countDockerDownAsMissing;
   private final boolean _nohupProcess;
   private final boolean _fileSystemMount;
+  private final HdfsSnapshotStrategy _strategy;
 
   public BlockPackServer(boolean global, String sockFile, File localWorkingDir, File localLogDir, Path remotePath,
       UserGroupInformation ugi, String zkConnection, int zkTimeout, int numberOfMountSnapshots,
       long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
-      boolean nohupProcess, boolean fileSystemMount) {
+      boolean nohupProcess, boolean fileSystemMount, HdfsSnapshotStrategy strategy) {
     super(global, sockFile);
+    _strategy = strategy;
     _nohupProcess = nohupProcess;
     _numberOfMountSnapshots = numberOfMountSnapshots;
     _volumeMissingPollingPeriod = volumeMissingPollingPeriod;
@@ -89,6 +98,7 @@ public class BlockPackServer extends PackServer {
            .countDockerDownAsMissing(_countDockerDownAsMissing)
            .volumeMissingCountBeforeAutoShutdown(_volumeMissingCountBeforeAutoShutdown)
            .fileSystemMount(_fileSystemMount)
+           .strategy(_strategy)
            .build();
     return new BlockPackStorage(builder.build());
   }

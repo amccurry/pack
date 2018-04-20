@@ -36,7 +36,6 @@ public class BlockFileCompactorTest {
 
   private static MiniDFSCluster cluster;
   private static File storePathDir = new File("./test");
-  private static File cacheDir = new File(storePathDir, "cache");
   private static FileSystem fileSystem;
   private static long seed;
 
@@ -104,7 +103,7 @@ public class BlockFileCompactorTest {
                                                              .maxObsoleteRatio(0.0)
                                                              .build();
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(cacheDir, fileSystem, path, newMetaData, null)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
       compactor.runCompaction();
     }
 
@@ -128,7 +127,7 @@ public class BlockFileCompactorTest {
                                                              .maxObsoleteRatio(10.0)
                                                              .build();
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(cacheDir, fileSystem, path, newMetaData, null)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
       compactor.runCompaction();
     }
 
@@ -155,7 +154,7 @@ public class BlockFileCompactorTest {
                                                              .maxObsoleteRatio(10.0)
                                                              .build();
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(cacheDir, fileSystem, path, newMetaData, null)) {
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
       compactor.runCompaction();
     }
 

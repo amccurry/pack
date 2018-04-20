@@ -36,6 +36,7 @@ import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
+import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkMiniCluster;
@@ -99,7 +100,8 @@ public class BlockPackFuseFileSystemTest {
                                                           .length(100L * 1024L * 1024L * 1024L)
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
-    HdfsSnapshotUtil.createSnapshot(fileSystem, volumePath, HdfsSnapshotUtil.getMountSnapshotName());
+    LastestHdfsSnapshotStrategy strategy = new LastestHdfsSnapshotStrategy();
+    HdfsSnapshotUtil.createSnapshot(fileSystem, volumePath, HdfsSnapshotUtil.getMountSnapshotName(strategy));
     HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
     File fuseDir = new File(fuse, FUSE);
     String fuseLocalPath = Utils.mkdir(fuseDir)

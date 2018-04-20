@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.server.admin.BlockPackAdmin;
 
 @Value
@@ -32,4 +33,5 @@ public class BlockPackFuseConfig {
   int maxNumberOfMountSnapshots;
   long volumeMissingPollingPeriod;
   boolean countDockerDownAsMissing;
+  HdfsSnapshotStrategy strategy;
 }

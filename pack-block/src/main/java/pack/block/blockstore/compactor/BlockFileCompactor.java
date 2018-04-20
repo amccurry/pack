@@ -1,10 +1,9 @@
 package pack.block.blockstore.compactor;
 
 import java.io.Closeable;
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -18,9 +17,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
-import org.apache.hadoop.io.BytesWritable;
 import org.apache.zookeeper.KeeperException;
-import org.roaringbitmap.IntConsumer;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,13 +32,9 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.blockstore.hdfs.blockstore.LocalWalCache;
-import pack.block.blockstore.hdfs.blockstore.WalFileFactory;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
-import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
-import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.util.Utils;
 import pack.zk.utils.ZooKeeperLockManager;
 
@@ -49,8 +42,7 @@ public class BlockFileCompactor implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFileCompactor.class);
 
-  private static final String CONVERT = "convert";
-  private static final String MERGE = "merge";
+  private static final String MERGE = "0_merge";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
   private final Path _blockPath;
@@ -60,23 +52,18 @@ public class BlockFileCompactor implements Closeable {
   private final ZooKeeperLockManager _inUseLockManager;
   private final String _lockName;
   private final double _maxObsoleteRatio;
-  private final int _blockSize;
-  private final long _length;
-  private final File _cacheDir;
-  private final WalFileFactory _walFactory;
+  private final String _nodePrefix;
 
-  public BlockFileCompactor(File cacheDir, FileSystem fileSystem, Path path, HdfsMetaData metaData,
+  public BlockFileCompactor(FileSystem fileSystem, Path path, HdfsMetaData metaData,
       ZooKeeperLockManager inUseLockManager) throws IOException {
-    _cacheDir = cacheDir;
+    _nodePrefix = InetAddress.getLocalHost()
+                             .getHostName();
     _maxBlockFileSize = metaData.getMaxBlockFileSize();
     _maxObsoleteRatio = metaData.getMaxObsoleteRatio();
-    _length = metaData.getLength();
-    _blockSize = metaData.getFileSystemBlockSize();
     _inUseLockManager = inUseLockManager;
     _fileSystem = fileSystem;
     _lockName = Utils.getLockName(path);
     _blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
-    _walFactory = WalFileFactory.create(_fileSystem, metaData);
     cleanupBlocks();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
@@ -94,8 +81,6 @@ public class BlockFileCompactor implements Closeable {
       LOGGER.info("Path {} does not exist, exiting", _blockPath);
       return;
     }
-
-    convertWalFiles();
 
     FileStatus[] listStatus = getBlockFiles();
     if (listStatus.length < 2) {
@@ -153,83 +138,6 @@ public class BlockFileCompactor implements Closeable {
     }
   }
 
-  private void convertWalFiles() throws IOException {
-    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) path -> path.getName()
-                                                                                          .endsWith(".wal"));
-    for (FileStatus fileStatus : listStatus) {
-      // add logging and check on wal file....
-      convertWalFile(fileStatus.getPath());
-    }
-  }
-
-  private void convertWalFile(Path path) throws IOException {
-    List<String> list = SPLITTER.splitToList(path.getName());
-    if (list.size() != 2) {
-      throw new IOException("Wal file " + path + " name is malformed.");
-    }
-    String blockName = JOINER.join(list.get(0), HdfsBlockStoreConfig.BLOCK);
-    Path newPath = Utils.qualify(_fileSystem, new Path(path.getParent(), blockName));
-    Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpNameConvert()));
-    if (_fileSystem.exists(newPath)) {
-      return;
-    }
-    File dir = new File(_cacheDir, "convertWal-" + path.getName());
-    dir.mkdirs();
-    File file = new File(dir, UUID.randomUUID()
-                                  .toString()
-        + ".context");
-
-    try (LocalWalCache localContext = new LocalWalCache(file, _length, _blockSize)) {
-      LocalWalCache.applyWal(_walFactory, path, localContext);
-
-      LOGGER.info("Wal convert - Starting to write block");
-
-      try (Writer writer = BlockFile.create(true, _fileSystem, tmpPath, _blockSize, ImmutableList.of(path.getName()),
-          () -> {
-            LOGGER.info("Wal convert complete path {}", tmpPath);
-            if (_fileSystem.rename(tmpPath, newPath)) {
-              LOGGER.info("Wal convert commit path {}", newPath);
-            } else {
-              throw new IOException("Wal convert commit failed");
-            }
-          })) {
-
-        RoaringBitmap allBlocks = new RoaringBitmap();
-        allBlocks.or(localContext.getDataBlocks());
-        RoaringBitmap emptyBlocks = localContext.getEmptyBlocks();
-        allBlocks.or(emptyBlocks);
-        IntConsumer ic = value -> {
-          try {
-            appendBlock(localContext, writer, emptyBlocks, value);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-        };
-        allBlocks.forEach(ic);
-      }
-    }
-    Utils.rmr(dir);
-  }
-
-  private void appendBlock(LocalWalCache localContext, Writer writer, RoaringBitmap emptyBlocks, int value)
-      throws IOException {
-    if (emptyBlocks.contains(value)) {
-      writer.appendEmpty(value);
-    } else {
-      writer.append(value, getValue(value, localContext));
-    }
-  }
-
-  private BytesWritable getValue(int blockId, LocalWalCache localContext) throws IOException {
-    ByteBuffer dest = ByteBuffer.allocate(_blockSize);
-    ReadRequest request = new ReadRequest(blockId, 0, dest);
-    if (localContext.readBlock(request)) {
-      throw new IOException("Could not find blockid " + blockId);
-    }
-    dest.flip();
-    return Utils.toBw(dest);
-  }
-
   private void runJob(CompactionJob job) throws IOException {
     List<Path> pathListToCompact = job.getPathListToCompact();
     if (pathListToCompact.size() < 2) {
@@ -268,13 +176,11 @@ public class BlockFileCompactor implements Closeable {
   private String getRandomTmpNameMerge() {
     String uuid = UUID.randomUUID()
                       .toString();
-    return JOINER.join(MERGE, uuid);
+    return JOINER.join(getFilePrefix(), uuid);
   }
 
-  private String getRandomTmpNameConvert() {
-    String uuid = UUID.randomUUID()
-                      .toString();
-    return JOINER.join(CONVERT, uuid);
+  private String getFilePrefix() {
+    return MERGE + "." + _nodePrefix;
   }
 
   class CompactionJob {
@@ -473,7 +379,6 @@ public class BlockFileCompactor implements Closeable {
 
   private boolean shouldCleanupFile(Path path) {
     String name = path.getName();
-    return name.startsWith(MERGE) || name.startsWith(CONVERT);
-
+    return name.startsWith(getFilePrefix());
   }
 }

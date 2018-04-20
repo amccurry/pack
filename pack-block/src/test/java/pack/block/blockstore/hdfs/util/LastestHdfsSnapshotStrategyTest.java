@@ -20,10 +20,10 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-public class HdfsSnapshotUtilTest {
+public class LastestHdfsSnapshotStrategyTest {
 
   private static MiniDFSCluster cluster;
-  private static File storePathDir = new File("./target/tmp/HdfsSnapshotUtilTest");
+  private static File storePathDir = new File("./target/tmp/LastestHdfsSnapshotStrategyTest");
   private static FileSystem fileSystem;
 
   @BeforeClass
@@ -41,26 +41,29 @@ public class HdfsSnapshotUtilTest {
   }
 
   @Test
-  public void testHdfsSnapshotUtil() throws Exception {
-    Path path = new Path("/testHdfsSnapshotUtil/" + UUID.randomUUID()
-                                                        .toString());
+  public void testLastestHdfsSnapshotStrategy() throws Exception {
+    Path path = new Path("/testLastestHdfsSnapshotStrategy/" + UUID.randomUUID()
+                                                                   .toString());
     fileSystem.mkdirs(path);
+    UserGroupInformation ugi = UserGroupInformation.getCurrentUser();
+    HdfsSnapshotUtil.enableSnapshots(fileSystem, path, ugi);
     int maxNumberOfMountSnapshots = 3;
+    LastestHdfsSnapshotStrategy.setMaxNumberOfMountSnapshots(maxNumberOfMountSnapshots);
+    LastestHdfsSnapshotStrategy strategy = new LastestHdfsSnapshotStrategy();
+
     List<String> list = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
-      String mountSnapshotName = HdfsSnapshotUtil.getMountSnapshotName();
-      UserGroupInformation proxyUser = UserGroupInformation.createProxyUser("hdfs",
-          UserGroupInformation.getCurrentUser());
-      HdfsSnapshotUtil.createSnapshot(fileSystem, path, mountSnapshotName, proxyUser);
+      String mountSnapshotName = HdfsSnapshotUtil.getMountSnapshotName(strategy);
+      HdfsSnapshotUtil.createSnapshot(fileSystem, path, mountSnapshotName, ugi);
       list.add(mountSnapshotName);
       Thread.sleep(1000);
-      HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, path, maxNumberOfMountSnapshots, proxyUser);
+      HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, path, ugi, strategy);
     }
     System.out.println(list);
     FileStatus[] listStatus = fileSystem.listStatus(new Path(path, ".snapshot"));
     Arrays.sort(listStatus, Collections.reverseOrder());
-    List<String> subList = new ArrayList<>(list.subList(list.size() - maxNumberOfMountSnapshots, list.size()));
-    Collections.sort(subList, Collections.reverseOrder());
+    Collections.sort(list, Collections.reverseOrder());
+    List<String> subList = new ArrayList<>(list.subList(0, maxNumberOfMountSnapshots));
     assertEquals(listStatus.length, subList.size());
     for (int i = 0; i < listStatus.length; i++) {
       FileStatus fileStatus = listStatus[i];

@@ -29,7 +29,9 @@ import pack.PackStorage;
 import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
+import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.BlockPackAdminClient;
@@ -60,10 +62,13 @@ public class BlockPackStorage implements PackStorage {
   protected final boolean _nohupProcess;
   protected final File _workingDir;
   protected final boolean _fileSystemMount;
+  protected final HdfsSnapshotStrategy _snapshotStrategy;
 
   public BlockPackStorage(BlockPackStorageConfig config) throws IOException, InterruptedException {
+    _snapshotStrategy = config.getStrategy();
     _nohupProcess = config.isNohupProcess();
     _numberOfMountSnapshots = config.getNumberOfMountSnapshots();
+    LastestHdfsSnapshotStrategy.setMaxNumberOfMountSnapshots(_numberOfMountSnapshots);
     _volumeMissingPollingPeriod = config.getVolumeMissingPollingPeriod();
     _volumeMissingCountBeforeAutoShutdown = config.getVolumeMissingCountBeforeAutoShutdown();
     _countDockerDownAsMissing = config.isCountDockerDownAsMissing();
@@ -273,10 +278,14 @@ public class BlockPackStorage implements PackStorage {
     } else {
       FileSystem fileSystem = getFileSystem(volumePath);
       HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+      if (metaData == null) {
+        throw new IOException("No metadata found for path " + volumePath);
+      }
       waitForMount(localDevice, unixSockFile, Status.FUSE_MOUNT_COMPLETE);
       File device = new File(localDevice, FuseFileSystemSingleMount.BRICK);
       mkfsIfNeeded(metaData, volumeName, device);
       mountFs(metaData, device, localFileSystemMount);
+      HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, volumePath, _snapshotStrategy);
       incrementMountCount(unixSockFile);
       return localFileSystemMount.getAbsolutePath();
     }
@@ -347,7 +356,7 @@ public class BlockPackStorage implements PackStorage {
   public static void waitForMount(File mountDir, File sockFile, Status desiredStatus)
       throws InterruptedException, IOException {
     Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
-    for (int i = 0; i < 15; i++) {
+    for (int i = 0; i < 30; i++) {
       if (sockFile.exists()) {
         break;
       }
@@ -382,6 +391,9 @@ public class BlockPackStorage implements PackStorage {
           Path volumePath = getVolumePath(volumeName);
           FileSystem fileSystem = getFileSystem(volumePath);
           HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+          if (metaData == null) {
+            throw new IOException("No metadata found for path " + volumePath);
+          }
           File localFileSystemMount = getLocalFileSystemMount(volumeName);
           umountFs(metaData, localFileSystemMount);
         }
