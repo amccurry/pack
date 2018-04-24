@@ -201,15 +201,6 @@ public class BlockFileTest {
   public void testBlockFileMerge() throws IOException {
     int vl = 10;
 
-    // Path path0 = new Path("/0.block");
-    // writeBlockFile(path0, vl, kv(1));
-    //
-    // Path path1 = new Path("/1.block");
-    // writeBlockFile(path1, vl, kv(1, vl), kv(3), kv(5, vl));
-    //
-    // Path path2 = new Path("/2.block");
-    // writeBlockFile(path2, vl, kv(1, vl), kv(2), kv(4, vl));
-
     Path path2 = new Path("/2.block");
     writeBlockFile(path2, vl, kv(1));
 
@@ -226,6 +217,84 @@ public class BlockFileTest {
     readers.add(BlockFile.open(fileSystem, path2));
     readers.add(BlockFile.open(fileSystem, path1));
     readers.add(BlockFile.open(fileSystem, path0));
+
+    try (WriterOrdered writer = BlockFile.createOrdered(fileSystem, path, vl)) {
+      BlockFile.merge(readers, writer);
+    }
+    readers.forEach(reader -> IOUtils.closeQuietly(reader));
+
+    try (Reader reader = BlockFile.open(fileSystem, path)) {
+      Iterator<BlockFileEntry> iterator = reader.iterator();
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe1 = iterator.next();
+        assertEquals(1, bfe1.getBlockId());
+        assertTrue(bfe1.isEmpty());
+      }
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe2 = iterator.next();
+        assertEquals(2, bfe2.getBlockId());
+        assertTrue(bfe2.isEmpty());
+      }
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe3 = iterator.next();
+        assertEquals(3, bfe3.getBlockId());
+        assertTrue(bfe3.isEmpty());
+      }
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe4 = iterator.next();
+        assertEquals(4, bfe4.getBlockId());
+        assertFalse(bfe4.isEmpty());
+        BytesWritable bw = new BytesWritable();
+        bfe4.readData(bw);
+        assertEquals(createBytesWritable(vl), bw);
+      }
+      {
+        assertTrue(iterator.hasNext());
+        BlockFileEntry bfe5 = iterator.next();
+        assertEquals(5, bfe5.getBlockId());
+        assertFalse(bfe5.isEmpty());
+        BytesWritable bw = new BytesWritable();
+        bfe5.readData(bw);
+        assertEquals(createBytesWritable(vl), bw);
+      }
+    }
+  }
+
+  @Test
+  public void testBlockFileMergeWithLinks() throws IOException {
+    int vl = 10;
+
+    Path path = new Path("/testBlockFileMergeWithLinks");
+    FileSystem fileSystem = _cluster.getFileSystem();
+
+    Path real = new Path("/real");
+    fileSystem.mkdirs(real);
+
+    Path path2 = new Path("/real/2.block");
+    writeBlockFile(path2, vl, kv(1));
+
+    Path path1 = new Path("/real/1.block");
+    writeBlockFile(path1, vl, kv(1, vl), kv(3), kv(5, vl));
+
+    Path path0 = new Path("/real/0.block");
+    writeBlockFile(path0, vl, kv(1, vl), kv(2), kv(4, vl));
+
+    Path link = new Path("/link");
+    fileSystem.mkdirs(link);
+    assertTrue(BlockFile.createLinkDir(fileSystem, real, link));
+
+    Path linkPath0 = new Path("/link/0.blocklnk");
+    Path linkPath1 = new Path("/link/1.blocklnk");
+    Path linkPath2 = new Path("/link/2.blocklnk");
+
+    List<Reader> readers = new ArrayList<>();
+    readers.add(BlockFile.open(fileSystem, linkPath2));
+    readers.add(BlockFile.open(fileSystem, linkPath1));
+    readers.add(BlockFile.open(fileSystem, linkPath0));
 
     try (WriterOrdered writer = BlockFile.createOrdered(fileSystem, path, vl)) {
       BlockFile.merge(readers, writer);

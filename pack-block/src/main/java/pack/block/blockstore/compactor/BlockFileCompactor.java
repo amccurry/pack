@@ -154,7 +154,7 @@ public class BlockFileCompactor implements Closeable {
     }
 
     Reader reader = readers.get(0);
-    Path newPath = getNewBlockPath(reader.getPath());
+    Path newPath = getNewBlockPath(reader.getLogicalPath());
     Path tmpPath = new Path(_blockPath, getRandomTmpNameMerge());
 
     RoaringBitmap blocksToIgnore = job.getBlocksToIgnore();
@@ -220,7 +220,7 @@ public class BlockFileCompactor implements Closeable {
     CompactionJob compactionJob = new CompactionJob();
     RoaringBitmap currentCompactionBlocksToIgnore = new RoaringBitmap();
     for (FileStatus status : liveFiles) {
-      if (shouldCompactFile(status, getNewerBlocksToIgnore(status, listStatus))) {
+      if (shouldCompactFile(_fileSystem, status, getNewerBlocksToIgnore(status, listStatus))) {
         compactionJob.add(status.getPath());
       } else {
         finishSetup(builder, compactionJob, currentCompactionBlocksToIgnore);
@@ -258,9 +258,11 @@ public class BlockFileCompactor implements Closeable {
     return overallBlocksToIgnore;
   }
 
-  private boolean shouldCompactFile(FileStatus status, RoaringBitmap overallBlocksToIgnore) throws IOException {
+  private boolean shouldCompactFile(FileSystem fileSystem, FileStatus status, RoaringBitmap overallBlocksToIgnore)
+      throws IOException {
     Path path = status.getPath();
-    if (status.getLen() < _maxBlockFileSize) {
+    long len = BlockFile.getLen(fileSystem, status.getPath());
+    if (len < _maxBlockFileSize) {
       LOGGER.info("Adding path {} to compaction, because length {} < max length {}", path, status.getLen(),
           _maxBlockFileSize);
       return true;

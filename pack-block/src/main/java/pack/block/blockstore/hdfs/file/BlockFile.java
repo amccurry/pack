@@ -1,5 +1,6 @@
 package pack.block.blockstore.hdfs.file;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.DataInput;
@@ -8,6 +9,8 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
@@ -30,6 +33,7 @@ import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
 import org.roaringbitmap.RoaringBitmap;
 import org.roaringbitmap.buffer.ImmutableRoaringBitmap;
@@ -44,6 +48,7 @@ import pack.block.util.Utils;
 
 public class BlockFile {
 
+  private static final String BLOCKLNK = ".blocklnk";
   private static final String PACK_BLOCK_FILE_OFFHEAP_PATH = "pack.block.file.offheap.path";
   private static final int DEFAULT_MERGE_READ_BATCH_SIZE = 32;
   private static final String BLOCK = ".block";
@@ -69,6 +74,36 @@ public class BlockFile {
       MAGIC_STR = HDFS_BLOCK_FILE_V1.getBytes(UTF_8);
     } catch (UnsupportedEncodingException e) {
       throw new RuntimeException(e);
+    }
+  }
+
+  public static boolean createLinkDir(FileSystem fileSystem, Path srcDir, Path destDir) throws IOException {
+    if (!fileSystem.exists(srcDir) || !fileSystem.isDirectory(srcDir)) {
+      return false;
+    }
+    fileSystem.mkdirs(destDir);
+    {
+      FileStatus[] listStatus = fileSystem.listStatus(destDir);
+      if (listStatus.length != 0) {
+        return false;
+      }
+    }
+    FileStatus[] listStatus = fileSystem.listStatus(srcDir, (PathFilter) path -> isOrderedBlock(path));
+    for (FileStatus fileStatus : listStatus) {
+      createLinkPath(fileSystem, fileStatus.getPath(), destDir);
+    }
+    return true;
+  }
+
+  public static void createLinkPath(FileSystem fileSystem, Path srcFile, Path destDir) throws IOException {
+    String name = srcFile.getName();
+    int indexOf = name.indexOf('.');
+    String prefix = name.substring(0, indexOf);
+    Path destFile = new Path(destDir, prefix + BLOCKLNK);
+    String path = srcFile.toUri()
+                         .getPath();
+    try (PrintWriter writer = new PrintWriter(fileSystem.create(destFile))) {
+      writer.println(path);
     }
   }
 
@@ -118,26 +153,40 @@ public class BlockFile {
   }
 
   public static Reader open(FileSystem fileSystem, Path path) throws IOException {
-    FSDataInputStream inputStream = fileSystem.open(path);
-    long length = getLength(fileSystem, path);
+    Path resolved = resolvePath(fileSystem, path);
+    FSDataInputStream inputStream = fileSystem.open(resolved);
+    long length = getLength(fileSystem, resolved);
     if (isMultiOrderedBlock(inputStream, length)) {
-      return new ReaderMultiOrdered(inputStream, path, length);
+      return new ReaderMultiOrdered(inputStream, path, resolved, length);
     }
-    return new RandomAccessReaderOrdered(inputStream, path, length);
+    return new RandomAccessReaderOrdered(inputStream, path, resolved, length);
+  }
+
+  public static Path resolvePath(FileSystem fileSystem, Path path) throws IOException {
+    if (path.getName()
+            .endsWith(BLOCKLNK)) {
+      try (BufferedReader reader = new BufferedReader(new InputStreamReader(fileSystem.open(path)))) {
+        String line = reader.readLine();
+        return fileSystem.makeQualified(new Path(line.trim()));
+      }
+    }
+    return path;
   }
 
   public static ReaderMultiOrdered openMultiOrdered(FileSystem fileSystem, Path path, long length) throws IOException {
-    FSDataInputStream inputStream = getInputStream(fileSystem, path, length);
-    return new ReaderMultiOrdered(inputStream, path, length);
+    Path resolved = resolvePath(fileSystem, path);
+    FSDataInputStream inputStream = getInputStream(fileSystem, resolved, length);
+    return new ReaderMultiOrdered(inputStream, path, resolved, length);
   }
 
   public static Reader openForStreaming(FileSystem fileSystem, Path path) throws IOException {
-    FSDataInputStream inputStream = fileSystem.open(path);
-    long length = getLength(fileSystem, path);
+    Path resolved = resolvePath(fileSystem, path);
+    FSDataInputStream inputStream = fileSystem.open(resolved);
+    long length = getLength(fileSystem, resolved);
     if (isMultiOrderedBlock(inputStream, length)) {
-      return new ReaderMultiOrdered(inputStream, path, length);
+      return new ReaderMultiOrdered(inputStream, path, resolved, length);
     }
-    return new StreamReaderOrdered(inputStream, path, length);
+    return new StreamReaderOrdered(inputStream, path, resolved, length);
   }
 
   public static boolean isMultiOrderedBlock(FSDataInputStream input, long length) throws IOException {
@@ -154,7 +203,9 @@ public class BlockFile {
 
   public static boolean isOrderedBlock(Path path) {
     return path.getName()
-               .endsWith(BLOCK);
+               .endsWith(BLOCK)
+        || path.getName()
+               .endsWith(BLOCKLNK);
   }
 
   public static void merge(List<Reader> readers, WriterOrdered writer) throws IOException {
@@ -584,7 +635,9 @@ public class BlockFile {
 
     public abstract boolean hasBlock(int blockId);
 
-    public abstract Path getPath();
+    public abstract Path getLogicalPath();
+
+    public abstract Path getStoragePath();
 
     public abstract int getBlockSize();
 
@@ -594,7 +647,7 @@ public class BlockFile {
 
     @Override
     public String toString() {
-      Path path = getPath();
+      Path path = getLogicalPath();
       return "Reader " + path.getParent()
                              .getName()
           + "/" + path.getName();
@@ -605,25 +658,24 @@ public class BlockFile {
   public static class ReaderMultiOrdered extends Reader {
 
     private final FSDataInputStream _inputStream;
-    private final Path _path;
     private final List<RandomAccessReaderOrdered> _orderedReaders;
     private final int _blockSize;
+    private final Path _logicalPath;
+    private final Path _storagePath;
 
-    protected ReaderMultiOrdered(FSDataInputStream inputStream, Path path, long length) throws IOException {
-      this(inputStream, path, length, ImmutableList.of());
+    protected ReaderMultiOrdered(FSDataInputStream inputStream, Path logicalPath, Path storagePath, long length)
+        throws IOException {
+      this(inputStream, logicalPath, storagePath, length, ImmutableList.of());
     }
 
-    protected ReaderMultiOrdered(FSDataInputStream inputStream, Path path, long length,
+    protected ReaderMultiOrdered(FSDataInputStream inputStream, Path logicalPath, Path storagePath, long length,
         List<RandomAccessReaderOrdered> existingReaders) throws IOException {
       _inputStream = inputStream;
-      _path = path;
+      _logicalPath = logicalPath;
+      _storagePath = storagePath;
       _orderedReaders = openOrderedReaders(length, existingReaders);
       _blockSize = _orderedReaders.get(0)
                                   .getBlockSize();
-    }
-
-    protected ReaderMultiOrdered(FileSystem fileSystem, Path path) throws IOException {
-      this(fileSystem.open(path), path, getLength(fileSystem, path));
     }
 
     private List<RandomAccessReaderOrdered> openOrderedReaders(long length,
@@ -640,7 +692,7 @@ public class BlockFile {
         endingPosition = startingPosition;
       }
       // this should never be reached.
-      throw new IOException("Malformed file " + _path);
+      throw new IOException("Malformed file " + _logicalPath + " " + _storagePath);
     }
 
     private RandomAccessReaderOrdered openOrderedReader(List<RandomAccessReaderOrdered> existingReaders,
@@ -650,12 +702,12 @@ public class BlockFile {
           return new RandomAccessReaderOrdered(readerOrdered, _inputStream);
         }
       }
-      return new RandomAccessReaderOrdered(_inputStream, _path, endingPosition);
+      return new RandomAccessReaderOrdered(_inputStream, _logicalPath, _storagePath, endingPosition);
     }
 
     public ReaderMultiOrdered reopen(FileSystem fileSystem, long newLength) throws IOException {
-      FSDataInputStream newInputStream = getInputStream(fileSystem, _path, newLength);
-      return new ReaderMultiOrdered(newInputStream, _path, newLength, _orderedReaders);
+      FSDataInputStream newInputStream = getInputStream(fileSystem, _storagePath, newLength);
+      return new ReaderMultiOrdered(newInputStream, _logicalPath, _storagePath, newLength, _orderedReaders);
     }
 
     @Override
@@ -727,11 +779,6 @@ public class BlockFile {
     }
 
     @Override
-    public Path getPath() {
-      return _path;
-    }
-
-    @Override
     public int getBlockSize() {
       return _blockSize;
     }
@@ -753,6 +800,16 @@ public class BlockFile {
       }
       return total;
     }
+
+    @Override
+    public Path getLogicalPath() {
+      return _logicalPath;
+    }
+
+    @Override
+    public Path getStoragePath() {
+      return _storagePath;
+    }
   }
 
   public abstract static class ReaderOrdered extends Reader {
@@ -761,20 +818,22 @@ public class BlockFile {
     protected final ImmutableRoaringBitmap _emptyBlocks;
     protected final FSDataInputStream _inputStream;
     protected final int _blockSize;
-    protected final Path _path;
     protected final List<String> _sourceFiles;
     protected final long _first;
     protected final long _last;
     protected final long _startingPosition;
     protected final long _endingPosition;
     protected final Closer _closer = Closer.create();
+    protected final Path _logicalPath;
+    protected final Path _storagePath;
 
     protected ReaderOrdered(ReaderOrdered reader, FSDataInputStream inputStream) throws IOException {
       _blocks = reader._blocks;
       _emptyBlocks = reader._emptyBlocks;
       _inputStream = _closer.register(inputStream);
       _blockSize = reader._blockSize;
-      _path = reader._path;
+      _logicalPath = reader._logicalPath;
+      _storagePath = reader._storagePath;
       _sourceFiles = reader._sourceFiles;
       _first = reader._first;
       _last = reader._last;
@@ -782,9 +841,11 @@ public class BlockFile {
       _endingPosition = reader._endingPosition;
     }
 
-    protected ReaderOrdered(FSDataInputStream inputStream, Path path, long endingPosition) throws IOException {
+    protected ReaderOrdered(FSDataInputStream inputStream, Path logicalPath, Path storagePath, long endingPosition)
+        throws IOException {
       _endingPosition = endingPosition;
-      _path = path;
+      _logicalPath = logicalPath;
+      _storagePath = storagePath;
       _inputStream = _closer.register(inputStream);
       _inputStream.seek(endingPosition - 16);
       _startingPosition = _inputStream.readLong();
@@ -805,7 +866,7 @@ public class BlockFile {
       RoaringBitmap bitset = new RoaringBitmap();
       bitset.deserialize(_inputStream);
       if (OFF_HEAP_BITMAPS) {
-        File file = File.createTempFile("index-", ".block", INDEX_DIR);
+        File file = File.createTempFile("index-", BLOCK, INDEX_DIR);
         _closer.register((Closeable) () -> file.delete());
         file.deleteOnExit();
         try (DataOutputStream out = new DataOutputStream(new FileOutputStream(file))) {
@@ -833,10 +894,6 @@ public class BlockFile {
 
     public long getStartingPosition() {
       return _startingPosition;
-    }
-
-    protected ReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
-      this(fileSystem.open(path), path, getLength(fileSystem, path));
     }
 
     private int getFirst() {
@@ -970,13 +1027,18 @@ public class BlockFile {
     }
 
     @Override
-    public Path getPath() {
-      return _path;
+    public int getBlockSize() {
+      return _blockSize;
     }
 
     @Override
-    public int getBlockSize() {
-      return _blockSize;
+    public Path getLogicalPath() {
+      return _logicalPath;
+    }
+
+    @Override
+    public Path getStoragePath() {
+      return _storagePath;
     }
 
     protected void readBlock(int key, BytesWritable value) throws IOException {
@@ -1079,21 +1141,13 @@ public class BlockFile {
 
   public static class RandomAccessReaderOrdered extends ReaderOrdered {
 
-    public RandomAccessReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
-      super(fileSystem, path);
+    public RandomAccessReaderOrdered(FSDataInputStream inputStream, Path logicalPath, Path storagePath, long endOfBlock)
+        throws IOException {
+      super(inputStream, logicalPath, storagePath, endOfBlock);
       try {
         _inputStream.setReadahead(0l);
       } catch (UnsupportedOperationException e) {
-        LOGGER.debug("Can not set readahead for path {}", path);
-      }
-    }
-
-    public RandomAccessReaderOrdered(FSDataInputStream inputStream, Path path, long endOfBlock) throws IOException {
-      super(inputStream, path, endOfBlock);
-      try {
-        _inputStream.setReadahead(0l);
-      } catch (UnsupportedOperationException e) {
-        LOGGER.debug("Can not set readahead for path {}", path);
+        LOGGER.debug("Can not set readahead for path {} {}", logicalPath, storagePath);
       }
     }
 
@@ -1108,12 +1162,9 @@ public class BlockFile {
     private final long _maxSkip = 128 * 1024 * 1024;
     private final Object _lock = new Object();
 
-    public StreamReaderOrdered(FSDataInputStream inputStream, Path path, long endingPosition) throws IOException {
-      super(inputStream, path, endingPosition);
-    }
-
-    public StreamReaderOrdered(FileSystem fileSystem, Path path) throws IOException {
-      super(fileSystem, path);
+    public StreamReaderOrdered(FSDataInputStream inputStream, Path logicalPath, Path storagePath, long endingPosition)
+        throws IOException {
+      super(inputStream, logicalPath, storagePath, endingPosition);
     }
 
     protected void readBlock(int key, BytesWritable value) throws IOException {
@@ -1248,7 +1299,7 @@ public class BlockFile {
   public static Comparator<Reader> ORDERED_READER_COMPARATOR = new Comparator<Reader>() {
     @Override
     public int compare(Reader o1, Reader o2) {
-      return ORDERED_PATH_COMPARATOR.compare(o1.getPath(), o2.getPath());
+      return ORDERED_PATH_COMPARATOR.compare(o1.getLogicalPath(), o2.getLogicalPath());
     }
   };
 
@@ -1262,5 +1313,11 @@ public class BlockFile {
     String name = p.getName();
     int indexOf = name.indexOf('.');
     return Long.parseLong(name.substring(0, indexOf));
+  }
+
+  public static long getLen(FileSystem fileSystem, Path path) throws IOException {
+    Path resolvePath = resolvePath(fileSystem, path);
+    FileStatus fileStatus = fileSystem.getFileStatus(resolvePath);
+    return fileStatus.getLen();
   }
 }

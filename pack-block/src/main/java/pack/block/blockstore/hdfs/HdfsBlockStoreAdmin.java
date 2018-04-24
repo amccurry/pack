@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import pack.block.blockstore.hdfs.file.BlockFile;
+
 public class HdfsBlockStoreAdmin {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreAdmin.class);
@@ -68,13 +70,15 @@ public class HdfsBlockStoreAdmin {
     Path srcBlocks = new Path(srcPath, HdfsBlockStoreConfig.BLOCK);
     Path volumeBlocks = new Path(volumePath, HdfsBlockStoreConfig.BLOCK);
     if (fileSystem.exists(srcBlocks)) {
-      FileStatus[] listStatus = fileSystem.listStatus(srcBlocks);
-      for (FileStatus fileStatus : listStatus) {
-        Path src = fileStatus.getPath();
-        Path dst = new Path(volumeBlocks, src.getName());
-        if (symlinkClone) {
-          fileSystem.createSymlink(src, dst, true);
-        } else {
+      if (symlinkClone) {
+        if (!BlockFile.createLinkDir(fileSystem, srcBlocks, volumeBlocks)) {
+          throw new IOException("Could not symlinkClone " + srcBlocks + " to " + volumeBlocks);
+        }
+      } else {
+        FileStatus[] listStatus = fileSystem.listStatus(srcBlocks);
+        for (FileStatus fileStatus : listStatus) {
+          Path src = fileStatus.getPath();
+          Path dst = new Path(volumeBlocks, src.getName());
           try (FSDataInputStream inputStream = fileSystem.open(src)) {
             try (FSDataOutputStream outputStream = fileSystem.create(dst)) {
               IOUtils.copy(inputStream, outputStream);

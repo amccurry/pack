@@ -287,12 +287,22 @@ public class HdfsBlockStoreImplTest {
       long e = System.nanoTime();
       System.out.println("Run time " + (e - s) / 1_000_000.0 + " ms");
     }
-
+    {
+      FileStatus[] listStatus = fileSystem.listStatus(new Path(path, "block"));
+      for (FileStatus fileStatus : listStatus) {
+        System.out.println(fileStatus.getPath());
+      }
+    }
     try (WalToBlockFileConverter converter = new WalToBlockFileConverter(getCacheDir(), fileSystem, path, metaData,
         null)) {
       converter.runConverter();
     }
-
+    {
+      FileStatus[] listStatus = fileSystem.listStatus(new Path(path, "block"));
+      for (FileStatus fileStatus : listStatus) {
+        System.out.println(fileStatus.getPath());
+      }
+    }
     try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, metaData, null)) {
       compactor.runCompaction();
     }
