@@ -302,7 +302,6 @@ public class BlockPackStorage implements PackStorage {
     LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
                                               .getLinuxFileSystem();
     linuxFileSystem.mount(device, localFileSystemMount, mountOptions);
-
   }
 
   private void mkfsIfNeeded(HdfsMetaData metaData, String volumeName, File device) throws IOException {

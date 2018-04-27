@@ -17,16 +17,16 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseLinuxFileSystem.class);
 
   protected static final String SUDO = "sudo";
-  private static final String TYPE = "TYPE";
-  private static final String TAG_SWITCH = "-s";
-  private static final String VALUE = "value";
-  private static final String OUTPUT_FORMAT_SWITCH = "-o";
-  private static final String BLKID = "blkid";
-  private static final String VERBOSE_SWITCH = "--verbose";
-  private static final String UMOUNT = "umount";
-  private static final String MOUNT = "mount";
-  private static final String OPTIONS_SWITCH = "-o";
-  private static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
+  protected static final String TYPE = "TYPE";
+  protected static final String TAG_SWITCH = "-s";
+  protected static final String VALUE = "value";
+  protected static final String OUTPUT_FORMAT_SWITCH = "-o";
+  protected static final String BLKID = "blkid";
+  protected static final String VERBOSE_SWITCH = "--verbose";
+  protected static final String UMOUNT = "umount";
+  protected static final String MOUNT = "mount";
+  protected static final String OPTIONS_SWITCH = "-o";
+  protected static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
 
   @Override
   public void mount(File device, File mountLocation, String options) throws IOException {
