@@ -54,7 +54,7 @@ public class BlockPackFuseProcessBuilder {
   private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
 
   public static void startProcess(boolean nohupProcess, String fuseMountLocation, String fsMountLocation,
-      String fsMetricsLocation, String fsLocalCache, String hdfVolumePath, String zkConnection, int zkTimeout,
+      String fsMetricsLocation, String fsLocalCache, String hdfsVolumePath, String zkConnection, int zkTimeout,
       String volumeName, String logOutput, String unixSock, String libDir, int numberOfMountSnapshots,
       long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
       List<String> classPathExtras, boolean fileSystemMount) throws IOException {
@@ -87,7 +87,7 @@ public class BlockPackFuseProcessBuilder {
            .add(fsMountLocation)
            .add(fsMetricsLocation)
            .add(fsLocalCache)
-           .add(hdfVolumePath)
+           .add(hdfsVolumePath)
            .add(zkConnection)
            .add(zkTimeoutStr)
            .add(unixSock)
