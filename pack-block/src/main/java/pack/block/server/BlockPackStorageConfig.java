@@ -10,6 +10,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
+import spark.Service;
 
 @Value
 @AllArgsConstructor
@@ -29,4 +30,5 @@ public class BlockPackStorageConfig {
   boolean nohupProcess;
   boolean fileSystemMount;
   HdfsSnapshotStrategy strategy;
+  Service service;
 }

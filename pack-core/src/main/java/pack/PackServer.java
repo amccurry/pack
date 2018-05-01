@@ -40,6 +40,8 @@ import spark.SparkJava;
 import spark.SparkJavaIdentifier;
 
 public abstract class PackServer {
+  
+  private static final Logger LOG = LoggerFactory.getLogger(PackServer.class);
 
   private static final String GLOBAL = "global";
   private static final String LOCAL = "local";
@@ -53,10 +55,17 @@ public abstract class PackServer {
   private static final String VOLUME_DRIVER_UNMOUNT = "/VolumeDriver.Unmount";
   private static final String VOLUME_DRIVER_GET = "/VolumeDriver.Get";
   private static final String VOLUME_DRIVER_LIST = "/VolumeDriver.List";
-
-  private static final Logger LOG = LoggerFactory.getLogger(PackServer.class);
-
-  private static final ObjectMapper objectMapper = new ObjectMapper();
+  
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  
+  public static final ResponseTransformer TRANSFORMER = model -> {
+    LOG.info("response {}", model);
+    if (model instanceof String) {
+      return (String) model;
+    } else {
+      return OBJECT_MAPPER.writeValueAsString(model);
+    }
+  };
 
   private final boolean global;
   private final String sockFile;
@@ -66,10 +75,9 @@ public abstract class PackServer {
     this.sockFile = sockFile;
   }
 
-  protected abstract PackStorage getPackStorage() throws Exception;
+  protected abstract PackStorage getPackStorage(Service service) throws Exception;
 
   public void runServer() throws Exception {
-    PackStorage packStorage = getPackStorage();
 
     SparkJava.init();
     Service service = Service.ignite();
@@ -81,14 +89,8 @@ public abstract class PackServer {
     LOG.info("Using sock {}", sockFile);
     service.ipAddress(sockFile);
 
-    ResponseTransformer trans = model -> {
-      LOG.info("response {}", model);
-      if (model instanceof String) {
-        return (String) model;
-      } else {
-        return objectMapper.writeValueAsString(model);
-      }
-    };
+    PackStorage packStorage = getPackStorage(service);
+
 
     Implements impls = Implements.builder()
                                  .impls(Arrays.asList(VOLUME_DRIVER))
@@ -102,8 +104,8 @@ public abstract class PackServer {
                                                                     .capabilities(capabilities)
                                                                     .build();
 
-    service.post(PLUGIN_ACTIVATE, (request, response) -> impls, trans);
-    service.post(VOLUME_DRIVER_CAPABILITIES, (request, response) -> capabilitiesResponse, trans);
+    service.post(PLUGIN_ACTIVATE, (request, response) -> impls, TRANSFORMER);
+    service.post(VOLUME_DRIVER_CAPABILITIES, (request, response) -> capabilitiesResponse, TRANSFORMER);
     service.post(VOLUME_DRIVER_CREATE, (Route) (request, response) -> {
       debugInfo(request);
       CreateRequest createRequest = read(request, CreateRequest.class);
@@ -117,7 +119,7 @@ public abstract class PackServer {
                   .error(t.getMessage())
                   .build();
       }
-    }, trans);
+    }, TRANSFORMER);
 
     service.post(VOLUME_DRIVER_REMOVE, (Route) (request, response) -> {
       debugInfo(request);
@@ -132,7 +134,7 @@ public abstract class PackServer {
                   .error(t.getMessage())
                   .build();
       }
-    }, trans);
+    }, TRANSFORMER);
 
     service.post(VOLUME_DRIVER_MOUNT, (Route) (request, response) -> {
       debugInfo(request);
@@ -149,7 +151,7 @@ public abstract class PackServer {
                            .error(t.getMessage())
                            .build();
       }
-    }, trans);
+    }, TRANSFORMER);
 
     service.post(VOLUME_DRIVER_PATH, (Route) (request, response) -> {
       debugInfo(request);
@@ -165,7 +167,7 @@ public abstract class PackServer {
                            .error(t.getMessage())
                            .build();
       }
-    }, trans);
+    }, TRANSFORMER);
 
     service.post(VOLUME_DRIVER_UNMOUNT, (Route) (request, response) -> {
       debugInfo(request);
@@ -180,7 +182,7 @@ public abstract class PackServer {
                   .error(t.getMessage())
                   .build();
       }
-    }, trans);
+    }, TRANSFORMER);
 
     service.post(VOLUME_DRIVER_GET, (Route) (request, response) -> {
       debugInfo(request);
@@ -204,7 +206,7 @@ public abstract class PackServer {
                           .error(t.getMessage())
                           .build();
       }
-    }, trans);
+    }, TRANSFORMER);
 
     service.post(VOLUME_DRIVER_LIST, (Route) (request, response) -> {
       debugInfo(request);
@@ -228,11 +230,11 @@ public abstract class PackServer {
                            .error(t.getMessage())
                            .build();
       }
-    }, trans);
+    }, TRANSFORMER);
   }
 
-  private static <T> T read(Request request, Class<T> clazz) throws IOException {
-    return objectMapper.readValue(request.bodyAsBytes(), clazz);
+  public static <T> T read(Request request, Class<T> clazz) throws IOException {
+    return OBJECT_MAPPER.readValue(request.bodyAsBytes(), clazz);
   }
 
   public static Result exec(String cmdId, List<String> command, Logger logger)
@@ -251,7 +253,7 @@ public abstract class PackServer {
     return new Result(exitCode, stdout.toString(), stderr.toString());
   }
 
-  private static BufferedReader toBuffer(InputStream inputStream) {
+  public static BufferedReader toBuffer(InputStream inputStream) {
     return new BufferedReader(new InputStreamReader(inputStream));
   }
 
@@ -267,7 +269,7 @@ public abstract class PackServer {
     }
   }
 
-  private static Thread captureOutput(String cmdId, String type, BufferedReader reader, Logger logger, Writer writer) {
+  public static Thread captureOutput(String cmdId, String type, BufferedReader reader, Logger logger, Writer writer) {
     return new Thread(new Runnable() {
       @Override
       public void run() {
@@ -291,7 +293,7 @@ public abstract class PackServer {
     });
   }
 
-  private void debugInfo(Request request) {
+  public static void debugInfo(Request request) {
     LOG.info("pathInfo {} contextPath {}", request.pathInfo(), request.contextPath());
     Set<String> attributes = new TreeSet<>(request.attributes());
     for (String attribute : attributes) {

@@ -1,0 +1,2 @@
+curl -d '{"Name":"volumename","ID":"testingId"}' -X POST --unix-socket /run/docker/plugins/pack.sock http:/VolumeDriver.UnmountDevice
+curl -d '{"Name":"volumename","ID":"testingId"}' -X POST --unix-socket /run/docker/plugins/pack.sock http:/VolumeDriver.MountDevice

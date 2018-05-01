@@ -25,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Closer;
 
+import pack.PackServer;
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
@@ -38,15 +39,22 @@ import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.json.Err;
+import pack.json.MountUnmountRequest;
+import pack.json.PathResponse;
+import spark.Route;
+import spark.Service;
 
 public class BlockPackStorage implements PackStorage {
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
-  private static final String CLONE_PATH = "clonePath";
-  private static final String SYMLINK_CLONE = "symlinkClone";
-  private static final String MOUNT_COUNT = "mountCount";
+  public static final String VOLUME_DRIVER_MOUNT_DEVICE = "/VolumeDriver.MountDevice";
+  public static final String VOLUME_DRIVER_UNMOUNT_DEVICE = "/VolumeDriver.UnmountDevice";
+  public static final String CLONE_PATH = "clonePath";
+  public static final String SYMLINK_CLONE = "symlinkClone";
+  public static final String MOUNT_COUNT = "mountCount";
   public static final String MOUNT = "/mount";
-  private static final String METRICS = "metrics";
+  public static final String METRICS = "metrics";
 
   protected final Configuration _configuration;
   protected final Path _root;
@@ -63,8 +71,11 @@ public class BlockPackStorage implements PackStorage {
   protected final File _workingDir;
   protected final boolean _fileSystemMount;
   protected final HdfsSnapshotStrategy _snapshotStrategy;
+  protected final Service _service;
 
   public BlockPackStorage(BlockPackStorageConfig config) throws IOException, InterruptedException {
+    _service = config.getService();
+    addServiceExtras(_service);
     _snapshotStrategy = config.getStrategy();
     _nohupProcess = config.isNohupProcess();
     _numberOfMountSnapshots = config.getNumberOfMountSnapshots();
@@ -106,6 +117,44 @@ public class BlockPackStorage implements PackStorage {
 
   }
 
+  private void addServiceExtras(Service service) {
+    service.post(VOLUME_DRIVER_MOUNT_DEVICE, (Route) (request, response) -> {
+      PackServer.debugInfo(request);
+      MountUnmountRequest mountUnmountRequest = PackServer.read(request, MountUnmountRequest.class);
+      try {
+        String deviceMountPoint = _ugi.doAs(
+            (PrivilegedExceptionAction<String>) () -> mountVolume(mountUnmountRequest.getVolumeName(),
+                mountUnmountRequest.getId(), true));
+        return PathResponse.builder()
+                           .mountpoint(deviceMountPoint)
+                           .build();
+      } catch (Throwable t) {
+        LOGGER.error("error", t);
+        return PathResponse.builder()
+                           .mountpoint("<unknown>")
+                           .error(t.getMessage())
+                           .build();
+      }
+    }, PackServer.TRANSFORMER);
+
+    service.post(VOLUME_DRIVER_UNMOUNT_DEVICE, (Route) (request, response) -> {
+      PackServer.debugInfo(request);
+      MountUnmountRequest mountUnmountRequest = PackServer.read(request, MountUnmountRequest.class);
+      try {
+        _ugi.doAs(HdfsPriv.create(
+            () -> umountVolume(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId(), true)));
+        return Err.builder()
+                  .build();
+      } catch (Throwable t) {
+        LOGGER.error("error", t);
+        return PathResponse.builder()
+                           .mountpoint("<unknown>")
+                           .error(t.getMessage())
+                           .build();
+      }
+    }, PackServer.TRANSFORMER);
+  }
+
   private void addShutdownHook(Closer closer) {
     Runtime.getRuntime()
            .addShutdownHook(new Thread(() -> {
@@ -129,12 +178,12 @@ public class BlockPackStorage implements PackStorage {
 
   @Override
   public String mount(String volumeName, String id) throws Exception {
-    return _ugi.doAs((PrivilegedExceptionAction<String>) () -> mountVolume(volumeName, id));
+    return _ugi.doAs((PrivilegedExceptionAction<String>) () -> mountVolume(volumeName, id, false));
   }
 
   @Override
   public void unmount(String volumeName, String id) throws Exception {
-    _ugi.doAs(HdfsPriv.create(() -> umountVolume(volumeName, id)));
+    _ugi.doAs(HdfsPriv.create(() -> umountVolume(volumeName, id, false)));
   }
 
   @Override
@@ -226,8 +275,11 @@ public class BlockPackStorage implements PackStorage {
     fileSystem.delete(volumePath, true);
   }
 
-  protected String mountVolume(String volumeName, String id)
+  protected String mountVolume(String volumeName, String id, boolean deviceOnly)
       throws IOException, FileNotFoundException, InterruptedException, KeeperException {
+    if (_fileSystemMount && deviceOnly) {
+      throw new IOException("Device only mount, not supported with file system mount by external process.");
+    }
     createVolume(volumeName, ImmutableMap.of());
     LOGGER.info("Mount Id {} volumeName {}", id, volumeName);
     File logDir = getLogDir(volumeName);
@@ -283,6 +335,9 @@ public class BlockPackStorage implements PackStorage {
       }
       waitForMount(localDevice, unixSockFile, Status.FUSE_MOUNT_COMPLETE);
       File device = new File(localDevice, FuseFileSystemSingleMount.BRICK);
+      if (deviceOnly) {
+        return device.getAbsolutePath();
+      }
       mkfsIfNeeded(metaData, volumeName, device);
       mountFs(metaData, device, localFileSystemMount);
       HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, volumePath, _snapshotStrategy);
@@ -302,6 +357,9 @@ public class BlockPackStorage implements PackStorage {
     LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
                                               .getLinuxFileSystem();
     linuxFileSystem.mount(device, localFileSystemMount, mountOptions);
+    if (linuxFileSystem.isFstrimSupported()) {
+      linuxFileSystem.fstrim(localFileSystemMount);
+    }
   }
 
   private void mkfsIfNeeded(HdfsMetaData metaData, String volumeName, File device) throws IOException {
@@ -378,15 +436,18 @@ public class BlockPackStorage implements PackStorage {
     }
   }
 
-  protected void umountVolume(String volumeName, String id)
+  protected void umountVolume(String volumeName, String id, boolean deviceOnly)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
+    if (_fileSystemMount && deviceOnly) {
+      throw new IOException("Device only mount, not supported with file system mount by external process.");
+    }
     LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
     File unixSockFile = getUnixSocketFile(volumeName);
     if (unixSockFile.exists()) {
       long count = decrementMountCount(unixSockFile);
       LOGGER.info("Mount count {}", count);
       if (count <= 0) {
-        if (!_fileSystemMount) {
+        if (!_fileSystemMount && !deviceOnly) {
           Path volumePath = getVolumePath(volumeName);
           FileSystem fileSystem = getFileSystem(volumePath);
           HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);

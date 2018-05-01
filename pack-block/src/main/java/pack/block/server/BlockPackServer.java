@@ -12,6 +12,7 @@ import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.TimeBasedHdfsSnapshotStrategy;
 import pack.block.server.BlockPackStorageConfig.BlockPackStorageConfigBuilder;
 import pack.block.util.Utils;
+import spark.Service;
 
 public class BlockPackServer extends PackServer {
 
@@ -83,7 +84,7 @@ public class BlockPackServer extends PackServer {
   }
 
   @Override
-  protected PackStorage getPackStorage() throws Exception {
+  protected PackStorage getPackStorage(Service service) throws Exception {
     BlockPackStorageConfigBuilder builder = BlockPackStorageConfig.builder();
     builder.ugi(_ugi)
            .configuration(configuration)
@@ -99,6 +100,7 @@ public class BlockPackServer extends PackServer {
            .volumeMissingCountBeforeAutoShutdown(_volumeMissingCountBeforeAutoShutdown)
            .fileSystemMount(_fileSystemMount)
            .strategy(_strategy)
+           .service(service)
            .build();
     return new BlockPackStorage(builder.build());
   }

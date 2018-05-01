@@ -6,6 +6,8 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 
+import spark.Service;
+
 public class TarPackServer extends PackServer {
 
   private static final String VAR_LIB_PACK = "/var/lib/pack";
@@ -72,7 +74,7 @@ public class TarPackServer extends PackServer {
   }
 
   @Override
-  protected PackStorage getPackStorage() throws Exception {
+  protected PackStorage getPackStorage(Service service) throws Exception {
     return new TarPackStorage(localFile, configuration, remotePath, ugi);
   }
 
