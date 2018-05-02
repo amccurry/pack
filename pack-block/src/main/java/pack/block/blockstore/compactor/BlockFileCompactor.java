@@ -42,6 +42,7 @@ public class BlockFileCompactor implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFileCompactor.class);
 
+  private static final String WAL = ".wal";
   private static final String MERGE = "0_merge";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
@@ -347,7 +348,29 @@ public class BlockFileCompactor implements Closeable {
   }
 
   private FileStatus[] getBlockFiles() throws FileNotFoundException, IOException {
-    return _fileSystem.listStatus(_blockPath, (PathFilter) p -> BlockFile.isOrderedBlock(p));
+    return getBlockFiles(_fileSystem, _blockPath);
+  }
+
+  public static FileStatus[] getBlockFiles(FileSystem fileSystem, Path path) throws FileNotFoundException, IOException {
+    FileStatus[] listStatus = fileSystem.listStatus(path,
+        (PathFilter) p -> BlockFile.isOrderedBlock(p) || isWalFile(p));
+
+    Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
+
+    List<FileStatus> list = new ArrayList<>();
+    for (int i = listStatus.length - 1; i >= 0; i--) {
+      FileStatus fileStatus = listStatus[i];
+      if (isWalFile(fileStatus.getPath())) {
+        break;
+      }
+      list.add(fileStatus);
+    }
+    return list.toArray(new FileStatus[list.size()]);
+  }
+
+  public static boolean isWalFile(Path p) {
+    return p.getName()
+            .endsWith(WAL);
   }
 
   private Path getNewBlockPath(Path path) throws IOException {

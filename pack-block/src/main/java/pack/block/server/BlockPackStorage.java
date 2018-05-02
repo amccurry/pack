@@ -39,6 +39,7 @@ import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.block.util.Utils;
 import pack.json.Err;
 import pack.json.MountUnmountRequest;
 import pack.json.PathResponse;
@@ -46,6 +47,7 @@ import spark.Route;
 import spark.Service;
 
 public class BlockPackStorage implements PackStorage {
+
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
   public static final String VOLUME_DRIVER_MOUNT_DEVICE = "/VolumeDriver.MountDevice";
@@ -55,6 +57,8 @@ public class BlockPackStorage implements PackStorage {
   public static final String MOUNT_COUNT = "mountCount";
   public static final String MOUNT = "/mount";
   public static final String METRICS = "metrics";
+  public static final String SUDO = "sudo";
+  public static final String SYNC = "sync";
 
   protected final Configuration _configuration;
   protected final Path _root;
@@ -456,6 +460,7 @@ public class BlockPackStorage implements PackStorage {
           }
           File localFileSystemMount = getLocalFileSystemMount(volumeName);
           umountFs(metaData, localFileSystemMount);
+          sync();
         }
         try {
           shutdownVolume(unixSockFile);
@@ -465,9 +470,22 @@ public class BlockPackStorage implements PackStorage {
         } catch (ConnectionRefusedException e) {
           LOGGER.info("fuse process seems to be gone {}", unixSockFile);
           return;
+        } catch (IOException e) {
+          if (e.getMessage()
+               .trim()
+               .toLowerCase()
+               .equals("connection reset by peer")) {
+            LOGGER.info("fuse process seems to be gone {}", unixSockFile);
+            return;
+          }
+          throw e;
         }
       }
     }
+  }
+
+  private void sync() throws IOException {
+    // Utils.exec(LOGGER, SUDO, SYNC);
   }
 
   private long decrementMountCount(File unixSockFile) throws IOException {

@@ -151,6 +151,8 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
                         .toMillis(config.getBlockFilePeriod());
     _blockFileTimer.schedule(getBlockFileTask(), period, period);
     _walRollExecutor = Executors.newSingleThreadExecutor();
+    
+    processBlockFiles();
   }
 
   private RemovalListener<Path, LocalWalCache> getRemovalListener() {
@@ -576,7 +578,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     };
   }
 
-  public void processBlockFiles() throws IOException {
+  public synchronized void processBlockFiles() throws IOException {
     loadAnyMissingBlockFiles();
     dropOldBlockFiles();
   }

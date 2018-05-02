@@ -225,13 +225,13 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   @Override
   public int release(String path, FuseFileInfo fi) {
     _logger.debug("release {} {}", path, fi);
-    return 0;
+    return fsync(path, 0, fi);
   }
 
   @Override
   public int flush(String path, FuseFileInfo fi) {
     _logger.debug("flush {} {}", path, fi);
-    return 0;
+    return fsync(path, 0, fi);
   }
 
   public static int readBlockStore(BlockStore blockStore, Pointer buffer, long size, long position) throws IOException {

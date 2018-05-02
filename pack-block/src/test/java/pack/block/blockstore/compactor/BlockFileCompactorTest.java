@@ -89,6 +89,33 @@ public class BlockFileCompactorTest {
     }
   }
 
+  @Test
+  public void testGetBlockFiles() throws IOException {
+    Path path = new Path("/testGetBlockFiles");
+    touchFileSystem(new Path(path, "8.block"));
+    touchFileSystem(new Path(path, "9.block"));
+    touchFileSystem(new Path(path, "10.wal"));
+    touchFileSystem(new Path(path, "11.block"));
+    touchFileSystem(new Path(path, "12.block"));
+
+    FileStatus[] blockFiles = BlockFileCompactor.getBlockFiles(fileSystem, path);
+    assertEquals(2, blockFiles.length);
+    assertEquals(getSimplePath(blockFiles[0]), "/testGetBlockFiles/8.block");
+    assertEquals(getSimplePath(blockFiles[1]), "/testGetBlockFiles/9.block");
+  }
+
+  private String getSimplePath(FileStatus fileStatus) {
+    Path path = fileStatus.getPath();
+    return path.toUri()
+               .getPath();
+  }
+
+  private void touchFileSystem(Path path) throws IOException {
+    fileSystem.mkdirs(path.getParent());
+    fileSystem.create(path)
+              .close();
+  }
+
   private void runCompactorSingleResultObsoleteRatio(Path path, Random random) throws IOException {
     int blockSize = 10;
     List<byte[]> data = new ArrayList<>();

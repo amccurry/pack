@@ -164,7 +164,11 @@ public class PackCompactorServer implements Closeable {
   public void executeConverter(Path root) throws IOException, KeeperException, InterruptedException {
     FileStatus[] listStatus = _fileSystem.listStatus(root);
     for (FileStatus status : listStatus) {
-      executeConverterVolume(status.getPath());
+      try {
+        executeConverterVolume(status.getPath());
+      } catch (Exception e) {
+        LOGGER.error("Convertions of " + status.getPath() + " failed", e);
+      }
     }
   }
 
@@ -188,7 +192,11 @@ public class PackCompactorServer implements Closeable {
   public void executeCompaction(Path root) throws IOException, KeeperException, InterruptedException {
     FileStatus[] listStatus = _fileSystem.listStatus(root);
     for (FileStatus status : listStatus) {
-      executeCompactionVolume(status.getPath());
+      try {
+        executeCompactionVolume(status.getPath());
+      } catch (Exception e) {
+        LOGGER.error("Compaction of " + status.getPath() + " failed", e);
+      }
     }
   }
 
