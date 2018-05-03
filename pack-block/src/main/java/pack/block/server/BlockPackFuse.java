@@ -141,7 +141,7 @@ public class BlockPackFuse implements Closeable {
   }
 
   private static HdfsSnapshotStrategy getHdfsSnapshotStrategy() {
-    return new TimeBasedHdfsSnapshotStrategy();
+    return new LastestHdfsSnapshotStrategy();
   }
 
   private final HdfsBlockStore _blockStore;

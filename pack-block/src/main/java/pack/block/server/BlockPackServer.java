@@ -9,6 +9,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import pack.PackServer;
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
+import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.TimeBasedHdfsSnapshotStrategy;
 import pack.block.server.BlockPackStorageConfig.BlockPackStorageConfigBuilder;
 import pack.block.util.Utils;
@@ -43,7 +44,7 @@ public class BlockPackServer extends PackServer {
   }
 
   private static HdfsSnapshotStrategy getStrategy() {
-    return new TimeBasedHdfsSnapshotStrategy();
+    return new LastestHdfsSnapshotStrategy();
   }
 
   private final File _localWorkingDir;
