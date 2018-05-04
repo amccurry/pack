@@ -6,6 +6,9 @@ import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.httpclient.ConnectTimeoutException;
 import org.apache.commons.httpclient.ConnectionPoolTimeoutException;
@@ -34,14 +37,29 @@ public class UnixDomainSocketClient {
   protected static final String UTF_8 = "UTF-8";
   protected static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+  static {
+    Timer timer = new Timer("gc-hack", true);
+    timer.schedule(new TimerTask() {
+      @Override
+      public void run() {
+        System.gc();
+        System.gc();
+      }
+    }, TimeUnit.SECONDS.toMillis(10), TimeUnit.SECONDS.toMillis(10));
+  }
+
   protected final File _sockFile;
+  private HttpClient _httpClient;
 
   public UnixDomainSocketClient(File sockFile) {
     _sockFile = sockFile;
   }
 
-  protected HttpClient getClient() {
-    return createHttpClient(_sockFile);
+  protected synchronized HttpClient getClient() {
+    if (_httpClient == null) {
+      _httpClient = createHttpClient(_sockFile);
+    }
+    return _httpClient;
   }
 
   private static HttpClient createHttpClient(File path) {
@@ -51,6 +69,43 @@ public class UnixDomainSocketClient {
   }
 
   private static HttpConnectionManager getConnectionManager(File path) {
+    ProtocolSocketFactory factory = new ProtocolSocketFactory() {
+
+      private UnixSocketAddress addr;
+
+      @Override
+      public synchronized Socket createSocket(String host, int port, InetAddress localAddress, int localPort,
+          HttpConnectionParams params) throws IOException, UnknownHostException, ConnectTimeoutException {
+        if (!path.exists()) {
+          throw new NoFileException();
+        }
+        try {
+          if (addr == null) {
+            addr = new UnixSocketAddress(path);
+          }
+          return new UnixSocket(UnixSocketChannel.open(addr));
+        } catch (IOException e) {
+          if (CONNECTION_REFUSED.equals(e.getMessage()
+                                         .toLowerCase()
+                                         .trim())) {
+            throw new ConnectionRefusedException();
+          }
+          throw e;
+        }
+      }
+
+      @Override
+      public Socket createSocket(String host, int port, InetAddress localAddress, int localPort)
+          throws IOException, UnknownHostException {
+        throw new RuntimeException();
+      }
+
+      @Override
+      public Socket createSocket(String host, int port) throws IOException, UnknownHostException {
+        throw new RuntimeException();
+      }
+    };
+
     return new HttpConnectionManager() {
 
       @Override
@@ -71,38 +126,7 @@ public class UnixDomainSocketClient {
       @Override
       public HttpConnection getConnectionWithTimeout(HostConfiguration hostConfiguration, long timeout)
           throws ConnectionPoolTimeoutException {
-        ProtocolSocketFactory factory = new ProtocolSocketFactory() {
 
-          @Override
-          public Socket createSocket(String host, int port, InetAddress localAddress, int localPort,
-              HttpConnectionParams params) throws IOException, UnknownHostException, ConnectTimeoutException {
-            if (!path.exists()) {
-              throw new NoFileException();
-            }
-            UnixSocketAddress addr = new UnixSocketAddress(path);
-            try {
-              return new UnixSocket(UnixSocketChannel.open(addr));
-            } catch (IOException e) {
-              if (CONNECTION_REFUSED.equals(e.getMessage()
-                                             .toLowerCase()
-                                             .trim())) {
-                throw new ConnectionRefusedException();
-              }
-              throw e;
-            }
-          }
-
-          @Override
-          public Socket createSocket(String host, int port, InetAddress localAddress, int localPort)
-              throws IOException, UnknownHostException {
-            throw new RuntimeException();
-          }
-
-          @Override
-          public Socket createSocket(String host, int port) throws IOException, UnknownHostException {
-            throw new RuntimeException();
-          }
-        };
         Protocol protocol = new Protocol("http", factory, 80);
         HttpConnection httpConnection = new HttpConnection("localhost", 80, protocol);
         httpConnection.setHttpConnectionManager(this);

@@ -2,6 +2,7 @@ package pack.block.server.admin.client;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.httpclient.HttpException;
@@ -38,11 +39,15 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
     BlockPackAdminClient client = new BlockPackAdminClient(file);
     printPid(client);
     startTestServer(file);
-    for (int i = 0; i < 10; i++) {
+    // for (int i = 0; i < 10; i++) {
+    String name = ManagementFactory.getRuntimeMXBean()
+                                   .getName();
+    while (true) {
+      System.out.println(name);
       printPid(client);
-      Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+      Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
     }
-    System.exit(0);
+    // System.exit(0);
   }
 
   private static void printPid(BlockPackAdminClient client) throws IOException {
@@ -57,11 +62,11 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
 
   private final ObjectMapper _mapper = new ObjectMapper();
 
-  public static BlockPackAdminClient create(File sockFile) {
+  public static BlockPackAdminClient create(File sockFile) throws NoFileException {
     return new BlockPackAdminClient(sockFile);
   }
 
-  public BlockPackAdminClient(File sockFile) {
+  public BlockPackAdminClient(File sockFile) throws NoFileException {
     super(sockFile);
   }
 
@@ -149,8 +154,8 @@ public class BlockPackAdminClient extends UnixDomainSocketClient {
     String pid = BlockPackAdminServer.getPid();
     service.ipAddress(sockFile.getAbsolutePath());
     service.get(BlockPackAdminServer.PID, (request, response) -> PidResponse.builder()
-                                                                      .pid(pid)
-                                                                      .build(),
+                                                                            .pid(pid)
+                                                                            .build(),
         BlockPackAdminServer.TRANSFORMER);
     return service;
   }
