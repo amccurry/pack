@@ -133,6 +133,8 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     _fileSystem.mkdirs(_blockPath);
     _genCounter = new AtomicLong(readGenCounter());
 
+    processBlockFiles();
+
     loadWalFiles();
     RemovalListener<Path, BlockFile.Reader> readerListener = notification -> IOUtils.closeQuietly(
         notification.getValue());
@@ -151,8 +153,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
                         .toMillis(config.getBlockFilePeriod());
     _blockFileTimer.schedule(getBlockFileTask(), period, period);
     _walRollExecutor = Executors.newSingleThreadExecutor();
-    
-    processBlockFiles();
+
   }
 
   private RemovalListener<Path, LocalWalCache> getRemovalListener() {

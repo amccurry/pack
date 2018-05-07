@@ -39,7 +39,6 @@ import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
-import pack.block.util.Utils;
 import pack.json.Err;
 import pack.json.MountUnmountRequest;
 import pack.json.PathResponse;
