@@ -133,15 +133,12 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     _fileSystem.mkdirs(_blockPath);
     _genCounter = new AtomicLong(readGenCounter());
 
-    processBlockFiles();
-
-    loadWalFiles();
     RemovalListener<Path, BlockFile.Reader> readerListener = notification -> IOUtils.closeQuietly(
         notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
                                .removalListener(readerListener)
                                .build();
-
+    
     List<Path> pathList = getBlockFilePathListFromStorage();
     _blockFiles.set(ImmutableList.copyOf(pathList));
     // create background thread that removes orphaned block files and checks for
@@ -149,6 +146,10 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     _blockFileTimer = new Timer(HdfsBlockStoreConfig.BLOCK + "|" + _blockPath.toUri()
                                                                              .getPath(),
         true);
+    
+    processBlockFiles();
+    loadWalFiles();
+    
     long period = config.getBlockFileUnit()
                         .toMillis(config.getBlockFilePeriod());
     _blockFileTimer.schedule(getBlockFileTask(), period, period);
