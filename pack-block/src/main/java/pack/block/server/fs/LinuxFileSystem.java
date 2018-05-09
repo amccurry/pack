@@ -41,4 +41,12 @@ public interface LinuxFileSystem {
 
   }
 
+  default boolean isUuidAssignmentSupported() {
+    return false;
+  }
+
+  default void assignUuid(String uuid, File device) throws IOException {
+    
+  }
+
 }

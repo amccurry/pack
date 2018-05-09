@@ -4,6 +4,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.UUID;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
@@ -100,8 +101,25 @@ public class HdfsBlockStoreAdmin {
     if (!fileSystem.exists(new Path(volumePath, METADATA))) {
       return null;
     }
+    HdfsMetaData hdfsMetaData;
     try (InputStream input = fileSystem.open(new Path(volumePath, METADATA))) {
-      return MAPPER.readValue(input, HdfsMetaData.class);
+      hdfsMetaData = MAPPER.readValue(input, HdfsMetaData.class);
     }
+    return assignUuidIfMissing(hdfsMetaData, fileSystem, volumePath);
+  }
+
+  public static HdfsMetaData assignUuidIfMissing(HdfsMetaData hdfsMetaData, FileSystem fileSystem, Path volumePath)
+      throws IOException {
+    String uuid = hdfsMetaData.getUuid();
+    if (uuid == null) {
+      uuid = UUID.randomUUID()
+                 .toString();
+      HdfsMetaData newMetaData = hdfsMetaData.toBuilder()
+                                             .uuid(uuid)
+                                             .build();
+      writeHdfsMetaData(newMetaData, fileSystem, volumePath);
+      return newMetaData;
+    }
+    return hdfsMetaData;
   }
 }

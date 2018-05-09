@@ -3,6 +3,7 @@ package pack.block.blockstore.hdfs;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -61,10 +62,15 @@ public class HdfsMetaData {
   public static final long DEFAULT_MIN_TIME_BETWEEN_SYNCS = TimeUnit.SECONDS.toMillis(1);
 
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
-      .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE).fileSystemType(FileSystemType.XFS).length(DEFAULT_LENGTH_BYTES)
-      .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE).maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
-      .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE).maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
-      .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS).build();
+                                                                   .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
+                                                                   .fileSystemType(FileSystemType.XFS)
+                                                                   .length(DEFAULT_LENGTH_BYTES)
+                                                                   .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE)
+                                                                   .maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
+                                                                   .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
+                                                                   .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
+                                                                   .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS)
+                                                                   .build();
 
   @JsonProperty
   @Builder.Default
@@ -98,6 +104,9 @@ public class HdfsMetaData {
 
   @JsonProperty
   String walCompressionCodec;
+
+  @JsonProperty
+  String uuid;
 
   @JsonProperty
   @Builder.Default
@@ -151,6 +160,8 @@ public class HdfsMetaData {
     if (options.containsKey(MIN_TIME_BETWEEN_SYNCS)) {
       builder.minTimeBetweenSyncs(toLong(options.get(MIN_TIME_BETWEEN_SYNCS)));
     }
+    builder.uuid(UUID.randomUUID()
+                     .toString());
     return builder.build();
   }
 

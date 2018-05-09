@@ -23,6 +23,8 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
   private static final String VERBOSE_SWITCH = "-v";
   private static final String DEVICE_IS_FILE = "-f";
   private static final String XFS_REPAIR = "xfs_repair";
+  private static final String UUID = "-U";
+  private static final String XFS_ADMIN = "xfs_admin";
 
   @Override
   public void mount(File device, File mountLocation, String options) throws IOException {
@@ -76,6 +78,16 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
   @Override
   public void fstrim(File mountLocation) throws IOException {
     Utils.exec(LOGGER, SUDO, FSTRIM, VERBOSE_SWITCH, mountLocation.getAbsolutePath());
+  }
+
+  @Override
+  public boolean isUuidAssignmentSupported() {
+    return true;
+  }
+
+  @Override
+  public void assignUuid(String uuid, File device) throws IOException {
+    Utils.exec(LOGGER, SUDO, XFS_ADMIN, UUID, uuid, device.getAbsolutePath());
   }
 
 }

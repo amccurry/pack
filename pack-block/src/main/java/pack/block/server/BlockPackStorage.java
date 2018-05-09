@@ -283,7 +283,9 @@ public class BlockPackStorage implements PackStorage {
     if (_fileSystemMount && deviceOnly) {
       throw new IOException("Device only mount, not supported with file system mount by external process.");
     }
-    createVolume(volumeName, ImmutableMap.of());
+    if (!existsVolume(volumeName)) {
+      createVolume(volumeName, ImmutableMap.of());
+    }
     LOGGER.info("Mount Id {} volumeName {}", id, volumeName);
     File logDir = getLogDir(volumeName);
     LOGGER.info("Mount Id {} logDir {}", id, logDir);
@@ -342,10 +344,19 @@ public class BlockPackStorage implements PackStorage {
         return device.getAbsolutePath();
       }
       mkfsIfNeeded(metaData, volumeName, device);
+      tryToAssignUuid(metaData, device);
       mountFs(metaData, device, localFileSystemMount);
       HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, volumePath, _snapshotStrategy);
       incrementMountCount(unixSockFile);
       return localFileSystemMount.getAbsolutePath();
+    }
+  }
+
+  private void tryToAssignUuid(HdfsMetaData metaData, File device) throws IOException {
+    LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
+                                              .getLinuxFileSystem();
+    if (linuxFileSystem.isUuidAssignmentSupported()) {
+      linuxFileSystem.assignUuid(metaData.getUuid(), device);
     }
   }
 
