@@ -62,7 +62,8 @@ public class BlockPackServer extends PackServer {
   private static void setupDockerDirs() throws IOException {
     Utils.exec(LOGGER, SUDO, MKDIR, P, RUN_DOCKER_PLUGINS);
     Utils.exec(LOGGER, SUDO, CHOWN, R, ROOT_ROOT, RUN_DOCKER);
-    Utils.exec(LOGGER, SUDO, CHMOD, R, _700, RUN_DOCKER);
+    Utils.exec(LOGGER, SUDO, CHMOD, _700, RUN_DOCKER);
+    Utils.exec(LOGGER, SUDO, CHMOD, _700, RUN_DOCKER_PLUGINS);
   }
 
   private static HdfsSnapshotStrategy getStrategy() {
