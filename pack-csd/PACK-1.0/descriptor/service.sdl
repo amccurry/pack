@@ -8,12 +8,6 @@
     "group": "root"
   },
   "icon": "images/icon.png",
-  "parcel": {
-    "repoUrl": "http://centos-01:8000",
-    "requiredTags": [
-      "pack"
-    ]
-  },
   "serviceDependencies": [
     {
       "name": "ZOOKEEPER",

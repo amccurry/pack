@@ -1,22 +1,36 @@
 package pack.block.server;
 
 import java.io.File;
+import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import pack.PackServer;
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
-import pack.block.blockstore.hdfs.util.TimeBasedHdfsSnapshotStrategy;
 import pack.block.server.BlockPackStorageConfig.BlockPackStorageConfigBuilder;
 import pack.block.util.Utils;
 import spark.Service;
 
 public class BlockPackServer extends PackServer {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackServer.class);
+
+  private static final String _700 = "700";
+  private static final String CHMOD = "chmod";
+  private static final String SUDO = "sudo";
+  private static final String R = "-R";
+  private static final String P = "-p";
+  private static final String MKDIR = "mkdir";
+  private static final String CHOWN = "chown";
+  private static final String RUN_DOCKER = "/run/docker";
+  private static final String ROOT_ROOT = "root:root";
+  private static final String RUN_DOCKER_PLUGINS = RUN_DOCKER + "/plugins";
   private static final String GLOBAL = "global";
   private static final String PACK_SCOPE = "PACK_SCOPE";
 
@@ -36,11 +50,19 @@ public class BlockPackServer extends PackServer {
     boolean fileSystemMount = Utils.getFileSystemMount();
     HdfsSnapshotStrategy strategy = getStrategy();
 
-    String sockerFile = "/run/docker/plugins/pack.sock";
+    setupDockerDirs();
+    String sockerFile = RUN_DOCKER_PLUGINS + "/pack.sock";
+
     BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localWorkingDir, localLogDir, remotePath,
         ugi, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
         volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, fileSystemMount, strategy);
     packServer.runServer();
+  }
+
+  private static void setupDockerDirs() throws IOException {
+    Utils.exec(LOGGER, SUDO, MKDIR, P, RUN_DOCKER_PLUGINS);
+    Utils.exec(LOGGER, SUDO, CHOWN, R, ROOT_ROOT, RUN_DOCKER);
+    Utils.exec(LOGGER, SUDO, CHMOD, R, _700, RUN_DOCKER);
   }
 
   private static HdfsSnapshotStrategy getStrategy() {
