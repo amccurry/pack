@@ -69,6 +69,10 @@ public class ZkUtils {
     }
   }
 
+  public static ZooKeeperLockManager newZooKeeperLockManager(ZooKeeper zk, String lockPath) throws IOException {
+    return new ZooKeeperLockManager(zk, lockPath);
+  }
+
   public static ZooKeeperLockManager newZooKeeperLockManager(String zkConnectionString, int sessionTimeout,
       String lockPath) throws IOException {
     return new ZooKeeperLockManager(zkConnectionString, sessionTimeout, lockPath);
@@ -211,4 +215,5 @@ public class ZkUtils {
     }
     zooKeeper.delete(path, -1);
   }
+
 }

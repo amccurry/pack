@@ -26,6 +26,8 @@ import pack.block.util.Utils;
 
 public class BlockPackFuseProcessBuilder {
 
+  private static final String XX_USE_G1GC = "-XX:+UseG1GC";
+
   private static final String LOG = "log";
 
   private static final String RUN_SH = "run.sh";
@@ -102,6 +104,7 @@ public class BlockPackFuseProcessBuilder {
 
       Builder<String> javaOptsBuilder = ImmutableList.builder();
       javaOptsBuilder.add(toProp(PACK_LOG_DIR, logDir))
+                     .add(XX_USE_G1GC)
                      .add(XMX_SWITCH)
                      .add(XMS_SWITCH);
       if (dockerUnixSocket != null) {

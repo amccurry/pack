@@ -115,12 +115,9 @@ public class PackCompactorServer implements Closeable {
   private final FileSystem _fileSystem;
   private final List<Path> _pathList;
   private final Closer _closer;
-  private final ZooKeeperLockManager _compactionLockManager;
-  private final ZooKeeperLockManager _mountLockManager;
   private final File _cacheDir;
   private final String _zkConnectionString;
   private final int _sessionTimeout;
-  private final ZooKeeperLockManager _converterLockManager;
 
   public PackCompactorServer(File cacheDir, FileSystem fileSystem, List<Path> pathList, String zkConnectionString,
       int sessionTimeout) throws IOException {
@@ -137,9 +134,6 @@ public class PackCompactorServer implements Closeable {
       ZkUtils.mkNodesStr(zooKeeper, COMPACTION + "/lock");
       ZkUtils.mkNodesStr(zooKeeper, CONVERTER + "/lock");
     }
-    _mountLockManager = BlockPackFuse.createLockmanager(_zkConnectionString, _sessionTimeout);
-    _compactionLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout, COMPACTION + "/lock");
-    _converterLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout, CONVERTER + "/lock");
   }
 
   private ZooKeeperClient getZk() {
@@ -162,7 +156,7 @@ public class PackCompactorServer implements Closeable {
   }
 
   public void executeConverter(Path root) throws IOException, KeeperException, InterruptedException {
-    FileStatus[] listStatus = _fileSystem.listStatus(root);
+    FileStatus[] listStatus = randomOrder(_fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
       try {
         executeConverterVolume(status.getPath());
@@ -172,14 +166,22 @@ public class PackCompactorServer implements Closeable {
     }
   }
 
+  private FileStatus[] randomOrder(FileStatus[] listStatus) {
+    Utils.shuffleArray(listStatus);
+    return listStatus;
+  }
+
   private void executeConverterVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
     HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
     if (metaData == null) {
       return;
     }
-    try (WalToBlockFileConverter converter = new WalToBlockFileConverter(_cacheDir, _fileSystem, volumePath, metaData,
-        _converterLockManager)) {
-      converter.runConverter();
+    try (ZooKeeperLockManager converterLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout,
+        CONVERTER + "/lock")) {
+      try (WalToBlockFileConverter converter = new WalToBlockFileConverter(_cacheDir, _fileSystem, volumePath, metaData,
+          converterLockManager)) {
+        converter.runConverter();
+      }
     }
   }
 
@@ -190,7 +192,7 @@ public class PackCompactorServer implements Closeable {
   }
 
   public void executeCompaction(Path root) throws IOException, KeeperException, InterruptedException {
-    FileStatus[] listStatus = _fileSystem.listStatus(root);
+    FileStatus[] listStatus = randomOrder(_fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
       try {
         executeCompactionVolume(status.getPath());
@@ -202,18 +204,24 @@ public class PackCompactorServer implements Closeable {
 
   private void executeCompactionVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
     String lockName = Utils.getLockName(volumePath);
-    if (_compactionLockManager.tryToLock(lockName)) {
-      try {
-        HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
-        if (metaData == null) {
-          return;
+    try (ZooKeeperLockManager compactionLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout,
+        COMPACTION + "/lock")) {
+      if (compactionLockManager.tryToLock(lockName)) {
+        try {
+          HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
+          if (metaData == null) {
+            return;
+          }
+          try (ZooKeeperLockManager mountLockManager = BlockPackFuse.createLockmanager(_zkConnectionString,
+              _sessionTimeout)) {
+            try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, metaData,
+                mountLockManager)) {
+              compactor.runCompaction();
+            }
+          }
+        } finally {
+          compactionLockManager.unlock(lockName);
         }
-        try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, metaData,
-            _mountLockManager)) {
-          compactor.runCompaction();
-        }
-      } finally {
-        _compactionLockManager.unlock(lockName);
       }
     }
   }

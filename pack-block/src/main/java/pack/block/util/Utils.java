@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -20,6 +21,7 @@ import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.cloudera.io.netty.util.internal.ThreadLocalRandom;
 import com.google.common.base.Splitter;
 
 import pack.PackServer;
@@ -365,6 +367,16 @@ public class Utils {
       return Long.parseLong(list.get(0));
     }
     throw new IOException("Error " + result.stderr);
+  }
+
+  public static <T> void shuffleArray(T[] ar) {
+    Random rnd = ThreadLocalRandom.current();
+    for (int i = ar.length - 1; i > 0; i--) {
+      int index = rnd.nextInt(i + 1);
+      T a = ar[index];
+      ar[index] = ar[i];
+      ar[i] = a;
+    }
   }
 
 }

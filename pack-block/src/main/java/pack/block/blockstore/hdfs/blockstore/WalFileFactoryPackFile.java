@@ -121,7 +121,9 @@ public class WalFileFactoryPackFile extends WalFileFactory {
           output = _fileSystem.append(_path);
           lastFlushTime.set(System.nanoTime());
         } else {
-          output = _fileSystem.create(_path, true);
+          output = _fileSystem.create(_path, true, _fileSystem.getConf()
+                                                              .getInt("io.file.buffer.size", 4096),
+              _fileSystem.getDefaultReplication(_path), _fileSystem.getDefaultBlockSize(_path) * 2);
           lastFlushTime.set(System.nanoTime());
         }
         outputStream.set(output);

@@ -41,27 +41,29 @@ public class ZooKeeperLockManagerTest {
 
   @Test
   public void testLockManager() throws IOException, KeeperException, InterruptedException {
-    try (ZooKeeperLockManager manager = ZkUtils.newZooKeeperLockManager(_zkMiniCluster.getZkConnectionString(), 10000,
-        "/lock")) {
-      try (ZooKeeperLockManager manager2 = ZkUtils.newZooKeeperLockManager(_zkMiniCluster.getZkConnectionString(),
-          10000, "/lock")) {
-        assertTrue(manager.tryToLock("test"));
-        assertFalse(manager.tryToLock("test"));
+    try (ZooKeeperClient zk1 = ZkUtils.newZooKeeper(_zkMiniCluster.getZkConnectionString(), 10000)) {
+      try (ZooKeeperLockManager manager = ZkUtils.newZooKeeperLockManager(zk1, "/lock")) {
+        try (ZooKeeperClient zk2 = ZkUtils.newZooKeeper(_zkMiniCluster.getZkConnectionString(), 10000)) {
+          try (ZooKeeperLockManager manager2 = ZkUtils.newZooKeeperLockManager(zk2, "/lock")) {
+            assertTrue(manager.tryToLock("test"));
+            assertFalse(manager.tryToLock("test"));
 
-        Future<Void> future = run(() -> {
-          manager2.lock("test");
-          return null;
-        });
+            Future<Void> future = run(() -> {
+              manager2.lock("test");
+              return null;
+            });
 
-        Thread.sleep(3000);
+            Thread.sleep(3000);
 
-        assertFalse(future.isDone());
+            assertFalse(future.isDone());
 
-        manager.unlock("test");
+            manager.unlock("test");
 
-        Thread.sleep(3000);
+            Thread.sleep(3000);
 
-        assertTrue(future.isDone());
+            assertTrue(future.isDone());
+          }
+        }
       }
     }
   }
