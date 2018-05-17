@@ -15,17 +15,28 @@ import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.util.Utils;
 
 public class BlockPackFuseProcessBuilder {
 
+  private static final String LOG = "log";
+
+  private static final String RUN_SH = "run.sh";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuseProcessBuilder.class);
 
+  private static final String PACK_VOLUME = "pack-volume";
+  private static final String EXEC_NAME = "-a";
+  private static final String EXEC = "exec";
+  private static final String _JAVA_OPTIONS = "_JAVA_OPTIONS";
+  private static final String CLASSPATH = "CLASSPATH";
   private static final String BASH = "bash";
   private static final String PACK_LOG4J_CONFIG = "PACK_LOG4J_CONFIG";
   private static final String EXPORT = "export";
@@ -50,74 +61,76 @@ public class BlockPackFuseProcessBuilder {
   private static final String BIN_JAVA = "/bin/java";
   private static final String XMX_SWITCH = "-Xmx128m";
   private static final String XMS_SWITCH = "-Xms128m";
-  private static final String CLASSPATH_SWITCH = "-cp";
   private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  public static void startProcess(boolean nohupProcess, String fuseMountLocation, String fsMountLocation,
-      String fsMetricsLocation, String fsLocalCache, String hdfsVolumePath, String zkConnection, int zkTimeout,
-      String volumeName, String logOutput, String unixSock, String libDir, int numberOfMountSnapshots,
-      long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
-      List<String> classPathExtras, boolean fileSystemMount) throws IOException {
+  public static void startProcess(boolean nohupProcess, String volumeName, String workingDir, String logDir,
+      String libDir, String configFilePath, BlockPackFuseConfig config) throws IOException {
+
     String javaHome = System.getProperty(JAVA_HOME);
 
-    String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir, classPathExtras);
-    Builder<String> builder = ImmutableList.builder();
+    String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir, null);
 
     String dockerUnixSocket = System.getProperty(DOCKER_UNIX_SOCKET);
 
-    String zkTimeoutStr = Integer.toString(zkTimeout);
-    if (nohupProcess) {
-      builder.add(NOHUP);
-    } else {
-      builder.add("exec");
-    }
+    File configFile = new File(configFilePath);
 
-    builder.add(javaHome + BIN_JAVA)
-           .add(XMX_SWITCH)
-           .add(XMS_SWITCH)
-           .add(JAVA_PROPERTY + PACK_LOG_DIR + "=" + logOutput);
-    if (dockerUnixSocket != null) {
-      builder.add(JAVA_PROPERTY + DOCKER_UNIX_SOCKET + "=" + dockerUnixSocket);
-    }
-    builder.add(CLASSPATH_SWITCH)
-           .add(classPath)
+    MAPPER.writeValue(configFile, config);
+    Builder<String> builder = ImmutableList.builder();
+    builder.add(EXEC)
+           .add(EXEC_NAME)
+           .add(PACK_VOLUME)
+           .add(javaHome + BIN_JAVA)
            .add(BlockPackFuse.class.getName())
-           .add(volumeName)
-           .add(fuseMountLocation)
-           .add(fsMountLocation)
-           .add(fsMetricsLocation)
-           .add(fsLocalCache)
-           .add(hdfsVolumePath)
-           .add(zkConnection)
-           .add(zkTimeoutStr)
-           .add(unixSock)
-           .add(Integer.toString(numberOfMountSnapshots))
-           .add(Long.toString(volumeMissingPollingPeriod))
-           .add(Integer.toString(volumeMissingCountBeforeAutoShutdown))
-           .add(Boolean.toString(countDockerDownAsMissing))
-           .add(Boolean.toString(fileSystemMount))
-           .add(STDOUT_REDIRECT + logOutput + STDOUT)
-           .add(STDERR_REDIRECT + logOutput + STDERR);
-    if (nohupProcess) {
-      builder.add(BACKGROUND);
-    }
-    ImmutableList<String> build = builder.build();
+           .add(configFile.getAbsolutePath())
+           .add(STDOUT_REDIRECT + logDir + STDOUT)
+           .add(STDERR_REDIRECT + logDir + STDERR);
+
     String cmd = Joiner.on(' ')
-                       .join(build);
-    File logConfig = new File(logOutput, LOG4J_FUSE_PROCESS_XML);
-    File start = new File(logOutput, START_SH);
-    File target = new File(new File(fsLocalCache).getParentFile(), "log");
+                       .join(builder.build());
+    File logConfig = new File(workingDir, LOG4J_FUSE_PROCESS_XML);
+    File start = new File(workingDir, START_SH);
+    File target = new File(workingDir, LOG);
     try (PrintWriter output = new PrintWriter(start)) {
       output.println(BIN_BASH);
       output.println(SET_X);
       output.println(SET_E);
-      output.println(ENV);
       output.println("rm -f " + target.getAbsolutePath());
-      output.println("ln -s " + logConfig.getParentFile()
-                                         .getAbsolutePath()
-          + " " + target.getAbsolutePath());
+      output.println("ln -s " + logDir + " " + target.getAbsolutePath());
       output.println(EXPORT + " " + PACK_LOG4J_CONFIG + "=" + logConfig.getAbsolutePath());
-      IOUtils.write(cmd, output);
+      output.println(EXPORT + " " + CLASSPATH + "=" + classPath);
+
+      Builder<String> javaOptsBuilder = ImmutableList.builder();
+      javaOptsBuilder.add(toProp(PACK_LOG_DIR, logDir))
+                     .add(XMX_SWITCH)
+                     .add(XMS_SWITCH);
+      if (dockerUnixSocket != null) {
+        javaOptsBuilder.add(toProp(DOCKER_UNIX_SOCKET, dockerUnixSocket));
+      }
+      String javaOpts = Joiner.on(' ')
+                              .join(javaOptsBuilder.build());
+      output.println(EXPORT + " " + _JAVA_OPTIONS + "=\"" + javaOpts + "\"");
+      output.println(ENV);
+      File run = new File(workingDir, RUN_SH);
+      output.println("chmod +x " + run.getAbsolutePath());
+      try (PrintWriter runWriter = new PrintWriter(run)) {
+        runWriter.println(BIN_BASH);
+        runWriter.println(SET_X);
+        runWriter.println(SET_E);
+        runWriter.println(cmd);
+      }
+
+      Builder<Object> cmdLineBuilder = ImmutableList.builder();
+      if (nohupProcess) {
+        cmdLineBuilder.add(NOHUP);
+      }
+      cmdLineBuilder.add(run.getAbsolutePath());
+      if (nohupProcess) {
+        cmdLineBuilder.add(BACKGROUND);
+      }
+      String cmdLine = Joiner.on(' ')
+                             .join(cmdLineBuilder.build());
+      output.println(cmdLine);
       output.println();
     }
     if (!logConfig.exists()) {
@@ -130,6 +143,10 @@ public class BlockPackFuseProcessBuilder {
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
     Utils.exec(LOGGER, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
+  }
+
+  private static String toProp(String name, String value) {
+    return JAVA_PROPERTY + name + "=" + value;
   }
 
   private static String buildClassPath(String classPathProperty, String libDir, List<String> classPathExtras)

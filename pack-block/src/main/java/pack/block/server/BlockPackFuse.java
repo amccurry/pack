@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.CsvReporter;
 import com.codahale.metrics.MetricRegistry;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.Closer;
 
 import pack.block.blockstore.hdfs.HdfsBlockStore;
@@ -33,13 +34,15 @@ import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.fuse.FuseFileSystemSingleMount;
-import pack.block.server.BlockPackFuseConfig.BlockPackFuseConfigBuilder;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.BlockPackAdminServer;
 import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.block.server.json.BlockPackFuseConfig;
+import pack.block.server.json.BlockPackFuseConfigInternal;
+import pack.block.server.json.BlockPackFuseConfigInternal.BlockPackFuseConfigInternalBuilder;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClient;
@@ -65,37 +68,22 @@ public class BlockPackFuse implements Closeable {
   private static final String FUSE_MOUNT_THREAD = "fuse-mount-thread";
   private static final String SITE_XML = "-site.xml";
   private static final String HDFS_CONF = "hdfs-conf";
+  private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public static void main(String[] args) throws Exception {
     try {
       Utils.setupLog4j();
       Configuration conf = getConfig();
-      String volumeName = args[0];
-      String fuseLocalPath = args[1];
-      String fsLocalPath = args[2];
-      String metricsLocalPath = args[3];
-      String fsLocalCache = args[4];
-      Path path = new Path(args[5]);
-      String zkConnection = args[6];
-      int zkTimeout = Integer.parseInt(args[7]);
-      String unixSock = args[8];
-      int numberOfMountSnapshots = Integer.parseInt(args[9]);
-      long volumeMissingPollingPeriod = Long.parseLong(args[10]);
-      int volumeMissingCountBeforeAutoShutdown = Integer.parseInt(args[11]);
-      boolean countDockerDownAsMissing = Boolean.parseBoolean(args[12]);
-      boolean fileSystemMount = Boolean.parseBoolean(args[13]);
+
+      BlockPackFuseConfig blockPackFuseConfig = MAPPER.readValue(new File(args[0]), BlockPackFuseConfig.class);
+      Path path = new Path(blockPackFuseConfig.getHdfsVolumePath());
+      String unixSock = blockPackFuseConfig.getUnixSock();
 
       HdfsSnapshotStrategy strategy = getHdfsSnapshotStrategy();
 
-      LastestHdfsSnapshotStrategy.setMaxNumberOfMountSnapshots(numberOfMountSnapshots);
+      LastestHdfsSnapshotStrategy.setMaxNumberOfMountSnapshots(blockPackFuseConfig.getNumberOfMountSnapshots());
 
       HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
-
-      // {
-      // FileSystem fileSystem = FileSystem.get(conf);
-      // HdfsSnapshotUtil.createSnapshot(fileSystem, path,
-      // HdfsSnapshotUtil.getMountSnapshotName());
-      // }
 
       UserGroupInformation ugi = Utils.getUserGroupInformation();
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
@@ -106,27 +94,16 @@ public class BlockPackFuse implements Closeable {
           LOGGER.info("Using {} as unix domain socket", unixSock);
           BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdminServer.startAdminServer(unixSock));
           blockPackAdmin.setStatus(Status.INITIALIZATION);
-          BlockPackFuseConfigBuilder builder = BlockPackFuseConfig.builder();
-          BlockPackFuseConfig fuseConfig = builder.blockPackAdmin(blockPackAdmin)
-                                                  .ugi(ugi)
-                                                  .fileSystem(fileSystem)
-                                                  .path(path)
-                                                  .config(config)
-                                                  .fuseLocalPath(fuseLocalPath)
-                                                  .fsLocalPath(fsLocalPath)
-                                                  .metricsLocalPath(metricsLocalPath)
-                                                  .fsLocalCache(fsLocalCache)
-                                                  .zkConnectionString(zkConnection)
-                                                  .zkSessionTimeout(zkTimeout)
-                                                  .fileSystemMount(fileSystemMount)
-                                                  .blockStoreFactory(BlockStoreFactory.DEFAULT)
-                                                  .volumeName(volumeName)
-                                                  .maxVolumeMissingCount(volumeMissingCountBeforeAutoShutdown)
-                                                  .volumeMissingPollingPeriod(volumeMissingPollingPeriod)
-                                                  .maxNumberOfMountSnapshots(numberOfMountSnapshots)
-                                                  .countDockerDownAsMissing(countDockerDownAsMissing)
-                                                  .strategy(strategy)
-                                                  .build();
+          BlockPackFuseConfigInternalBuilder builder = BlockPackFuseConfigInternal.builder();
+          BlockPackFuseConfigInternal fuseConfig = builder.blockPackAdmin(blockPackAdmin)
+                                                          .ugi(ugi)
+                                                          .fileSystem(fileSystem)
+                                                          .path(path)
+                                                          .config(config)
+                                                          .blockPackFuseConfig(blockPackFuseConfig)
+                                                          .blockStoreFactory(BlockStoreFactory.DEFAULT)
+                                                          .strategy(strategy)
+                                                          .build();
 
           BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
           blockPackFuse.mount();
@@ -169,18 +146,19 @@ public class BlockPackFuse implements Closeable {
   private final int _zkSessionTimeout;
   private final HdfsSnapshotStrategy _snapshotStrategy;
 
-  public BlockPackFuse(BlockPackFuseConfig packFuseConfig) throws Exception {
+  public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
     _snapshotStrategy = packFuseConfig.getStrategy();
-    _zkConnectionString = packFuseConfig.getZkConnectionString();
-    _zkSessionTimeout = packFuseConfig.getZkSessionTimeout();
+    BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
+    _zkConnectionString = blockPackFuseConfig.getZkConnection();
+    _zkSessionTimeout = blockPackFuseConfig.getZkTimeout();
     try (ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(_zkConnectionString, _zkSessionTimeout)) {
       ZkUtils.mkNodesStr(zooKeeper, MOUNT + LOCK);
     }
-    _countDockerDownAsMissing = packFuseConfig.isCountDockerDownAsMissing();
-    _period = packFuseConfig.getVolumeMissingPollingPeriod();
+    _countDockerDownAsMissing = blockPackFuseConfig.isCountDockerDownAsMissing();
+    _period = blockPackFuseConfig.getVolumeMissingPollingPeriod();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
     _ugi = packFuseConfig.getUgi();
-    _fileSystemMount = packFuseConfig.isFileSystemMount();
+    _fileSystemMount = blockPackFuseConfig.isFileSystemMount();
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
     _lockManager = createLockmanager(_zkConnectionString, _zkSessionTimeout);
@@ -196,15 +174,15 @@ public class BlockPackFuse implements Closeable {
     if (lock) {
       _closer = Closer.create();
       _reporter = _closer.register(CsvReporter.forRegistry(_registry)
-                                              .build(new File(packFuseConfig.getMetricsLocalPath())));
+                                              .build(new File(blockPackFuseConfig.getFsMetricsLocation())));
       _reporter.start(1, TimeUnit.MINUTES);
-      _fuseLocalPath = new File(packFuseConfig.getFuseLocalPath());
+      _fuseLocalPath = new File(blockPackFuseConfig.getFuseMountLocation());
       _fuseLocalPath.mkdirs();
-      _fsLocalPath = new File(packFuseConfig.getFsLocalPath());
+      _fsLocalPath = new File(blockPackFuseConfig.getFsMountLocation());
       _fsLocalPath.mkdirs();
 
-      _volumeName = packFuseConfig.getVolumeName();
-      _maxVolumeMissingCount = packFuseConfig.getMaxVolumeMissingCount();
+      _volumeName = blockPackFuseConfig.getVolumeName();
+      _maxVolumeMissingCount = blockPackFuseConfig.getVolumeMissingCountBeforeAutoShutdown();
       _timer = new Timer(POLLING_CLOSER, true);
       _fileSystem = packFuseConfig.getFileSystem();
 
@@ -212,7 +190,7 @@ public class BlockPackFuse implements Closeable {
       _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _ugi, _registry);
       _linuxFileSystem = _blockStore.getLinuxFileSystem();
       _metaData = _blockStore.getMetaData();
-      _fuse = _closer.register(new FuseFileSystemSingleMount(packFuseConfig.getFuseLocalPath(), _blockStore));
+      _fuse = _closer.register(new FuseFileSystemSingleMount(blockPackFuseConfig.getFuseMountLocation(), _blockStore));
       _fuseMountThread = new Thread(() -> _ugi.doAs((PrivilegedAction<Void>) () -> {
         _fuse.localMount();
         return null;

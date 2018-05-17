@@ -39,6 +39,8 @@ import pack.block.server.admin.client.BlockPackAdminClient;
 import pack.block.server.admin.client.ConnectionRefusedException;
 import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
+import pack.block.server.json.BlockPackFuseConfig;
+import pack.block.server.json.BlockPackFuseConfig.BlockPackFuseConfigBuilder;
 import pack.json.Err;
 import pack.json.MountUnmountRequest;
 import pack.json.PathResponse;
@@ -46,6 +48,8 @@ import spark.Route;
 import spark.Service;
 
 public class BlockPackStorage implements PackStorage {
+
+  private static final String CONFIG_JSON = "config.json";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
@@ -303,6 +307,10 @@ public class BlockPackStorage implements PackStorage {
     LOGGER.info("Mount Id {} unixSockFile {}", id, unixSockFile);
     File libDir = getLibDir(volumeName);
     LOGGER.info("Mount Id {} libDir {}", id, libDir);
+    File configFile = getConfigFile(volumeName);
+    LOGGER.info("Mount Id {} configFile {}", id, configFile);
+    File volumeDir = getVolumeDir(volumeName);
+    LOGGER.info("Mount Id {} volumeDir {}", id, volumeDir);
 
     libDir.mkdirs();
     localCache.mkdirs();
@@ -322,11 +330,26 @@ public class BlockPackStorage implements PackStorage {
     String path = volumePath.toUri()
                             .getPath();
 
-    BlockPackFuseProcessBuilder.startProcess(_nohupProcess, localDevice.getAbsolutePath(),
-        localFileSystemMount.getAbsolutePath(), localMetrics.getAbsolutePath(), localCache.getAbsolutePath(), path,
-        _zkConnection, _zkTimeout, volumeName, logDir.getAbsolutePath(), unixSockFile.getAbsolutePath(),
-        libDir.getAbsolutePath(), _numberOfMountSnapshots, _volumeMissingPollingPeriod,
-        _volumeMissingCountBeforeAutoShutdown, _countDockerDownAsMissing, null, _fileSystemMount);
+    BlockPackFuseConfigBuilder configBuilder = BlockPackFuseConfig.builder();
+    BlockPackFuseConfig config = configBuilder.volumeName(volumeName)
+                                              .fuseMountLocation(localDevice.getAbsolutePath())
+                                              .fsMountLocation(localFileSystemMount.getAbsolutePath())
+                                              .fsMetricsLocation(localMetrics.getAbsolutePath())
+                                              .fsLocalCache(localCache.getAbsolutePath())
+                                              .hdfsVolumePath(path)
+                                              .zkConnection(_zkConnection)
+                                              .zkTimeout(_zkTimeout)
+                                              .unixSock(unixSockFile.getAbsolutePath())
+                                              .numberOfMountSnapshots(_numberOfMountSnapshots)
+                                              .volumeMissingPollingPeriod(_volumeMissingPollingPeriod)
+                                              .volumeMissingCountBeforeAutoShutdown(
+                                                  _volumeMissingCountBeforeAutoShutdown)
+                                              .countDockerDownAsMissing(_countDockerDownAsMissing)
+                                              .fileSystemMount(_fileSystemMount)
+                                              .build();
+
+    BlockPackFuseProcessBuilder.startProcess(_nohupProcess, volumeName, volumeDir.getAbsolutePath(),
+        logDir.getAbsolutePath(), libDir.getAbsolutePath(), configFile.getAbsolutePath(), config);
 
     if (_fileSystemMount) {
       waitForMount(localFileSystemMount, unixSockFile, Status.FS_MOUNT_COMPLETED);
@@ -350,6 +373,10 @@ public class BlockPackStorage implements PackStorage {
       incrementMountCount(unixSockFile);
       return localFileSystemMount.getAbsolutePath();
     }
+  }
+
+  private File getConfigFile(String volumeName) {
+    return new File(getVolumeDir(volumeName), CONFIG_JSON);
   }
 
   private void tryToAssignUuid(HdfsMetaData metaData, File device) throws IOException {

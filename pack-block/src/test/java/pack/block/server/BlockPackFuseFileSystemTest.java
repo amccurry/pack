@@ -38,6 +38,8 @@ import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.server.admin.BlockPackAdmin;
+import pack.block.server.json.BlockPackFuseConfig;
+import pack.block.server.json.BlockPackFuseConfigInternal;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkMiniCluster;
 
@@ -115,21 +117,26 @@ public class BlockPackFuseFileSystemTest {
 
     BlockPackAdmin blockPackAdmin = new BlockPackAdmin() {
     };
-    BlockPackFuseConfig fuseConfig = BlockPackFuseConfig.builder()
-                                                        .blockPackAdmin(blockPackAdmin)
-                                                        .ugi(UserGroupInformation.getCurrentUser())
-                                                        .fileSystem(fileSystem)
-                                                        .path(volumePath)
-                                                        .config(config)
-                                                        .fuseLocalPath(fuseLocalPath)
-                                                        .fsLocalPath(fsLocalPath)
-                                                        .metricsLocalPath(metricsLocalPath)
-                                                        .fsLocalCache(fsLocalCachePath)
-                                                        .zkConnectionString(zkConnection)
-                                                        .zkSessionTimeout(zkTimeout)
-                                                        .fileSystemMount(true)
-                                                        .blockStoreFactory(BlockStoreFactory.DEFAULT)
-                                                        .build();
+
+    BlockPackFuseConfig packFuseConfig = BlockPackFuseConfig.builder()
+                                                            .fuseMountLocation(fuseLocalPath)
+                                                            .fsMountLocation(fsLocalPath)
+                                                            .fsMetricsLocation(metricsLocalPath)
+                                                            .fsLocalCache(fsLocalCachePath)
+                                                            .zkConnection(zkConnection)
+                                                            .zkTimeout(zkTimeout)
+                                                            .fileSystemMount(true)
+                                                            .build();
+
+    BlockPackFuseConfigInternal fuseConfig = BlockPackFuseConfigInternal.builder()
+                                                                        .blockPackAdmin(blockPackAdmin)
+                                                                        .ugi(UserGroupInformation.getCurrentUser())
+                                                                        .fileSystem(fileSystem)
+                                                                        .path(volumePath)
+                                                                        .config(config)
+                                                                        .blockPackFuseConfig(packFuseConfig)
+                                                                        .blockStoreFactory(BlockStoreFactory.DEFAULT)
+                                                                        .build();
 
     File compactorDir = new File(fuse, "compactor");
     List<Path> pathList = new ArrayList<>();

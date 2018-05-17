@@ -1,4 +1,4 @@
-package pack.block.server;
+package pack.block.server.json;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -9,29 +9,19 @@ import lombok.Builder;
 import lombok.Value;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
+import pack.block.server.BlockStoreFactory;
 import pack.block.server.admin.BlockPackAdmin;
 
 @Value
 @AllArgsConstructor
 @Builder(toBuilder = true)
-public class BlockPackFuseConfig {
+public class BlockPackFuseConfigInternal {
+  BlockPackFuseConfig blockPackFuseConfig;
   BlockPackAdmin blockPackAdmin;
   UserGroupInformation ugi;
   FileSystem fileSystem;
   Path path;
   HdfsBlockStoreConfig config;
-  String fuseLocalPath;
-  String fsLocalPath;
-  String metricsLocalPath;
-  String fsLocalCache;
-  String zkConnectionString;
-  int zkSessionTimeout;
-  boolean fileSystemMount;
   BlockStoreFactory blockStoreFactory;
-  String volumeName;
-  int maxVolumeMissingCount;
-  int maxNumberOfMountSnapshots;
-  long volumeMissingPollingPeriod;
-  boolean countDockerDownAsMissing;
   HdfsSnapshotStrategy strategy;
 }
