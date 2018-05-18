@@ -25,6 +25,8 @@ import java.net.UnknownHostException;
  */
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -118,7 +120,7 @@ public class ZooKeeperLockManager implements Closeable {
     while (true) {
       synchronized (_lock) {
         List<String> children = getOnlyThisLocksChildren(name, _zk.getChildren(_lockPath, _watcher));
-        Collections.sort(children);
+        orderLocks(children);
         String firstElement = children.get(0);
         if ((_lockPath + "/" + firstElement).equals(newPath)) {
           // yay!, we got the lock
@@ -147,7 +149,7 @@ public class ZooKeeperLockManager implements Closeable {
     while (true) {
       synchronized (_lock) {
         List<String> children = getOnlyThisLocksChildren(name, _zk.getChildren(_lockPath, _watcher));
-        Collections.sort(children);
+        orderLocks(children);
         String firstElement = children.get(0);
         if ((_lockPath + "/" + firstElement).equals(newPath)) {
           // yay!, we got the lock
@@ -159,6 +161,62 @@ public class ZooKeeperLockManager implements Closeable {
         }
       }
     }
+  }
+
+  public static void orderLocks(List<String> locks) {
+    if (hasMixOfNegativeAndPositiveNumbers(locks)) {
+      removePositiveNumbers(locks);
+    }
+    Collections.sort(locks, new Comparator<String>() {
+      @Override
+      public int compare(String o1, String o2) {
+        long l1 = getUnsignedEndingNumber(o1);
+        long l2 = getUnsignedEndingNumber(o2);
+        return Long.compare(l1, l2);
+      }
+    });
+  }
+
+  private static void removePositiveNumbers(List<String> locks) {
+    Iterator<String> iterator = locks.iterator();
+    while (iterator.hasNext()) {
+      String s = iterator.next();
+      long endingNumber = getEndingNumber(s);
+      if (endingNumber >= 0) {
+        iterator.remove();
+      }
+    }
+  }
+
+  private static boolean hasMixOfNegativeAndPositiveNumbers(List<String> locks) {
+    boolean neg = false;
+    boolean pos = false;
+    for (String s : locks) {
+      long endingNumber = getEndingNumber(s);
+      if (endingNumber < 0) {
+        neg = true;
+      } else {
+        pos = true;
+      }
+    }
+    return neg && pos;
+  }
+
+  private static long getUnsignedEndingNumber(String s) {
+    long number = getEndingNumber(s);
+    return getUnsignedLong(number);
+  }
+
+  private static long getEndingNumber(String s) {
+    int lastIndexOf = s.lastIndexOf('_');
+    if (lastIndexOf < 0) {
+      throw new RuntimeException("Missing ending number from " + s);
+    }
+    return Long.parseLong(s.substring(lastIndexOf + 1));
+  }
+
+  private static long getUnsignedLong(long x) {
+    return x & 0x0fffffffffffffffL;
   }
 
   @Override

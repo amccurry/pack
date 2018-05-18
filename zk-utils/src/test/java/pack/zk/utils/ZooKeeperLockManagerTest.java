@@ -4,6 +4,9 @@ import static org.junit.Assert.*;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -66,6 +69,44 @@ public class ZooKeeperLockManagerTest {
         }
       }
     }
+  }
+
+  @Test
+  public void testOrderingLocksSimple() {
+    List<String> locks = new ArrayList<>(Arrays.asList("a_10", "a_2", "a_3"));
+    ZooKeeperLockManager.orderLocks(locks);
+
+    assertEquals("a_2", locks.get(0));
+    assertEquals("a_3", locks.get(1));
+    assertEquals("a_10", locks.get(2));
+  }
+
+  @Test
+  public void testOrderingLocksNegative() {
+    List<String> locks = new ArrayList<>(Arrays.asList("a_-10", "a_-2", "a_-3"));
+    ZooKeeperLockManager.orderLocks(locks);
+
+    assertEquals("a_-10", locks.get(0));
+    assertEquals("a_-3", locks.get(1));
+    assertEquals("a_-2", locks.get(2));
+  }
+
+  @Test
+  public void testOrderingLocksMix() {
+    List<String> locks = new ArrayList<>(Arrays.asList("a_9999999999", "a_-9999999999", "a_-1"));
+    ZooKeeperLockManager.orderLocks(locks);
+
+    assertEquals("a_9999999999", locks.get(0));
+    assertEquals("a_-9999999999", locks.get(1));
+    assertEquals("a_-1", locks.get(2));
+  }
+
+  @Test
+  public void testOrderingLocksMixZero() {
+    List<String> locks = new ArrayList<>(Arrays.asList("a_0", "a_-1", "a_1"));
+    ZooKeeperLockManager.orderLocks(locks);
+    
+    assertEquals("a_-1", locks.get(0));
   }
 
   private <T> Future<T> run(Callable<T> callable) {
