@@ -93,12 +93,18 @@ fi
 
 CMD=$1
 
+if [ -z ${JAVA_HOME+x} ] ; then
+  JAVA_CMD="java"
+else
+  JAVA_CMD="${JAVA_HOME}/bin/java"
+fi
+
 case $CMD in
   (pack)
-    exec -a pack java -Xmx256m -Xms256m pack.block.server.BlockPackServer
+    exec -a pack ${JAVA_CMD} -Xmx256m -Xms256m pack.block.server.BlockPackServer
     ;;
   (compaction)
-    exec -a pack-compactor java -Xmx256m -Xms256m pack.block.blockstore.compactor.PackCompactorServer
+    exec -a pack-compactor ${JAVA_CMD} -Xmx256m -Xms256m pack.block.blockstore.compactor.PackCompactorServer
     ;;
   (*)
     echo "Don't understand [$CMD]"
