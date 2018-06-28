@@ -2,7 +2,6 @@ package pack.zk.utils;
 
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
@@ -77,10 +76,6 @@ public class ZooKeeperLockManager implements Closeable {
     } catch (UnknownHostException e) {
       throw new RuntimeException(e);
     }
-  }
-
-  public ZooKeeperLockManager(String zkConnectionString, int sessionTimeout, String lockPath) throws IOException {
-    this(ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout), lockPath, true);
   }
 
   public int getNumberOfLockNodesPresent(String name) throws KeeperException, InterruptedException {

@@ -23,6 +23,7 @@ import java.util.List;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.Code;
+import org.apache.zookeeper.client.ZooKeeperSaslClient;
 import org.apache.zookeeper.Op;
 import org.apache.zookeeper.OpResult;
 import org.apache.zookeeper.Watcher;
@@ -36,6 +37,10 @@ public class ZooKeeperClient extends ZooKeeper implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ZooKeeperClient.class);
   private final int internalSessionTimeout;
+
+  static {
+    System.setProperty(ZooKeeperSaslClient.ENABLE_CLIENT_SASL_KEY, Boolean.FALSE.toString());
+  }
 
   public ZooKeeperClient(String connectString, int sessionTimeout, Watcher watcher) throws IOException {
     super(connectString, sessionTimeout, watcher);

@@ -176,11 +176,12 @@ public class PackCompactorServer implements Closeable {
     if (metaData == null) {
       return;
     }
-    try (ZooKeeperLockManager converterLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout,
-        CONVERTER + "/lock")) {
-      try (WalToBlockFileConverter converter = new WalToBlockFileConverter(_cacheDir, _fileSystem, volumePath, metaData,
-          converterLockManager)) {
-        converter.runConverter();
+    try (ZooKeeperClient zk = ZkUtils.newZooKeeper(_zkConnectionString, _sessionTimeout)) {
+      try (ZooKeeperLockManager converterLockManager = new ZooKeeperLockManager(zk, CONVERTER + "/lock")) {
+        try (WalToBlockFileConverter converter = new WalToBlockFileConverter(_cacheDir, _fileSystem, volumePath,
+            metaData, converterLockManager)) {
+          converter.runConverter();
+        }
       }
     }
   }
@@ -204,23 +205,23 @@ public class PackCompactorServer implements Closeable {
 
   private void executeCompactionVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
     String lockName = Utils.getLockName(volumePath);
-    try (ZooKeeperLockManager compactionLockManager = new ZooKeeperLockManager(_zkConnectionString, _sessionTimeout,
-        COMPACTION + "/lock")) {
-      if (compactionLockManager.tryToLock(lockName)) {
-        try {
-          HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
-          if (metaData == null) {
-            return;
-          }
-          try (ZooKeeperLockManager mountLockManager = BlockPackFuse.createLockmanager(_zkConnectionString,
-              _sessionTimeout)) {
-            try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, metaData,
-                mountLockManager)) {
-              compactor.runCompaction();
+    try (ZooKeeperClient zk = ZkUtils.newZooKeeper(_zkConnectionString, _sessionTimeout)) {
+      try (ZooKeeperLockManager compactionLockManager = new ZooKeeperLockManager(zk, COMPACTION + "/lock")) {
+        if (compactionLockManager.tryToLock(lockName)) {
+          try {
+            HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
+            if (metaData == null) {
+              return;
             }
+            try (ZooKeeperLockManager mountLockManager = BlockPackFuse.createLockmanager(zk)) {
+              try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, metaData,
+                  mountLockManager)) {
+                compactor.runCompaction();
+              }
+            }
+          } finally {
+            compactionLockManager.unlock(lockName);
           }
-        } finally {
-          compactionLockManager.unlock(lockName);
         }
       }
     }

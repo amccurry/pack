@@ -15,46 +15,20 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.block.util.Utils;
+
 public class HdfsSnapshotUtil {
 
   private static final String SNAPSHOT = ".snapshot";
-  private static final String HDFS = "hdfs";
-  private static final String PACK_HDFS_SUPER_USER = "PACK_HDFS_SUPER_USER";
   private static final Logger LOGGER = LoggerFactory.getLogger(HdfsSnapshotUtil.class);
 
   public static void enableSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
-    enableSnapshots(fileSystem, path, getUgi());
-  }
-
-  public static void enableSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
-      throws IOException, InterruptedException {
-    DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
-    if (dfs.exists(new Path(path, SNAPSHOT))) {
-      return;
-    }
-    LOGGER.info("Using ugi {} to enable volume snapshots", ugi);
-    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-      dfs.allowSnapshot(path);
-      return null;
-    });
+    enableSnapshots(fileSystem, path, Utils.getUserGroupInformation());
   }
 
   public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName)
       throws IOException, InterruptedException {
-    createSnapshot(fileSystem, path, snapshotName, getUgi());
-  }
-
-  public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName, UserGroupInformation ugi)
-      throws IOException, InterruptedException {
-    DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
-    if (!dfs.exists(new Path(path, SNAPSHOT))) {
-      return;
-    }
-    LOGGER.info("Using ugi {} to create volume snapshots", ugi);
-    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-      LOGGER.info("Created snapshot {}", dfs.createSnapshot(path, snapshotName));
-      return null;
-    });
+    createSnapshot(fileSystem, path, snapshotName, Utils.getUserGroupInformation());
   }
 
   public static String getMountSnapshotName(HdfsSnapshotStrategy strategy) {
@@ -71,19 +45,43 @@ public class HdfsSnapshotUtil {
 
   public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, HdfsSnapshotStrategy strategy)
       throws IOException, InterruptedException {
-    cleanupOldMountSnapshots(fileSystem, path, getUgi(), strategy);
+    cleanupOldMountSnapshots(fileSystem, path, Utils.getUserGroupInformation(), strategy);
   }
 
-  public static UserGroupInformation getUgi() throws IOException {
-    if (UserGroupInformation.isSecurityEnabled()) {
-      return UserGroupInformation.getCurrentUser();
-    } else {
-      String superUser = System.getenv(PACK_HDFS_SUPER_USER);
-      if (superUser == null) {
-        superUser = HDFS;
+  public static void removeAllSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
+    removeAllSnapshots(fileSystem, path, Utils.getUserGroupInformation());
+  }
+
+  public static void disableSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
+    disableSnapshots(fileSystem, path, Utils.getUserGroupInformation());
+  }
+
+  public static void enableSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
+      throws IOException, InterruptedException {
+    DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
+    LOGGER.info("Using ugi {} to enable volume snapshots", ugi);
+    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      if (dfs.exists(new Path(path, SNAPSHOT))) {
+        return null;
       }
-      return UserGroupInformation.createRemoteUser(superUser);
-    }
+      dfs.allowSnapshot(path);
+      return null;
+    });
+  }
+
+  public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName, UserGroupInformation ugi)
+      throws IOException, InterruptedException {
+    DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
+
+    LOGGER.info("Using ugi {} to create volume snapshots", ugi);
+    ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      if (!dfs.exists(new Path(path, SNAPSHOT))) {
+        LOGGER.info("Can not create snapshot {}", snapshotName);
+        return null;
+      }
+      LOGGER.info("Created snapshot {}", dfs.createSnapshot(path, snapshotName));
+      return null;
+    });
   }
 
   public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi,
@@ -107,14 +105,14 @@ public class HdfsSnapshotUtil {
     });
   }
 
-  public static void removeAllSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
-    removeAllSnapshots(fileSystem, path, getUgi());
-  }
-
   public static void removeAllSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
       throws IOException, InterruptedException {
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
+
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      if (!dfs.exists(new Path(path, SNAPSHOT))) {
+        return null;
+      }
       FileStatus[] listStatus = dfs.listStatus(new Path(path, SNAPSHOT));
       for (FileStatus fileStatus : listStatus) {
         String name = fileStatus.getPath()
@@ -126,18 +124,15 @@ public class HdfsSnapshotUtil {
     });
   }
 
-  public static void disableSnapshots(FileSystem fileSystem, Path path) throws IOException, InterruptedException {
-    disableSnapshots(fileSystem, path, getUgi());
-  }
-
   public static void disableSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
       throws IOException, InterruptedException {
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
-    if (!dfs.exists(new Path(path, SNAPSHOT))) {
-      return;
-    }
+
     LOGGER.info("Using ugi {} to disable volume snapshots", ugi);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+      if (!dfs.exists(new Path(path, SNAPSHOT))) {
+        return null;
+      }
       dfs.disallowSnapshot(path);
       return null;
     });

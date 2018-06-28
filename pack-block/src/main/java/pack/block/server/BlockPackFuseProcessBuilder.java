@@ -26,12 +26,6 @@ import pack.block.util.Utils;
 
 public class BlockPackFuseProcessBuilder {
 
-  private static final String XX_USE_G1GC = "-XX:+UseG1GC";
-
-  private static final String LOG = "log";
-
-  private static final String RUN_SH = "run.sh";
-
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuseProcessBuilder.class);
 
   private static final String PACK_VOLUME = "pack-volume";
@@ -64,6 +58,9 @@ public class BlockPackFuseProcessBuilder {
   private static final String XMX_SWITCH = "-Xmx128m";
   private static final String XMS_SWITCH = "-Xms128m";
   private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
+  private static final String XX_USE_G1GC = "-XX:+UseG1GC";
+  private static final String LOG = "log";
+  private static final String RUN_SH = "run.sh";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public static void startProcess(boolean nohupProcess, String volumeName, String workingDir, String logDir,

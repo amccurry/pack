@@ -30,16 +30,18 @@ import pack.block.server.BlockPackFuse;
 
 public class Utils {
 
-  private static final String PACK_FILE_SYSTEM_MOUNT = "PACK_FILE_SYSTEM_MOUNT";
-
-  private static final String PACK_NOHUP_PROCESS = "PACK_NOHUP_PROCESS";
-
   public interface TimerWithException<T, E extends Throwable> {
     T time() throws E;
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
 
+  public static final String HDFS_SITE_XML = "hdfs-site.xml";
+  public static final String CORE_SITE_XML = "core-site.xml";
+  public static final String PACK_FILE_SYSTEM_MOUNT = "PACK_FILE_SYSTEM_MOUNT";
+  public static final String PACK_NOHUP_PROCESS = "PACK_NOHUP_PROCESS";
+  public static final String GLOBAL = "global";
+  public static final String PACK_SCOPE = "PACK_SCOPE";
   public static final int PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT = 30000;
   public static final String PACK_ZOOKEEPER_CONNECTION_TIMEOUT = "PACK_ZOOKEEPER_CONNECTION_TIMEOUT";
   public static final String PACK_ZOOKEEPER_CONNECTION_STR = "PACK_ZOOKEEPER_CONNECTION_STR";
@@ -96,7 +98,7 @@ public class Utils {
   }
 
   public static void setupLog4j() {
-    String log4jConfigFile = System.getenv(PACK_LOG4J_CONFIG);
+    String log4jConfigFile = getProperty(PACK_LOG4J_CONFIG);
     if (log4jConfigFile == null) {
       return;
     } else if (log4jConfigFile.endsWith(XML)) {
@@ -122,7 +124,7 @@ public class Utils {
   }
 
   public static String getHdfsPrincipalName() {
-    String v = System.getenv(PACK_HDFS_KERBEROS_PRINCIPAL_NAME);
+    String v = getProperty(PACK_HDFS_KERBEROS_PRINCIPAL_NAME);
     if (v == null) {
       return null;
     }
@@ -130,7 +132,7 @@ public class Utils {
   }
 
   public static String getHdfsKeytab() {
-    String v = System.getenv(PACK_HDFS_KERBEROS_KEYTAB);
+    String v = getProperty(PACK_HDFS_KERBEROS_KEYTAB);
     if (v == null) {
       throw new RuntimeException("Keytab path not configured [" + PACK_HDFS_KERBEROS_KEYTAB + "].");
     }
@@ -138,7 +140,7 @@ public class Utils {
   }
 
   public static String getHdfsUser() {
-    String v = System.getenv(PACK_HDFS_USER);
+    String v = getProperty(PACK_HDFS_USER);
     if (v == null) {
       return null;
     }
@@ -148,11 +150,11 @@ public class Utils {
   public static void loadConfigIfExists(Configuration configuration, String dirPath) throws IOException {
     if (dirPath != null) {
       File dir = new File(dirPath);
-      File core = new File(dir, "core-site.xml");
+      File core = new File(dir, CORE_SITE_XML);
       if (core.exists()) {
         configuration.addResource(new FileInputStream(core));
       }
-      File hdfs = new File(dir, "hdfs-site.xml");
+      File hdfs = new File(dir, HDFS_SITE_XML);
       if (hdfs.exists()) {
         configuration.addResource(new FileInputStream(hdfs));
       }
@@ -160,7 +162,7 @@ public class Utils {
   }
 
   public static int getNumberOfMountSnapshots() {
-    String v = System.getenv(PACK_NUMBER_OF_MOUNT_SNAPSHOTS);
+    String v = getProperty(PACK_NUMBER_OF_MOUNT_SNAPSHOTS);
     if (v == null) {
       return PACK_NUMBER_OF_MOUNT_SNAPSHOTS_DEFAULT;
     }
@@ -168,7 +170,7 @@ public class Utils {
   }
 
   public static long getVolumeMissingPollingPeriod() {
-    String v = System.getenv(PACK_VOLUME_MISSING_POLLING_PERIOD);
+    String v = getProperty(PACK_VOLUME_MISSING_POLLING_PERIOD);
     if (v == null) {
       return PACK_VOLUME_MISSING_POLLING_PERIOD_DEFAULT;
     }
@@ -176,7 +178,7 @@ public class Utils {
   }
 
   public static int getVolumeMissingCountBeforeAutoShutdown() {
-    String v = System.getenv(PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN);
+    String v = getProperty(PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN);
     if (v == null) {
       return PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN_DEFAULT;
     }
@@ -184,7 +186,7 @@ public class Utils {
   }
 
   public static boolean getCountDockerDownAsMissing() {
-    String v = System.getenv(PACK_COUNT_DOCKER_DOWN_AS_MISSING);
+    String v = getProperty(PACK_COUNT_DOCKER_DOWN_AS_MISSING);
     if (v == null) {
       return PACK_COUNT_DOCKER_DOWN_AS_MISSING_DEFAULT;
     }
@@ -192,15 +194,19 @@ public class Utils {
   }
 
   public static String getHdfsPath() {
-    String v = System.getenv(PACK_HDFS_PATH);
+    String v = getProperty(PACK_HDFS_PATH);
     if (v == null) {
       throw new RuntimeException("Hdfs path not configured [" + PACK_HDFS_PATH + "].");
     }
     return v;
   }
 
+  private static String getProperty(String name) {
+    return System.getenv(name);
+  }
+
   public static boolean getNohupProcess() {
-    String v = System.getenv(PACK_NOHUP_PROCESS);
+    String v = getProperty(PACK_NOHUP_PROCESS);
     if (v == null) {
       return true;
     }
@@ -208,7 +214,7 @@ public class Utils {
   }
 
   public static String getLocalWorkingPath() {
-    String v = System.getenv(PACK_LOCAL);
+    String v = getProperty(PACK_LOCAL);
     if (v == null) {
       return VAR_LIB_PACK;
     }
@@ -216,7 +222,7 @@ public class Utils {
   }
 
   public static boolean getFileSystemMount() {
-    String v = System.getenv(PACK_FILE_SYSTEM_MOUNT);
+    String v = getProperty(PACK_FILE_SYSTEM_MOUNT);
     if (v == null) {
       return false;
     }
@@ -224,7 +230,7 @@ public class Utils {
   }
 
   public static String getLocalLogPath() {
-    String v = System.getenv(PACK_LOG);
+    String v = getProperty(PACK_LOG);
     if (v == null) {
       return VAR_LOG_PACK;
     }
@@ -232,7 +238,7 @@ public class Utils {
   }
 
   public static String getZooKeeperConnectionString() {
-    String v = System.getenv(PACK_ZOOKEEPER_CONNECTION_STR);
+    String v = getProperty(PACK_ZOOKEEPER_CONNECTION_STR);
     if (v == null) {
       throw new RuntimeException("ZooKeeper connection string not configured [" + PACK_ZOOKEEPER_CONNECTION_STR + "].");
     }
@@ -240,7 +246,7 @@ public class Utils {
   }
 
   public static int getZooKeeperConnectionTimeout() {
-    String v = System.getenv(PACK_ZOOKEEPER_CONNECTION_TIMEOUT);
+    String v = getProperty(PACK_ZOOKEEPER_CONNECTION_TIMEOUT);
     if (v == null) {
       return PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT;
     }
@@ -377,6 +383,14 @@ public class Utils {
       ar[index] = ar[i];
       ar[i] = a;
     }
+  }
+
+  public static boolean isGlobalScope() {
+    String v = getProperty(PACK_SCOPE);
+    if (v != null && GLOBAL.equals(v.toLowerCase())) {
+      return true;
+    }
+    return false;
   }
 
 }

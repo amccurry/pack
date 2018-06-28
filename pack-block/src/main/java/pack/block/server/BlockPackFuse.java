@@ -19,6 +19,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ShutdownHookManager;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -142,18 +143,16 @@ public class BlockPackFuse implements Closeable {
   private final FileSystem _fileSystem;
   private final long _period;
   private final boolean _countDockerDownAsMissing;
-  private final String _zkConnectionString;
-  private final int _zkSessionTimeout;
   private final HdfsSnapshotStrategy _snapshotStrategy;
+  private final ZooKeeperClient _zk;
 
   public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
     _snapshotStrategy = packFuseConfig.getStrategy();
     BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
-    _zkConnectionString = blockPackFuseConfig.getZkConnection();
-    _zkSessionTimeout = blockPackFuseConfig.getZkTimeout();
-    try (ZooKeeperClient zooKeeper = ZkUtils.newZooKeeper(_zkConnectionString, _zkSessionTimeout)) {
-      ZkUtils.mkNodesStr(zooKeeper, MOUNT + LOCK);
-    }
+    String zkConnectionString = blockPackFuseConfig.getZkConnection();
+    int zkSessionTimeout = blockPackFuseConfig.getZkTimeout();
+    _zk = ZkUtils.newZooKeeper(zkConnectionString, zkSessionTimeout);
+    ZkUtils.mkNodesStr(_zk, MOUNT + LOCK);
     _countDockerDownAsMissing = blockPackFuseConfig.isCountDockerDownAsMissing();
     _period = blockPackFuseConfig.getVolumeMissingPollingPeriod();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
@@ -161,7 +160,8 @@ public class BlockPackFuse implements Closeable {
     _fileSystemMount = blockPackFuseConfig.isFileSystemMount();
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
-    _lockManager = createLockmanager(_zkConnectionString, _zkSessionTimeout);
+
+    _lockManager = createLockmanager(_zk);
     boolean lock = _lockManager.tryToLock(Utils.getLockName(_path));
 
     if (!lock) {
@@ -202,9 +202,8 @@ public class BlockPackFuse implements Closeable {
     }
   }
 
-  public static ZooKeeperLockManager createLockmanager(String zkConnectionString, int sessionTimeout)
-      throws IOException {
-    return ZkUtils.newZooKeeperLockManager(zkConnectionString, sessionTimeout, MOUNT + LOCK);
+  public static ZooKeeperLockManager createLockmanager(ZooKeeper zk) throws IOException {
+    return ZkUtils.newZooKeeperLockManager(zk, MOUNT + LOCK);
   }
 
   private void startDockerMonitorIfNeeded(long period) {
@@ -236,6 +235,7 @@ public class BlockPackFuse implements Closeable {
         } catch (InterruptedException | KeeperException e) {
           LOGGER.debug("If zookeeper is closed already this node it cleaned up automatically.", e);
         }
+        runQuietly(() -> _zk.close());
         _closed.set(true);
       }
     }

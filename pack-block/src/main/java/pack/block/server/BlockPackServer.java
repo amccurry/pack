@@ -31,8 +31,6 @@ public class BlockPackServer extends PackServer {
   private static final String RUN_DOCKER = "/run/docker";
   private static final String ROOT_ROOT = "root:root";
   private static final String RUN_DOCKER_PLUGINS = RUN_DOCKER + "/plugins";
-  private static final String GLOBAL = "global";
-  private static final String PACK_SCOPE = "PACK_SCOPE";
 
   public static void main(String[] args) throws Exception {
     Utils.setupLog4j();
@@ -53,8 +51,8 @@ public class BlockPackServer extends PackServer {
     setupDockerDirs();
     String sockerFile = RUN_DOCKER_PLUGINS + "/pack.sock";
 
-    BlockPackServer packServer = new BlockPackServer(isGlobal(), sockerFile, localWorkingDir, localLogDir, remotePath,
-        ugi, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
+    BlockPackServer packServer = new BlockPackServer(Utils.isGlobalScope(), sockerFile, localWorkingDir, localLogDir,
+        remotePath, ugi, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
         volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, fileSystemMount, strategy);
     packServer.runServer();
   }
@@ -129,11 +127,4 @@ public class BlockPackServer extends PackServer {
     return new BlockPackStorage(builder.build());
   }
 
-  private static boolean isGlobal() {
-    String v = System.getenv(PACK_SCOPE);
-    if (v != null && GLOBAL.equals(v.toLowerCase())) {
-      return true;
-    }
-    return false;
-  }
 }

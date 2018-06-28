@@ -73,11 +73,6 @@ public class ZkUtils {
     return new ZooKeeperLockManager(zk, lockPath);
   }
 
-  public static ZooKeeperLockManager newZooKeeperLockManager(String zkConnectionString, int sessionTimeout,
-      String lockPath) throws IOException {
-    return new ZooKeeperLockManager(zkConnectionString, sessionTimeout, lockPath);
-  }
-
   public static ZooKeeperClient newZooKeeper(String zkConnectionString, int sessionTimeout) throws IOException {
     if (zkConnectionString.contains("/")) {
       int indexOf = zkConnectionString.indexOf('/');
