@@ -115,6 +115,8 @@ public class Utils {
       String hdfsKeytab = getHdfsKeytab();
       LOGGER.info("principal {} keytab location {}", hdfsPrinciaplName, hdfsKeytab);
       UserGroupInformation.loginUserFromKeytab(hdfsPrinciaplName, hdfsKeytab);
+      UserGroupInformation ugi = UserGroupInformation.getLoginUser();
+      ugi.reloginFromKeytab();
       return UserGroupInformation.getLoginUser();
     } else if (hdfsUser == null) {
       return UserGroupInformation.getCurrentUser();
