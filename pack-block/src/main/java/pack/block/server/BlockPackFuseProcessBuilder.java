@@ -4,6 +4,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -117,6 +118,22 @@ public class BlockPackFuseProcessBuilder {
         runWriter.println(BIN_BASH);
         runWriter.println(SET_X);
         runWriter.println(SET_E);
+
+        String hdfsPrinciaplName = Utils.getHdfsPrincipalName();
+        if (hdfsPrinciaplName != null) {
+          // Copy keytab in case where source file is destroyed
+          String hdfsKeytab = Utils.getHdfsKeytab();
+          File src = new File(hdfsKeytab);
+          if (!src.exists()) {
+            throw new FileNotFoundException(src.getAbsolutePath());
+          }
+          File dstDir = new File(workingDir);
+          dstDir.mkdirs();
+          File dst = new File(dstDir, src.getName());
+          copyFile(src, dst);
+          String newKeytabPath = dst.getAbsolutePath();
+          runWriter.println("export " + Utils.PACK_HDFS_KERBEROS_KEYTAB + "=" + newKeytabPath);
+        }
         runWriter.println(cmd);
       }
 
@@ -143,6 +160,14 @@ public class BlockPackFuseProcessBuilder {
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
     Utils.exec(LOGGER, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
+  }
+
+  private static void copyFile(File src, File dst) throws IOException {
+    try (InputStream input = new FileInputStream(src)) {
+      try (FileOutputStream output = new FileOutputStream(dst)) {
+        IOUtils.copy(input, output);
+      }
+    }
   }
 
   private static String toProp(String name, String value) {
