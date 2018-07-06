@@ -21,7 +21,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -42,6 +41,8 @@ import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfigInternal;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkMiniCluster;
+import pack.zk.utils.ZkUtils;
+import pack.zk.utils.ZooKeeperClient;
 
 public class BlockPackFuseFileSystemTest {
 
@@ -130,7 +131,6 @@ public class BlockPackFuseFileSystemTest {
 
     BlockPackFuseConfigInternal fuseConfig = BlockPackFuseConfigInternal.builder()
                                                                         .blockPackAdmin(blockPackAdmin)
-                                                                        .ugi(UserGroupInformation.getCurrentUser())
                                                                         .fileSystem(fileSystem)
                                                                         .path(volumePath)
                                                                         .config(config)
@@ -142,12 +142,12 @@ public class BlockPackFuseFileSystemTest {
     List<Path> pathList = new ArrayList<>();
     pathList.add(new Path("/BlockPackFuseTest"));
     AtomicBoolean running = new AtomicBoolean(true);
-    try (PackCompactorServer packCompactorServer = new PackCompactorServer(compactorDir, fileSystem, pathList,
-        zkConnection, zkTimeout)) {
+    try (PackCompactorServer packCompactorServer = new PackCompactorServer(compactorDir, fileSystem.getConf(),
+        pathList)) {
       Thread thread = new Thread(() -> {
         while (running.get()) {
-          try {
-            packCompactorServer.executeCompaction();
+          try (ZooKeeperClient zk = ZkUtils.newZooKeeper(zkConnection, zkTimeout)) {
+            packCompactorServer.executeCompaction(zk);
             Thread.sleep(TimeUnit.SECONDS.toMillis(10));
           } catch (Exception e) {
             LOGGER.error("Unknown error", e);

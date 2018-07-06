@@ -4,7 +4,6 @@ import java.io.File;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.security.UserGroupInformation;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,7 +19,6 @@ public class BlockPackStorageConfig {
   File logDir;
   Configuration configuration;
   Path remotePath;
-  UserGroupInformation ugi;
   String zkConnection;
   int zkTimeout;
   int numberOfMountSnapshots;

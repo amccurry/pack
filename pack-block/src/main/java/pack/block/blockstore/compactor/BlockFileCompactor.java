@@ -36,6 +36,8 @@ import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
 import pack.block.util.Utils;
+import pack.zk.utils.ZkUtils;
+import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockFileCompactor implements Closeable {
@@ -46,6 +48,8 @@ public class BlockFileCompactor implements Closeable {
   private static final String MERGE = "0_merge";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
+  private static final String COMPACTION = "/compaction";
+
   private final Path _blockPath;
   private final FileSystem _fileSystem;
   private final long _maxBlockFileSize;
@@ -405,5 +409,9 @@ public class BlockFileCompactor implements Closeable {
   private boolean shouldCleanupFile(Path path) {
     String name = path.getName();
     return name.startsWith(getFilePrefix());
+  }
+
+  public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zk, String name) throws IOException {
+    return ZkUtils.newZooKeeperLockManager(zk, COMPACTION + "/" + name);
   }
 }

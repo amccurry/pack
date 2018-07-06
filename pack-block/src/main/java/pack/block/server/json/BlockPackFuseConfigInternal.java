@@ -2,7 +2,6 @@ package pack.block.server.json;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.security.UserGroupInformation;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -18,7 +17,6 @@ import pack.block.server.admin.BlockPackAdmin;
 public class BlockPackFuseConfigInternal {
   BlockPackFuseConfig blockPackFuseConfig;
   BlockPackAdmin blockPackAdmin;
-  UserGroupInformation ugi;
   FileSystem fileSystem;
   Path path;
   HdfsBlockStoreConfig config;

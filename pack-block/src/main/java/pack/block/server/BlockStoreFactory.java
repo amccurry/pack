@@ -3,8 +3,6 @@ package pack.block.server;
 import java.io.File;
 import java.io.IOException;
 
-import org.apache.hadoop.security.UserGroupInformation;
-
 import com.codahale.metrics.MetricRegistry;
 
 import pack.block.blockstore.hdfs.HdfsBlockStore;
@@ -19,18 +17,18 @@ public abstract class BlockStoreFactory {
   public static final BlockStoreFactory DEFAULT = new BlockStoreFactoryImpl();
 
   public abstract HdfsBlockStore getHdfsBlockStore(BlockPackAdmin blockPackAdmin,
-      BlockPackFuseConfigInternal packFuseConfig, UserGroupInformation ugi, MetricRegistry registry) throws IOException;
+      BlockPackFuseConfigInternal packFuseConfig, MetricRegistry registry) throws IOException;
 
   public static class BlockStoreFactoryImpl extends BlockStoreFactory {
     @Override
     public HdfsBlockStore getHdfsBlockStore(BlockPackAdmin blockPackAdmin, BlockPackFuseConfigInternal packFuseConfig,
-        UserGroupInformation ugi, MetricRegistry registry) throws IOException {
+        MetricRegistry registry) throws IOException {
       blockPackAdmin.setStatus(Status.INITIALIZATION, "Opening Blockstore");
       String fsLocalCache = packFuseConfig.getBlockPackFuseConfig()
                                           .getFsLocalCache();
       File cacheDir = new File(fsLocalCache);
       cacheDir.mkdirs();
-      return UgiHdfsBlockStore.wrap(ugi, new HdfsBlockStoreImpl(registry, cacheDir, packFuseConfig.getFileSystem(),
+      return UgiHdfsBlockStore.wrap(new HdfsBlockStoreImpl(registry, cacheDir, packFuseConfig.getFileSystem(),
           packFuseConfig.getPath(), packFuseConfig.getConfig()));
     }
   }

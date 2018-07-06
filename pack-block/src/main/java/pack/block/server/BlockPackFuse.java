@@ -5,7 +5,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FilenameFilter;
 import java.io.IOException;
-import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -63,9 +62,9 @@ public class BlockPackFuse implements Closeable {
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuse.class);
 
   private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
-  private static final String LOCK = "/lock";
-  private static final String POLLING_CLOSER = "polling-closer";
   private static final String MOUNT = "/mount";
+  private static final String POLLING_CLOSER = "polling-closer";
+
   private static final String FUSE_MOUNT_THREAD = "fuse-mount-thread";
   private static final String SITE_XML = "-site.xml";
   private static final String HDFS_CONF = "hdfs-conf";
@@ -97,7 +96,6 @@ public class BlockPackFuse implements Closeable {
           blockPackAdmin.setStatus(Status.INITIALIZATION);
           BlockPackFuseConfigInternalBuilder builder = BlockPackFuseConfigInternal.builder();
           BlockPackFuseConfigInternal fuseConfig = builder.blockPackAdmin(blockPackAdmin)
-                                                          .ugi(ugi)
                                                           .fileSystem(fileSystem)
                                                           .path(path)
                                                           .config(config)
@@ -135,7 +133,6 @@ public class BlockPackFuse implements Closeable {
   private final MetricRegistry _registry = new MetricRegistry();
   private final CsvReporter _reporter;
   private final boolean _fileSystemMount;
-  private final UserGroupInformation _ugi;
   private final BlockPackAdmin _blockPackAdmin;
   private final int _maxVolumeMissingCount;
   private final Timer _timer;
@@ -152,16 +149,15 @@ public class BlockPackFuse implements Closeable {
     String zkConnectionString = blockPackFuseConfig.getZkConnection();
     int zkSessionTimeout = blockPackFuseConfig.getZkTimeout();
     _zk = ZkUtils.newZooKeeper(zkConnectionString, zkSessionTimeout);
-    ZkUtils.mkNodesStr(_zk, MOUNT + LOCK);
     _countDockerDownAsMissing = blockPackFuseConfig.isCountDockerDownAsMissing();
     _period = blockPackFuseConfig.getVolumeMissingPollingPeriod();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
-    _ugi = packFuseConfig.getUgi();
     _fileSystemMount = blockPackFuseConfig.isFileSystemMount();
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
 
-    _lockManager = createLockmanager(_zk);
+    _lockManager = createLockmanager(_zk, packFuseConfig.getPath()
+                                                        .getName());
     boolean lock = _lockManager.tryToLock(Utils.getLockName(_path));
 
     if (!lock) {
@@ -187,14 +183,11 @@ public class BlockPackFuse implements Closeable {
       _fileSystem = packFuseConfig.getFileSystem();
 
       BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
-      _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _ugi, _registry);
+      _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _registry);
       _linuxFileSystem = _blockStore.getLinuxFileSystem();
       _metaData = _blockStore.getMetaData();
       _fuse = _closer.register(new FuseFileSystemSingleMount(blockPackFuseConfig.getFuseMountLocation(), _blockStore));
-      _fuseMountThread = new Thread(() -> _ugi.doAs((PrivilegedAction<Void>) () -> {
-        _fuse.localMount();
-        return null;
-      }));
+      _fuseMountThread = new Thread(() -> _fuse.localMount());
       _fuseMountThread.setName(FUSE_MOUNT_THREAD);
     } else {
       LOGGER.error("volume {} already is use.", _path);
@@ -202,8 +195,8 @@ public class BlockPackFuse implements Closeable {
     }
   }
 
-  public static ZooKeeperLockManager createLockmanager(ZooKeeper zk) throws IOException {
-    return ZkUtils.newZooKeeperLockManager(zk, MOUNT + LOCK);
+  public static ZooKeeperLockManager createLockmanager(ZooKeeper zk, String name) throws IOException {
+    return ZkUtils.newZooKeeperLockManager(zk, MOUNT + "/" + name);
   }
 
   private void startDockerMonitorIfNeeded(long period) {

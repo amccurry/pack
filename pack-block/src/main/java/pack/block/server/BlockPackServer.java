@@ -5,7 +5,6 @@ import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,24 +34,34 @@ public class BlockPackServer extends PackServer {
   public static void main(String[] args) throws Exception {
     Utils.setupLog4j();
     File localWorkingDir = new File(Utils.getLocalWorkingPath());
+    LOGGER.info("localWorkingDir {}", localWorkingDir);
     File localLogDir = new File(Utils.getLocalLogPath());
+    LOGGER.info("localLogDir {}", localLogDir);
     Path remotePath = new Path(Utils.getHdfsPath());
-    UserGroupInformation ugi = Utils.getUserGroupInformation();
+    LOGGER.info("remotePath {}", remotePath);
     String zkConnectionString = Utils.getZooKeeperConnectionString();
+    LOGGER.info("zkConnectionString {}", zkConnectionString);
     int sessionTimeout = Utils.getZooKeeperConnectionTimeout();
+    LOGGER.info("sessionTimeout {}", sessionTimeout);
     int numberOfMountSnapshots = Utils.getNumberOfMountSnapshots();
+    LOGGER.info("numberOfMountSnapshots {}", numberOfMountSnapshots);
     long volumeMissingPollingPeriod = Utils.getVolumeMissingPollingPeriod();
+    LOGGER.info("volumeMissingPollingPeriod {}", volumeMissingPollingPeriod);
     int volumeMissingCountBeforeAutoShutdown = Utils.getVolumeMissingCountBeforeAutoShutdown();
+    LOGGER.info("volumeMissingCountBeforeAutoShutdown {}", volumeMissingCountBeforeAutoShutdown);
     boolean countDockerDownAsMissing = Utils.getCountDockerDownAsMissing();
+    LOGGER.info("countDockerDownAsMissing {}", countDockerDownAsMissing);
     boolean nohupProcess = Utils.getNohupProcess();
+    LOGGER.info("nohupProcess {}", nohupProcess);
     boolean fileSystemMount = Utils.getFileSystemMount();
+    LOGGER.info("fileSystemMount {}", fileSystemMount);
     HdfsSnapshotStrategy strategy = getStrategy();
 
     setupDockerDirs();
     String sockerFile = RUN_DOCKER_PLUGINS + "/pack.sock";
 
     BlockPackServer packServer = new BlockPackServer(Utils.isGlobalScope(), sockerFile, localWorkingDir, localLogDir,
-        remotePath, ugi, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
+        remotePath, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
         volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, fileSystemMount, strategy);
     packServer.runServer();
   }
@@ -71,7 +80,6 @@ public class BlockPackServer extends PackServer {
   private final File _localWorkingDir;
   private final File _localLogDir;
   private final Path _remotePath;
-  private final UserGroupInformation _ugi;
   private final Configuration configuration = new Configuration();
   private final String _zkConnection;
   private final int _zkTimeout;
@@ -84,9 +92,9 @@ public class BlockPackServer extends PackServer {
   private final HdfsSnapshotStrategy _strategy;
 
   public BlockPackServer(boolean global, String sockFile, File localWorkingDir, File localLogDir, Path remotePath,
-      UserGroupInformation ugi, String zkConnection, int zkTimeout, int numberOfMountSnapshots,
-      long volumeMissingPollingPeriod, int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing,
-      boolean nohupProcess, boolean fileSystemMount, HdfsSnapshotStrategy strategy) {
+      String zkConnection, int zkTimeout, int numberOfMountSnapshots, long volumeMissingPollingPeriod,
+      int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing, boolean nohupProcess,
+      boolean fileSystemMount, HdfsSnapshotStrategy strategy) {
     super(global, sockFile);
     _strategy = strategy;
     _nohupProcess = nohupProcess;
@@ -97,7 +105,6 @@ public class BlockPackServer extends PackServer {
     _localWorkingDir = localWorkingDir;
     _localLogDir = localLogDir;
     _remotePath = remotePath;
-    _ugi = ugi;
     _zkConnection = zkConnection;
     _zkTimeout = zkTimeout;
     _fileSystemMount = fileSystemMount;
@@ -108,8 +115,7 @@ public class BlockPackServer extends PackServer {
   @Override
   protected PackStorage getPackStorage(Service service) throws Exception {
     BlockPackStorageConfigBuilder builder = BlockPackStorageConfig.builder();
-    builder.ugi(_ugi)
-           .configuration(configuration)
+    builder.configuration(configuration)
            .remotePath(_remotePath)
            .zkConnection(_zkConnection)
            .zkTimeout(_zkTimeout)

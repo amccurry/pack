@@ -41,6 +41,7 @@ import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfig.BlockPackFuseConfigBuilder;
+import pack.block.util.Utils;
 import pack.json.Err;
 import pack.json.MountUnmountRequest;
 import pack.json.PathResponse;
@@ -65,7 +66,6 @@ public class BlockPackStorage implements PackStorage {
 
   protected final Configuration _configuration;
   protected final Path _root;
-  protected final UserGroupInformation _ugi;
   protected final File _localLogDir;
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
   protected final String _zkConnection;
@@ -111,10 +111,9 @@ public class BlockPackStorage implements PackStorage {
     Path remotePath = config.getRemotePath()
                             .makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
     _root = remotePath;
-    _ugi = config.getUgi();
 
     LOGGER.info("Creating hdfs root path {}", _root);
-    _ugi.doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
+    getUgi().doAs(HdfsPriv.create(() -> getFileSystem(_root).mkdirs(_root)));
 
     _localLogDir = config.getLogDir();
     _localLogDir.mkdirs();
@@ -124,12 +123,16 @@ public class BlockPackStorage implements PackStorage {
 
   }
 
+  private UserGroupInformation getUgi() throws IOException {
+    return Utils.getUserGroupInformation();
+  }
+
   private void addServiceExtras(Service service) {
     service.post(VOLUME_DRIVER_MOUNT_DEVICE, (Route) (request, response) -> {
       PackServer.debugInfo(request);
       MountUnmountRequest mountUnmountRequest = PackServer.read(request, MountUnmountRequest.class);
       try {
-        String deviceMountPoint = _ugi.doAs(
+        String deviceMountPoint = getUgi().doAs(
             (PrivilegedExceptionAction<String>) () -> mountVolume(mountUnmountRequest.getVolumeName(),
                 mountUnmountRequest.getId(), true));
         return PathResponse.builder()
@@ -148,7 +151,7 @@ public class BlockPackStorage implements PackStorage {
       PackServer.debugInfo(request);
       MountUnmountRequest mountUnmountRequest = PackServer.read(request, MountUnmountRequest.class);
       try {
-        _ugi.doAs(HdfsPriv.create(
+        getUgi().doAs(HdfsPriv.create(
             () -> umountVolume(mountUnmountRequest.getVolumeName(), mountUnmountRequest.getId(), true)));
         return Err.builder()
                   .build();
@@ -175,27 +178,27 @@ public class BlockPackStorage implements PackStorage {
 
   @Override
   public void create(String volumeName, Map<String, Object> options) throws Exception {
-    _ugi.doAs(HdfsPriv.create(() -> createVolume(volumeName, options)));
+    getUgi().doAs(HdfsPriv.create(() -> createVolume(volumeName, options)));
   }
 
   @Override
   public void remove(String volumeName) throws Exception {
-    _ugi.doAs(HdfsPriv.create(() -> removeVolume(volumeName)));
+    getUgi().doAs(HdfsPriv.create(() -> removeVolume(volumeName)));
   }
 
   @Override
   public String mount(String volumeName, String id) throws Exception {
-    return _ugi.doAs((PrivilegedExceptionAction<String>) () -> mountVolume(volumeName, id, false));
+    return getUgi().doAs((PrivilegedExceptionAction<String>) () -> mountVolume(volumeName, id, false));
   }
 
   @Override
   public void unmount(String volumeName, String id) throws Exception {
-    _ugi.doAs(HdfsPriv.create(() -> umountVolume(volumeName, id, false)));
+    getUgi().doAs(HdfsPriv.create(() -> umountVolume(volumeName, id, false)));
   }
 
   @Override
   public boolean exists(String volumeName) throws Exception {
-    return _ugi.doAs((PrivilegedExceptionAction<Boolean>) () -> existsVolume(volumeName));
+    return getUgi().doAs((PrivilegedExceptionAction<Boolean>) () -> existsVolume(volumeName));
   }
 
   @Override
@@ -212,7 +215,7 @@ public class BlockPackStorage implements PackStorage {
 
   @Override
   public List<String> listVolumes() throws Exception {
-    return _ugi.doAs((PrivilegedExceptionAction<List<String>>) () -> listHdfsVolumes());
+    return getUgi().doAs((PrivilegedExceptionAction<List<String>>) () -> listHdfsVolumes());
   }
 
   protected List<String> listHdfsVolumes() throws IOException, FileNotFoundException {

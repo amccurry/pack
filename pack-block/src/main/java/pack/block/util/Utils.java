@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -29,6 +30,10 @@ import pack.PackServer.Result;
 import pack.block.server.BlockPackFuse;
 
 public class Utils {
+
+  // private static final String UGI_RELOGIN_THREAD = "UGI_RELOGIN_THREAD";
+
+  private static final String PACK_HDFS_KERBEROS_RELOGIN_INTERVAL = "PACK_HDFS_KERBEROS_RELOGIN_INTERVAL";
 
   public interface TimerWithException<T, E extends Throwable> {
     T time() throws E;
@@ -72,6 +77,9 @@ public class Utils {
   private static final String PUNCH_HOLE_SWITCH = "--punch-hole";
   private static final String KEEP_SIZE_SWITCH = "--keep-size";
   private static final String FALLOCATE = "fallocate";
+  private static final AtomicReference<UserGroupInformation> UGI = new AtomicReference<>();
+  // private static final AtomicReference<Thread> UGI_RENEW_THREAD = new
+  // AtomicReference<>();
 
   public static Path qualify(FileSystem fileSystem, Path path) {
     return path.makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
@@ -108,21 +116,67 @@ public class Utils {
     }
   }
 
-  public static UserGroupInformation getUserGroupInformation() throws IOException {
+  public synchronized static UserGroupInformation getUserGroupInformation() throws IOException {
+    UserGroupInformation userGroupInformation = UGI.get();
+    if (userGroupInformation == null) {
+      UGI.set(userGroupInformation = createUserGroupInformation());
+    }
+    userGroupInformation.checkTGTAndReloginFromKeytab();
+    return userGroupInformation;
+  }
+
+  private static UserGroupInformation createUserGroupInformation() throws IOException {
     String hdfsPrinciaplName = getHdfsPrincipalName();
+    LOGGER.info("hdfsPrinciaplName {}", hdfsPrinciaplName);
     String hdfsUser = getHdfsUser();
+    LOGGER.info("hdfsUser {}", hdfsUser);
     if (hdfsPrinciaplName != null) {
       String hdfsKeytab = getHdfsKeytab();
+      LOGGER.info("hdfsKeytab {}", hdfsKeytab);
       LOGGER.info("principal {} keytab location {}", hdfsPrinciaplName, hdfsKeytab);
       UserGroupInformation.loginUserFromKeytab(hdfsPrinciaplName, hdfsKeytab);
-      UserGroupInformation ugi = UserGroupInformation.getLoginUser();
-      ugi.reloginFromKeytab();
       return UserGroupInformation.getLoginUser();
     } else if (hdfsUser == null) {
-      return UserGroupInformation.getCurrentUser();
+      UserGroupInformation ugi = UserGroupInformation.getCurrentUser();
+      LOGGER.info("Using current user {}", ugi);
+      return ugi;
     } else {
       return UserGroupInformation.createRemoteUser(hdfsUser);
     }
+  }
+
+  // private synchronized static void createNewUgi() {
+  // if (UGI_RENEW_THREAD.get() == null) {
+  // Thread thread = new Thread(() -> {
+  // Random rand = new Random();
+  // while (true) {
+  // try {
+  // Thread.sleep(getReloginInterval() + rand.nextInt((int)
+  // TimeUnit.SECONDS.toMillis(15)));
+  // } catch (InterruptedException e) {
+  // return;
+  // }
+  // LOGGER.info("createNewUgi");
+  // try {
+  // UGI.set(createUserGroupInformation());
+  // } catch (IOException e) {
+  // LOGGER.error("Error during relogin", e);
+  // }
+  // }
+  // });
+  // thread.setDaemon(true);
+  // thread.setName(UGI_RELOGIN_THREAD);
+  // thread.start();
+  // UGI_RENEW_THREAD.set(thread);
+  // }
+  // }
+
+  public static long getReloginInterval() {
+    String v = getProperty(PACK_HDFS_KERBEROS_RELOGIN_INTERVAL);
+    if (v == null) {
+      return TimeUnit.SECONDS.toMinutes(10);
+    }
+    return Long.parseLong(v);
   }
 
   public static String getHdfsPrincipalName() {

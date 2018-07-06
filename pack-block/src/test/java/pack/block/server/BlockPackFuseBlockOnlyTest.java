@@ -13,7 +13,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hdfs.MiniDFSCluster;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -110,7 +109,6 @@ public class BlockPackFuseBlockOnlyTest {
 
     BlockPackFuseConfigInternal fuseConfig = BlockPackFuseConfigInternal.builder()
                                                                         .blockPackAdmin(blockPackAdmin)
-                                                                        .ugi(UserGroupInformation.getCurrentUser())
                                                                         .fileSystem(fileSystem)
                                                                         .path(volumePath)
                                                                         .config(config)

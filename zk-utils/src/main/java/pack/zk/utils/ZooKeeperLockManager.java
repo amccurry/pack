@@ -64,6 +64,7 @@ public class ZooKeeperLockManager implements Closeable {
 
   public ZooKeeperLockManager(ZooKeeper zk, String lockPath, boolean closeZk) {
     _zk = zk;
+    ZkUtils.mkNodesStr(zk, lockPath);
     _closeZk = closeZk;
     _lockPath = lockPath;
     _timeout = TimeUnit.SECONDS.toMillis(1);

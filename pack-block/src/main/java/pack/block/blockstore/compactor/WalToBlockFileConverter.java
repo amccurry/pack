@@ -38,12 +38,15 @@ import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.util.Utils;
+import pack.zk.utils.ZkUtils;
+import pack.zk.utils.ZooKeeperClient;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class WalToBlockFileConverter implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WalToBlockFileConverter.class);
 
+  private static final String CONVERTER = "/converter";
   private static final String CONVERT = "0_convert";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
@@ -246,5 +249,9 @@ public class WalToBlockFileConverter implements Closeable {
   private boolean shouldCleanupFile(Path path) {
     String name = path.getName();
     return name.startsWith(getFilePrefix());
+  }
+
+  public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zk, String name) throws IOException {
+    return ZkUtils.newZooKeeperLockManager(zk, CONVERTER + "/" + name);
   }
 }

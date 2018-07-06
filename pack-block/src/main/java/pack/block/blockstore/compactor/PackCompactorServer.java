@@ -37,12 +37,10 @@ public class PackCompactorServer implements Closeable {
   private static final String COMPACTION_THREAD = "compaction-thread";
   private static final String CONVERTER_THREAD = "converter-thread";
   private static final String CACHE = "compaction-cache";
-  private static final String COMPACTION = "/compaction";
-  private static final String CONVERTER = "/converter";
 
   public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
     Utils.setupLog4j();
-    UserGroupInformation ugi = Utils.getUserGroupInformation();
+
     String zkConnectionString = Utils.getZooKeeperConnectionString();
     int sessionTimeout = Utils.getZooKeeperConnectionTimeout();
     String hdfsPath = Utils.getHdfsPath();
@@ -54,18 +52,17 @@ public class PackCompactorServer implements Closeable {
                        .addShutdownHook(() -> running.set(false), Integer.MAX_VALUE);
 
     Configuration configuration = new Configuration();
-    FileSystem fileSystem = FileSystem.get(configuration);
+    UserGroupInformation ugi = Utils.getUserGroupInformation();
+    List<Path> pathList = ugi.doAs((PrivilegedExceptionAction<List<Path>>) () -> getPathList(configuration, hdfsPath));
 
-    List<Path> pathList = getPathList(fileSystem, hdfsPath);
-
-    try (PackCompactorServer packCompactorServer = new PackCompactorServer(cacheDir, fileSystem, pathList,
-        zkConnectionString, sessionTimeout)) {
-
-      Thread compactionThread = new Thread(() -> runCompaction(ugi, running, packCompactorServer));
+    try (PackCompactorServer packCompactorServer = new PackCompactorServer(cacheDir, configuration, pathList)) {
+      Thread compactionThread = new Thread(
+          () -> runCompaction(running, packCompactorServer, zkConnectionString, sessionTimeout));
       compactionThread.setName(COMPACTION_THREAD);
       compactionThread.start();
 
-      Thread converterThread = new Thread(() -> runConverter(ugi, running, packCompactorServer));
+      Thread converterThread = new Thread(
+          () -> runConverter(running, packCompactorServer, zkConnectionString, sessionTimeout));
       converterThread.setName(CONVERTER_THREAD);
       converterThread.start();
 
@@ -74,14 +71,14 @@ public class PackCompactorServer implements Closeable {
     }
   }
 
-  private static void runConverter(UserGroupInformation ugi, AtomicBoolean running,
-      PackCompactorServer packCompactorServer) {
+  private static void runConverter(AtomicBoolean running, PackCompactorServer packCompactorServer,
+      String zkConnectionString, int sessionTimeout) {
     while (running.get()) {
       try {
+        UserGroupInformation ugi = Utils.getUserGroupInformation();
         ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-          try {
-            packCompactorServer.executeConverter();
-            Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+          try (ZooKeeperClient zk = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout)) {
+            packCompactorServer.executeConverter(zk);
           } catch (Throwable t) {
             LOGGER.error("Unknown error", t);
           }
@@ -90,17 +87,22 @@ public class PackCompactorServer implements Closeable {
       } catch (Exception e) {
         LOGGER.error("Unknown error", e);
       }
+      try {
+        Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+      } catch (InterruptedException e) {
+        return;
+      }
     }
   }
 
-  private static void runCompaction(UserGroupInformation ugi, AtomicBoolean running,
-      PackCompactorServer packCompactorServer) {
+  private static void runCompaction(AtomicBoolean running, PackCompactorServer packCompactorServer,
+      String zkConnectionString, int sessionTimeout) {
     while (running.get()) {
       try {
+        UserGroupInformation ugi = Utils.getUserGroupInformation();
         ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-          try {
-            packCompactorServer.executeCompaction();
-            Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+          try (ZooKeeperClient zk = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout)) {
+            packCompactorServer.executeCompaction(zk);
           } catch (Throwable t) {
             LOGGER.error("Unknown error", t);
           }
@@ -109,39 +111,27 @@ public class PackCompactorServer implements Closeable {
       } catch (Exception e) {
         LOGGER.error("Unknown error", e);
       }
+      try {
+        Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+      } catch (InterruptedException e) {
+        return;
+      }
     }
   }
 
-  private final FileSystem _fileSystem;
   private final List<Path> _pathList;
   private final Closer _closer;
   private final File _cacheDir;
-  private final String _zkConnectionString;
-  private final int _sessionTimeout;
+  private final Configuration _configuration;
 
-  public PackCompactorServer(File cacheDir, FileSystem fileSystem, List<Path> pathList, String zkConnectionString,
-      int sessionTimeout) throws IOException {
+  public PackCompactorServer(File cacheDir, Configuration configuration, List<Path> pathList) throws IOException {
     // coord with zookeeper
     // use zookeeper to know if the block store is mount (to know whether
     // cleanup can be done)
-    _zkConnectionString = zkConnectionString;
-    _sessionTimeout = sessionTimeout;
     _cacheDir = cacheDir;
     _closer = Closer.create();
-    _fileSystem = fileSystem;
+    _configuration = configuration;
     _pathList = pathList;
-    try (ZooKeeperClient zooKeeper = getZk()) {
-      ZkUtils.mkNodesStr(zooKeeper, COMPACTION + "/lock");
-      ZkUtils.mkNodesStr(zooKeeper, CONVERTER + "/lock");
-    }
-  }
-
-  private ZooKeeperClient getZk() {
-    try {
-      return ZkUtils.newZooKeeper(_zkConnectionString, _sessionTimeout);
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   @Override
@@ -149,17 +139,19 @@ public class PackCompactorServer implements Closeable {
     _closer.close();
   }
 
-  public void executeConverter() throws IOException, KeeperException, InterruptedException {
+  public void executeConverter(ZooKeeperClient zk) throws IOException, KeeperException, InterruptedException {
     for (Path path : _pathList) {
-      executeConverter(path);
+      executeConverter(zk, path);
     }
   }
 
-  public void executeConverter(Path root) throws IOException, KeeperException, InterruptedException {
-    FileStatus[] listStatus = randomOrder(_fileSystem.listStatus(root));
+  public void executeConverter(ZooKeeperClient zk, Path root)
+      throws IOException, KeeperException, InterruptedException {
+    FileSystem fileSystem = root.getFileSystem(_configuration);
+    FileStatus[] listStatus = randomOrder(fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
       try {
-        executeConverterVolume(status.getPath());
+        executeConverterVolume(zk, status.getPath());
       } catch (Exception e) {
         LOGGER.error("Convertions of " + status.getPath() + " failed", e);
       }
@@ -171,68 +163,73 @@ public class PackCompactorServer implements Closeable {
     return listStatus;
   }
 
-  private void executeConverterVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
-    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
+  private void executeConverterVolume(ZooKeeperClient zk, Path volumePath)
+      throws IOException, KeeperException, InterruptedException {
+    FileSystem fileSystem = volumePath.getFileSystem(_configuration);
+    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
       return;
     }
-    try (ZooKeeperClient zk = ZkUtils.newZooKeeper(_zkConnectionString, _sessionTimeout)) {
-      try (ZooKeeperLockManager converterLockManager = new ZooKeeperLockManager(zk, CONVERTER + "/lock")) {
-        try (WalToBlockFileConverter converter = new WalToBlockFileConverter(_cacheDir, _fileSystem, volumePath,
-            metaData, converterLockManager)) {
-          converter.runConverter();
-        }
+    try (ZooKeeperLockManager converterLockManager = WalToBlockFileConverter.createLockmanager(zk,
+        volumePath.getName())) {
+      try (WalToBlockFileConverter converter = new WalToBlockFileConverter(_cacheDir, fileSystem, volumePath, metaData,
+          converterLockManager)) {
+        converter.runConverter();
       }
     }
   }
 
-  public void executeCompaction() throws IOException, KeeperException, InterruptedException {
+  public void executeCompaction(ZooKeeperClient zk) throws IOException, KeeperException, InterruptedException {
     for (Path path : _pathList) {
-      executeCompaction(path);
+      executeCompaction(zk, path);
     }
   }
 
-  public void executeCompaction(Path root) throws IOException, KeeperException, InterruptedException {
-    FileStatus[] listStatus = randomOrder(_fileSystem.listStatus(root));
+  public void executeCompaction(ZooKeeperClient zk, Path root)
+      throws IOException, KeeperException, InterruptedException {
+    FileSystem fileSystem = root.getFileSystem(_configuration);
+    FileStatus[] listStatus = randomOrder(fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
       try {
-        executeCompactionVolume(status.getPath());
+        executeCompactionVolume(zk, status.getPath());
       } catch (Exception e) {
         LOGGER.error("Compaction of " + status.getPath() + " failed", e);
       }
     }
   }
 
-  private void executeCompactionVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
+  private void executeCompactionVolume(ZooKeeperClient zk, Path volumePath)
+      throws IOException, KeeperException, InterruptedException {
+    FileSystem fileSystem = volumePath.getFileSystem(_configuration);
     String lockName = Utils.getLockName(volumePath);
-    try (ZooKeeperClient zk = ZkUtils.newZooKeeper(_zkConnectionString, _sessionTimeout)) {
-      try (ZooKeeperLockManager compactionLockManager = new ZooKeeperLockManager(zk, COMPACTION + "/lock")) {
-        if (compactionLockManager.tryToLock(lockName)) {
-          try {
-            HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, volumePath);
-            if (metaData == null) {
-              return;
-            }
-            try (ZooKeeperLockManager mountLockManager = BlockPackFuse.createLockmanager(zk)) {
-              try (BlockFileCompactor compactor = new BlockFileCompactor(_fileSystem, volumePath, metaData,
-                  mountLockManager)) {
-                compactor.runCompaction();
-              }
-            }
-          } finally {
-            compactionLockManager.unlock(lockName);
+    try (ZooKeeperLockManager compactionLockManager = BlockFileCompactor.createLockmanager(zk, volumePath.getName())) {
+      if (compactionLockManager.tryToLock(lockName)) {
+        try {
+          HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+          if (metaData == null) {
+            return;
           }
+          try (ZooKeeperLockManager mountLockManager = BlockPackFuse.createLockmanager(zk, volumePath.getName())) {
+            try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, volumePath, metaData,
+                mountLockManager)) {
+              compactor.runCompaction();
+            }
+          }
+        } finally {
+          compactionLockManager.unlock(lockName);
         }
       }
     }
   }
 
-  private static List<Path> getPathList(FileSystem fileSystem, String packRootPathList) throws IOException {
+  private static List<Path> getPathList(Configuration configuration, String packRootPathList) throws IOException {
     List<String> list = Splitter.on(',')
                                 .splitToList(packRootPathList);
     List<Path> pathList = new ArrayList<>();
     for (String p : list) {
-      FileStatus fileStatus = fileSystem.getFileStatus(new Path(p));
+      Path path = new Path(p);
+      FileSystem fileSystem = path.getFileSystem(configuration);
+      FileStatus fileStatus = fileSystem.getFileStatus(path);
       pathList.add(fileStatus.getPath());
     }
     return pathList;
