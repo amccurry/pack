@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -27,6 +28,8 @@ import com.google.common.base.Splitter;
 import pack.PackServer;
 import pack.PackServer.Result;
 import pack.block.server.BlockPackFuse;
+import pack.zk.utils.ZkUtils;
+import pack.zk.utils.ZooKeeperClient;
 
 public class Utils {
 
@@ -84,6 +87,13 @@ public class Utils {
       }
     } catch (final IOException ioe) {
       // ignore
+    }
+  }
+
+  public static void closeOnShutdown(final Logger logger, final Closeable closeable) {
+    if (closeable != null) {
+      Runtime.getRuntime()
+             .addShutdownHook(new Thread(() -> Utils.close(LOGGER, _zk.get())));
     }
   }
 
@@ -237,6 +247,19 @@ public class Utils {
       return VAR_LOG_PACK;
     }
     return v;
+  }
+
+  private static final AtomicReference<ZooKeeperClient> _zk = new AtomicReference<ZooKeeperClient>();
+
+  public synchronized static ZooKeeperClient getZooKeeperClient() throws IOException {
+    ZooKeeperClient zk = _zk.get();
+    if (zk == null) {
+      zk = ZkUtils.newZooKeeper(getZooKeeperConnectionString(), getZooKeeperConnectionTimeout());
+      Runtime.getRuntime()
+             .addShutdownHook(new Thread(() -> Utils.close(LOGGER, _zk.get())));
+      _zk.set(zk);
+    }
+    return zk;
   }
 
   public static String getZooKeeperConnectionString() {

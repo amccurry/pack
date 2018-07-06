@@ -1,16 +1,15 @@
 package pack.zk.utils;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.Map.Entry;
 
 import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
@@ -20,18 +19,15 @@ import org.junit.Test;
 
 public class ZooKeeperLockManagerTest {
   private static ZkMiniCluster _zkMiniCluster;
-  private static ExecutorService _service;
 
   @BeforeClass
   public static void setupZookeeper() {
     _zkMiniCluster = new ZkMiniCluster();
-    _zkMiniCluster.startZooKeeper(new File("target/ZooKeeperLockManagerTest").getAbsolutePath(), true);
-    _service = Executors.newCachedThreadPool();
+    _zkMiniCluster.startZooKeeper(new File("target/ZooKeeperLockManagerTest").getAbsolutePath(), 0);
   }
 
   @AfterClass
   public static void tearDownZookeeper() {
-    _service.shutdownNow();
     _zkMiniCluster.shutdownZooKeeper();
   }
 
@@ -44,29 +40,12 @@ public class ZooKeeperLockManagerTest {
 
   @Test
   public void testLockManager() throws IOException, KeeperException, InterruptedException {
-    try (ZooKeeperClient zk1 = ZkUtils.newZooKeeper(_zkMiniCluster.getZkConnectionString(), 10000)) {
-      try (ZooKeeperLockManager manager = ZkUtils.newZooKeeperLockManager(zk1, "/lock")) {
-        try (ZooKeeperClient zk2 = ZkUtils.newZooKeeper(_zkMiniCluster.getZkConnectionString(), 10000)) {
-          try (ZooKeeperLockManager manager2 = ZkUtils.newZooKeeperLockManager(zk2, "/lock")) {
-            assertTrue(manager.tryToLock("test"));
-            assertFalse(manager.tryToLock("test"));
-
-            Future<Void> future = run(() -> {
-              manager2.lock("test");
-              return null;
-            });
-
-            Thread.sleep(3000);
-
-            assertFalse(future.isDone());
-
-            manager.unlock("test");
-
-            Thread.sleep(3000);
-
-            assertTrue(future.isDone());
-          }
-        }
+    ZooKeeperClientFactory zk1 = ZkUtils.newZooKeeperClientFactory(_zkMiniCluster.getZkConnectionString(), 10000);
+    ZooKeeperClientFactory zk2 = ZkUtils.newZooKeeperClientFactory(_zkMiniCluster.getZkConnectionString(), 10000);
+    try (ZooKeeperLockManager manager = ZkUtils.newZooKeeperLockManager(zk1, "/lock")) {
+      try (ZooKeeperLockManager manager2 = ZkUtils.newZooKeeperLockManager(zk2, "/lock")) {
+        assertTrue(manager.tryToLock("test"));
+        assertFalse(manager2.tryToLock("test"));
       }
     }
   }
@@ -93,8 +72,9 @@ public class ZooKeeperLockManagerTest {
 
   @Test
   public void testOrderingLocksMix() {
-    List<String> locks = new ArrayList<>(Arrays.asList("a_9999999999", "a_-9999999999", "a_-1"));
-    ZooKeeperLockManager.orderLocks(locks);
+    List<Entry<String, Long>> orderLocksWithVersion = Arrays.asList(ZooKeeperLockManager.newEntry("a_9999999999", 100),
+        ZooKeeperLockManager.newEntry("a_-9999999999", 200), ZooKeeperLockManager.newEntry("a_-1", 300));
+    List<String> locks = ZooKeeperLockManager.orderLocksWithVersion(orderLocksWithVersion);
 
     assertEquals("a_9999999999", locks.get(0));
     assertEquals("a_-9999999999", locks.get(1));
@@ -103,14 +83,22 @@ public class ZooKeeperLockManagerTest {
 
   @Test
   public void testOrderingLocksMixZero() {
-    List<String> locks = new ArrayList<>(Arrays.asList("a_0", "a_-1", "a_1"));
-    ZooKeeperLockManager.orderLocks(locks);
-    
-    assertEquals("a_-1", locks.get(0));
-  }
+    {
+      List<String> locks = new ArrayList<>(Arrays.asList("a_0", "a_-1", "a_1"));
+      try {
+        ZooKeeperLockManager.orderLocks(locks);
+      } catch (Exception e) {
 
-  private <T> Future<T> run(Callable<T> callable) {
-    return _service.submit(callable);
+      }
+    }
+
+    List<Entry<String, Long>> orderLocksWithVersion = Arrays.asList(ZooKeeperLockManager.newEntry("a_-1", 100),
+        ZooKeeperLockManager.newEntry("a_0", 200), ZooKeeperLockManager.newEntry("a_1", 300));
+    List<String> locks = ZooKeeperLockManager.orderLocksWithVersion(orderLocksWithVersion);
+
+    assertEquals("a_-1", locks.get(0));
+    assertEquals("a_0", locks.get(1));
+    assertEquals("a_1", locks.get(2));
   }
 
 }

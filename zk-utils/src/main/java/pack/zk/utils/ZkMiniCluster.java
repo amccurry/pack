@@ -38,6 +38,7 @@ import org.slf4j.LoggerFactory;
 public class ZkMiniCluster {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(ZkMiniCluster.class);
+  private static final int DEFAULT_PORT = 21800;
   private Thread serverThread;
   private volatile ZooKeeperServerMainEmbedded zooKeeperServerMain;
 
@@ -45,7 +46,7 @@ public class ZkMiniCluster {
     File file = new File(args[0]);
     file.mkdirs();
     ZkMiniCluster zkMiniCluster = new ZkMiniCluster();
-    zkMiniCluster.startZooKeeper(file.getAbsolutePath(), false);
+    zkMiniCluster.startZooKeeper(file.getAbsolutePath(), DEFAULT_PORT);
     while (true) {
       Thread.sleep(1000000);
     }
@@ -68,34 +69,36 @@ public class ZkMiniCluster {
   }
 
   public void startZooKeeper(String path) {
-    startZooKeeper(true, path, false);
+    startZooKeeper(true, path, DEFAULT_PORT);
   }
 
-  public void startZooKeeper(String path, boolean randomPort) {
-    startZooKeeper(true, path, randomPort);
+  public void startZooKeeper(String path, int port) {
+    startZooKeeper(true, path, port);
   }
 
   public void startZooKeeper(boolean format, String path) {
-    startZooKeeper(format, path, false);
+    startZooKeeper(format, path, DEFAULT_PORT);
   }
 
-  public void startZooKeeper(boolean format, String path, boolean randomPort) {
+  public void startZooKeeper(boolean format, String path, int port) {
     Properties properties = new Properties();
     properties.setProperty("tickTime", "2000");
     properties.setProperty("initLimit", "10");
     properties.setProperty("syncLimit", "5");
-
-    properties.setProperty("clientPort", "21810");
-
-    startZooKeeper(properties, format, path, randomPort);
+    if (port == 0) {
+      properties.setProperty("clientPort", "2181");
+    } else {
+      properties.setProperty("clientPort", Integer.toString(port));
+    }
+    startZooKeeper(properties, format, path, port);
   }
 
   public void startZooKeeper(Properties properties, String path) {
-    startZooKeeper(properties, true, path, false);
+    startZooKeeper(properties, true, path, DEFAULT_PORT);
   }
 
-  public void startZooKeeper(Properties properties, String path, boolean randomPort) {
-    startZooKeeper(properties, true, path, randomPort);
+  public void startZooKeeper(Properties properties, String path, int port) {
+    startZooKeeper(properties, true, path, port);
   }
 
   private class ZooKeeperServerMainEmbedded extends ZooKeeperServerMain {
@@ -125,7 +128,7 @@ public class ZkMiniCluster {
     }
   }
 
-  public void startZooKeeper(final Properties properties, boolean format, String path, final boolean randomPort) {
+  public void startZooKeeper(final Properties properties, boolean format, String path, final int port) {
     String realPath = path + "/zk_test";
     properties.setProperty("dataDir", realPath);
     final ServerConfig serverConfig = new ServerConfig();
@@ -133,7 +136,7 @@ public class ZkMiniCluster {
       @Override
       public InetSocketAddress getClientPortAddress() {
         InetSocketAddress clientPortAddress = super.getClientPortAddress();
-        if (randomPort) {
+        if (port == 0) {
           return randomPort(clientPortAddress);
         }
         return clientPortAddress;
@@ -153,7 +156,9 @@ public class ZkMiniCluster {
       throw new RuntimeException(e);
     }
     serverConfig.readFrom(config);
-    rm(new File(realPath));
+    if (format) {
+      rm(new File(realPath));
+    }
     serverThread = new Thread(new Runnable() {
 
       @Override
