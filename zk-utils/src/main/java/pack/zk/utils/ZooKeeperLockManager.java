@@ -29,12 +29,17 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
@@ -42,25 +47,38 @@ import org.slf4j.LoggerFactory;
 
 public class ZooKeeperLockManager implements Closeable {
 
+  private static final Callable<?> LOST_LOCK_DEFAULT = () -> null;
   private static final Logger LOGGER = LoggerFactory.getLogger(ZooKeeperLockManager.class);
   private static final String PID = ManagementFactory.getRuntimeMXBean()
                                                      .getName();
 
-  protected final Map<String, String> _lockMap = new ConcurrentHashMap<>();
+  protected final Map<String, ZkLockInfo> _lockMap = new ConcurrentHashMap<>();
   protected final String _lockPath;
-  protected final Object _lock = new Object();
   protected final long _timeout;
   protected final List<String> _metaData;
   protected final ZooKeeperClientFactory _zk;
-  protected final Watcher _watcher = event -> {
-    synchronized (_lock) {
-      _lock.notify();
-    }
-  };
+  protected final ExecutorService _service;
+  protected final AtomicBoolean _running = new AtomicBoolean(true);
+  protected final Future<?> _future;
+  protected final Callable<?> _lostLock;
+  protected final AtomicLong _lastValidationCheckSessionId = new AtomicLong();
 
   public ZooKeeperLockManager(ZooKeeperClientFactory zk, String lockPath) throws IOException {
+    this(zk, lockPath, LOST_LOCK_DEFAULT);
+  }
+
+  public ZooKeeperLockManager(ZooKeeperClientFactory zk, String lockPath, Callable<?> lostLock) throws IOException {
     _zk = zk;
-    ZkUtils.mkNodesStr(zk.getZk(), lockPath);
+    ZooKeeperClient client = zk.getZk();
+    if (isConnected(client)) {
+      _lastValidationCheckSessionId.set(client.getSessionId());
+    } else {
+      throw new IOException("Client not connected.");
+    }
+    _lostLock = lostLock;
+    _service = Executors.newSingleThreadExecutor();
+    _future = _service.submit(getValidationRunnable());
+    ZkUtils.mkNodesStr(client, lockPath);
     _lockPath = lockPath;
     _timeout = TimeUnit.SECONDS.toMillis(1);
     _metaData = new ArrayList<>();
@@ -74,8 +92,77 @@ public class ZooKeeperLockManager implements Closeable {
     }
   }
 
+  protected void checkForSeesionChange() throws IOException, InterruptedException, KeeperException {
+    if (isSessionIdDifferent()) {
+      validateExistingLocks();
+    }
+  }
+
+  protected boolean isSessionIdDifferent() throws IOException {
+    ZooKeeperClient zk = _zk.getZk();
+    if (isConnected(zk)) {
+      return _lastValidationCheckSessionId.get() != zk.getSessionId();
+    }
+    return false;
+  }
+
+  protected boolean isConnected(ZooKeeperClient zk) {
+    try {
+      zk.exists("/", false);
+      return true;
+    } catch (KeeperException | InterruptedException e) {
+      return false;
+    }
+  }
+
+  public synchronized void validateExistingLocks() throws IOException, InterruptedException, KeeperException {
+    for (Entry<String, ZkLockInfo> e : new ArrayList<>(_lockMap.entrySet())) {
+      String name = e.getKey();
+      ZkLockInfo lockInfo = e.getValue();
+      validateExistingLock(name, lockInfo);
+    }
+  }
+
+  protected void validateExistingLock(String name, ZkLockInfo lockInfo)
+      throws IOException, InterruptedException, KeeperException {
+    ZooKeeperClient zk = _zk.getZk();
+    long sessionId = zk.getSessionId();
+    if (!isConnected(zk)) {
+      return;
+    }
+    if (lockInfo.getSesssionId() == sessionId) {
+      return;
+    } else {
+      LOGGER.warn("Attempting to reobtain lock {}, again after session loss", name);
+      unlockInternal(name);
+      if (!tryToLockInternal(name)) {
+        LOGGER.error("Lost lock on {}", name);
+        try {
+          _lostLock.call();
+        } catch (Exception e) {
+          throw new IOException(e);
+        }
+      } else {
+        LOGGER.info("Success reobtain lock {}, again after session loss", name);
+      }
+    }
+  }
+
+  @Override
+  public void close() {
+    _running.set(false);
+    _future.cancel(true);
+    _service.shutdownNow();
+  }
+
   public int getNumberOfLockNodesPresent(String name) throws InterruptedException, KeeperException, IOException {
-    while (true) {
+    checkForSeesionChange();
+    return getNumberOfLockNodesPresentInternal(name);
+  }
+
+  protected int getNumberOfLockNodesPresentInternal(String name)
+      throws InterruptedException, KeeperException, IOException {
+    TRY_AGAIN: while (true) {
       ZooKeeperClient zk = _zk.getZk();
       try {
         List<String> children = zk.getChildren(_lockPath, false);
@@ -90,21 +177,27 @@ public class ZooKeeperLockManager implements Closeable {
         if (zk.isExpired()) {
           LOGGER.warn("ZooKeeper client expired while trying to getNumberOfLockNodesPresent {} for path {}", name,
               _lockPath);
+          continue TRY_AGAIN;
         }
         throw e;
       }
     }
   }
 
-  public synchronized void unlock(String name) throws InterruptedException, KeeperException, IOException {
+  public void unlock(String name) throws InterruptedException, KeeperException, IOException {
+    checkForSeesionChange();
+    unlockInternal(name);
+  }
+
+  protected synchronized void unlockInternal(String name) throws InterruptedException, KeeperException, IOException {
     if (!_lockMap.containsKey(name)) {
       throw new RuntimeException("Lock [" + name + "] has not be created.");
     }
-    String lockPath = _lockMap.remove(name);
-    LOGGER.debug("Unlocking on path {} with name {}", lockPath, name);
+    ZkLockInfo lockInfo = _lockMap.remove(name);
+    LOGGER.debug("Unlocking on path {} with name {}", lockInfo, name);
     ZooKeeperClient zk = _zk.getZk();
     try {
-      zk.delete(lockPath, -1);
+      zk.delete(lockInfo.getPath(), -1);
     } catch (KeeperException e) {
       if (zk.isExpired()) {
         LOGGER.warn("ZooKeeper client expired while trying to unlock {} for path {}", name, _lockPath);
@@ -114,7 +207,49 @@ public class ZooKeeperLockManager implements Closeable {
     }
   }
 
-  public synchronized boolean tryToLock(String name) throws InterruptedException, KeeperException, IOException {
+  public boolean checkLockOwnership(String name) throws InterruptedException, KeeperException, IOException {
+    checkForSeesionChange();
+    return checkLockOwnershipInternal(name);
+  }
+
+  protected synchronized boolean checkLockOwnershipInternal(String name)
+      throws InterruptedException, KeeperException, IOException {
+    if (!_lockMap.containsKey(name)) {
+      return false;
+    }
+    ZooKeeperClient zk = _zk.getZk();
+    try {
+      ZkLockInfo lockInfo = _lockMap.get(name);
+      List<String> children = getOnlyThisLocksChildren(name, zk.getChildren(_lockPath, false));
+      if (hasMixOfNegativeAndPositiveNumbers(children)) {
+        List<Entry<String, Long>> childrenWithVersion = lookupVersions(children, zk, _lockPath);
+        children = orderLocksWithVersion(childrenWithVersion);
+      } else {
+        orderLocks(children);
+      }
+      String firstElement = children.get(0);
+      if ((_lockPath + "/" + firstElement).equals(lockInfo.getPath())) {
+        // yay!, we have the lock
+        LOGGER.debug("Lock on path {} with name {}", _lockPath, name);
+        return true;
+      }
+      return false;
+    } catch (KeeperException e) {
+      if (zk.isExpired()) {
+        LOGGER.warn("ZooKeeper client expired while trying to unlock {} for path {}", name, _lockPath);
+        return false;
+      }
+      throw e;
+    }
+  }
+
+  public boolean tryToLock(String name) throws InterruptedException, KeeperException, IOException {
+    checkForSeesionChange();
+    return tryToLockInternal(name);
+  }
+
+  private synchronized boolean tryToLockInternal(String name)
+      throws InterruptedException, KeeperException, IOException {
     if (_lockMap.containsKey(name)) {
       return false;
     }
@@ -123,26 +258,27 @@ public class ZooKeeperLockManager implements Closeable {
       try {
         String newPath = zk.create(_lockPath + "/" + name + "_", toString(_metaData), Ids.OPEN_ACL_UNSAFE,
             CreateMode.EPHEMERAL_SEQUENTIAL);
-        _lockMap.put(name, newPath);
-        synchronized (_lock) {
-          List<String> children = getOnlyThisLocksChildren(name, zk.getChildren(_lockPath, _watcher));
-          if (hasMixOfNegativeAndPositiveNumbers(children)) {
-            List<Entry<String, Long>> childrenWithVersion = lookupVersions(children, zk, _lockPath);
-            children = orderLocksWithVersion(childrenWithVersion);
-          } else {
-            orderLocks(children);
-          }
-          String firstElement = children.get(0);
-          if ((_lockPath + "/" + firstElement).equals(newPath)) {
-            // yay!, we got the lock
-            LOGGER.debug("Lock on path {} with name {}", _lockPath, name);
-            return true;
-          } else {
-            LOGGER.debug("Waiting for lock on path {} with name {}", _lockPath, name);
-            String path = _lockMap.remove(name);
-            zk.delete(path, -1);
-            return false;
-          }
+        _lockMap.put(name, ZkLockInfo.builder()
+                                     .path(newPath)
+                                     .sesssionId(zk.getSessionId())
+                                     .build());
+        List<String> children = getOnlyThisLocksChildren(name, zk.getChildren(_lockPath, false));
+        if (hasMixOfNegativeAndPositiveNumbers(children)) {
+          List<Entry<String, Long>> childrenWithVersion = lookupVersions(children, zk, _lockPath);
+          children = orderLocksWithVersion(childrenWithVersion);
+        } else {
+          orderLocks(children);
+        }
+        String firstElement = children.get(0);
+        if ((_lockPath + "/" + firstElement).equals(newPath)) {
+          // yay!, we got the lock
+          LOGGER.debug("Lock on path {} with name {}", _lockPath, name);
+          return true;
+        } else {
+          LOGGER.debug("Waiting for lock on path {} with name {}", _lockPath, name);
+          ZkLockInfo lockInfo = _lockMap.remove(name);
+          zk.delete(lockInfo.getPath(), -1);
+          return false;
         }
       } catch (KeeperException e) {
         if (zk.isExpired()) {
@@ -155,7 +291,7 @@ public class ZooKeeperLockManager implements Closeable {
     }
   }
 
-  private List<Entry<String, Long>> lookupVersions(List<String> children, ZooKeeperClient zk, String path)
+  protected List<Entry<String, Long>> lookupVersions(List<String> children, ZooKeeperClient zk, String path)
       throws KeeperException, InterruptedException {
     List<Entry<String, Long>> result = new ArrayList<>();
     for (String s : children) {
@@ -196,7 +332,7 @@ public class ZooKeeperLockManager implements Closeable {
     });
   }
 
-  private static boolean hasMixOfNegativeAndPositiveNumbers(List<String> locks) {
+  protected static boolean hasMixOfNegativeAndPositiveNumbers(List<String> locks) {
     boolean neg = false;
     boolean pos = false;
     for (String s : locks) {
@@ -210,12 +346,12 @@ public class ZooKeeperLockManager implements Closeable {
     return neg && pos;
   }
 
-  private static long getUnsignedEndingNumber(String s) {
+  protected static long getUnsignedEndingNumber(String s) {
     long number = getEndingNumber(s);
     return getUnsignedLong(number);
   }
 
-  private static long getEndingNumber(String s) {
+  protected static long getEndingNumber(String s) {
     int lastIndexOf = s.lastIndexOf('_');
     if (lastIndexOf < 0) {
       throw new RuntimeException("Missing ending number from " + s);
@@ -223,16 +359,11 @@ public class ZooKeeperLockManager implements Closeable {
     return Long.parseLong(s.substring(lastIndexOf + 1));
   }
 
-  private static long getUnsignedLong(long x) {
+  protected static long getUnsignedLong(long x) {
     return x & 0x0fffffffffffffffL;
   }
 
-  @Override
-  public void close() {
-
-  }
-
-  private byte[] toString(List<String> metaData) {
+  protected byte[] toString(List<String> metaData) {
     if (metaData == null) {
       return null;
     }
@@ -245,7 +376,7 @@ public class ZooKeeperLockManager implements Closeable {
     return out.toByteArray();
   }
 
-  private List<String> getOnlyThisLocksChildren(String name, List<String> children) {
+  protected List<String> getOnlyThisLocksChildren(String name, List<String> children) {
     List<String> result = new ArrayList<String>();
     for (String c : children) {
       if (c.startsWith(name + "_")) {
@@ -271,6 +402,26 @@ public class ZooKeeperLockManager implements Closeable {
       @Override
       public String getKey() {
         return node;
+      }
+    };
+  }
+
+  protected Runnable getValidationRunnable() {
+    return () -> {
+      while (_running.get()) {
+        try {
+          validateExistingLocks();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error", t);
+        }
+        try {
+          Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+        } catch (InterruptedException t) {
+          if (!_running.get()) {
+            return;
+          }
+          LOGGER.error("Unknown error", t);
+        }
       }
     };
   }

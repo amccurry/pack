@@ -22,10 +22,10 @@ import pack.block.blockstore.hdfs.blockstore.WalFile.Writer;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.blockstore.hdfs.file.WalKeyWritable.Type;
 
-public class WalFileFactoryPackFileTest {
+public class WalFileFactoryPackFileSyncTest {
 
   private static MiniDFSCluster cluster;
-  private static File storePathDir = new File("./target/tmp/WalFileFactoryPackFileTest");
+  private static File storePathDir = new File("./target/tmp/WalFileFactoryPackFileSyncTest");
   private static FileSystem fileSystem;
 
   @BeforeClass
@@ -46,7 +46,7 @@ public class WalFileFactoryPackFileTest {
   public void testWalFile() throws Exception {
     Path dir = new Path("/testWalFile");
     HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA;
-    WalFileFactoryPackFile file = new WalFileFactoryPackFile(fileSystem, metaData);
+    WalFileFactoryPackFileSync file = new WalFileFactoryPackFileSync(fileSystem, metaData);
     Path src = new Path(dir, "wal.tmp");
     FSDataOutputStream out = fileSystem.create(src, false);
 
@@ -79,7 +79,7 @@ public class WalFileFactoryPackFileTest {
                                                           .maxIdleWriterTime(TimeUnit.SECONDS.toNanos(1))
                                                           .build();
 
-    WalFileFactoryPackFile file = new WalFileFactoryPackFile(fileSystem, metaData);
+    WalFileFactoryPackFileSync file = new WalFileFactoryPackFileSync(fileSystem, metaData);
     Path src = new Path(dir, "wal.tmp");
     try (Writer writer = file.create(src)) {
       WalKeyWritable key = new WalKeyWritable();

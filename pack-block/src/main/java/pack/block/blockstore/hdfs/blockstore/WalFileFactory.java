@@ -22,7 +22,7 @@ public abstract class WalFileFactory {
   public abstract WalFile.Reader open(Path path) throws IOException;
 
   public static WalFileFactory create(FileSystem fileSystem, HdfsMetaData metaData) {
-    return new WalFileFactoryPackFile(fileSystem, metaData);
+    return new WalFileFactoryPackFileSync(fileSystem, metaData);
   }
 
   public abstract void recover(Path src, Path dst) throws IOException;

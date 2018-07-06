@@ -61,6 +61,8 @@ public class HdfsMetaData {
 
   public static final long DEFAULT_MIN_TIME_BETWEEN_SYNCS = TimeUnit.SECONDS.toMillis(1);
 
+  public static final double DEFAULT_SYNC_RATE_PER_SECOND = 0.5d;
+
   public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
                                                                    .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
                                                                    .fileSystemType(FileSystemType.XFS)
@@ -71,6 +73,10 @@ public class HdfsMetaData {
                                                                    .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
                                                                    .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS)
                                                                    .build();
+
+  @JsonProperty
+  @Builder.Default
+  double syncRatePerSecond = DEFAULT_SYNC_RATE_PER_SECOND;
 
   @JsonProperty
   @Builder.Default

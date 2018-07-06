@@ -13,7 +13,6 @@ import java.util.Map.Entry;
 
 import org.apache.zookeeper.KeeperException;
 import org.junit.AfterClass;
-import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -31,22 +30,40 @@ public class ZooKeeperLockManagerTest {
     _zkMiniCluster.shutdownZooKeeper();
   }
 
-  @Before
-  public void setup() throws IOException {
-    try (ZooKeeperClient zk = ZkUtils.newZooKeeper(_zkMiniCluster.getZkConnectionString(), 10000)) {
-      ZkUtils.mkNodes(zk, "/lock");
-    }
-  }
-
   @Test
   public void testLockManager() throws IOException, KeeperException, InterruptedException {
     ZooKeeperClientFactory zk1 = ZkUtils.newZooKeeperClientFactory(_zkMiniCluster.getZkConnectionString(), 10000);
     ZooKeeperClientFactory zk2 = ZkUtils.newZooKeeperClientFactory(_zkMiniCluster.getZkConnectionString(), 10000);
-    try (ZooKeeperLockManager manager = ZkUtils.newZooKeeperLockManager(zk1, "/lock")) {
+    try (ZooKeeperLockManager manager1 = ZkUtils.newZooKeeperLockManager(zk1, "/lock")) {
       try (ZooKeeperLockManager manager2 = ZkUtils.newZooKeeperLockManager(zk2, "/lock")) {
-        assertTrue(manager.tryToLock("test"));
+        assertTrue(manager1.tryToLock("test"));
         assertFalse(manager2.tryToLock("test"));
       }
+    }
+  }
+
+  @Test
+  public void testLostLock() throws Exception {
+    ZkMiniCluster zkMiniCluster = new ZkMiniCluster();
+    try {
+      zkMiniCluster.startZooKeeper(new File("target/ZooKeeperLockManagerTest").getAbsolutePath(), 12340);
+
+      ZooKeeperClientFactory zk = ZkUtils.newZooKeeperClientFactory(zkMiniCluster.getZkConnectionString(), 3000);
+      try (ZooKeeperLockManager manager = ZkUtils.newZooKeeperLockManager(zk, "/lock")) {
+        assertTrue(manager.tryToLock("test"));
+
+        zkMiniCluster.shutdownZooKeeper();
+
+        Thread.sleep(10000);
+
+        assertFalse(manager.checkLockOwnership("test"));
+
+        zkMiniCluster.startZooKeeper(false, new File("target/ZooKeeperLockManagerTest").getAbsolutePath(), 12340);
+        
+        assertTrue(manager.checkLockOwnership("test"));
+      }
+    } finally {
+      zkMiniCluster.shutdownZooKeeper();
     }
   }
 
