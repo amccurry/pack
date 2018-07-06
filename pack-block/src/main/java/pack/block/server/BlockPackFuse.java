@@ -18,7 +18,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ShutdownHookManager;
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,7 +28,6 @@ import com.google.common.io.Closer;
 
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
@@ -39,13 +37,12 @@ import pack.block.server.admin.BlockPackAdminServer;
 import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.NoFileException;
-import pack.block.server.fs.LinuxFileSystem;
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfigInternal;
 import pack.block.server.json.BlockPackFuseConfigInternal.BlockPackFuseConfigInternalBuilder;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClient;
+import pack.zk.utils.ZooKeeperClientFactory;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackFuse implements Closeable {
@@ -96,12 +93,11 @@ public class BlockPackFuse implements Closeable {
           blockPackAdmin.setStatus(Status.INITIALIZATION);
           BlockPackFuseConfigInternalBuilder builder = BlockPackFuseConfigInternal.builder();
           BlockPackFuseConfigInternal fuseConfig = builder.blockPackAdmin(blockPackAdmin)
-                                                          .fileSystem(fileSystem)
                                                           .path(path)
                                                           .config(config)
                                                           .blockPackFuseConfig(blockPackFuseConfig)
                                                           .blockStoreFactory(BlockStoreFactory.DEFAULT)
-                                                          .strategy(strategy)
+                                                          .fileSystem(fileSystem)
                                                           .build();
 
           BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
@@ -123,36 +119,29 @@ public class BlockPackFuse implements Closeable {
   private final FuseFileSystemSingleMount _fuse;
   private final File _fuseLocalPath;
   private final File _fsLocalPath;
-  private final LinuxFileSystem _linuxFileSystem;
   private final Closer _closer;
-  private final HdfsMetaData _metaData;
   private final Thread _fuseMountThread;
   private final AtomicBoolean _closed = new AtomicBoolean(true);
   private final ZooKeeperLockManager _lockManager;
   private final Path _path;
   private final MetricRegistry _registry = new MetricRegistry();
   private final CsvReporter _reporter;
-  private final boolean _fileSystemMount;
   private final BlockPackAdmin _blockPackAdmin;
   private final int _maxVolumeMissingCount;
   private final Timer _timer;
   private final String _volumeName;
-  private final FileSystem _fileSystem;
   private final long _period;
   private final boolean _countDockerDownAsMissing;
-  private final HdfsSnapshotStrategy _snapshotStrategy;
-  private final ZooKeeperClient _zk;
+  private final ZooKeeperClientFactory _zk;
 
   public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
-    _snapshotStrategy = packFuseConfig.getStrategy();
     BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
     String zkConnectionString = blockPackFuseConfig.getZkConnection();
     int zkSessionTimeout = blockPackFuseConfig.getZkTimeout();
-    _zk = ZkUtils.newZooKeeper(zkConnectionString, zkSessionTimeout);
+    _zk = ZkUtils.newZooKeeperClientFactory(zkConnectionString, zkSessionTimeout);
     _countDockerDownAsMissing = blockPackFuseConfig.isCountDockerDownAsMissing();
     _period = blockPackFuseConfig.getVolumeMissingPollingPeriod();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
-    _fileSystemMount = blockPackFuseConfig.isFileSystemMount();
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
 
@@ -180,12 +169,9 @@ public class BlockPackFuse implements Closeable {
       _volumeName = blockPackFuseConfig.getVolumeName();
       _maxVolumeMissingCount = blockPackFuseConfig.getVolumeMissingCountBeforeAutoShutdown();
       _timer = new Timer(POLLING_CLOSER, true);
-      _fileSystem = packFuseConfig.getFileSystem();
 
       BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
       _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _registry);
-      _linuxFileSystem = _blockStore.getLinuxFileSystem();
-      _metaData = _blockStore.getMetaData();
       _fuse = _closer.register(new FuseFileSystemSingleMount(blockPackFuseConfig.getFuseMountLocation(), _blockStore));
       _fuseMountThread = new Thread(() -> _fuse.localMount());
       _fuseMountThread.setName(FUSE_MOUNT_THREAD);
@@ -195,7 +181,7 @@ public class BlockPackFuse implements Closeable {
     }
   }
 
-  public static ZooKeeperLockManager createLockmanager(ZooKeeper zk, String name) throws IOException {
+  public static ZooKeeperLockManager createLockmanager(ZooKeeperClientFactory zk, String name) throws IOException {
     return ZkUtils.newZooKeeperLockManager(zk, MOUNT + "/" + name);
   }
 
@@ -210,22 +196,12 @@ public class BlockPackFuse implements Closeable {
   public void close() {
     synchronized (_closed) {
       if (!_closed.get()) {
-        if (_fileSystemMount) {
-          if (_linuxFileSystem.isFstrimSupported()) {
-            _blockPackAdmin.setStatus(Status.FS_TRIM_STARTED, "Fstrim started " + _fsLocalPath);
-            runQuietly(() -> _linuxFileSystem.fstrim(_fsLocalPath));
-            _blockPackAdmin.setStatus(Status.FS_TRIM_COMPLETE, "Fstrim complete " + _fsLocalPath);
-          }
-          _blockPackAdmin.setStatus(Status.FS_UMOUNT_STARTED, "Unmounting " + _fsLocalPath);
-          runQuietly(() -> _linuxFileSystem.umount(_fsLocalPath));
-          _blockPackAdmin.setStatus(Status.FS_UMOUNT_COMPLETE, "Unmounted " + _fsLocalPath);
-        }
         runQuietly(() -> _closer.close());
         _fuseMountThread.interrupt();
         runQuietly(() -> _fuseMountThread.join());
         try {
           _lockManager.unlock(Utils.getLockName(_path));
-        } catch (InterruptedException | KeeperException e) {
+        } catch (IOException | InterruptedException | KeeperException e) {
           LOGGER.debug("If zookeeper is closed already this node it cleaned up automatically.", e);
         }
         runQuietly(() -> _zk.close());
@@ -254,23 +230,6 @@ public class BlockPackFuse implements Closeable {
     waitUntilFuseIsMounted();
     _blockPackAdmin.setStatus(Status.FUSE_MOUNT_COMPLETE, "Mounting FUSE @ " + _fuseLocalPath);
     LOGGER.info("fuse mount {} visible", _fuseLocalPath);
-    if (_fileSystemMount) {
-      File device = new File(_fuseLocalPath, FuseFileSystemSingleMount.BRICK);
-      if (!_linuxFileSystem.isFileSystemExists(device)) {
-        LOGGER.info("file system does not exist on mount {} visible", _fuseLocalPath);
-        int blockSize = _metaData.getFileSystemBlockSize();
-
-        LOGGER.info("creating file system {} on mount {} visible", _linuxFileSystem, device);
-        _blockPackAdmin.setStatus(Status.FS_MKFS, "Creating " + _linuxFileSystem.getType() + " @ " + device);
-        _linuxFileSystem.mkfs(device, blockSize);
-      }
-      String mountOptions = _metaData.getMountOptions();
-      _blockPackAdmin.setStatus(Status.FS_MOUNT_STARTED, "Mounting " + device + " => " + _fsLocalPath);
-      _linuxFileSystem.mount(device, _fsLocalPath, mountOptions);
-      _blockPackAdmin.setStatus(Status.FS_MOUNT_COMPLETED, "Mounted " + device + " => " + _fsLocalPath);
-      LOGGER.info("fs mount {} complete", _fsLocalPath);
-      HdfsSnapshotUtil.cleanupOldMountSnapshots(_fileSystem, _path, _snapshotStrategy);
-    }
     startDockerMonitorIfNeeded(_period);
     if (blocking) {
       _fuseMountThread.join();

@@ -21,5 +21,4 @@ public class BlockPackFuseConfig {
   long volumeMissingPollingPeriod;
   int volumeMissingCountBeforeAutoShutdown;
   boolean countDockerDownAsMissing;
-  boolean fileSystemMount;
 }

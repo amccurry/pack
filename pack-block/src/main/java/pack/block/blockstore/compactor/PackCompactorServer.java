@@ -26,8 +26,7 @@ import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.server.BlockPackFuse;
 import pack.block.util.Utils;
-import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClient;
+import pack.zk.utils.ZooKeeperClientFactory;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class PackCompactorServer implements Closeable {
@@ -41,8 +40,6 @@ public class PackCompactorServer implements Closeable {
   public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
     Utils.setupLog4j();
 
-    String zkConnectionString = Utils.getZooKeeperConnectionString();
-    int sessionTimeout = Utils.getZooKeeperConnectionTimeout();
     String hdfsPath = Utils.getHdfsPath();
     String localWorkingPath = Utils.getLocalWorkingPath();
     File cacheDir = new File(localWorkingPath, CACHE);
@@ -55,14 +52,14 @@ public class PackCompactorServer implements Closeable {
     UserGroupInformation ugi = Utils.getUserGroupInformation();
     List<Path> pathList = ugi.doAs((PrivilegedExceptionAction<List<Path>>) () -> getPathList(configuration, hdfsPath));
 
-    try (PackCompactorServer packCompactorServer = new PackCompactorServer(cacheDir, configuration, pathList)) {
-      Thread compactionThread = new Thread(
-          () -> runCompaction(running, packCompactorServer, zkConnectionString, sessionTimeout));
+    ZooKeeperClientFactory zk = Utils.getZooKeeperClientFactory();
+
+    try (PackCompactorServer packCompactorServer = new PackCompactorServer(cacheDir, configuration, pathList, zk)) {
+      Thread compactionThread = new Thread(() -> runCompaction(running, packCompactorServer, zk));
       compactionThread.setName(COMPACTION_THREAD);
       compactionThread.start();
 
-      Thread converterThread = new Thread(
-          () -> runConverter(running, packCompactorServer, zkConnectionString, sessionTimeout));
+      Thread converterThread = new Thread(() -> runConverter(running, packCompactorServer));
       converterThread.setName(CONVERTER_THREAD);
       converterThread.start();
 
@@ -71,14 +68,13 @@ public class PackCompactorServer implements Closeable {
     }
   }
 
-  private static void runConverter(AtomicBoolean running, PackCompactorServer packCompactorServer,
-      String zkConnectionString, int sessionTimeout) {
+  private static void runConverter(AtomicBoolean running, PackCompactorServer packCompactorServer) {
     while (running.get()) {
       try {
         UserGroupInformation ugi = Utils.getUserGroupInformation();
         ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-          try (ZooKeeperClient zk = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout)) {
-            packCompactorServer.executeConverter(zk);
+          try {
+            packCompactorServer.executeConverter();
           } catch (Throwable t) {
             LOGGER.error("Unknown error", t);
           }
@@ -96,13 +92,13 @@ public class PackCompactorServer implements Closeable {
   }
 
   private static void runCompaction(AtomicBoolean running, PackCompactorServer packCompactorServer,
-      String zkConnectionString, int sessionTimeout) {
+      ZooKeeperClientFactory zk) {
     while (running.get()) {
       try {
         UserGroupInformation ugi = Utils.getUserGroupInformation();
         ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-          try (ZooKeeperClient zk = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout)) {
-            packCompactorServer.executeCompaction(zk);
+          try {
+            packCompactorServer.executeCompaction();
           } catch (Throwable t) {
             LOGGER.error("Unknown error", t);
           }
@@ -123,11 +119,13 @@ public class PackCompactorServer implements Closeable {
   private final Closer _closer;
   private final File _cacheDir;
   private final Configuration _configuration;
+  private final ZooKeeperClientFactory _zk;
 
-  public PackCompactorServer(File cacheDir, Configuration configuration, List<Path> pathList) throws IOException {
-    // coord with zookeeper
-    // use zookeeper to know if the block store is mount (to know whether
-    // cleanup can be done)
+  public PackCompactorServer(File cacheDir, Configuration configuration, List<Path> pathList, ZooKeeperClientFactory zk)
+      throws IOException {
+    // coord with zookeeper use zookeeper to know if the block store is mount
+    // (to know whether cleanup can be done)
+    _zk = zk;
     _cacheDir = cacheDir;
     _closer = Closer.create();
     _configuration = configuration;
@@ -139,19 +137,18 @@ public class PackCompactorServer implements Closeable {
     _closer.close();
   }
 
-  public void executeConverter(ZooKeeperClient zk) throws IOException, KeeperException, InterruptedException {
+  public void executeConverter() throws IOException, KeeperException, InterruptedException {
     for (Path path : _pathList) {
-      executeConverter(zk, path);
+      executeConverter(path);
     }
   }
 
-  public void executeConverter(ZooKeeperClient zk, Path root)
-      throws IOException, KeeperException, InterruptedException {
+  public void executeConverter(Path root) throws IOException, KeeperException, InterruptedException {
     FileSystem fileSystem = root.getFileSystem(_configuration);
     FileStatus[] listStatus = randomOrder(fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
       try {
-        executeConverterVolume(zk, status.getPath());
+        executeConverterVolume(status.getPath());
       } catch (Exception e) {
         LOGGER.error("Convertions of " + status.getPath() + " failed", e);
       }
@@ -163,14 +160,13 @@ public class PackCompactorServer implements Closeable {
     return listStatus;
   }
 
-  private void executeConverterVolume(ZooKeeperClient zk, Path volumePath)
-      throws IOException, KeeperException, InterruptedException {
+  private void executeConverterVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
     FileSystem fileSystem = volumePath.getFileSystem(_configuration);
     HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
       return;
     }
-    try (ZooKeeperLockManager converterLockManager = WalToBlockFileConverter.createLockmanager(zk,
+    try (ZooKeeperLockManager converterLockManager = WalToBlockFileConverter.createLockmanager(_zk,
         volumePath.getName())) {
       try (WalToBlockFileConverter converter = new WalToBlockFileConverter(_cacheDir, fileSystem, volumePath, metaData,
           converterLockManager)) {
@@ -179,37 +175,35 @@ public class PackCompactorServer implements Closeable {
     }
   }
 
-  public void executeCompaction(ZooKeeperClient zk) throws IOException, KeeperException, InterruptedException {
+  public void executeCompaction() throws IOException, KeeperException, InterruptedException {
     for (Path path : _pathList) {
-      executeCompaction(zk, path);
+      executeCompaction(path);
     }
   }
 
-  public void executeCompaction(ZooKeeperClient zk, Path root)
-      throws IOException, KeeperException, InterruptedException {
+  public void executeCompaction(Path root) throws IOException, KeeperException, InterruptedException {
     FileSystem fileSystem = root.getFileSystem(_configuration);
     FileStatus[] listStatus = randomOrder(fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
       try {
-        executeCompactionVolume(zk, status.getPath());
+        executeCompactionVolume(status.getPath());
       } catch (Exception e) {
         LOGGER.error("Compaction of " + status.getPath() + " failed", e);
       }
     }
   }
 
-  private void executeCompactionVolume(ZooKeeperClient zk, Path volumePath)
-      throws IOException, KeeperException, InterruptedException {
+  private void executeCompactionVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
     FileSystem fileSystem = volumePath.getFileSystem(_configuration);
     String lockName = Utils.getLockName(volumePath);
-    try (ZooKeeperLockManager compactionLockManager = BlockFileCompactor.createLockmanager(zk, volumePath.getName())) {
+    try (ZooKeeperLockManager compactionLockManager = BlockFileCompactor.createLockmanager(_zk, volumePath.getName())) {
       if (compactionLockManager.tryToLock(lockName)) {
         try {
           HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
           if (metaData == null) {
             return;
           }
-          try (ZooKeeperLockManager mountLockManager = BlockPackFuse.createLockmanager(zk, volumePath.getName())) {
+          try (ZooKeeperLockManager mountLockManager = BlockPackFuse.createLockmanager(_zk, volumePath.getName())) {
             try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, volumePath, metaData,
                 mountLockManager)) {
               compactor.runCompaction();

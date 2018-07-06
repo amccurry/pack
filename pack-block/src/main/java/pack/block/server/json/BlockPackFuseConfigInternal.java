@@ -7,7 +7,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.server.BlockStoreFactory;
 import pack.block.server.admin.BlockPackAdmin;
 
@@ -17,9 +16,8 @@ import pack.block.server.admin.BlockPackAdmin;
 public class BlockPackFuseConfigInternal {
   BlockPackFuseConfig blockPackFuseConfig;
   BlockPackAdmin blockPackAdmin;
-  FileSystem fileSystem;
   Path path;
   HdfsBlockStoreConfig config;
   BlockStoreFactory blockStoreFactory;
-  HdfsSnapshotStrategy strategy;
+  FileSystem fileSystem;
 }

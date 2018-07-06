@@ -76,7 +76,6 @@ public class BlockPackStorage implements PackStorage {
   protected final boolean _countDockerDownAsMissing;
   protected final boolean _nohupProcess;
   protected final File _workingDir;
-  protected final boolean _fileSystemMount;
   protected final HdfsSnapshotStrategy _snapshotStrategy;
   protected final Service _service;
 
@@ -90,7 +89,6 @@ public class BlockPackStorage implements PackStorage {
     _volumeMissingPollingPeriod = config.getVolumeMissingPollingPeriod();
     _volumeMissingCountBeforeAutoShutdown = config.getVolumeMissingCountBeforeAutoShutdown();
     _countDockerDownAsMissing = config.isCountDockerDownAsMissing();
-    _fileSystemMount = config.isFileSystemMount();
 
     Closer closer = Closer.create();
     closer.register((Closeable) () -> {
@@ -287,9 +285,6 @@ public class BlockPackStorage implements PackStorage {
 
   protected String mountVolume(String volumeName, String id, boolean deviceOnly)
       throws IOException, FileNotFoundException, InterruptedException, KeeperException {
-    if (_fileSystemMount && deviceOnly) {
-      throw new IOException("Device only mount, not supported with file system mount by external process.");
-    }
     if (!existsVolume(volumeName)) {
       createVolume(volumeName, ImmutableMap.of());
     }
@@ -348,34 +343,27 @@ public class BlockPackStorage implements PackStorage {
                                               .volumeMissingCountBeforeAutoShutdown(
                                                   _volumeMissingCountBeforeAutoShutdown)
                                               .countDockerDownAsMissing(_countDockerDownAsMissing)
-                                              .fileSystemMount(_fileSystemMount)
                                               .build();
 
     BlockPackFuseProcessBuilder.startProcess(_nohupProcess, volumeName, volumeDir.getAbsolutePath(),
         logDir.getAbsolutePath(), libDir.getAbsolutePath(), configFile.getAbsolutePath(), config);
 
-    if (_fileSystemMount) {
-      waitForMount(localFileSystemMount, unixSockFile, Status.FS_MOUNT_COMPLETED);
-      incrementMountCount(unixSockFile);
-      return localFileSystemMount.getAbsolutePath();
-    } else {
-      FileSystem fileSystem = getFileSystem(volumePath);
-      HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
-      if (metaData == null) {
-        throw new IOException("No metadata found for path " + volumePath);
-      }
-      waitForMount(localDevice, unixSockFile, Status.FUSE_MOUNT_COMPLETE);
-      File device = new File(localDevice, FuseFileSystemSingleMount.BRICK);
-      if (deviceOnly) {
-        return device.getAbsolutePath();
-      }
-      mkfsIfNeeded(metaData, volumeName, device);
-      tryToAssignUuid(metaData, device);
-      mountFs(metaData, device, localFileSystemMount);
-      HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, volumePath, _snapshotStrategy);
-      incrementMountCount(unixSockFile);
-      return localFileSystemMount.getAbsolutePath();
+    FileSystem fileSystem = getFileSystem(volumePath);
+    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+    if (metaData == null) {
+      throw new IOException("No metadata found for path " + volumePath);
     }
+    waitForMount(localDevice, unixSockFile, Status.FUSE_MOUNT_COMPLETE);
+    File device = new File(localDevice, FuseFileSystemSingleMount.BRICK);
+    if (deviceOnly) {
+      return device.getAbsolutePath();
+    }
+    mkfsIfNeeded(metaData, volumeName, device);
+    tryToAssignUuid(metaData, device);
+    mountFs(metaData, device, localFileSystemMount);
+    HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, volumePath, _snapshotStrategy);
+    incrementMountCount(unixSockFile);
+    return localFileSystemMount.getAbsolutePath();
   }
 
   private File getConfigFile(String volumeName) {
@@ -482,16 +470,13 @@ public class BlockPackStorage implements PackStorage {
 
   protected void umountVolume(String volumeName, String id, boolean deviceOnly)
       throws IOException, InterruptedException, FileNotFoundException, KeeperException {
-    if (_fileSystemMount && deviceOnly) {
-      throw new IOException("Device only mount, not supported with file system mount by external process.");
-    }
     LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
     File unixSockFile = getUnixSocketFile(volumeName);
     if (unixSockFile.exists()) {
       long count = decrementMountCount(unixSockFile);
       LOGGER.info("Mount count {}", count);
       if (count <= 0) {
-        if (!_fileSystemMount && !deviceOnly) {
+        if (!deviceOnly) {
           Path volumePath = getVolumePath(volumeName);
           FileSystem fileSystem = getFileSystem(volumePath);
           HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);

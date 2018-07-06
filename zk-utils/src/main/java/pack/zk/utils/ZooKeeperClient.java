@@ -19,6 +19,7 @@ import java.io.Closeable;
  */
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -36,7 +37,8 @@ import org.slf4j.LoggerFactory;
 public class ZooKeeperClient extends ZooKeeper implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ZooKeeperClient.class);
-  private final int internalSessionTimeout;
+  private final int _internalSessionTimeout;
+  private final AtomicBoolean _expired = new AtomicBoolean();
 
   static {
     System.setProperty(ZooKeeperSaslClient.ENABLE_CLIENT_SASL_KEY, Boolean.FALSE.toString());
@@ -44,25 +46,29 @@ public class ZooKeeperClient extends ZooKeeper implements Closeable {
 
   public ZooKeeperClient(String connectString, int sessionTimeout, Watcher watcher) throws IOException {
     super(connectString, sessionTimeout, watcher);
-    internalSessionTimeout = sessionTimeout;
+    _internalSessionTimeout = sessionTimeout;
   }
 
   public ZooKeeperClient(String connectString, int sessionTimeout, Watcher watcher, boolean canBeReadOnly)
       throws IOException {
     super(connectString, sessionTimeout, watcher, canBeReadOnly);
-    internalSessionTimeout = sessionTimeout;
+    _internalSessionTimeout = sessionTimeout;
   }
 
   public ZooKeeperClient(String connectString, int sessionTimeout, Watcher watcher, long sessionId,
       byte[] sessionPasswd, boolean canBeReadOnly) throws IOException {
     super(connectString, sessionTimeout, watcher, sessionId, sessionPasswd, canBeReadOnly);
-    internalSessionTimeout = sessionTimeout;
+    _internalSessionTimeout = sessionTimeout;
   }
 
   public ZooKeeperClient(String connectString, int sessionTimeout, Watcher watcher, long sessionId,
       byte[] sessionPasswd) throws IOException {
     super(connectString, sessionTimeout, watcher, sessionId, sessionPasswd);
-    internalSessionTimeout = sessionTimeout;
+    _internalSessionTimeout = sessionTimeout;
+  }
+
+  public boolean isExpired() {
+    return _expired.get();
   }
 
   static abstract class ZKExecutor<T> {
@@ -79,7 +85,7 @@ public class ZooKeeperClient extends ZooKeeper implements Closeable {
     final long timestmap = System.currentTimeMillis();
     int sessionTimeout = getSessionTimeout();
     if (sessionTimeout == 0) {
-      sessionTimeout = internalSessionTimeout;
+      sessionTimeout = _internalSessionTimeout;
     }
     while (true) {
       try {
@@ -90,6 +96,7 @@ public class ZooKeeperClient extends ZooKeeper implements Closeable {
           ZkUtils.pause(this);
           continue;
         }
+        _expired.set(true);
         throw e;
       }
     }

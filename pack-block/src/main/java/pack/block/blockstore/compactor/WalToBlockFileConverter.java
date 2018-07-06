@@ -39,7 +39,7 @@ import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.util.Utils;
 import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClient;
+import pack.zk.utils.ZooKeeperClientFactory;
 import pack.zk.utils.ZooKeeperLockManager;
 
 public class WalToBlockFileConverter implements Closeable {
@@ -251,7 +251,7 @@ public class WalToBlockFileConverter implements Closeable {
     return name.startsWith(getFilePrefix());
   }
 
-  public static ZooKeeperLockManager createLockmanager(ZooKeeperClient zk, String name) throws IOException {
+  public static ZooKeeperLockManager createLockmanager(ZooKeeperClientFactory zk, String name) throws IOException {
     return ZkUtils.newZooKeeperLockManager(zk, CONVERTER + "/" + name);
   }
 }

@@ -19,6 +19,7 @@ package pack.zk.utils;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
@@ -28,6 +29,7 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.Watcher.Event.KeeperState;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.common.IOUtils;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,21 +42,21 @@ public class ZkUtils {
 
   public static class ConnectionWatcher implements Watcher {
 
-    private String zkConnectionString;
-    private int sessionTimeout;
+    private String _zkConnectionString;
+    private int _sessionTimeout;
 
     public void setZkConnectionString(String zkConnectionString) {
-      this.zkConnectionString = zkConnectionString;
+      _zkConnectionString = zkConnectionString;
     }
 
     public void setSessionTimeout(int sessionTimeout) {
-      this.sessionTimeout = sessionTimeout;
+      _sessionTimeout = sessionTimeout;
     }
 
     @Override
     public void process(WatchedEvent event) {
       KeeperState state = event.getState();
-      LOGGER.info("ZooKeeper {} timeout {} changed to {} state", zkConnectionString, sessionTimeout, state);
+      LOGGER.info("ZooKeeper {} timeout {} changed to {} state", _zkConnectionString, _sessionTimeout, state);
     }
 
   }
@@ -69,11 +71,12 @@ public class ZkUtils {
     }
   }
 
-  public static ZooKeeperLockManager newZooKeeperLockManager(ZooKeeper zk, String lockPath) throws IOException {
+  public static ZooKeeperLockManager newZooKeeperLockManager(ZooKeeperClientFactory zk, String lockPath)
+      throws IOException {
     return new ZooKeeperLockManager(zk, lockPath);
   }
 
-  public static ZooKeeperClient newZooKeeper(String zkConnectionString, int sessionTimeout) throws IOException {
+  private static ZooKeeperClient newZooKeeper(String zkConnectionString, int sessionTimeout) throws IOException {
     if (zkConnectionString.contains("/")) {
       int indexOf = zkConnectionString.indexOf('/');
       try (ZooKeeperClient zooKeeper = newZooKeeper(zkConnectionString.substring(0, indexOf), sessionTimeout)) {
@@ -209,6 +212,35 @@ public class ZkUtils {
       rmr(zooKeeper, path + "/" + c);
     }
     zooKeeper.delete(path, -1);
+  }
+
+  public static ZooKeeperClientFactory newZooKeeperClientFactory(String zkConnectionString, int sessionTimeout) {
+    AtomicReference<ZooKeeperClient> _ref = new AtomicReference<ZooKeeperClient>();
+    Thread thread = new Thread(() -> IOUtils.cleanup(LOGGER, _ref.get()));
+    Runtime runtime = Runtime.getRuntime();
+    ZooKeeperClientFactory zkcf = new ZooKeeperClientFactory() {
+
+      @Override
+      public synchronized ZooKeeperClient getZk() throws IOException {
+        ZooKeeperClient zk = _ref.get();
+        if (zk == null || zk.isExpired()) {
+          if (zk != null) {
+            zk.close();
+          }
+          _ref.set(zk = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout));
+        }
+        return zk;
+      }
+
+      @Override
+      public void close() throws IOException {
+        IOUtils.cleanup(LOGGER, _ref.get());
+        runtime.removeShutdownHook(thread);
+      }
+    };
+
+    runtime.addShutdownHook(thread);
+    return zkcf;
   }
 
 }

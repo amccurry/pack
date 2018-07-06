@@ -53,8 +53,6 @@ public class BlockPackServer extends PackServer {
     LOGGER.info("countDockerDownAsMissing {}", countDockerDownAsMissing);
     boolean nohupProcess = Utils.getNohupProcess();
     LOGGER.info("nohupProcess {}", nohupProcess);
-    boolean fileSystemMount = Utils.getFileSystemMount();
-    LOGGER.info("fileSystemMount {}", fileSystemMount);
     HdfsSnapshotStrategy strategy = getStrategy();
 
     setupDockerDirs();
@@ -62,7 +60,7 @@ public class BlockPackServer extends PackServer {
 
     BlockPackServer packServer = new BlockPackServer(Utils.isGlobalScope(), sockerFile, localWorkingDir, localLogDir,
         remotePath, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
-        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, fileSystemMount, strategy);
+        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, strategy);
     packServer.runServer();
   }
 
@@ -88,13 +86,12 @@ public class BlockPackServer extends PackServer {
   private final int _volumeMissingCountBeforeAutoShutdown;
   private final boolean _countDockerDownAsMissing;
   private final boolean _nohupProcess;
-  private final boolean _fileSystemMount;
   private final HdfsSnapshotStrategy _strategy;
 
   public BlockPackServer(boolean global, String sockFile, File localWorkingDir, File localLogDir, Path remotePath,
       String zkConnection, int zkTimeout, int numberOfMountSnapshots, long volumeMissingPollingPeriod,
       int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing, boolean nohupProcess,
-      boolean fileSystemMount, HdfsSnapshotStrategy strategy) {
+      HdfsSnapshotStrategy strategy) {
     super(global, sockFile);
     _strategy = strategy;
     _nohupProcess = nohupProcess;
@@ -107,7 +104,6 @@ public class BlockPackServer extends PackServer {
     _remotePath = remotePath;
     _zkConnection = zkConnection;
     _zkTimeout = zkTimeout;
-    _fileSystemMount = fileSystemMount;
     localWorkingDir.mkdirs();
     localLogDir.mkdirs();
   }
@@ -126,7 +122,6 @@ public class BlockPackServer extends PackServer {
            .nohupProcess(_nohupProcess)
            .countDockerDownAsMissing(_countDockerDownAsMissing)
            .volumeMissingCountBeforeAutoShutdown(_volumeMissingCountBeforeAutoShutdown)
-           .fileSystemMount(_fileSystemMount)
            .strategy(_strategy)
            .service(service)
            .build();

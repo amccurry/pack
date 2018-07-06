@@ -61,7 +61,7 @@ public class BlockPackFuseBlockOnlyTest {
 
     File zk = Utils.mkdir(new File(root, ZK));
     zkMiniCluster = new ZkMiniCluster();
-    zkMiniCluster.startZooKeeper(zk.getAbsolutePath(), true);
+    zkMiniCluster.startZooKeeper(zk.getAbsolutePath(), 0);
     zkConnection = zkMiniCluster.getZkConnectionString();
     zkTimeout = 10000;
     seed = new Random().nextLong();
@@ -104,7 +104,6 @@ public class BlockPackFuseBlockOnlyTest {
                                                             .fsLocalCache(fsLocalCachePath)
                                                             .zkConnection(zkConnection)
                                                             .zkTimeout(zkTimeout)
-                                                            .fileSystemMount(false)
                                                             .build();
 
     BlockPackFuseConfigInternal fuseConfig = BlockPackFuseConfigInternal.builder()

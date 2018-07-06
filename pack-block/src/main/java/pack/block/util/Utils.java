@@ -28,10 +28,10 @@ import com.google.common.base.Splitter;
 import pack.PackServer;
 import pack.PackServer.Result;
 import pack.block.server.BlockPackFuse;
+import pack.zk.utils.ZkUtils;
+import pack.zk.utils.ZooKeeperClientFactory;
 
 public class Utils {
-
-  // private static final String UGI_RELOGIN_THREAD = "UGI_RELOGIN_THREAD";
 
   private static final String PACK_HDFS_KERBEROS_RELOGIN_INTERVAL = "PACK_HDFS_KERBEROS_RELOGIN_INTERVAL";
 
@@ -78,8 +78,7 @@ public class Utils {
   private static final String KEEP_SIZE_SWITCH = "--keep-size";
   private static final String FALLOCATE = "fallocate";
   private static final AtomicReference<UserGroupInformation> UGI = new AtomicReference<>();
-  // private static final AtomicReference<Thread> UGI_RENEW_THREAD = new
-  // AtomicReference<>();
+  private static final AtomicReference<ZooKeeperClientFactory> _zk = new AtomicReference<>();
 
   public static Path qualify(FileSystem fileSystem, Path path) {
     return path.makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
@@ -144,32 +143,6 @@ public class Utils {
       return UserGroupInformation.createRemoteUser(hdfsUser);
     }
   }
-
-  // private synchronized static void createNewUgi() {
-  // if (UGI_RENEW_THREAD.get() == null) {
-  // Thread thread = new Thread(() -> {
-  // Random rand = new Random();
-  // while (true) {
-  // try {
-  // Thread.sleep(getReloginInterval() + rand.nextInt((int)
-  // TimeUnit.SECONDS.toMillis(15)));
-  // } catch (InterruptedException e) {
-  // return;
-  // }
-  // LOGGER.info("createNewUgi");
-  // try {
-  // UGI.set(createUserGroupInformation());
-  // } catch (IOException e) {
-  // LOGGER.error("Error during relogin", e);
-  // }
-  // }
-  // });
-  // thread.setDaemon(true);
-  // thread.setName(UGI_RELOGIN_THREAD);
-  // thread.start();
-  // UGI_RENEW_THREAD.set(thread);
-  // }
-  // }
 
   public static long getReloginInterval() {
     String v = getProperty(PACK_HDFS_KERBEROS_RELOGIN_INTERVAL);
@@ -292,6 +265,22 @@ public class Utils {
     }
     return v;
   }
+
+  // private static final AtomicReference<ZooKeeperClient> _zk = new
+  // AtomicReference<ZooKeeperClient>();
+
+  // public synchronized static ZooKeeperClient getZooKeeperClient() throws
+  // IOException {
+  // ZooKeeperClient zk = _zk.get();
+  // if (zk == null) {
+  // zk = ZkUtils.newZooKeeper(getZooKeeperConnectionString(),
+  // getZooKeeperConnectionTimeout());
+  // Runtime.getRuntime()
+  // .addShutdownHook(new Thread(() -> Utils.close(LOGGER, _zk.get())));
+  // _zk.set(zk);
+  // }
+  // return zk;
+  // }
 
   public static String getZooKeeperConnectionString() {
     String v = getProperty(PACK_ZOOKEEPER_CONNECTION_STR);
@@ -447,6 +436,14 @@ public class Utils {
       return true;
     }
     return false;
+  }
+
+  public synchronized static ZooKeeperClientFactory getZooKeeperClientFactory() {
+    ZooKeeperClientFactory zk = _zk.get();
+    if (zk == null) {
+      _zk.set(zk = ZkUtils.newZooKeeperClientFactory(getZooKeeperConnectionString(), getZooKeeperConnectionTimeout()));
+    }
+    return zk;
   }
 
 }

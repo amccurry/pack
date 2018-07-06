@@ -46,7 +46,7 @@ public class ZkUtilsTest {
   @BeforeClass
   public static void setupZookeeper() {
     _zkMiniCluster = new ZkMiniCluster();
-    _zkMiniCluster.startZooKeeper(new File("target/ZkUtilsTest").getAbsolutePath(), true);
+    _zkMiniCluster.startZooKeeper(new File("target/ZkUtilsTest").getAbsolutePath(), 0);
   }
 
   @AfterClass
