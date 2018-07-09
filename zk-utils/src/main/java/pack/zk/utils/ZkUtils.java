@@ -19,6 +19,7 @@ package pack.zk.utils;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.zookeeper.CreateMode;
@@ -30,7 +31,6 @@ import org.apache.zookeeper.Watcher.Event.KeeperState;
 import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.common.IOUtils;
-import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -61,13 +61,11 @@ public class ZkUtils {
 
   }
 
-  public static void pause(Object o) {
-    synchronized (o) {
-      try {
-        o.wait(TimeUnit.SECONDS.toMillis(1));
-      } catch (InterruptedException e) {
-        return;
-      }
+  public static void sleep(Object o) {
+    try {
+      Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+    } catch (InterruptedException e) {
+      return;
     }
   }
 
@@ -179,33 +177,6 @@ public class ZkUtils {
     }
   }
 
-  public static void waitUntilExists(ZooKeeper zooKeeper, String path) {
-    final Object o = new Object();
-    try {
-      while (true) {
-        Stat stat = zooKeeper.exists(path, new Watcher() {
-          @Override
-          public void process(WatchedEvent event) {
-            synchronized (o) {
-              o.notifyAll();
-            }
-          }
-        });
-        if (stat == null) {
-          synchronized (o) {
-            o.wait();
-          }
-        } else {
-          return;
-        }
-      }
-    } catch (KeeperException e) {
-      throw new RuntimeException(e);
-    } catch (InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   public static void rmr(ZooKeeper zooKeeper, String path) throws KeeperException, InterruptedException {
     List<String> children = zooKeeper.getChildren(path, false);
     for (String c : children) {
@@ -220,6 +191,8 @@ public class ZkUtils {
     Runtime runtime = Runtime.getRuntime();
     ZooKeeperClientFactory zkcf = new ZooKeeperClientFactory() {
 
+      private final AtomicLong _age = new AtomicLong();
+
       @Override
       public synchronized ZooKeeperClient getZk() throws IOException {
         ZooKeeperClient zk = _ref.get();
@@ -228,8 +201,17 @@ public class ZkUtils {
             zk.close();
           }
           _ref.set(zk = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout));
+          _age.set(System.nanoTime());
+        }
+        if (isClientOld()) {
+          _ref.set(zk = ZkUtils.reconnect(zk, zkConnectionString));
+          _age.set(System.nanoTime());
         }
         return zk;
+      }
+
+      private boolean isClientOld() {
+        return _age.get() + (sessionTimeout / 2) < System.nanoTime();
       }
 
       @Override
@@ -241,6 +223,18 @@ public class ZkUtils {
 
     runtime.addShutdownHook(thread);
     return zkcf;
+  }
+
+  protected static ZooKeeperClient reconnect(ZooKeeperClient zk, String zkConnectionString) throws IOException {
+    long sessionId = zk.getSessionId();
+    byte[] sessionPasswd = zk.getSessionPasswd();
+    int sessionTimeout = zk.getSessionTimeout();
+    ConnectionWatcher watcher = new ConnectionWatcher();
+    watcher.setSessionTimeout(sessionTimeout);
+    watcher.setZkConnectionString(zkConnectionString);
+    ZooKeeperClient newZk = new ZooKeeperClient(zkConnectionString, sessionTimeout, watcher, sessionId, sessionPasswd);
+    zk.disconnect();
+    return newZk;
   }
 
 }

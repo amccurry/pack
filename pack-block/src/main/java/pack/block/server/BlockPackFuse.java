@@ -69,8 +69,11 @@ public class BlockPackFuse implements Closeable {
 
   public static void main(String[] args) throws Exception {
     try {
+
       Utils.setupLog4j();
+      LOGGER.info("log4j setup");
       Configuration conf = getConfig();
+      LOGGER.info("hdfs config read");
 
       BlockPackFuseConfig blockPackFuseConfig = MAPPER.readValue(new File(args[0]), BlockPackFuseConfig.class);
       Path path = new Path(blockPackFuseConfig.getHdfsVolumePath());
@@ -83,13 +86,16 @@ public class BlockPackFuse implements Closeable {
       HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
 
       UserGroupInformation ugi = Utils.getUserGroupInformation();
+      LOGGER.info("hdfs ugi created");
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
         FileSystem fileSystem = FileSystem.get(conf);
         HdfsSnapshotUtil.enableSnapshots(fileSystem, path);
         HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName(strategy));
+        LOGGER.info("hdfs snapshot created");
         try (Closer closer = autoClose(Closer.create())) {
           LOGGER.info("Using {} as unix domain socket", unixSock);
           BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdminServer.startAdminServer(unixSock));
+          LOGGER.info("admin server started");
           blockPackAdmin.setStatus(Status.INITIALIZATION);
           BlockPackFuseConfigInternalBuilder builder = BlockPackFuseConfigInternal.builder();
           BlockPackFuseConfigInternal fuseConfig = builder.blockPackAdmin(blockPackAdmin)
@@ -101,6 +107,7 @@ public class BlockPackFuse implements Closeable {
                                                           .build();
 
           BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
+          LOGGER.info("block pack fuse created");
           blockPackFuse.mount();
         }
         return null;

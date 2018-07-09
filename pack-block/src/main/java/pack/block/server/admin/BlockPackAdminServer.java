@@ -180,7 +180,7 @@ public class BlockPackAdminServer implements BlockPackAdmin {
 
   @Override
   public void close() throws IOException {
-    _service.stop();
+    // _service.stop();
   }
 
 }

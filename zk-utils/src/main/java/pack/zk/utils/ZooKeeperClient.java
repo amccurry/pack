@@ -93,7 +93,7 @@ public class ZooKeeperClient extends ZooKeeper implements Closeable {
       } catch (KeeperException e) {
         if (e.code() == Code.CONNECTIONLOSS && timestmap + sessionTimeout >= System.currentTimeMillis()) {
           LOGGER.warn("Connection loss");
-          ZkUtils.pause(this);
+          ZkUtils.sleep(this);
           continue;
         }
         _expired.set(true);
@@ -279,6 +279,10 @@ public class ZooKeeperClient extends ZooKeeper implements Closeable {
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  public void disconnect() {
+    cnxn.disconnect();
   }
 
 }
