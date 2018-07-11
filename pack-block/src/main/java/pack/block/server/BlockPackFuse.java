@@ -115,6 +115,7 @@ public class BlockPackFuse implements Closeable {
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
       e.printStackTrace();
+      System.exit(1);
     }
   }
 

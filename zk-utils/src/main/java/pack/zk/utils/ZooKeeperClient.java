@@ -19,6 +19,7 @@ import java.io.Closeable;
  */
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.zookeeper.CreateMode;
@@ -37,6 +38,7 @@ import org.slf4j.LoggerFactory;
 public class ZooKeeperClient extends ZooKeeper implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ZooKeeperClient.class);
+  private static final int CONNECTED_RETRY = 10;
   private final int _internalSessionTimeout;
   private final AtomicBoolean _expired = new AtomicBoolean();
 
@@ -283,6 +285,19 @@ public class ZooKeeperClient extends ZooKeeper implements Closeable {
 
   public void disconnect() {
     cnxn.disconnect();
+  }
+
+  public boolean isConnected() throws InterruptedException {
+    for (int i = 0; i < CONNECTED_RETRY; i++) {
+      try {
+        exists("/", false);
+        return true;
+      } catch (KeeperException | InterruptedException e) {
+        LOGGER.warn("error while trying to check is zk is connected {}", e.getMessage());
+        Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+      }
+    }
+    return false;
   }
 
 }

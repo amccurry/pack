@@ -108,9 +108,8 @@ public class ZooKeeperLockManager implements Closeable {
 
   protected boolean isConnected(ZooKeeperClient zk) {
     try {
-      zk.exists("/", false);
-      return true;
-    } catch (KeeperException | InterruptedException e) {
+      return zk.isConnected();
+    } catch (InterruptedException e) {
       return false;
     }
   }
