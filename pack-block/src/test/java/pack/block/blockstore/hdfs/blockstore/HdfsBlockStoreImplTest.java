@@ -124,8 +124,8 @@ public class HdfsBlockStoreImplTest {
       converter.runConverter();
     }
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
-      compactor.runCompaction();
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData)) {
+      compactor.runCompaction(() -> true);
     }
 
     try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
@@ -303,8 +303,8 @@ public class HdfsBlockStoreImplTest {
         System.out.println(fileStatus.getPath());
       }
     }
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, metaData, null)) {
-      compactor.runCompaction();
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, metaData)) {
+      compactor.runCompaction(() -> true);
     }
 
     Path clonePath = new Path("/testBlockStoreClone2");

@@ -37,16 +37,14 @@ import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.ReadRequest;
+import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.util.Utils;
-import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClientFactory;
-import pack.zk.utils.ZooKeeperLockManager;
 
 public class WalToBlockFileConverter implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WalToBlockFileConverter.class);
 
-  private static final String CONVERTER = "/converter";
+  // private static final String CONVERTER = "/converter";
   private static final String CONVERT = "0_convert";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
@@ -57,14 +55,14 @@ public class WalToBlockFileConverter implements Closeable {
   private final long _length;
   private final File _cacheDir;
   private final WalFileFactory _walFactory;
-  private final ZooKeeperLockManager _walConverterLockManager;
   private final String _nodePrefix;
+  private final Path _lockDir;
 
-  public WalToBlockFileConverter(File cacheDir, FileSystem fileSystem, Path path, HdfsMetaData metaData,
-      ZooKeeperLockManager walConverterLockManager) throws IOException {
+  public WalToBlockFileConverter(File cacheDir, FileSystem fileSystem, Path path, HdfsMetaData metaData, Path lockDir)
+      throws IOException {
+    _lockDir = lockDir;
     _nodePrefix = InetAddress.getLocalHost()
                              .getHostName();
-    _walConverterLockManager = walConverterLockManager;
     _cacheDir = cacheDir;
     _length = metaData.getLength();
     _blockSize = metaData.getFileSystemBlockSize();
@@ -97,15 +95,18 @@ public class WalToBlockFileConverter implements Closeable {
     for (FileStatus fileStatus : listStatus) {
       // add logging and check on wal file....
       Path walPath = fileStatus.getPath();
-      String lockName = Utils.getLockName(walPath);
-      if (_walConverterLockManager == null) {
-        convertWalFile(walPath);
-      } else if (_walConverterLockManager.tryToLock(lockName)) {
-        try {
-          convertWalFile(walPath);
-        } finally {
-          _walConverterLockManager.unlock(lockName);
+
+      if (_lockDir != null) {
+        Path path = new Path(_lockDir, walPath.getName());
+        try (HdfsLock lock = new HdfsLock(_fileSystem.getConf(), path, () -> LOGGER.error("Lock lost {}", path))) {
+          if (lock.tryToLock()) {
+            convertWalFile(walPath);
+          } else {
+            LOGGER.info("Skipping convert no lock {}", path);
+          }
         }
+      } else {
+        convertWalFile(walPath);
       }
     }
   }
@@ -251,7 +252,4 @@ public class WalToBlockFileConverter implements Closeable {
     return name.startsWith(getFilePrefix());
   }
 
-  public static ZooKeeperLockManager createLockmanager(ZooKeeperClientFactory zk, String name) throws IOException {
-    return ZkUtils.newZooKeeperLockManager(zk, CONVERTER + "/" + name);
-  }
 }

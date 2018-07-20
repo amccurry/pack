@@ -30,8 +30,11 @@ import pack.PackServer.Result;
 import pack.block.server.BlockPackFuse;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClientFactory;
+import sun.misc.Unsafe;
 
 public class Utils {
+
+  private static final String THE_UNSAFE = "theUnsafe";
 
   private static final String PACK_HDFS_KERBEROS_RELOGIN_INTERVAL = "PACK_HDFS_KERBEROS_RELOGIN_INTERVAL";
 
@@ -444,6 +447,17 @@ public class Utils {
       _zk.set(zk = ZkUtils.newZooKeeperClientFactory(getZooKeeperConnectionString(), getZooKeeperConnectionTimeout()));
     }
     return zk;
+  }
+
+  public static void crashJVM() throws Exception {
+    Unsafe unsafe = getUnsafe();
+    unsafe.putAddress(0, 0);
+  }
+
+  private static Unsafe getUnsafe() throws Exception {
+    java.lang.reflect.Field singleoneInstanceField = Unsafe.class.getDeclaredField(THE_UNSAFE);
+    singleoneInstanceField.setAccessible(true);
+    return (Unsafe) singleoneInstanceField.get(null);
   }
 
 }

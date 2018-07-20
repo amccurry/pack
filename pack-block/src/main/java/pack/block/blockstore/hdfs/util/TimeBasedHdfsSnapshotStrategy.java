@@ -24,9 +24,11 @@ public class TimeBasedHdfsSnapshotStrategy extends HdfsSnapshotStrategy {
 
     List<Snapshot> snapshotList = new ArrayList<>();
     for (String s : currentSnapshots) {
-      Snapshot snapshot = Snapshot.parse(s);
-      if (snapshot != null) {
-        snapshotList.add(snapshot);
+      if (s.startsWith(MOUNT)) {
+        Snapshot snapshot = Snapshot.parse(s);
+        if (snapshot != null) {
+          snapshotList.add(snapshot);
+        }
       }
     }
 

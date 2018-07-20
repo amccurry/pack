@@ -70,7 +70,7 @@ public class ZooKeeperLockManager implements Closeable {
   public ZooKeeperLockManager(ZooKeeperClientFactory zk, String lockPath, Callable<?> lostLock) throws IOException {
     _zk = zk;
     ZooKeeperClient client = zk.getZk();
-    if (isConnected(client)) {
+    if (client.isConnected()) {
       _lastValidationCheckSessionId.set(client.getSessionId());
     } else {
       throw new IOException("Client not connected.");
@@ -100,17 +100,10 @@ public class ZooKeeperLockManager implements Closeable {
 
   protected boolean isSessionIdDifferent() throws IOException {
     ZooKeeperClient zk = _zk.getZk();
-    if (isConnected(zk)) {
+    if (zk.isConnected()) {
       return _lastValidationCheckSessionId.get() != zk.getSessionId();
-    }
-    return false;
-  }
-
-  protected boolean isConnected(ZooKeeperClient zk) {
-    try {
-      return zk.isConnected();
-    } catch (InterruptedException e) {
-      return false;
+    } else {
+      return true;
     }
   }
 
@@ -126,7 +119,7 @@ public class ZooKeeperLockManager implements Closeable {
       throws IOException, InterruptedException, KeeperException {
     ZooKeeperClient zk = _zk.getZk();
     long sessionId = zk.getSessionId();
-    if (!isConnected(zk)) {
+    if (!zk.isConnected()) {
       return;
     }
     if (lockInfo.getSesssionId() == sessionId) {

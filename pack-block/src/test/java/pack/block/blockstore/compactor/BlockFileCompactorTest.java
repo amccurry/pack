@@ -130,8 +130,8 @@ public class BlockFileCompactorTest {
                                                              .maxObsoleteRatio(0.0)
                                                              .build();
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
-      compactor.runCompaction();
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData)) {
+      compactor.runCompaction(() -> true);
     }
 
     dropOldBlockFiles(path);
@@ -154,8 +154,8 @@ public class BlockFileCompactorTest {
                                                              .maxObsoleteRatio(10.0)
                                                              .build();
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
-      compactor.runCompaction();
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData)) {
+      compactor.runCompaction(() -> true);
     }
 
     dropOldBlockFiles(path);
@@ -181,8 +181,8 @@ public class BlockFileCompactorTest {
                                                              .maxObsoleteRatio(10.0)
                                                              .build();
 
-    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
-      compactor.runCompaction();
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData)) {
+      compactor.runCompaction(() -> true);
     }
 
     dropOldBlockFiles(path);

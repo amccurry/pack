@@ -53,8 +53,8 @@ public class BlockFileCompactorUsing {
                                                                  .maxObsoleteRatio(-0.1)
                                                                  .build();
 
-        try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData, null)) {
-          compactor.runCompaction();
+        try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData)) {
+          compactor.runCompaction(() -> true);
         }
         return null;
       }

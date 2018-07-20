@@ -195,19 +195,29 @@ public class ZkUtils {
 
       @Override
       public synchronized ZooKeeperClient getZk() throws IOException {
-        ZooKeeperClient zk = _ref.get();
-        if (zk == null || zk.isExpired()) {
-          if (zk != null) {
-            zk.close();
+        while (true) {
+          ZooKeeperClient zk = _ref.get();
+          if (zk == null || zk.isExpired() || !zk.isConnected()) {
+            if (zk != null) {
+              zk.close();
+            }
+            _ref.set(zk = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout));
+            _age.set(System.nanoTime());
           }
-          _ref.set(zk = ZkUtils.newZooKeeper(zkConnectionString, sessionTimeout));
-          _age.set(System.nanoTime());
+          if (isClientOld()) {
+            _ref.set(zk = ZkUtils.reconnect(zk, zkConnectionString));
+            _age.set(System.nanoTime());
+          }
+          if (zk.isConnected()) {
+            return zk;
+          } else {
+            try {
+              Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+            } catch (InterruptedException e) {
+              LOGGER.warn("unknown error", e);
+            }
+          }
         }
-        if (isClientOld()) {
-          _ref.set(zk = ZkUtils.reconnect(zk, zkConnectionString));
-          _age.set(System.nanoTime());
-        }
-        return zk;
       }
 
       private boolean isClientOld() {

@@ -24,7 +24,12 @@ public class LastestHdfsSnapshotStrategy extends HdfsSnapshotStrategy {
 
   @Override
   public Collection<String> getSnapshotsToRemove(Collection<String> currentSnapshots) {
-    List<String> list = new ArrayList<>(currentSnapshots);
+    List<String> list = new ArrayList<>();
+    for (String s : currentSnapshots) {
+      if (s.startsWith(MOUNT)) {
+        list.add(s);
+      }
+    }
     Collections.sort(list);
     Collections.reverse(list);
     int size = list.size();

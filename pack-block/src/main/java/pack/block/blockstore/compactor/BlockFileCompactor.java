@@ -17,7 +17,6 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
-import org.apache.zookeeper.KeeperException;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,7 +34,7 @@ import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
-import pack.block.util.Utils;
+import pack.block.blockstore.hdfs.lock.OwnerCheck;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClientFactory;
 import pack.zk.utils.ZooKeeperLockManager;
@@ -54,20 +53,17 @@ public class BlockFileCompactor implements Closeable {
   private final FileSystem _fileSystem;
   private final long _maxBlockFileSize;
   private final Cache<Path, Reader> _readerCache;
-  private final ZooKeeperLockManager _inUseLockManager;
-  private final String _lockName;
+  // private final String _lockName;
   private final double _maxObsoleteRatio;
   private final String _nodePrefix;
 
-  public BlockFileCompactor(FileSystem fileSystem, Path path, HdfsMetaData metaData,
-      ZooKeeperLockManager inUseLockManager) throws IOException {
+  public BlockFileCompactor(FileSystem fileSystem, Path path, HdfsMetaData metaData) throws IOException {
     _nodePrefix = InetAddress.getLocalHost()
                              .getHostName();
     _maxBlockFileSize = metaData.getMaxBlockFileSize();
     _maxObsoleteRatio = metaData.getMaxObsoleteRatio();
-    _inUseLockManager = inUseLockManager;
     _fileSystem = fileSystem;
-    _lockName = Utils.getLockName(path);
+    // _lockName = Utils.getLockName(path);
     _blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
     cleanupBlocks();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
@@ -81,7 +77,7 @@ public class BlockFileCompactor implements Closeable {
     _readerCache.invalidateAll();
   }
 
-  public void runCompaction() throws IOException {
+  public void runCompaction(OwnerCheck ownerCheck) throws IOException {
     if (!_fileSystem.exists(_blockPath)) {
       LOGGER.info("Path {} does not exist, exiting", _blockPath);
       return;
@@ -102,48 +98,13 @@ public class BlockFileCompactor implements Closeable {
                                                                                 .getLength());
     LOGGER.info("Compaction job count {} for path {}", compactionJobs.size(), _blockPath);
     for (CompactionJob job : compactionJobs) {
-      runJob(job);
-    }
-    try {
-      tryToPruneOldFiles();
-    } catch (KeeperException | InterruptedException e) {
-      LOGGER.error("Unknown error", e);
+      runJob(job, ownerCheck);
     }
     LOGGER.info("Finished compaction - path {} size {}", _blockPath, _fileSystem.getContentSummary(_blockPath)
                                                                                 .getLength());
   }
 
-  private void tryToPruneOldFiles() throws IOException, KeeperException, InterruptedException {
-    if (_inUseLockManager == null) {
-      LOGGER.info("No lock manager defined, can not prune old files from {}", _blockPath);
-      return;
-    }
-    if (_inUseLockManager.tryToLock(_lockName)) {
-      LOGGER.info("Locking to prune files from {}", _blockPath);
-      try {
-        FileStatus[] listStatus = _fileSystem.listStatus(_blockPath,
-            (PathFilter) path -> BlockFile.isOrderedBlock(path));
-        Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
-        Set<String> toBeDeleted = new HashSet<>();
-        for (FileStatus fileStatus : listStatus) {
-          Reader reader = getReader(fileStatus.getPath());
-          toBeDeleted.addAll(reader.getSourceBlockFiles());
-        }
-        _readerCache.invalidateAll();
-        for (String name : toBeDeleted) {
-          Path path = new Path(_blockPath, name);
-          LOGGER.info("Removing orphaned file {}", path);
-          _fileSystem.delete(path, false);
-        }
-      } finally {
-        _inUseLockManager.unlock(_lockName);
-      }
-    } else {
-      LOGGER.info("Currently in use can not prune files from {}", _blockPath);
-    }
-  }
-
-  private void runJob(CompactionJob job) throws IOException {
+  private void runJob(CompactionJob job, OwnerCheck ownerCheck) throws IOException {
     List<Path> pathListToCompact = job.getPathListToCompact();
     if (pathListToCompact.size() < 2) {
       return;
@@ -168,7 +129,7 @@ public class BlockFileCompactor implements Closeable {
     try (WriterOrdered writer = BlockFile.createOrdered(_fileSystem, tmpPath, reader.getBlockSize(), sourceFileList,
         () -> {
           LOGGER.info("Merged complete path {}", tmpPath);
-          if (_fileSystem.rename(tmpPath, newPath)) {
+          if (ownerCheck.isLockOwner() && _fileSystem.rename(tmpPath, newPath)) {
             LOGGER.info("Merged commit path {}", newPath);
           } else {
             throw new IOException("Merge failed");
@@ -411,7 +372,4 @@ public class BlockFileCompactor implements Closeable {
     return name.startsWith(getFilePrefix());
   }
 
-  public static ZooKeeperLockManager createLockmanager(ZooKeeperClientFactory zk, String name) throws IOException {
-    return ZkUtils.newZooKeeperLockManager(zk, COMPACTION + "/" + name);
-  }
 }
