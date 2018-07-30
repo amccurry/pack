@@ -14,6 +14,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -47,7 +48,6 @@ import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
-import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 
 public class HdfsBlockStoreImpl implements HdfsBlockStore {
@@ -147,7 +147,13 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
                                                                              .getPath(),
         true);
 
+    LOGGER.info("open block files");
+    openBlockFiles();
+
+    LOGGER.info("processing block files");
     processBlockFiles();
+
+    LOGGER.info("loading wal files");
     loadWalFiles();
 
     long period = config.getBlockFileUnit()
@@ -291,6 +297,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   @Override
   public void close() throws IOException {
+    LOGGER.info("close");
     closeWriter(true);
     _blockFileTimer.cancel();
     _blockFileTimer.purge();
@@ -549,12 +556,6 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     return _metaData;
   }
 
-  @Override
-  public LinuxFileSystem getLinuxFileSystem() {
-    return _metaData.getFileSystemType()
-                    .getLinuxFileSystem();
-  }
-
   private List<Path> getBlockFilePathListFromStorage() throws FileNotFoundException, IOException {
     List<Path> pathList = new ArrayList<>();
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) p -> BlockFile.isOrderedBlock(p));
@@ -579,8 +580,47 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     };
   }
 
+  private void openBlockFiles() throws IOException {
+    List<Path> blockFiles = _blockFiles.get();
+    if (blockFiles.size() == 0) {
+      return;
+    }
+    ExecutorService executor = Executors.newFixedThreadPool(Math.min(blockFiles.size(), 10));
+    try {
+      List<Future<Reader>> futures = new ArrayList<>();
+      for (Path path : blockFiles) {
+        if (!_fileSystem.exists(path)) {
+          LOGGER.info("Path no longer exists, due to old block files being removed {}", path);
+          continue;
+        }
+        futures.add(executor.submit(() -> getReader(path)));
+      }
+      for (Future<Reader> future : futures) {
+        try {
+          future.get();
+        } catch (ExecutionException e) {
+          throw shutdownNowAndThrow(executor, e.getCause());
+        }
+      }
+      executor.shutdown();
+      executor.awaitTermination(1, TimeUnit.HOURS);
+    } catch (Exception e) {
+      throw shutdownNowAndThrow(executor, e);
+    }
+  }
+
+  private IOException shutdownNowAndThrow(ExecutorService executor, Throwable t) {
+    executor.shutdownNow();
+    if (t instanceof IOException) {
+      return (IOException) t;
+    }
+    return new IOException(t);
+  }
+
   public synchronized void processBlockFiles() throws IOException {
+    LOGGER.debug("load any missing block files");
     loadAnyMissingBlockFiles();
+    LOGGER.debug("drop old block files");
     dropOldBlockFiles();
   }
 
@@ -594,6 +634,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
       Reader reader = getReader(path);
       List<String> sourceBlockFiles = reader.getSourceBlockFiles();
       if (sourceBlockFiles != null) {
+        LOGGER.debug("remove old source file {}", sourceBlockFiles);
         removeBlockFiles(sourceBlockFiles);
       }
     }
@@ -603,6 +644,10 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     for (String name : sourceBlockFiles) {
       invalidateLocalCache(name);
       Path path = Utils.qualify(_fileSystem, new Path(_blockPath, name));
+      if (!_blockFiles.get()
+                      .contains(path)) {
+        continue;
+      }
       if (path.getName()
               .endsWith(HdfsBlockStoreConfig.BLOCK)
           && _fileSystem.exists(path)) {

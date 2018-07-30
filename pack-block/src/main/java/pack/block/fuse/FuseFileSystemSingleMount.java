@@ -78,6 +78,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public void close() throws IOException {
+    LOGGER.info("close");
     IOUtils.closeQuietly(_blockStore);
     umount();
   }

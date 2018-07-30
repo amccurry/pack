@@ -8,6 +8,7 @@ import com.codahale.metrics.MetricRegistry;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.UgiHdfsBlockStore;
 import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
+import pack.block.blockstore.hdfs.error.RetryBlockStore;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.Status;
 import pack.block.server.json.BlockPackFuseConfigInternal;
@@ -28,8 +29,11 @@ public abstract class BlockStoreFactory {
                                           .getFsLocalCache();
       File cacheDir = new File(fsLocalCache);
       cacheDir.mkdirs();
-      return UgiHdfsBlockStore.wrap(new HdfsBlockStoreImpl(registry, cacheDir, packFuseConfig.getFileSystem(),
-          packFuseConfig.getPath(), packFuseConfig.getConfig()));
+      HdfsBlockStoreImpl blockStore = new HdfsBlockStoreImpl(registry, cacheDir, packFuseConfig.getFileSystem(),
+          packFuseConfig.getPath(), packFuseConfig.getConfig());
+      UgiHdfsBlockStore ugiHdfsBlockStore = UgiHdfsBlockStore.wrap(blockStore);
+      RetryBlockStore retryBlockStore = RetryBlockStore.wrap(ugiHdfsBlockStore);
+      return retryBlockStore;
     }
   }
 

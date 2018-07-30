@@ -5,7 +5,6 @@ import java.security.PrivilegedExceptionAction;
 
 import org.apache.hadoop.security.UserGroupInformation;
 
-import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 
 public class UgiHdfsBlockStore implements HdfsBlockStore {
@@ -34,17 +33,6 @@ public class UgiHdfsBlockStore implements HdfsBlockStore {
 
   private UserGroupInformation getUgi() throws IOException {
     return Utils.getUserGroupInformation();
-  }
-
-  @Override
-  public LinuxFileSystem getLinuxFileSystem() throws IOException {
-    try {
-      return getUgi().doAs((PrivilegedExceptionAction<LinuxFileSystem>) () -> {
-        return _blockStore.getLinuxFileSystem();
-      });
-    } catch (InterruptedException e) {
-      throw new IOException(e);
-    }
   }
 
   @Override

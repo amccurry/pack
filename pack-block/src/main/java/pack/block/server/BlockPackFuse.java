@@ -26,6 +26,7 @@ import com.codahale.metrics.MetricRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.Closer;
 
+import pack.PackServer.Result;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
@@ -47,29 +48,33 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackFuse implements Closeable {
 
-  private static <T extends Closeable> T autoClose(T t) {
+  private static <T extends Closeable> T autoClose(T t, int priority) {
     ShutdownHookManager.get()
                        .addShutdownHook(() -> {
-                         LOGGER.info("Closing {} on shutdown", t);
                          IOUtils.closeQuietly(t);
-                       }, Integer.MAX_VALUE);
+                       }, priority);
     return t;
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuse.class);
 
   private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
-  private static final String MOUNT = "/mount";
+  private static final String MOUNT_ZK = "/mount";
   private static final String POLLING_CLOSER = "polling-closer";
+  private static final String MOUNT = "mount";
+  private static final String SUDO = "sudo";
+  private static final String UMOUNT = "umount";
 
   private static final String FUSE_MOUNT_THREAD = "fuse-mount-thread";
   private static final String SITE_XML = "-site.xml";
   private static final String HDFS_CONF = "hdfs-conf";
   private static final ObjectMapper MAPPER = new ObjectMapper();
+  private static final int AUTO_UMOUNT_PRIORITY = 10000;
+  private static final int FUSE_CLOSE_PRIORITY = 9000;
+  // private static final AtomicBoolean RUNNING = new AtomicBoolean(true);
 
   public static void main(String[] args) throws Exception {
     try {
-
       Utils.setupLog4j();
       LOGGER.info("log4j setup");
       Configuration conf = getConfig();
@@ -88,11 +93,15 @@ public class BlockPackFuse implements Closeable {
       UserGroupInformation ugi = Utils.getUserGroupInformation();
       LOGGER.info("hdfs ugi created");
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-        FileSystem fileSystem = FileSystem.get(conf);
+        FileSystem fileSystem = path.getFileSystem(conf);
+
+        LOGGER.info("add auto umount");
+        addAutoUmount(blockPackFuseConfig.getFuseMountLocation());
+
         HdfsSnapshotUtil.enableSnapshots(fileSystem, path);
         HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName(strategy));
         LOGGER.info("hdfs snapshot created");
-        try (Closer closer = autoClose(Closer.create())) {
+        try (Closer closer = autoClose(Closer.create(), FUSE_CLOSE_PRIORITY)) {
           LOGGER.info("Using {} as unix domain socket", unixSock);
           BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdminServer.startAdminServer(unixSock));
           LOGGER.info("admin server started");
@@ -107,8 +116,15 @@ public class BlockPackFuse implements Closeable {
                                                           .build();
 
           BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
+          // closer.register((Closeable) () -> {
+          // RUNNING.set(false);
+          // });
           LOGGER.info("block pack fuse created");
           blockPackFuse.mount();
+          // blockPackFuse.mount(false);
+          // while (RUNNING.get()) {
+          // Thread.sleep(TimeUnit.SECONDS.toMillis(10));
+          // }
         }
         return null;
       });
@@ -119,6 +135,36 @@ public class BlockPackFuse implements Closeable {
     }
   }
 
+  private static void addAutoUmount(String fuseMountLocation) {
+    File brickFile = new File(fuseMountLocation, "brick");
+    ShutdownHookManager.get()
+                       .addShutdownHook(() -> waitForUmount(brickFile.getAbsoluteFile()), AUTO_UMOUNT_PRIORITY);
+
+  }
+
+  private static void waitForUmount(File brickFile) {
+    while (true) {
+      try {
+        Result result = Utils.execAsResultQuietly(LOGGER, SUDO, MOUNT);
+        if (result.stdout.contains(brickFile.getCanonicalPath())) {
+          if (Utils.execReturnExitCode(LOGGER, SUDO, UMOUNT, brickFile.getCanonicalPath()) != 0) {
+            LOGGER.info("umount of {} failed", brickFile);
+          }
+        } else {
+          return;
+        }
+      } catch (Throwable t) {
+        LOGGER.error("Unknown error", t);
+      }
+      try {
+        LOGGER.info("waiting for {} to umount", brickFile);
+        Thread.sleep(TimeUnit.SECONDS.toMillis(2));
+      } catch (InterruptedException e) {
+        return;
+      }
+    }
+  }
+
   private static HdfsSnapshotStrategy getHdfsSnapshotStrategy() {
     return new LastestHdfsSnapshotStrategy();
   }
@@ -126,7 +172,6 @@ public class BlockPackFuse implements Closeable {
   private final HdfsBlockStore _blockStore;
   private final FuseFileSystemSingleMount _fuse;
   private final File _fuseLocalPath;
-  private final File _fsLocalPath;
   private final Closer _closer;
   private final Thread _fuseMountThread;
   private final AtomicBoolean _closed = new AtomicBoolean(true);
@@ -152,7 +197,7 @@ public class BlockPackFuse implements Closeable {
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
-
+    LOGGER.info("trying to obtain lock");
     _lockManager = createLockmanager(_zk, packFuseConfig.getPath()
                                                         .getName());
     boolean lock = _lockManager.tryToLock(Utils.getLockName(_path));
@@ -166,20 +211,23 @@ public class BlockPackFuse implements Closeable {
     }
     if (lock) {
       _closer = Closer.create();
+      LOGGER.info("setting up metrics");
+      File metricsDir = new File(blockPackFuseConfig.getFsMetricsLocation());
+      metricsDir.mkdirs();
       _reporter = _closer.register(CsvReporter.forRegistry(_registry)
-                                              .build(new File(blockPackFuseConfig.getFsMetricsLocation())));
+                                              .build(metricsDir));
       _reporter.start(1, TimeUnit.MINUTES);
       _fuseLocalPath = new File(blockPackFuseConfig.getFuseMountLocation());
       _fuseLocalPath.mkdirs();
-      _fsLocalPath = new File(blockPackFuseConfig.getFsMountLocation());
-      _fsLocalPath.mkdirs();
 
       _volumeName = blockPackFuseConfig.getVolumeName();
       _maxVolumeMissingCount = blockPackFuseConfig.getVolumeMissingCountBeforeAutoShutdown();
       _timer = new Timer(POLLING_CLOSER, true);
 
       BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
+      LOGGER.info("creating block store");
       _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _registry);
+      LOGGER.info("creating fuse file system");
       _fuse = _closer.register(new FuseFileSystemSingleMount(blockPackFuseConfig.getFuseMountLocation(), _blockStore));
       _fuseMountThread = new Thread(() -> _fuse.localMount());
       _fuseMountThread.setName(FUSE_MOUNT_THREAD);
@@ -190,7 +238,7 @@ public class BlockPackFuse implements Closeable {
   }
 
   public static ZooKeeperLockManager createLockmanager(ZooKeeperClientFactory zk, String name) throws IOException {
-    return ZkUtils.newZooKeeperLockManager(zk, MOUNT + "/" + name);
+    return ZkUtils.newZooKeeperLockManager(zk, MOUNT_ZK + "/" + name);
   }
 
   private void startDockerMonitorIfNeeded(long period) {
@@ -202,6 +250,7 @@ public class BlockPackFuse implements Closeable {
 
   @Override
   public void close() {
+    LOGGER.info("close");
     synchronized (_closed) {
       if (!_closed.get()) {
         runQuietly(() -> _closer.close());

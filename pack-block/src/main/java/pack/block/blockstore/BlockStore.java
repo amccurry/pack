@@ -3,11 +3,7 @@ package pack.block.blockstore;
 import java.io.Closeable;
 import java.io.IOException;
 
-import pack.block.server.fs.LinuxFileSystem;
-
 public interface BlockStore extends Closeable {
-
-  LinuxFileSystem getLinuxFileSystem() throws IOException;
 
   /**
    * Name of the BlockStore, must be a valid filename.
@@ -37,7 +33,7 @@ public interface BlockStore extends Closeable {
   void fsync() throws IOException;
 
   default void delete(long position, long length) throws IOException {
-    
+
   }
 
 }

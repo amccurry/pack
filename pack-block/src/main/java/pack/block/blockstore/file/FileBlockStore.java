@@ -10,8 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.block.blockstore.BlockStore;
-import pack.block.server.fs.Ext4LinuxFileSystem;
-import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 
 public class FileBlockStore implements BlockStore {
@@ -75,11 +73,6 @@ public class FileBlockStore implements BlockStore {
     if (_enableSync) {
       _channel.force(true);
     }
-  }
-
-  @Override
-  public LinuxFileSystem getLinuxFileSystem() {
-    return Ext4LinuxFileSystem.INSTANCE;
   }
 
   @Override

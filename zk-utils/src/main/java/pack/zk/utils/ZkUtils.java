@@ -56,7 +56,7 @@ public class ZkUtils {
     @Override
     public void process(WatchedEvent event) {
       KeeperState state = event.getState();
-      LOGGER.info("ZooKeeper {} timeout {} changed to {} state", _zkConnectionString, _sessionTimeout, state);
+      LOGGER.debug("ZooKeeper {} timeout {} changed to {} state", _zkConnectionString, _sessionTimeout, state);
     }
 
   }
@@ -227,7 +227,11 @@ public class ZkUtils {
       @Override
       public void close() throws IOException {
         IOUtils.cleanup(LOGGER, _ref.get());
-        runtime.removeShutdownHook(thread);
+        try {
+          runtime.removeShutdownHook(thread);
+        } catch (IllegalStateException e) {
+          LOGGER.warn(e.getMessage());
+        }
       }
     };
 

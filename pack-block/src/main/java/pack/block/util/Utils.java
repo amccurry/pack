@@ -325,6 +325,20 @@ public class Utils {
     }
   }
 
+  public static Result execAsResultQuietly(Logger logger, String... command) throws IOException {
+    String uuid = UUID.randomUUID()
+                      .toString();
+    List<String> list = Arrays.asList(command);
+    logger.info("Executing command id {} cmd {}", uuid, list);
+    try {
+      return PackServer.exec(uuid, list, logger, true);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    } finally {
+      logger.info("Command id {} complete", uuid);
+    }
+  }
+
   public static Result execAsResult(Logger logger, String... command) throws IOException {
     String uuid = UUID.randomUUID()
                       .toString();

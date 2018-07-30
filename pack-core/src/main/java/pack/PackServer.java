@@ -40,7 +40,7 @@ import spark.SparkJava;
 import spark.SparkJavaIdentifier;
 
 public abstract class PackServer {
-  
+
   private static final Logger LOG = LoggerFactory.getLogger(PackServer.class);
 
   private static final String GLOBAL = "global";
@@ -55,9 +55,9 @@ public abstract class PackServer {
   private static final String VOLUME_DRIVER_UNMOUNT = "/VolumeDriver.Unmount";
   private static final String VOLUME_DRIVER_GET = "/VolumeDriver.Get";
   private static final String VOLUME_DRIVER_LIST = "/VolumeDriver.List";
-  
+
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-  
+
   public static final ResponseTransformer TRANSFORMER = model -> {
     LOG.info("response {}", model);
     if (model instanceof String) {
@@ -90,7 +90,6 @@ public abstract class PackServer {
     service.ipAddress(sockFile);
 
     PackStorage packStorage = getPackStorage(service);
-
 
     Implements impls = Implements.builder()
                                  .impls(Arrays.asList(VOLUME_DRIVER))
@@ -239,12 +238,17 @@ public abstract class PackServer {
 
   public static Result exec(String cmdId, List<String> command, Logger logger)
       throws IOException, InterruptedException {
+    return exec(cmdId, command, logger, false);
+  }
+
+  public static Result exec(String cmdId, List<String> command, Logger logger, boolean quietly)
+      throws IOException, InterruptedException {
     ProcessBuilder builder = new ProcessBuilder(command);
     Process process = builder.start();
     StringWriter stdout = new StringWriter();
     StringWriter stderr = new StringWriter();
-    Thread t1 = captureOutput(cmdId, "stdout", toBuffer(process.getInputStream()), logger, stdout);
-    Thread t2 = captureOutput(cmdId, "stderr", toBuffer(process.getErrorStream()), logger, stderr);
+    Thread t1 = captureOutput(cmdId, "stdout", toBuffer(process.getInputStream()), logger, stdout, quietly);
+    Thread t2 = captureOutput(cmdId, "stderr", toBuffer(process.getErrorStream()), logger, stderr, quietly);
     t1.start();
     t2.start();
     int exitCode = process.waitFor();
@@ -269,14 +273,17 @@ public abstract class PackServer {
     }
   }
 
-  public static Thread captureOutput(String cmdId, String type, BufferedReader reader, Logger logger, Writer writer) {
+  public static Thread captureOutput(String cmdId, String type, BufferedReader reader, Logger logger, Writer writer,
+      boolean quietly) {
     return new Thread(new Runnable() {
       @Override
       public void run() {
         try {
           String s;
           while ((s = reader.readLine()) != null) {
-            logger.info("Command {} Type {} Message {}", cmdId, type, s.trim());
+            if (!quietly) {
+              logger.info("Command {} Type {} Message {}", cmdId, type, s.trim());
+            }
             writer.write(s);
             writer.write('\n');
           }

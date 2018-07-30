@@ -34,7 +34,6 @@ public class BlockPackFuseBlockOnlyTest {
   private static final String HDFS = "hdfs";
   private static final String ZK = "zk";
   private static final String METRICS = "metrics";
-  private static final String MOUNT = "mount";
   private static final String FUSE = "fuse";
   private static final String TEST_BLOCK_PACK_FUSE = "testBlockPackFuse";
   private static final int MAX_PASSES = 1000;
@@ -87,8 +86,6 @@ public class BlockPackFuseBlockOnlyTest {
     File fuseDir = new File(fuse, FUSE);
     String fuseLocalPath = Utils.mkdir(fuseDir)
                                 .getAbsolutePath();
-    String fsLocalPath = Utils.mkdir(new File(fuse, MOUNT))
-                              .getAbsolutePath();
     String fsLocalCachePath = Utils.mkdir(new File(fuse, CACHE))
                                    .getAbsolutePath();
     String metricsLocalPath = Utils.mkdir(new File(fuse, METRICS))
@@ -99,7 +96,6 @@ public class BlockPackFuseBlockOnlyTest {
 
     BlockPackFuseConfig packFuseConfig = BlockPackFuseConfig.builder()
                                                             .fuseMountLocation(fuseLocalPath)
-                                                            .fsMountLocation(fsLocalPath)
                                                             .fsMetricsLocation(metricsLocalPath)
                                                             .fsLocalCache(fsLocalCachePath)
                                                             .zkConnection(zkConnection)

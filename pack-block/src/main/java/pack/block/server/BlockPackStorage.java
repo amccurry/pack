@@ -331,7 +331,6 @@ public class BlockPackStorage implements PackStorage {
     BlockPackFuseConfigBuilder configBuilder = BlockPackFuseConfig.builder();
     BlockPackFuseConfig config = configBuilder.volumeName(volumeName)
                                               .fuseMountLocation(localDevice.getAbsolutePath())
-                                              .fsMountLocation(localFileSystemMount.getAbsolutePath())
                                               .fsMetricsLocation(localMetrics.getAbsolutePath())
                                               .fsLocalCache(localCache.getAbsolutePath())
                                               .hdfsVolumePath(path)
