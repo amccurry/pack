@@ -48,7 +48,7 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
   private static class InternalWriter extends WalFile.Writer {
 
     private static final String IO_FILE_BUFFER_SIZE = "io.file.buffer.size";
-    private final AtomicBoolean running = new AtomicBoolean(true);
+    private final AtomicBoolean _running = new AtomicBoolean(true);
     private final AtomicReference<FSDataOutputStream> _outputStream = new AtomicReference<FSDataOutputStream>();
     private final AtomicLong _lastFlush = new AtomicLong();
     private final AtomicLong _lastFlushTime = new AtomicLong(System.nanoTime());
@@ -59,6 +59,7 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
     private final long _minTimeBetweenSyncs;
     private final Object _flushLock = new Object();
     private final RateLimiter _rateLimiter;
+    private final AtomicBoolean _error = new AtomicBoolean();
 
     public InternalWriter(FileSystem fileSystem, Path path, long maxIdleWriterTime, long minTimeBetweenSyncs,
         double syncRatePerSecond) throws IOException {
@@ -73,7 +74,7 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
     }
 
     private void flushLoop(Path path) {
-      while (running.get()) {
+      while (_running.get()) {
         try {
           flush();
         } catch (IOException e) {
@@ -85,6 +86,7 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
             try {
               closeWriter();
             } catch (IOException e) {
+              _error.set(true);
               LOGGER.error("Error during closing of idle writer " + path, e);
             }
           }
@@ -92,7 +94,7 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
         try {
           Thread.sleep(_minTimeBetweenSyncs);
         } catch (InterruptedException e) {
-          if (running.get()) {
+          if (_running.get()) {
             LOGGER.error("Unknown error", e);
           } else {
             return;
@@ -128,34 +130,56 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
 
     @Override
     public void close() throws IOException {
-      running.set(false);
-      FSDataOutputStream output = _outputStream.getAndSet(null);
-      if (output != null) {
-        output.close();
-      }
+      _running.set(false);
       _executor.shutdownNow();
+      synchronized (_flushLock) {
+        try {
+          FSDataOutputStream output = _outputStream.getAndSet(null);
+          if (output != null) {
+            output.close();
+          }
+        } catch (IOException e) {
+          _error.set(true);
+          throw e;
+        }
+      }
     }
 
     @Override
     public void append(WalKeyWritable key, BytesWritable value) throws IOException {
       synchronized (_flushLock) {
-        FSDataOutputStream output = getOutputStream();
-        key.write(output);
-        value.write(output);
+        try {
+          FSDataOutputStream output = getOutputStream();
+          key.write(output);
+          value.write(output);
+        } catch (IOException e) {
+          _error.set(true);
+          throw e;
+        }
       }
     }
 
     @Override
-    public long getLength() throws IOException {
+    public long getSize() throws IOException {
       synchronized (_flushLock) {
-        return getOutputStream().getPos();
+        try {
+          return getOutputStream().getPos();
+        } catch (IOException e) {
+          _error.set(true);
+          throw e;
+        }
       }
     }
 
     @Override
     public void flush() throws IOException {
-      if (shouldFlushOutputStream()) {
-        performFlush();
+      try {
+        if (shouldFlushOutputStream()) {
+          performFlush();
+        }
+      } catch (IOException e) {
+        _error.set(true);
+        throw e;
       }
     }
 
@@ -173,7 +197,7 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
           _lastFlush.set(pos);
           _lastFlushTime.set(System.nanoTime());
         } catch (IOException e) {
-          if (e instanceof ClosedChannelException && !running.get()) {
+          if (e instanceof ClosedChannelException && !_running.get()) {
             return;
           }
           LOGGER.error("Error during flush of " + _path, e);
@@ -184,6 +208,11 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
 
     private boolean shouldFlushOutputStream() {
       return _rateLimiter.tryAcquire();
+    }
+
+    @Override
+    public boolean isErrorState() {
+      return _error.get();
     }
 
   }

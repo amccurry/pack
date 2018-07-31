@@ -29,6 +29,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
+import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -298,7 +299,28 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   @Override
   public void close() throws IOException {
     LOGGER.info("close");
-    closeWriter(true);
+    synchronized (_writerLock) {
+      WriterContext context = _writer.getAndSet(null);
+      try {
+        LOGGER.info("Trying to commit wal writer");
+        commitWriter(context, false);
+      } catch (Exception e) {
+        while (true) {
+          try {
+            LOGGER.info("Trying to recover wal writer");
+            recoverWalFromLocal(context);
+            break;
+          } catch (Exception ex) {
+            LOGGER.error("Error while trying to recover wal", ex);
+            try {
+              Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+            } catch (InterruptedException ie) {
+              throw new IOException(ie);
+            }
+          }
+        }
+      }
+    }
     _blockFileTimer.cancel();
     _blockFileTimer.purge();
     _readerCache.invalidateAll();
@@ -371,16 +393,42 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
       if (context == null) {
         context = creatNewContext();
         _writer.set(context);
+      } else if (context.isErrorState()) {
+        recoverWalFromLocal(context);
+
+        // create fresh new wal
+        context = creatNewContext();
+        _writer.set(context);
       }
       context.incRef();
       return context;
     }
   }
 
-  private void closeWriter(boolean force) throws IOException {
-    synchronized (_writerLock) {
-      commitWriter(_writer.getAndSet(null), force);
+  private void recoverWalFromLocal(WriterContext context) throws IOException {
+    WriterContext brokenContext = context;
+    LocalWalCache localWalCache = getCurrentLocalContext(brokenContext);
+    WriterContext newContext = null;
+    try {
+      newContext = creatNewContext();
+      LOGGER.info("Creating new wal writer context {}", newContext._path);
+      // try to replay local wal to hdfs
+      newContext.replay(localWalCache);
+      // commit new wal log
+      commitWriter(newContext, true);
+    } catch (Exception e) {
+      if (newContext != null) {
+        LOGGER.error("Error while trying to recover old context {} new context {}", context._path, newContext._path);
+        destroyWriter(newContext, true);
+      }
+      if (e instanceof IOException) {
+        throw (IOException) e;
+      }
+      throw new IOException(e);
     }
+
+    // destroy broken wal log
+    destroyWriter(brokenContext, true);
   }
 
   private void flushWriter() throws IOException {
@@ -390,7 +438,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
         return;
       }
       writer.flush();
-      if (writer.getLength() >= _maxWalSize && !_rollInProgress.get()) {
+      if (writer.getSize() >= _maxWalSize && !_rollInProgress.get()) {
         _rollInProgress.set(true);
         LOGGER.info("Wal file length too large, starting wal file roll");
         _walRollExecutor.submit(() -> {
@@ -417,12 +465,25 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   private WriterContext creatNewContext() throws IOException {
     Path tmpPath = newDataGenerationFile(WAL_TMP);
-    return new WriterContext(_walFactory.create(tmpPath), tmpPath);
+    return new WriterContext(_walFactory.create(tmpPath), tmpPath, _fileSystemBlockSize);
+  }
+
+  private void destroyWriter(WriterContext context, boolean force) throws IOException {
+    if (context != null) {
+      try {
+        context.close(force);
+      } catch (Exception e) {
+        LOGGER.error("Error closing wal writer", e);
+      }
+      LOGGER.info("Destroying writer {}", context._path);
+      _fileSystem.delete(context._path, false);
+    }
   }
 
   private void commitWriter(WriterContext context, boolean force) throws IOException {
     if (context != null) {
       context.close(force);
+
       _fileSystem.rename(context._path, newExtPath(context._path, WAL));
     }
   }
@@ -730,7 +791,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     return (int) (position % _fileSystemBlockSize);
   }
 
-  private BytesWritable getValue(ByteBuffer byteBuffer) {
+  private static BytesWritable getValue(ByteBuffer byteBuffer) {
     return Utils.toBw(byteBuffer);
   }
 
@@ -738,10 +799,33 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     private final WalFile.Writer _writer;
     private final Path _path;
     private final AtomicInteger _refs = new AtomicInteger();
+    private final int _fileSystemBlockSize;
 
-    WriterContext(WalFile.Writer writer, Path path) {
+    WriterContext(WalFile.Writer writer, Path path, int fileSystemBlockSize) {
+      _fileSystemBlockSize = fileSystemBlockSize;
       _writer = writer;
       _path = path;
+    }
+
+    public void replay(LocalWalCache localWalCache) throws IOException {
+      RoaringBitmap emptyBlocks = localWalCache.getEmptyBlocks();
+      for (Integer blockId : emptyBlocks) {
+        delete(blockId, blockId + 1);
+      }
+      RoaringBitmap dataBlocks = localWalCache.getDataBlocks();
+      ByteBuffer byteBuffer = ByteBuffer.allocate(_fileSystemBlockSize);
+      for (Integer blockId : dataBlocks) {
+        byteBuffer.clear();
+        ReadRequest readRequest = new ReadRequest(blockId, 0, byteBuffer);
+        if (!localWalCache.readBlock(readRequest)) {
+          byteBuffer.flip();
+          append(blockId, getValue(byteBuffer));
+        }
+      }
+    }
+
+    public boolean isErrorState() {
+      return _writer.isErrorState();
     }
 
     public void close(boolean force) throws IOException {
@@ -775,8 +859,8 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
       _writer.append(key, value);
     }
 
-    long getLength() throws IOException {
-      return _writer.getLength();
+    long getSize() throws IOException {
+      return _writer.getSize();
     }
 
     void flush() throws IOException {

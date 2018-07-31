@@ -12,8 +12,11 @@ import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -35,38 +38,72 @@ import pack.block.blockstore.hdfs.error.RetryBlockStore;
 
 public class RetryHdfsBlockStoreImplTest {
 
-  private static MiniDFSCluster cluster;
+  private static MiniDFSCluster _cluster;
   private static File storePathDir = new File("./target/tmp/HdfsBlockStoreV4Test");
   private static FileSystem fileSystem;
   private static MetricRegistry metrics = new MetricRegistry();
-  private static ExecutorService service = Executors.newSingleThreadExecutor();
+  private static ExecutorService _service = Executors.newSingleThreadExecutor();
+  private static Path path = new Path("/shutdowntest");
+  private static AtomicBoolean _clusterOnline = new AtomicBoolean();
 
   @BeforeClass
   public static void beforeClass() throws IOException {
     Configuration configuration = new Configuration();
     String storePath = new File(storePathDir, "hdfs").getAbsolutePath();
     configuration.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, storePath);
-    cluster = new MiniDFSCluster.Builder(configuration).build();
-    fileSystem = cluster.getFileSystem();
+    _cluster = new MiniDFSCluster.Builder(configuration).build();
+    fileSystem = _cluster.getFileSystem();
+    try (FSDataOutputStream outputStream = fileSystem.create(path)) {
+      outputStream.write(1);
+    }
+    _clusterOnline.set(true);
   }
 
   @AfterClass
   public static void afterClass() {
-    cluster.shutdown();
-    service.shutdownNow();
+    _cluster.shutdown();
+    _service.shutdownNow();
   }
 
-  public static void restartCluster() {
-    service.submit(new Runnable() {
+  public static void restartCluster() throws InterruptedException {
+    System.out.println("shutdown");
+    _clusterOnline.set(false);
+    _cluster.shutdownDataNodes();
+
+    try {
+      System.out.println("wait for error");
+      try (FSDataInputStream input = fileSystem.open(path)) {
+        System.out.println(input.read());
+      }
+    } catch (Exception e) {
+      System.out.println("cluster down");
+    }
+    _service.submit(new Runnable() {
       @Override
       public void run() {
         try {
-          cluster.shutdown(false);
-          System.out.println("hdfs offline");
-          Thread.sleep(TimeUnit.SECONDS.toMillis(2));
-          cluster.restartNameNodes();
-          cluster.restartDataNodes();
-          System.out.println("hdfs starting");
+          Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+
+          System.out.println("restart");
+          _cluster.startDataNodes(fileSystem.getConf(), 1, true, null, null);
+
+          while (!_cluster.isDataNodeUp()) {
+            System.out.println("waiting for datanode");
+            Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+          }
+
+          while (true) {
+            try {
+              System.out.println("wait for success");
+              try (FSDataInputStream input = fileSystem.open(path)) {
+                System.out.println(input.read());
+              }
+              break;
+            } catch (Exception e) {
+              System.out.println("cluster still down");
+            }
+          }
+          _clusterOnline.set(true);
         } catch (Throwable t) {
           t.printStackTrace();
         }
@@ -86,10 +123,9 @@ public class RetryHdfsBlockStoreImplTest {
     HdfsBlockStoreImpl baseStore = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path);
     int blockSize = baseStore.getFileSystemBlockSize();
     try (RetryBlockStore store = RetryBlockStore.wrap(baseStore)) {
-
       long s = System.nanoTime();
       for (int i = 0; i < 10000; i++) {
-        if (i % 2001 == 0) {
+        if (i == 2001) {
           restartCluster();
         }
 
@@ -132,9 +168,15 @@ public class RetryHdfsBlockStoreImplTest {
     byte[] buffer = new byte[blockSize];
     Arrays.fill(buffer, (byte) 1);
 
-    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
+    HdfsBlockStoreImpl baseStore = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path);
+    try (RetryBlockStore store = RetryBlockStore.wrap(baseStore)) {
       long position = 0;
       for (int j = 0; j < 1000; j++) {
+
+        if (j == 201) {
+          restartCluster();
+        }
+
         if (j % 123 == 0) {
           store.fsync();
         }
@@ -166,7 +208,8 @@ public class RetryHdfsBlockStoreImplTest {
     FileStatus[] fileStatus = fileSystem.listStatus(new Path(path, HdfsBlockStoreConfig.BLOCK),
         (PathFilter) path1 -> path1.getName()
                                    .endsWith(HdfsBlockStoreConfig.BLOCK));
-    assertEquals(getMessage(fileStatus), 1, fileStatus.length);
+    // there should be 2 blocks because of the cluster restart
+    assertEquals(getMessage(fileStatus), 2, fileStatus.length);
 
     for (FileStatus status : fileStatus) {
       assertTrue(status.getPath()
@@ -206,8 +249,14 @@ public class RetryHdfsBlockStoreImplTest {
     int maxPos = blockSize * 100;
     int maxOffset = 100;
 
-    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
+    HdfsBlockStoreImpl baseStore = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path);
+    try (RetryBlockStore store = RetryBlockStore.wrap(baseStore)) {
       for (int j = 0; j < 10000; j++) {
+
+        if (j == 2001) {
+          restartCluster();
+        }
+
         int length = random.nextInt(maxLength);
         int offset = random.nextInt(maxOffset);
         byte[] buf1 = new byte[offset + length];
@@ -246,49 +295,60 @@ public class RetryHdfsBlockStoreImplTest {
     byte[] buf = new byte[122880];
     random.nextBytes(buf);
 
-    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
-      {
-        long pos = 139264;
-        int len = buf.length;
-        int offset = 0;
-        while (len > 0) {
-          int write = store.write(pos, buf, offset, len);
-          pos += write;
-          offset += write;
-          len -= write;
+    {
+      HdfsBlockStoreImpl baseStore = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path);
+      try (RetryBlockStore store = RetryBlockStore.wrap(baseStore)) {
+        {
+          long pos = 139264;
+          int len = buf.length;
+          int offset = 0;
+          while (len > 0) {
+            int write = store.write(pos, buf, offset, len);
+            pos += write;
+            offset += write;
+            len -= write;
+          }
         }
-      }
-      byte[] buf2 = new byte[buf.length];
-      {
-        long pos = 139264;
-        int len = buf.length;
-        int offset = 0;
-        while (len > 0) {
-          int read = store.read(pos, buf2, offset, len);
-          pos += read;
-          offset += read;
-          len -= read;
-        }
-      }
 
-      assertTrue(Arrays.equals(buf, buf2));
+        restartCluster();
+
+        byte[] buf2 = new byte[buf.length];
+        {
+          long pos = 139264;
+          int len = buf.length;
+          int offset = 0;
+          while (len > 0) {
+            int read = store.read(pos, buf2, offset, len);
+            pos += read;
+            offset += read;
+            len -= read;
+          }
+        }
+
+        assertTrue(Arrays.equals(buf, buf2));
+      }
     }
-
-    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
-      byte[] buf2 = new byte[buf.length];
-      {
-        long pos = 139264;
-        int len = buf.length;
-        int offset = 0;
-        while (len > 0) {
-          int read = store.read(pos, buf2, offset, len);
-          pos += read;
-          offset += read;
-          len -= read;
-        }
+    {
+      while (!_clusterOnline.get()) {
+        Thread.sleep(TimeUnit.SECONDS.toMillis(1));
       }
+      HdfsBlockStoreImpl baseStore = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path);
+      try (RetryBlockStore store = RetryBlockStore.wrap(baseStore)) {
+        byte[] buf2 = new byte[buf.length];
+        {
+          long pos = 139264;
+          int len = buf.length;
+          int offset = 0;
+          while (len > 0) {
+            int read = store.read(pos, buf2, offset, len);
+            pos += read;
+            offset += read;
+            len -= read;
+          }
+        }
 
-      assertTrue(Arrays.equals(buf, buf2));
+        assertTrue(Arrays.equals(buf, buf2));
+      }
     }
   }
 
@@ -309,10 +369,15 @@ public class RetryHdfsBlockStoreImplTest {
 
     long pos = 0;
     int passes = 1000;
-    try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path)) {
+    HdfsBlockStoreImpl baseStore = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, path);
+    int blockSize = baseStore.getFileSystemBlockSize();
+    try (RetryBlockStore store = RetryBlockStore.wrap(baseStore)) {
       long s = System.nanoTime();
       for (int i = 0; i < passes; i++) {
-        int blockSize = store.getFileSystemBlockSize();
+        if (i == 201) {
+          restartCluster();
+        }
+
         pos += (random.nextInt(9) + 1) * blockSize;
         {
           byte[] buf = new byte[blockSize];
@@ -365,7 +430,6 @@ public class RetryHdfsBlockStoreImplTest {
     try (HdfsBlockStoreImpl store = new HdfsBlockStoreImpl(metrics, getCacheDir(), fileSystem, clonePath)) {
       long s = System.nanoTime();
       for (int i = 0; i < passes; i++) {
-        int blockSize = store.getFileSystemBlockSize();
         pos += (random.nextInt(9) + 1) * blockSize;
         {
           byte[] buf = new byte[blockSize];
