@@ -7,7 +7,9 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.Callable;
@@ -686,6 +688,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   }
 
   private void dropOldBlockFiles() throws IOException {
+    Set<Path> currentFiles = getCurrentFiles();
     List<Path> blockFiles = _blockFiles.get();
     for (Path path : blockFiles) {
       if (!_fileSystem.exists(path)) {
@@ -696,24 +699,36 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
       List<String> sourceBlockFiles = reader.getSourceBlockFiles();
       if (sourceBlockFiles != null) {
         LOGGER.debug("remove old source file {}", sourceBlockFiles);
-        removeBlockFiles(sourceBlockFiles);
+        removeBlockFiles(sourceBlockFiles, currentFiles);
       }
     }
   }
 
-  private void removeBlockFiles(List<String> sourceBlockFiles) throws IOException {
+  private Set<Path> getCurrentFiles() throws IOException {
+    Set<Path> files = new HashSet<>();
+    FileStatus[] listStatus = _fileSystem.listStatus(_blockPath);
+    if (listStatus != null) {
+      for (FileStatus fileStatus : listStatus) {
+        files.add(Utils.qualify(_fileSystem, fileStatus.getPath()));
+      }
+    }
+    return files;
+  }
+
+  private void removeBlockFiles(List<String> sourceBlockFiles, Set<Path> currentFiles) throws IOException {
     for (String name : sourceBlockFiles) {
       invalidateLocalCache(name);
       Path path = Utils.qualify(_fileSystem, new Path(_blockPath, name));
       if (!_blockFiles.get()
                       .contains(path)) {
+        LOGGER.debug("path {} does not exist. block files {}", path, _blockFiles.get());
         continue;
       }
       if (path.getName()
               .endsWith(HdfsBlockStoreConfig.BLOCK)
           && _fileSystem.exists(path)) {
         Reader reader = getReader(path);
-        removeBlockFiles(reader.getSourceBlockFiles());
+        removeBlockFiles(reader.getSourceBlockFiles(), currentFiles);
       }
       removeBlockFile(path);
     }

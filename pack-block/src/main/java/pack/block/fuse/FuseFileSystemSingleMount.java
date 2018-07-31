@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Paths;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.IOUtils;
 import org.slf4j.Logger;
@@ -23,12 +24,11 @@ import pack.block.blockstore.BlockStore;
 
 public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
-  private static final String SYNC = "sync";
-
   private static final Logger LOGGER = LoggerFactory.getLogger(FuseFileSystemSingleMount.class);
 
   public static final String BRICK = "brick";
   public static final String FUSE_PID = "fuse_pid";
+  private static final String SYNC = "sync";
   private static final String PARENT_DIR = "..";
   private static final String CURRENT_DIR = ".";
   private static final String FILE_SEP = "/";
@@ -37,20 +37,18 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   private static final String OPTION_SWITCH = "-o";
   private static final String AUTO_UNMOUNT = "auto_unmount";
   private static final String ALLOW_ROOT = "allow_root";
-  private final Logger _logger;
   private final String _localPath;
   private final BlockStore _blockStore;
   private final long _length;
   private final byte[] _pidContent;
 
   public FuseFileSystemSingleMount(String localPath, BlockStore blockStore) throws IOException {
-    _logger = LoggerFactory.getLogger(FuseFileSystemSingleMount.class);
     _localPath = localPath;
     _blockStore = blockStore;
     _length = blockStore.getLength();
-    _pidContent = ManagementFactory.getRuntimeMXBean()
-                                   .getName()
-                                   .getBytes();
+    _pidContent = (ManagementFactory.getRuntimeMXBean()
+                                    .getName()
+        + "\n").getBytes();
   }
 
   public void localMount() {
@@ -89,7 +87,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     try {
       lastModified = _blockStore.lastModified();
     } catch (Throwable t) {
-      _logger.error("Unknown error.", t);
+      LOGGER.error("Unknown error.", t);
       return -ErrorCodes.EIO();
     }
     stat.st_mtim.tv_sec.set(lastModified / 1000);
@@ -133,12 +131,14 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   public int read(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
     switch (path) {
     case BRICK_FILENAME:
-      try {
-        _logger.debug("read {} position {} length {}", path, offset, size);
-        return readBlockStore(_blockStore, buf, size, offset);
-      } catch (Throwable t) {
-        _logger.error("Unknown error.", t);
-        return -ErrorCodes.EIO();
+      while (true) {
+        try {
+          LOGGER.debug("read {} position {} length {}", path, offset, size);
+          return readBlockStore(_blockStore, buf, size, offset);
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error.", t);
+          sleep(TimeUnit.SECONDS.toMillis(3));
+        }
       }
     case FILE_SEP:
       return -ErrorCodes.EISDIR();
@@ -150,16 +150,26 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     }
   }
 
+  private void sleep(long millis) {
+    try {
+      Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+    } catch (InterruptedException e) {
+      LOGGER.error("Unknown error", e);
+    }
+  }
+
   @Override
   public int write(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
     switch (path) {
     case BRICK_FILENAME:
-      try {
-        _logger.debug("write {} position {} length {}", path, offset, size);
-        return writeBlockStore(_blockStore, buf, size, offset);
-      } catch (Throwable t) {
-        _logger.error("Unknown error.", t);
-        return -ErrorCodes.EIO();
+      while (true) {
+        try {
+          LOGGER.debug("write {} position {} length {}", path, offset, size);
+          return writeBlockStore(_blockStore, buf, size, offset);
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error.", t);
+          sleep(TimeUnit.SECONDS.toMillis(3));
+        }
       }
     case FILE_SEP:
       return -ErrorCodes.EISDIR();
@@ -172,20 +182,22 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int fsync(String path, int isdatasync, FuseFileInfo fi) {
-    _logger.debug("fsync {} {} {}", path, isdatasync, fi);
+    LOGGER.debug("fsync {} {} {}", path, isdatasync, fi);
     switch (path) {
     case BRICK_FILENAME:
-      try {
-        _blockStore.fsync();
-        return 0;
-      } catch (Throwable t) {
-        _logger.error("Unknown error.", t);
-        return -ErrorCodes.EIO();
+      while (true) {
+        try {
+          _blockStore.fsync();
+          return 0;
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error.", t);
+          sleep(TimeUnit.SECONDS.toMillis(3));
+        }
       }
     case FILE_SEP:
       return -ErrorCodes.EISDIR();
     case PID_FILENAME:
-      return -ErrorCodes.EIO();
+      return 0;
     default:
       return -ErrorCodes.ENOENT();
     }
@@ -193,17 +205,19 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int fallocate(String path, int mode, long off, long length, FuseFileInfo fi) {
-    _logger.debug("fallocate {} {} {} {} {}", path, mode, off, length, fi);
+    LOGGER.debug("fallocate {} {} {} {} {}", path, mode, off, length, fi);
     Set<FallocFlags> lookup = FallocFlags.lookup(mode);
     switch (path) {
     case BRICK_FILENAME:
       if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) && lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
-        try {
-          _blockStore.delete(off, length);
-          return 0;
-        } catch (Throwable t) {
-          _logger.error("Unknown error.", t);
-          return -ErrorCodes.EIO();
+        while (true) {
+          try {
+            _blockStore.delete(off, length);
+            return 0;
+          } catch (Throwable t) {
+            LOGGER.error("Unknown error.", t);
+            sleep(TimeUnit.SECONDS.toMillis(3));
+          }
         }
       } else {
         return -ErrorCodes.EOPNOTSUPP();
@@ -219,19 +233,19 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int open(String path, FuseFileInfo fi) {
-    _logger.debug("open {} {}", path, fi);
+    LOGGER.debug("open {} {}", path, fi);
     return 0;
   }
 
   @Override
   public int release(String path, FuseFileInfo fi) {
-    _logger.debug("release {} {}", path, fi);
+    LOGGER.debug("release {} {}", path, fi);
     return fsync(path, 0, fi);
   }
 
   @Override
   public int flush(String path, FuseFileInfo fi) {
-    _logger.debug("flush {} {}", path, fi);
+    LOGGER.debug("flush {} {}", path, fi);
     return fsync(path, 0, fi);
   }
 
