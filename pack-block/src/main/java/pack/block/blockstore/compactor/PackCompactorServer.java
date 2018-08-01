@@ -16,7 +16,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ShutdownHookManager;
-import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,12 +33,11 @@ public class PackCompactorServer implements Closeable {
   private static final Logger LOGGER = LoggerFactory.getLogger(PackCompactorServer.class);
 
   private static final String COMPACTION_LOCK = "compaction-lock";
-  private static final String LOCKS = "locks";
   private static final String COMPACTION_THREAD = "compaction-thread";
   private static final String CONVERTER_THREAD = "converter-thread";
   private static final String CACHE = "compaction-cache";
 
-  public static void main(String[] args) throws IOException, InterruptedException, KeeperException {
+  public static void main(String[] args) throws IOException, InterruptedException {
     Utils.setupLog4j();
 
     String hdfsPath = Utils.getHdfsPath();
@@ -133,13 +131,13 @@ public class PackCompactorServer implements Closeable {
     _closer.close();
   }
 
-  public void executeConverter() throws IOException, KeeperException, InterruptedException {
+  public void executeConverter() throws IOException, InterruptedException {
     for (Path path : _pathList) {
       executeConverter(path);
     }
   }
 
-  public void executeConverter(Path root) throws IOException, KeeperException, InterruptedException {
+  public void executeConverter(Path root) throws IOException, InterruptedException {
     FileSystem fileSystem = root.getFileSystem(_configuration);
     FileStatus[] listStatus = order(fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
@@ -157,26 +155,27 @@ public class PackCompactorServer implements Closeable {
     return listStatus;
   }
 
-  private void executeConverterVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
+  private void executeConverterVolume(Path volumePath) throws IOException, InterruptedException {
     FileSystem fileSystem = volumePath.getFileSystem(_configuration);
     HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
+      Utils.dropVolume(volumePath, fileSystem);
       return;
     }
-    Path lockDir = new Path(volumePath, LOCKS);
+
     try (WalToBlockFileConverter converter = new WalToBlockFileConverter(_cacheDir, fileSystem, volumePath, metaData,
-        lockDir)) {
+        true)) {
       converter.runConverter();
     }
   }
 
-  public void executeCompaction() throws IOException, KeeperException, InterruptedException {
+  public void executeCompaction() throws IOException, InterruptedException {
     for (Path path : _pathList) {
       executeCompaction(path);
     }
   }
 
-  public void executeCompaction(Path root) throws IOException, KeeperException, InterruptedException {
+  public void executeCompaction(Path root) throws IOException, InterruptedException {
     FileSystem fileSystem = root.getFileSystem(_configuration);
     FileStatus[] listStatus = order(fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
@@ -188,22 +187,19 @@ public class PackCompactorServer implements Closeable {
     }
   }
 
-  private void executeCompactionVolume(Path volumePath) throws IOException, KeeperException, InterruptedException {
+  private void executeCompactionVolume(Path volumePath) throws IOException, InterruptedException {
     FileSystem fileSystem = volumePath.getFileSystem(_configuration);
-    Path lockDir = new Path(volumePath, LOCKS);
-    Path lockPath = new Path(lockDir, COMPACTION_LOCK);
-    LockLostAction lockLostAction = new LockLostAction() {
-      @Override
-      public void lost() {
-        LOGGER.error("Compaction lock lost for volume {}", volumePath);
-      }
+    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+    if (metaData == null) {
+      Utils.dropVolume(volumePath, fileSystem);
+      return;
+    }
+    Path lockPath = Utils.getLockPathForVolume(volumePath, COMPACTION_LOCK);
+    LockLostAction lockLostAction = () -> {
+      LOGGER.error("Compaction lock lost for volume {}", volumePath);
     };
     try (HdfsLock lock = new HdfsLock(_configuration, lockPath, lockLostAction)) {
       if (lock.tryToLock()) {
-        HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
-        if (metaData == null) {
-          return;
-        }
         try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, volumePath, metaData)) {
           compactor.runCompaction(lock);
         }

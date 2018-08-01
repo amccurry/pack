@@ -55,9 +55,6 @@ import pack.block.util.Utils;
 
 public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
-  private static final String WAL_TMP = ".waltmp";
-  private static final String WAL = ".wal";
-
   private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreImpl.class);
 
   private static final String READ_METER = "readMeter";
@@ -65,6 +62,9 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   private static final String READ_TIMER = "readTimer";
   private static final String WRITE_TIMER = "writeTimer";
   private static final BytesWritable EMPTY_BLOCK = new BytesWritable();
+  private static final String WAL_TMP = ".waltmp";
+  private static final String WAL = ".wal";
+  private static final String BLOCK = ".block";
 
   private final FileSystem _fileSystem;
   private final Path _path;
@@ -274,9 +274,13 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     return new Path(path.getParent(), name.substring(0, lastIndexOf) + ext);
   }
 
-  private boolean shouldTryToPullWal(Path path) {
-    return path.getName()
-               .endsWith(WAL);
+  private boolean shouldTryToPullWal(Path path) throws IOException {
+    if (path.getName()
+            .endsWith(WAL)) {
+      // Check if a block already exists for this wal file
+      return !_fileSystem.exists(newExtPath(path, BLOCK));
+    }
+    return false;
   }
 
   private void recoverBlock(Path src) throws IOException {
@@ -719,9 +723,8 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     for (String name : sourceBlockFiles) {
       invalidateLocalCache(name);
       Path path = Utils.qualify(_fileSystem, new Path(_blockPath, name));
-      if (!_blockFiles.get()
-                      .contains(path)) {
-        LOGGER.debug("path {} does not exist. block files {}", path, _blockFiles.get());
+      if (!currentFiles.contains(path)) {
+        LOGGER.debug("path {} does not exist. block files {}", path, currentFiles);
         continue;
       }
       if (path.getName()

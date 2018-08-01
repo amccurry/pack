@@ -33,6 +33,8 @@ import pack.block.util.Utils;
 public class HdfsLock implements Closeable, OwnerCheck {
 
   private static final String ALREADY_BEING_CREATED_EXCEPTION = "org.apache.hadoop.hdfs.protocol.AlreadyBeingCreatedException";
+  private static final String RECOVERY_IN_PRPGRESS_EXCEPTION = "org.apache.hadoop.hdfs.protocol.RecoveryInProgressException";
+
   private final Logger LOG = LoggerFactory.getLogger(HdfsLock.class);
 
   public static void main(String[] args) throws Exception {
@@ -119,7 +121,7 @@ public class HdfsLock implements Closeable, OwnerCheck {
       return;
     }
     if (isLockOwner()) {
-      LOG.info("keep alive {}", _path);
+      LOG.debug("keep alive {}", _path);
       writeDataForKeepAlive();
     } else {
       _lockLost.set(true);
@@ -148,6 +150,10 @@ public class HdfsLock implements Closeable, OwnerCheck {
       } catch (RemoteException e) {
         switch (e.getClassName()) {
         case ALREADY_BEING_CREATED_EXCEPTION: {
+          LOG.info("Path {} already locked", _path);
+          return false;
+        }
+        case RECOVERY_IN_PRPGRESS_EXCEPTION: {
           LOG.info("Path {} already locked", _path);
           return false;
         }

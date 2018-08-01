@@ -222,8 +222,10 @@ public class BlockPackStorage implements PackStorage {
     FileStatus[] listStatus = fileSystem.listStatus(_root);
     List<String> result = new ArrayList<>();
     for (FileStatus fileStatus : listStatus) {
-      result.add(fileStatus.getPath()
-                           .getName());
+      Path path = fileStatus.getPath();
+      if (HdfsBlockStoreAdmin.hasMetaData(fileSystem, path)) {
+        result.add(path.getName());
+      }
     }
     return result;
   }
@@ -231,7 +233,7 @@ public class BlockPackStorage implements PackStorage {
   protected boolean existsVolume(String volumeName) throws IOException {
     LOGGER.info("exists {}", volumeName);
     FileSystem fileSystem = getFileSystem(_root);
-    return fileSystem.exists(getVolumePath(volumeName));
+    return HdfsBlockStoreAdmin.hasMetaData(fileSystem, getVolumePath(volumeName));
   }
 
   protected void createVolume(String volumeName, Map<String, Object> options) throws IOException {
@@ -272,15 +274,8 @@ public class BlockPackStorage implements PackStorage {
   protected void removeVolume(String volumeName) throws IOException {
     LOGGER.info("Remove Volume {}", volumeName);
     Path volumePath = getVolumePath(volumeName);
-
     FileSystem fileSystem = getFileSystem(volumePath);
-    try {
-      HdfsSnapshotUtil.removeAllSnapshots(fileSystem, volumePath);
-      HdfsSnapshotUtil.disableSnapshots(fileSystem, volumePath);
-    } catch (InterruptedException e) {
-      throw new IOException(e);
-    }
-    fileSystem.delete(volumePath, true);
+    Utils.dropVolume(volumePath, fileSystem);
   }
 
   protected String mountVolume(String volumeName, String id, boolean deviceOnly)

@@ -3,9 +3,16 @@ package pack.block.server;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.security.PrivilegedExceptionAction;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
@@ -13,8 +20,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ShutdownHookManager;
 import org.apache.zookeeper.KeeperException;
@@ -29,12 +38,13 @@ import com.google.common.io.Closer;
 import pack.PackServer.Result;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.lock.HdfsLock;
+import pack.block.blockstore.hdfs.lock.LockLostAction;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.admin.BlockPackAdmin;
-import pack.block.server.admin.BlockPackAdminServer;
 import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
 import pack.block.server.admin.client.NoFileException;
@@ -48,6 +58,9 @@ import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackFuse implements Closeable {
 
+  private static final String LOG = ".log";
+  private static final String YYYY_MM_DD_HH_MM_SS = "yyyy.MM.dd-HH.mm.ss";
+
   private static <T extends Closeable> T autoClose(T t, int priority) {
     ShutdownHookManager.get()
                        .addShutdownHook(() -> {
@@ -57,6 +70,7 @@ public class BlockPackFuse implements Closeable {
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuse.class);
+  private static final Logger STATUS_LOGGER = LoggerFactory.getLogger("STATUS");
 
   private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
   private static final String MOUNT_ZK = "/mount";
@@ -71,7 +85,6 @@ public class BlockPackFuse implements Closeable {
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final int AUTO_UMOUNT_PRIORITY = 10000;
   private static final int FUSE_CLOSE_PRIORITY = 9000;
-  // private static final AtomicBoolean RUNNING = new AtomicBoolean(true);
 
   public static void main(String[] args) throws Exception {
     try {
@@ -79,10 +92,21 @@ public class BlockPackFuse implements Closeable {
       LOGGER.info("log4j setup");
       Configuration conf = getConfig();
       LOGGER.info("hdfs config read");
+      UserGroupInformation ugi = Utils.getUserGroupInformation();
+      LOGGER.info("hdfs ugi created");
 
       BlockPackFuseConfig blockPackFuseConfig = MAPPER.readValue(new File(args[0]), BlockPackFuseConfig.class);
       Path path = new Path(blockPackFuseConfig.getHdfsVolumePath());
-      String unixSock = blockPackFuseConfig.getUnixSock();
+
+      ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+        FileSystem fileSystem = path.getFileSystem(conf);
+        Path logDirPath = new Path(path, "log");
+        Path logPath = new Path(logDirPath, getHdfsLogName());
+        Utils.setupHdfsLogger(fileSystem, logPath);
+        cleanupOldLogFiles(fileSystem, logDirPath, Utils.getMaxHdfsLogFiles());
+        LOGGER.info("hdfs logger setup");
+        return null;
+      });
 
       HdfsSnapshotStrategy strategy = getHdfsSnapshotStrategy();
 
@@ -90,8 +114,6 @@ public class BlockPackFuse implements Closeable {
 
       HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
 
-      UserGroupInformation ugi = Utils.getUserGroupInformation();
-      LOGGER.info("hdfs ugi created");
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
         FileSystem fileSystem = path.getFileSystem(conf);
 
@@ -102,8 +124,7 @@ public class BlockPackFuse implements Closeable {
         HdfsSnapshotUtil.createSnapshot(fileSystem, path, HdfsSnapshotUtil.getMountSnapshotName(strategy));
         LOGGER.info("hdfs snapshot created");
         try (Closer closer = autoClose(Closer.create(), FUSE_CLOSE_PRIORITY)) {
-          LOGGER.info("Using {} as unix domain socket", unixSock);
-          BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdminServer.startAdminServer(unixSock));
+          BlockPackAdmin blockPackAdmin = closer.register(BlockPackAdmin.getLoggerInstance(STATUS_LOGGER));
           LOGGER.info("admin server started");
           blockPackAdmin.setStatus(Status.INITIALIZATION);
           BlockPackFuseConfigInternalBuilder builder = BlockPackFuseConfigInternal.builder();
@@ -116,15 +137,8 @@ public class BlockPackFuse implements Closeable {
                                                           .build();
 
           BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
-          // closer.register((Closeable) () -> {
-          // RUNNING.set(false);
-          // });
           LOGGER.info("block pack fuse created");
           blockPackFuse.mount();
-          // blockPackFuse.mount(false);
-          // while (RUNNING.get()) {
-          // Thread.sleep(TimeUnit.SECONDS.toMillis(10));
-          // }
         }
         return null;
       });
@@ -133,6 +147,38 @@ public class BlockPackFuse implements Closeable {
       e.printStackTrace();
       System.exit(1);
     }
+  }
+
+  private static void cleanupOldLogFiles(FileSystem fileSystem, Path logDirPath, int max)
+      throws FileNotFoundException, IOException {
+    String hostName = InetAddress.getLocalHost()
+                                 .getHostName();
+    FileStatus[] listStatus = fileSystem.listStatus(logDirPath, (PathFilter) path -> {
+      String name = path.getName();
+      return name.startsWith(hostName + "-") && name.endsWith(LOG);
+    });
+
+    List<Path> list = new ArrayList<>();
+    for (FileStatus fileStatus : listStatus) {
+      list.add(fileStatus.getPath());
+    }
+
+    Collections.sort(list, (o1, o2) -> o2.getName()
+                                         .compareTo(o1.getName()));
+
+    for (int i = max; i < list.size(); i++) {
+      Path path = list.get(i);
+      LOGGER.info("removing old hdfs log file {}", path);
+      fileSystem.delete(path, false);
+    }
+  }
+
+  private static String getHdfsLogName() throws IOException {
+    String hostName = InetAddress.getLocalHost()
+                                 .getHostName();
+    SimpleDateFormat format = new SimpleDateFormat(YYYY_MM_DD_HH_MM_SS);
+    String ts = format.format(new Date());
+    return hostName + "-" + ts + LOG;
   }
 
   private static void addAutoUmount(String fuseMountLocation) {
@@ -175,7 +221,7 @@ public class BlockPackFuse implements Closeable {
   private final Closer _closer;
   private final Thread _fuseMountThread;
   private final AtomicBoolean _closed = new AtomicBoolean(true);
-  private final ZooKeeperLockManager _lockManager;
+  // private final ZooKeeperLockManager _lockManager;
   private final Path _path;
   private final MetricRegistry _registry = new MetricRegistry();
   private final CsvReporter _reporter;
@@ -185,32 +231,44 @@ public class BlockPackFuse implements Closeable {
   private final String _volumeName;
   private final long _period;
   private final boolean _countDockerDownAsMissing;
-  private final ZooKeeperClientFactory _zk;
+  // private final ZooKeeperClientFactory _zk;
+  private final HdfsLock _lock;
 
   public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
     BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
-    String zkConnectionString = blockPackFuseConfig.getZkConnection();
-    int zkSessionTimeout = blockPackFuseConfig.getZkTimeout();
-    _zk = ZkUtils.newZooKeeperClientFactory(zkConnectionString, zkSessionTimeout);
+    // String zkConnectionString = blockPackFuseConfig.getZkConnection();
+    // int zkSessionTimeout = blockPackFuseConfig.getZkTimeout();
+    // _zk = ZkUtils.newZooKeeperClientFactory(zkConnectionString,
+    // zkSessionTimeout);
     _countDockerDownAsMissing = blockPackFuseConfig.isCountDockerDownAsMissing();
     _period = blockPackFuseConfig.getVolumeMissingPollingPeriod();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
     _path = packFuseConfig.getPath();
-    _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating ZK Lock Manager");
-    LOGGER.info("trying to obtain lock");
-    _lockManager = createLockmanager(_zk, packFuseConfig.getPath()
-                                                        .getName());
-    boolean lock = _lockManager.tryToLock(Utils.getLockName(_path));
+    _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating Lock Manager");
+    // LOGGER.info("trying to obtain lock");
+    // _lockManager = createLockmanager(_zk, packFuseConfig.getPath()
+    // .getName());
+    // boolean lock = _lockManager.tryToLock(Utils.getLockName(_path));
+
+    Path lockPath = Utils.getLockPathForVolume(_path, "mount");
+    LockLostAction lockLostAction = () -> {
+      LOGGER.error("Mount lock lost for volume {}", _path);
+      System.exit(0);
+    };
+    Configuration conf = packFuseConfig.getFileSystem()
+                                       .getConf();
+    _closer = Closer.create();
+    _lock = _closer.register(new HdfsLock(conf, lockPath, lockLostAction));
+    boolean lock = _lock.tryToLock();
 
     if (!lock) {
       for (int i = 0; i < 60 && !lock; i++) {
         Thread.sleep(TimeUnit.SECONDS.toMillis(1));
         LOGGER.info("trying to lock volume {}", _path);
-        lock = _lockManager.tryToLock(Utils.getLockName(_path));
+        lock = _lock.tryToLock();
       }
     }
     if (lock) {
-      _closer = Closer.create();
       LOGGER.info("setting up metrics");
       File metricsDir = new File(blockPackFuseConfig.getFsMetricsLocation());
       metricsDir.mkdirs();
@@ -253,15 +311,16 @@ public class BlockPackFuse implements Closeable {
     LOGGER.info("close");
     synchronized (_closed) {
       if (!_closed.get()) {
-        runQuietly(() -> _closer.close());
         _fuseMountThread.interrupt();
+        runQuietly(() -> _closer.close());
         runQuietly(() -> _fuseMountThread.join());
-        try {
-          _lockManager.unlock(Utils.getLockName(_path));
-        } catch (IOException | InterruptedException | KeeperException e) {
-          LOGGER.debug("If zookeeper is closed already this node it cleaned up automatically.", e);
-        }
-        runQuietly(() -> _zk.close());
+        // try {
+        // _lockManager.unlock(Utils.getLockName(_path));
+        // } catch (IOException | InterruptedException | KeeperException e) {
+        // LOGGER.debug("If zookeeper is closed already this node it cleaned up
+        // automatically.", e);
+        // }
+        // runQuietly(() -> _zk.close());
         _closed.set(true);
       }
     }

@@ -35,9 +35,6 @@ import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
 import pack.block.blockstore.hdfs.lock.OwnerCheck;
-import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClientFactory;
-import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockFileCompactor implements Closeable {
 
@@ -47,13 +44,11 @@ public class BlockFileCompactor implements Closeable {
   private static final String MERGE = "0_merge";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
-  private static final String COMPACTION = "/compaction";
 
   private final Path _blockPath;
   private final FileSystem _fileSystem;
   private final long _maxBlockFileSize;
   private final Cache<Path, Reader> _readerCache;
-  // private final String _lockName;
   private final double _maxObsoleteRatio;
   private final String _nodePrefix;
 
@@ -63,7 +58,6 @@ public class BlockFileCompactor implements Closeable {
     _maxBlockFileSize = metaData.getMaxBlockFileSize();
     _maxObsoleteRatio = metaData.getMaxObsoleteRatio();
     _fileSystem = fileSystem;
-    // _lockName = Utils.getLockName(path);
     _blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
     cleanupBlocks();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());

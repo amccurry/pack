@@ -192,8 +192,10 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
         try {
           FSDataOutputStream output = getOutputStream();
           long pos = output.getPos();
-          LOGGER.info("Last flush {} ago: Last flush pos {} last flush time {}", now - lft, lf, lft);
-          output.hflush();
+          if (lf != pos) {
+            LOGGER.info("Last flush {} ago: Last flush pos {} last flush time {}", now - lft, lf, lft);
+            output.hflush();
+          }
           _lastFlush.set(pos);
           _lastFlushTime.set(System.nanoTime());
         } catch (IOException e) {

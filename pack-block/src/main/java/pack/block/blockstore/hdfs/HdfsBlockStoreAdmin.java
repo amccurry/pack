@@ -63,6 +63,10 @@ public class HdfsBlockStoreAdmin {
     return false;
   }
 
+  public static boolean hasMetaData(FileSystem fileSystem, Path volumePath) throws IOException {
+    return fileSystem.exists(new Path(volumePath, METADATA));
+  }
+
   public static void clonePath(FileSystem fileSystem, Path srcPath, Path volumePath, boolean symlinkClone)
       throws IOException {
     if (srcPath == null) {

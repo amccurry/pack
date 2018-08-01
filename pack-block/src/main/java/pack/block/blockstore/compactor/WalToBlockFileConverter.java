@@ -16,7 +16,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
-import org.apache.zookeeper.KeeperException;
 import org.roaringbitmap.IntConsumer;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
@@ -38,13 +37,13 @@ import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.lock.HdfsLock;
+import pack.block.blockstore.hdfs.lock.LockLostAction;
 import pack.block.util.Utils;
 
 public class WalToBlockFileConverter implements Closeable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WalToBlockFileConverter.class);
 
-  // private static final String CONVERTER = "/converter";
   private static final String CONVERT = "0_convert";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
@@ -56,18 +55,20 @@ public class WalToBlockFileConverter implements Closeable {
   private final File _cacheDir;
   private final WalFileFactory _walFactory;
   private final String _nodePrefix;
-  private final Path _lockDir;
+  private final Path _volumePath;
+  private final boolean _useLock;
 
-  public WalToBlockFileConverter(File cacheDir, FileSystem fileSystem, Path path, HdfsMetaData metaData, Path lockDir)
-      throws IOException {
-    _lockDir = lockDir;
+  public WalToBlockFileConverter(File cacheDir, FileSystem fileSystem, Path volumePath, HdfsMetaData metaData,
+      boolean useLock) throws IOException {
+    _useLock = useLock;
     _nodePrefix = InetAddress.getLocalHost()
                              .getHostName();
     _cacheDir = cacheDir;
     _length = metaData.getLength();
     _blockSize = metaData.getFileSystemBlockSize();
     _fileSystem = fileSystem;
-    _blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
+    _volumePath = volumePath;
+    _blockPath = new Path(volumePath, HdfsBlockStoreConfig.BLOCK);
     _walFactory = WalFileFactory.create(_fileSystem, metaData);
     cleanupOldFiles();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
@@ -81,7 +82,7 @@ public class WalToBlockFileConverter implements Closeable {
     _readerCache.invalidateAll();
   }
 
-  public void runConverter() throws IOException, KeeperException, InterruptedException {
+  public void runConverter() throws IOException, InterruptedException {
     if (!_fileSystem.exists(_blockPath)) {
       LOGGER.info("Path {} does not exist, exiting", _blockPath);
       return;
@@ -89,16 +90,19 @@ public class WalToBlockFileConverter implements Closeable {
     convertWalFiles();
   }
 
-  private void convertWalFiles() throws IOException, KeeperException, InterruptedException {
+  private void convertWalFiles() throws IOException, InterruptedException {
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) path -> path.getName()
                                                                                           .endsWith(".wal"));
     for (FileStatus fileStatus : listStatus) {
       // add logging and check on wal file....
       Path walPath = fileStatus.getPath();
 
-      if (_lockDir != null) {
-        Path path = new Path(_lockDir, walPath.getName());
-        try (HdfsLock lock = new HdfsLock(_fileSystem.getConf(), path, () -> LOGGER.error("Lock lost {}", path))) {
+      if (_useLock) {
+        Path path = Utils.getLockPathForVolume(_volumePath, walPath.getName());
+        LockLostAction lockLostAction = () -> {
+          LOGGER.error("Lock lost for wal {}", path);
+        };
+        try (HdfsLock lock = new HdfsLock(_fileSystem.getConf(), path, lockLostAction)) {
           if (lock.tryToLock()) {
             convertWalFile(walPath);
           } else {

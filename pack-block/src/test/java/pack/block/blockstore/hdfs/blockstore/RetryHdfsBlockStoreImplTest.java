@@ -193,7 +193,7 @@ public class RetryHdfsBlockStoreImplTest {
                                        .build();
 
     try (WalToBlockFileConverter converter = new WalToBlockFileConverter(new File(storePathDir, "cache"), fileSystem,
-        path, newMetaData, null);) {
+        path, newMetaData, false)) {
       converter.runConverter();
     }
 
@@ -405,7 +405,7 @@ public class RetryHdfsBlockStoreImplTest {
       }
     }
     try (WalToBlockFileConverter converter = new WalToBlockFileConverter(getCacheDir(), fileSystem, path, metaData,
-        null)) {
+        false)) {
       converter.runConverter();
     }
     {

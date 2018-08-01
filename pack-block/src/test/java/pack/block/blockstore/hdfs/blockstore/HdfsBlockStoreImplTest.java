@@ -121,7 +121,7 @@ public class HdfsBlockStoreImplTest {
                                        .build();
 
     try (WalToBlockFileConverter converter = new WalToBlockFileConverter(new File(storePathDir, "cache"), fileSystem,
-        path, newMetaData, null);) {
+        path, newMetaData, false)) {
       converter.runConverter();
     }
 
@@ -310,7 +310,7 @@ public class HdfsBlockStoreImplTest {
       }
     }
     try (WalToBlockFileConverter converter = new WalToBlockFileConverter(getCacheDir(), fileSystem, path, metaData,
-        null)) {
+        false)) {
       converter.runConverter();
     }
     {
