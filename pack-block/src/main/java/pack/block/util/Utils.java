@@ -13,10 +13,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.log4j.PatternLayout;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
@@ -27,12 +29,21 @@ import com.google.common.base.Splitter;
 
 import pack.PackServer;
 import pack.PackServer.Result;
+import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.server.BlockPackFuse;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClientFactory;
 import sun.misc.Unsafe;
 
 public class Utils {
+
+  private static final int PACK_HDFS_LOGGER_MAX_FILES_DEFAULT = 5;
+
+  private static final String PACK_HDFS_LOGGER_MAX_FILES = "PACK_HDFS_LOGGER_MAX_FILES";
+
+  private static final String PACK_HDFS_LOGGER_LOG4J_PATTERN = "PACK_HDFS_LOGGER_LOG4J_PATTERN";
+
+  private static final String PACK_HDFS_LOGGER_LOG4J_PATTERN_DEFAULT = "%-5p %d{yyyyMMdd_HH:mm:ss:SSS_z} [%t] %c{2}: %m%n";
 
   private static final String THE_UNSAFE = "theUnsafe";
 
@@ -72,6 +83,7 @@ public class Utils {
   public static final long PACK_VOLUME_MISSING_POLLING_PERIOD_DEFAULT = TimeUnit.SECONDS.toMillis(2);
   public static final int PACK_NUMBER_OF_MOUNT_SNAPSHOTS_DEFAULT = 5;
 
+  private static final String LOCK = "lock";
   private static final Splitter SPACE_SPLITTER = Splitter.on(' ');
   private static final String LS = "ls";
   private static final String ALLOCATED_SIZE_SWITCH = "-s";
@@ -116,6 +128,22 @@ public class Utils {
     } else {
       PropertyConfigurator.configure(log4jConfigFile);
     }
+  }
+
+  public static void setupHdfsLogger(FileSystem fileSystem, Path logPath) throws IOException {
+    org.apache.log4j.Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
+    PatternLayout layout = new PatternLayout(getHdfsLog4jPattern());
+    fileSystem.mkdirs(logPath.getParent());
+    FSDataOutputStream outputStream = fileSystem.create(logPath);
+    rootLogger.addAppender(new HdfsAppender(layout, outputStream));
+  }
+
+  private static String getHdfsLog4jPattern() {
+    String pattern = getProperty(PACK_HDFS_LOGGER_LOG4J_PATTERN);
+    if (pattern == null) {
+      return PACK_HDFS_LOGGER_LOG4J_PATTERN_DEFAULT;
+    }
+    return pattern;
   }
 
   public synchronized static UserGroupInformation getUserGroupInformation() throws IOException {
@@ -472,6 +500,29 @@ public class Utils {
     java.lang.reflect.Field singleoneInstanceField = Unsafe.class.getDeclaredField(THE_UNSAFE);
     singleoneInstanceField.setAccessible(true);
     return (Unsafe) singleoneInstanceField.get(null);
+  }
+
+  public static void dropVolume(Path volumePath, FileSystem fileSystem) throws IOException {
+    try {
+      HdfsSnapshotUtil.removeAllSnapshots(fileSystem, volumePath);
+      HdfsSnapshotUtil.disableSnapshots(fileSystem, volumePath);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
+    fileSystem.delete(volumePath, true);
+  }
+
+  public static Path getLockPathForVolume(Path volumePath, String name) {
+    Path lockDir = new Path(volumePath, LOCK);
+    return new Path(lockDir, name);
+  }
+
+  public static int getMaxHdfsLogFiles() {
+    String count = getProperty(PACK_HDFS_LOGGER_MAX_FILES);
+    if (count == null) {
+      return PACK_HDFS_LOGGER_MAX_FILES_DEFAULT;
+    }
+    return Integer.parseInt(count);
   }
 
 }
