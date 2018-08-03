@@ -39,18 +39,8 @@ public class BlockPackServer extends PackServer {
     LOGGER.info("localLogDir {}", localLogDir);
     Path remotePath = new Path(Utils.getHdfsPath());
     LOGGER.info("remotePath {}", remotePath);
-    String zkConnectionString = Utils.getZooKeeperConnectionString();
-    LOGGER.info("zkConnectionString {}", zkConnectionString);
-    int sessionTimeout = Utils.getZooKeeperConnectionTimeout();
-    LOGGER.info("sessionTimeout {}", sessionTimeout);
     int numberOfMountSnapshots = Utils.getNumberOfMountSnapshots();
     LOGGER.info("numberOfMountSnapshots {}", numberOfMountSnapshots);
-    long volumeMissingPollingPeriod = Utils.getVolumeMissingPollingPeriod();
-    LOGGER.info("volumeMissingPollingPeriod {}", volumeMissingPollingPeriod);
-    int volumeMissingCountBeforeAutoShutdown = Utils.getVolumeMissingCountBeforeAutoShutdown();
-    LOGGER.info("volumeMissingCountBeforeAutoShutdown {}", volumeMissingCountBeforeAutoShutdown);
-    boolean countDockerDownAsMissing = Utils.getCountDockerDownAsMissing();
-    LOGGER.info("countDockerDownAsMissing {}", countDockerDownAsMissing);
     boolean nohupProcess = Utils.getNohupProcess();
     LOGGER.info("nohupProcess {}", nohupProcess);
     HdfsSnapshotStrategy strategy = getStrategy();
@@ -59,8 +49,7 @@ public class BlockPackServer extends PackServer {
     String sockerFile = RUN_DOCKER_PLUGINS + "/pack.sock";
 
     BlockPackServer packServer = new BlockPackServer(Utils.isGlobalScope(), sockerFile, localWorkingDir, localLogDir,
-        remotePath, zkConnectionString, sessionTimeout, numberOfMountSnapshots, volumeMissingPollingPeriod,
-        volumeMissingCountBeforeAutoShutdown, countDockerDownAsMissing, nohupProcess, strategy);
+        remotePath, numberOfMountSnapshots, nohupProcess, strategy);
     packServer.runServer();
   }
 
@@ -79,31 +68,19 @@ public class BlockPackServer extends PackServer {
   private final File _localLogDir;
   private final Path _remotePath;
   private final Configuration configuration = new Configuration();
-  private final String _zkConnection;
-  private final int _zkTimeout;
   private final int _numberOfMountSnapshots;
-  private final long _volumeMissingPollingPeriod;
-  private final int _volumeMissingCountBeforeAutoShutdown;
-  private final boolean _countDockerDownAsMissing;
   private final boolean _nohupProcess;
   private final HdfsSnapshotStrategy _strategy;
 
   public BlockPackServer(boolean global, String sockFile, File localWorkingDir, File localLogDir, Path remotePath,
-      String zkConnection, int zkTimeout, int numberOfMountSnapshots, long volumeMissingPollingPeriod,
-      int volumeMissingCountBeforeAutoShutdown, boolean countDockerDownAsMissing, boolean nohupProcess,
-      HdfsSnapshotStrategy strategy) {
+      int numberOfMountSnapshots, boolean nohupProcess, HdfsSnapshotStrategy strategy) {
     super(global, sockFile);
     _strategy = strategy;
     _nohupProcess = nohupProcess;
     _numberOfMountSnapshots = numberOfMountSnapshots;
-    _volumeMissingPollingPeriod = volumeMissingPollingPeriod;
-    _volumeMissingCountBeforeAutoShutdown = volumeMissingCountBeforeAutoShutdown;
-    _countDockerDownAsMissing = countDockerDownAsMissing;
     _localWorkingDir = localWorkingDir;
     _localLogDir = localLogDir;
     _remotePath = remotePath;
-    _zkConnection = zkConnection;
-    _zkTimeout = zkTimeout;
     localWorkingDir.mkdirs();
     localLogDir.mkdirs();
   }
@@ -113,15 +90,10 @@ public class BlockPackServer extends PackServer {
     BlockPackStorageConfigBuilder builder = BlockPackStorageConfig.builder();
     builder.configuration(configuration)
            .remotePath(_remotePath)
-           .zkConnection(_zkConnection)
-           .zkTimeout(_zkTimeout)
            .logDir(_localLogDir)
            .workingDir(_localWorkingDir)
            .numberOfMountSnapshots(_numberOfMountSnapshots)
-           .volumeMissingPollingPeriod(_volumeMissingPollingPeriod)
            .nohupProcess(_nohupProcess)
-           .countDockerDownAsMissing(_countDockerDownAsMissing)
-           .volumeMissingCountBeforeAutoShutdown(_volumeMissingCountBeforeAutoShutdown)
            .strategy(_strategy)
            .service(service)
            .build();

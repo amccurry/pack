@@ -2,14 +2,19 @@ package pack.block.server;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileFilter;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.security.PrivilegedExceptionAction;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -22,22 +27,22 @@ import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Closer;
 
 import pack.PackServer;
+import pack.PackServer.Result;
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.fuse.FuseFileSystemSingleMount;
-import pack.block.server.admin.Status;
-import pack.block.server.admin.client.BlockPackAdminClient;
-import pack.block.server.admin.client.ConnectionRefusedException;
-import pack.block.server.admin.client.NoFileException;
 import pack.block.server.fs.LinuxFileSystem;
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfig.BlockPackFuseConfigBuilder;
@@ -50,7 +55,13 @@ import spark.Service;
 
 public class BlockPackStorage implements PackStorage {
 
-  private static final String CONFIG_JSON = "config.json";
+  private static final String LOCKED = "locked";
+
+  private static final String UNLOCKED = "unlocked";
+
+  private static final String BRICK = "brick";
+
+  private static final String VOLUMES = "volumes";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
@@ -59,25 +70,33 @@ public class BlockPackStorage implements PackStorage {
   public static final String CLONE_PATH = "clonePath";
   public static final String SYMLINK_CLONE = "symlinkClone";
   public static final String MOUNT_COUNT = "mountCount";
-  public static final String MOUNT = "/mount";
+  public static final String MOUNT = "mount";
   public static final String METRICS = "metrics";
   public static final String SUDO = "sudo";
   public static final String SYNC = "sync";
+  public static final String CONFIG_JSON = "config.json";
+  private static final String FS = "fs";
+  private static final String DEV = "dev";
+  private static final String SHUTDOWN = "shutdown";
+  private static final String Q = "-q";
+  private static final String NO_TRUNC = "--no-trunc";
+  private static final String PS = "ps";
+  private static final String DOCKER = "docker";
+  private static final long MAX_AGE = TimeUnit.MINUTES.toMillis(5);
 
   protected final Configuration _configuration;
   protected final Path _root;
   protected final File _localLogDir;
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
-  protected final String _zkConnection;
-  protected final int _zkTimeout;
   protected final int _numberOfMountSnapshots;
-  protected final long _volumeMissingPollingPeriod;
-  protected final int _volumeMissingCountBeforeAutoShutdown;
-  protected final boolean _countDockerDownAsMissing;
   protected final boolean _nohupProcess;
   protected final File _workingDir;
   protected final HdfsSnapshotStrategy _snapshotStrategy;
   protected final Service _service;
+  protected final Timer _umountTimer;
+  protected final Timer _cleanupTimer;
+  protected final Object _mountLock = new Object();
+  protected final Map<String, Long> _idToFileMap = new ConcurrentHashMap<>();
 
   public BlockPackStorage(BlockPackStorageConfig config) throws IOException, InterruptedException {
     _service = config.getService();
@@ -86,9 +105,6 @@ public class BlockPackStorage implements PackStorage {
     _nohupProcess = config.isNohupProcess();
     _numberOfMountSnapshots = config.getNumberOfMountSnapshots();
     LastestHdfsSnapshotStrategy.setMaxNumberOfMountSnapshots(_numberOfMountSnapshots);
-    _volumeMissingPollingPeriod = config.getVolumeMissingPollingPeriod();
-    _volumeMissingCountBeforeAutoShutdown = config.getVolumeMissingCountBeforeAutoShutdown();
-    _countDockerDownAsMissing = config.isCountDockerDownAsMissing();
 
     Closer closer = Closer.create();
     closer.register((Closeable) () -> {
@@ -101,8 +117,6 @@ public class BlockPackStorage implements PackStorage {
       }
     });
     addShutdownHook(closer);
-    _zkConnection = config.getZkConnection();
-    _zkTimeout = config.getZkTimeout();
 
     _configuration = config.getConfiguration();
     FileSystem fileSystem = getFileSystem(config.getRemotePath());
@@ -119,6 +133,112 @@ public class BlockPackStorage implements PackStorage {
     _workingDir = config.getWorkingDir();
     _workingDir.mkdirs();
 
+    long period = TimeUnit.MINUTES.toMillis(1);
+    {
+      _umountTimer = new Timer("Check Volumes For Umount", true);
+      _umountTimer.scheduleAtFixedRate(new TimerTask() {
+        @Override
+        public void run() {
+          try {
+            cleanupOldPackProcessMounts();
+          } catch (Throwable t) {
+            LOGGER.error("Unknown error", t);
+          }
+        }
+      }, period, period);
+    }
+    {
+      _cleanupTimer = new Timer("Remove Old Volume Artifacts", true);
+      _cleanupTimer.scheduleAtFixedRate(new TimerTask() {
+        @Override
+        public void run() {
+          try {
+            cleanupOldPackProcessArtifacts();
+          } catch (Throwable t) {
+            LOGGER.error("Unknown error", t);
+          }
+        }
+
+      }, period, period);
+    }
+  }
+
+  private void cleanupOldPackProcessMounts() throws IOException {
+    List<File> umountedPackProcessMounts = getUmountedPackProcessMounts();
+    List<File> shutdownPackProcessList = calculateShutdown(umountedPackProcessMounts);
+
+    for (File volumeDir : shutdownPackProcessList) {
+      String id = volumeDir.getName();
+      String volumeName = volumeDir.getParentFile()
+                                   .getName();
+
+      File localDevice = getLocalDevice(volumeName, id);
+
+      File brick = new File(localDevice, BRICK);
+      synchronized (_mountLock) {
+        if (brick.exists()) {
+          try {
+            if (!isDockerStillUsingMount(volumeName)) {
+              LOGGER.info("Shutdown pack volume that is not in use {}", volumeName);
+              shutdownPack(volumeName, id);
+              _idToFileMap.remove(volumeDir.getCanonicalPath());
+            }
+          } catch (Exception e) {
+            LOGGER.error("Unknown error", e);
+          }
+        }
+      }
+    }
+  }
+
+  private List<File> calculateShutdown(List<File> umountedPackProcessMounts) throws IOException {
+    List<File> shutdown = new ArrayList<>();
+    for (File file : umountedPackProcessMounts) {
+      String key = file.getCanonicalPath();
+      Long ts = _idToFileMap.get(key);
+      if (ts == null) {
+        _idToFileMap.put(key, System.currentTimeMillis());
+      } else {
+        if (ts + MAX_AGE < System.currentTimeMillis()) {
+          shutdown.add(file);
+        }
+      }
+    }
+    return shutdown;
+  }
+
+  private List<File> getUmountedPackProcessMounts() throws IOException {
+    List<File> results = new ArrayList<>();
+    File volumesDir = getVolumesDir();
+    for (File volumeParentDir : volumesDir.listFiles()) {
+      String volumeName = volumeParentDir.getName();
+      List<String> ids = getPossibleVolumeIds(volumeName);
+      for (String id : ids) {
+        File localFileSystemMount = getLocalFileSystemMount(volumeName, id);
+        if (!isMounted(localFileSystemMount)) {
+          File volumeDir = getVolumeDir(volumeName, id);
+          LOGGER.info("unmounted pack process {} {}", volumeName, id);
+          results.add(volumeDir);
+        }
+      }
+    }
+    return results;
+  }
+
+  private void cleanupOldPackProcessArtifacts() {
+    // File volumesDir = getVolumesDir();
+    // for (File volumeDir : volumesDir.listFiles()) {
+    // String volumeName = volumeDir.getName();
+    // File localDevice = getLocalDevice(volumeName);
+    // synchronized (_mountLock) {
+    //
+    // File brick = new File(localDevice, BRICK);
+    // if (!brick.exists()) {
+    // LOGGER.info("Removing old artifacts {}", localDevice);
+    // Utils.rmr(localDevice);
+    // }
+    // }
+    // }
   }
 
   private UserGroupInformation getUgi() throws IOException {
@@ -194,6 +314,18 @@ public class BlockPackStorage implements PackStorage {
     getUgi().doAs(HdfsPriv.create(() -> umountVolume(volumeName, id, false)));
   }
 
+  private boolean isDockerStillUsingMount(String volumeName) throws IOException {
+    return isVolumeInUse("proxy/" + volumeName) || isVolumeInUse(volumeName);
+  }
+
+  private boolean isVolumeInUse(String volumeName) throws IOException {
+    Result result = Utils.execAsResultQuietly(LOGGER, SUDO, DOCKER, PS, NO_TRUNC, Q,
+        "--filter \"volume=" + volumeName + "\"");
+    return !result.stdout.toString()
+                         .trim()
+                         .isEmpty();
+  }
+
   @Override
   public boolean exists(String volumeName) throws Exception {
     return getUgi().doAs((PrivilegedExceptionAction<Boolean>) () -> existsVolume(volumeName));
@@ -201,14 +333,28 @@ public class BlockPackStorage implements PackStorage {
 
   @Override
   public String getMountPoint(String volumeName) throws IOException {
-    File localFileSystemMount = getLocalFileSystemMount(volumeName);
-    LOGGER.info("Get MountPoint volume {} path {}", volumeName, localFileSystemMount);
-    File unixSockFile = getUnixSocketFile(volumeName);
-    LOGGER.info("Volume {} localCache {}", volumeName, unixSockFile);
-    if (isMounted(unixSockFile)) {
-      return localFileSystemMount.getAbsolutePath();
+    LOGGER.info("get mountPoint volume {}", volumeName);
+    List<String> ids = getPossibleVolumeIds(volumeName);
+    for (String id : ids) {
+      File localFileSystemMount = getLocalFileSystemMount(volumeName, id);
+      if (isMounted(localFileSystemMount)) {
+        LOGGER.info("volume {} is mounted {}", volumeName, localFileSystemMount);
+        return localFileSystemMount.getAbsolutePath();
+      }
     }
     return null;
+  }
+
+  private List<String> getPossibleVolumeIds(String volumeName) {
+    File file = new File(getVolumesDir(), volumeName);
+    if (!file.exists()) {
+      return ImmutableList.of();
+    }
+    Builder<String> builder = ImmutableList.builder();
+    for (File f : file.listFiles((FileFilter) pathname -> pathname.isDirectory())) {
+      builder.add(f.getName());
+    }
+    return builder.build();
   }
 
   @Override
@@ -217,7 +363,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   protected List<String> listHdfsVolumes() throws IOException, FileNotFoundException {
-    LOGGER.info("List Volumes");
+    LOGGER.info("list volumes");
     FileSystem fileSystem = getFileSystem(_root);
     FileStatus[] listStatus = fileSystem.listStatus(_root);
     List<String> result = new ArrayList<>();
@@ -237,7 +383,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   protected void createVolume(String volumeName, Map<String, Object> options) throws IOException {
-    LOGGER.info("Create volume {}", volumeName);
+    LOGGER.info("create volume {}", volumeName);
     HdfsMetaData defaultmetaData = HdfsMetaData.DEFAULT_META_DATA;
     HdfsMetaData metaData = HdfsMetaData.setupOptions(defaultmetaData, options);
 
@@ -280,74 +426,77 @@ public class BlockPackStorage implements PackStorage {
 
   protected String mountVolume(String volumeName, String id, boolean deviceOnly)
       throws IOException, FileNotFoundException, InterruptedException, KeeperException {
+    LOGGER.info("mountVolume {} id {} deviceOnly {}", volumeName, id, deviceOnly);
+
     if (!existsVolume(volumeName)) {
       createVolume(volumeName, ImmutableMap.of());
     }
     LOGGER.info("Mount Id {} volumeName {}", id, volumeName);
-    File logDir = getLogDir(volumeName);
-    LOGGER.info("Mount Id {} logDir {}", id, logDir);
+
     Path volumePath = getVolumePath(volumeName);
     LOGGER.info("Mount Id {} volumePath {}", id, volumePath);
-    File localFileSystemMount = getLocalFileSystemMount(volumeName);
-    LOGGER.info("Mount Id {} localFileSystemMount {}", id, localFileSystemMount);
-    File localDevice = getLocalDevice(volumeName);
-    LOGGER.info("Mount Id {} localDevice {}", id, localDevice);
+
+    File logDir = getLogDir(volumeName);
+    LOGGER.info("Mount Id {} logDir {}", id, logDir);
     File localMetrics = getLocalMetrics(logDir);
     LOGGER.info("Mount Id {} localMetrics {}", id, localMetrics);
-    File localCache = getLocalCache(volumeName);
+
+    File localFileSystemMount = getLocalFileSystemMount(volumeName, id);
+    LOGGER.info("Mount Id {} localFileSystemMount {}", id, localFileSystemMount);
+    File localDevice = getLocalDevice(volumeName, id);
+    LOGGER.info("Mount Id {} localDevice {}", id, localDevice);
+
+    File localCache = getLocalCache(volumeName, id);
     LOGGER.info("Mount Id {} localCache {}", id, localCache);
-    File unixSockFile = getUnixSocketFile(volumeName);
-    LOGGER.info("Mount Id {} unixSockFile {}", id, unixSockFile);
-    File libDir = getLibDir(volumeName);
+    File libDir = getLibDir(volumeName, id);
     LOGGER.info("Mount Id {} libDir {}", id, libDir);
-    File configFile = getConfigFile(volumeName);
+    File configFile = getConfigFile(volumeName, id);
     LOGGER.info("Mount Id {} configFile {}", id, configFile);
-    File volumeDir = getVolumeDir(volumeName);
+    File volumeDir = getVolumeDir(volumeName, id);
     LOGGER.info("Mount Id {} volumeDir {}", id, volumeDir);
-
-    libDir.mkdirs();
-    localCache.mkdirs();
-    localFileSystemMount.mkdirs();
-    localDevice.mkdirs();
-    localMetrics.mkdirs();
-
-    if (isMounted(unixSockFile)) {
-      incrementMountCount(unixSockFile);
-      return localFileSystemMount.getAbsolutePath();
-    }
-
-    if (unixSockFile.exists()) {
-      unixSockFile.delete();
-    }
-
-    String path = volumePath.toUri()
-                            .getPath();
-
-    BlockPackFuseConfigBuilder configBuilder = BlockPackFuseConfig.builder();
-    BlockPackFuseConfig config = configBuilder.volumeName(volumeName)
-                                              .fuseMountLocation(localDevice.getAbsolutePath())
-                                              .fsMetricsLocation(localMetrics.getAbsolutePath())
-                                              .fsLocalCache(localCache.getAbsolutePath())
-                                              .hdfsVolumePath(path)
-                                              .zkConnection(_zkConnection)
-                                              .zkTimeout(_zkTimeout)
-                                              .unixSock(unixSockFile.getAbsolutePath())
-                                              .numberOfMountSnapshots(_numberOfMountSnapshots)
-                                              .volumeMissingPollingPeriod(_volumeMissingPollingPeriod)
-                                              .volumeMissingCountBeforeAutoShutdown(
-                                                  _volumeMissingCountBeforeAutoShutdown)
-                                              .countDockerDownAsMissing(_countDockerDownAsMissing)
-                                              .build();
-
-    BlockPackFuseProcessBuilder.startProcess(_nohupProcess, volumeName, volumeDir.getAbsolutePath(),
-        logDir.getAbsolutePath(), libDir.getAbsolutePath(), configFile.getAbsolutePath(), config);
 
     FileSystem fileSystem = getFileSystem(volumePath);
     HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
       throw new IOException("No metadata found for path " + volumePath);
     }
-    waitForMount(localDevice, unixSockFile, Status.FUSE_MOUNT_COMPLETE);
+
+    synchronized (_mountLock) {
+
+      libDir.mkdirs();
+      localCache.mkdirs();
+      localFileSystemMount.mkdirs();
+      localDevice.mkdirs();
+      localMetrics.mkdirs();
+
+      if (isMounted(localFileSystemMount)) {
+        LOGGER.info("volume {} id {} already mounted {}", volumeName, id, localFileSystemMount.getCanonicalPath());
+        return localFileSystemMount.getCanonicalPath();
+      }
+
+      String path = volumePath.toUri()
+                              .getPath();
+
+      BlockPackFuseConfigBuilder configBuilder = BlockPackFuseConfig.builder();
+      BlockPackFuseConfig config = configBuilder.volumeName(volumeName)
+                                                .fuseMountLocation(localDevice.getAbsolutePath())
+                                                .fsMetricsLocation(localMetrics.getAbsolutePath())
+                                                .fsLocalCache(localCache.getAbsolutePath())
+                                                .hdfsVolumePath(path)
+                                                .numberOfMountSnapshots(_numberOfMountSnapshots)
+                                                .build();
+      BlockPackFuseProcessBuilder.startProcess(_nohupProcess, volumeName, volumeDir.getAbsolutePath(),
+          logDir.getAbsolutePath(), libDir.getAbsolutePath(), configFile.getAbsolutePath(), config);
+
+      File brick = new File(localDevice, BRICK);
+      if (!waitForDevice(brick)) {
+        Path lockPath = Utils.getLockPathForVolumeMount(volumePath);
+        boolean lock = HdfsLock.isLocked(_configuration, lockPath);
+        throw new IOException(
+            "Error waiting for device " + brick.getCanonicalPath() + " volume is " + (lock ? LOCKED : UNLOCKED));
+      }
+    }
+
     File device = new File(localDevice, FuseFileSystemSingleMount.BRICK);
     if (deviceOnly) {
       return device.getAbsolutePath();
@@ -355,13 +504,24 @@ public class BlockPackStorage implements PackStorage {
     mkfsIfNeeded(metaData, volumeName, device);
     tryToAssignUuid(metaData, device);
     mountFs(metaData, device, localFileSystemMount);
+    waitForMount(localDevice);
     HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, volumePath, _snapshotStrategy);
-    incrementMountCount(unixSockFile);
     return localFileSystemMount.getAbsolutePath();
   }
 
-  private File getConfigFile(String volumeName) {
-    return new File(getVolumeDir(volumeName), CONFIG_JSON);
+  private static boolean waitForDevice(File brick) throws InterruptedException {
+    for (int i = 0; i < 10; i++) {
+      if (brick.exists()) {
+        return true;
+      }
+      LOGGER.info("Waiting for device {}", brick);
+      Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+    }
+    return false;
+  }
+
+  private File getConfigFile(String volumeName, String id) {
+    return new File(getVolumeDir(volumeName, id), CONFIG_JSON);
   }
 
   private void tryToAssignUuid(HdfsMetaData metaData, File device) throws IOException {
@@ -370,12 +530,6 @@ public class BlockPackStorage implements PackStorage {
     if (linuxFileSystem.isUuidAssignmentSupported()) {
       linuxFileSystem.assignUuid(metaData.getUuid(), device);
     }
-  }
-
-  private void umountFs(HdfsMetaData metaData, File localFileSystemMount) throws IOException {
-    LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
-                                              .getLinuxFileSystem();
-    linuxFileSystem.umount(localFileSystemMount);
   }
 
   private void mountFs(HdfsMetaData metaData, File device, File localFileSystemMount) throws IOException {
@@ -396,32 +550,25 @@ public class BlockPackStorage implements PackStorage {
     }
   }
 
-  private File getLibDir(String volumeName) {
-    return new File(getVolumeDir(volumeName), "lib");
+  private File getLibDir(String volumeName, String id) {
+    return new File(getVolumeDir(volumeName, id), "lib");
   }
 
-  private File getVolumeDir(String volumeName) {
-    return new File(_workingDir, "volumes/" + volumeName);
+  private File getVolumesDir() {
+    return new File(_workingDir, VOLUMES);
   }
 
-  private boolean isMounted(File unixSockFile) throws IOException {
-    BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
-    try {
-      client.getPid();
-      return true;
-    } catch (NoFileException e) {
-      return false;
-    } catch (ConnectionRefusedException e) {
-      return false;
-    }
+  private File getVolumeDir(String volumeName, String id) {
+    return new File(new File(getVolumesDir(), volumeName), id);
   }
 
-  private File getUnixSocketFile(String volumeName) {
-    return new File(getVolumeDir(volumeName), "sock");
+  private static boolean isMounted(File localFileSystemMount) throws IOException {
+    Result result = Utils.execAsResultQuietly(LOGGER, SUDO, MOUNT);
+    return result.stdout.contains(localFileSystemMount.getCanonicalPath());
   }
 
-  private File getLocalCache(String volumeName) {
-    return new File(getVolumeDir(volumeName), "cache");
+  private File getLocalCache(String volumeName, String id) {
+    return new File(getVolumeDir(volumeName, id), "cache");
   }
 
   private File getLocalMetrics(File logDir) {
@@ -436,121 +583,37 @@ public class BlockPackStorage implements PackStorage {
     return logDir;
   }
 
-  public static void waitForMount(File mountDir, File sockFile, Status desiredStatus)
-      throws InterruptedException, IOException {
-    Thread.sleep(TimeUnit.MILLISECONDS.toMillis(100));
-    for (int i = 0; i < 30; i++) {
-      if (sockFile.exists()) {
-        break;
-      }
-      LOGGER.info("waiting for unix socket file to exist {}", sockFile);
-      Thread.sleep(TimeUnit.MILLISECONDS.toMillis(1000));
-    }
-    BlockPackAdminClient client = BlockPackAdminClient.create(sockFile);
-    while (true) {
-      try {
-        Status status = client.getStatus();
-        if (status == desiredStatus) {
-          LOGGER.info("startup complete {}", mountDir);
-          return;
-        }
-        LOGGER.info("Waiting for status {}", mountDir, status);
-        Thread.sleep(TimeUnit.SECONDS.toMillis(1));
-      } catch (NoFileException e) {
-        throw new IOException("Unknown error while waiting on mount " + mountDir, e);
-      }
-    }
-  }
-
-  protected void umountVolume(String volumeName, String id, boolean deviceOnly)
-      throws IOException, InterruptedException, FileNotFoundException, KeeperException {
-    LOGGER.info("Unmount Volume {} Id {}", volumeName, id);
-    File unixSockFile = getUnixSocketFile(volumeName);
-    if (unixSockFile.exists()) {
-      long count = decrementMountCount(unixSockFile);
-      LOGGER.info("Mount count {}", count);
-      if (count <= 0) {
-        if (!deviceOnly) {
-          Path volumePath = getVolumePath(volumeName);
-          FileSystem fileSystem = getFileSystem(volumePath);
-          HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
-          if (metaData == null) {
-            throw new IOException("No metadata found for path " + volumePath);
-          }
-          File localFileSystemMount = getLocalFileSystemMount(volumeName);
-          umountFs(metaData, localFileSystemMount);
-          sync();
-        }
-        try {
-          shutdownVolume(unixSockFile);
-        } catch (NoFileException e) {
-          LOGGER.info("fuse process seems to be gone {}", unixSockFile);
-          return;
-        } catch (ConnectionRefusedException e) {
-          LOGGER.info("fuse process seems to be gone {}", unixSockFile);
-          return;
-        } catch (IOException e) {
-          if (e.getMessage()
-               .trim()
-               .toLowerCase()
-               .equals("connection reset by peer")) {
-            LOGGER.info("fuse process seems to be gone {}", unixSockFile);
-            return;
-          }
-          throw e;
-        }
-      }
-    }
-  }
-
-  private void sync() throws IOException {
-    // Utils.exec(LOGGER, SUDO, SYNC);
-  }
-
-  private long decrementMountCount(File unixSockFile) throws IOException {
-    BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
-    return client.decrementCounter(MOUNT_COUNT);
-  }
-
-  private long incrementMountCount(File unixSockFile) throws IOException {
-    BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
-    return client.incrementCounter(MOUNT_COUNT);
-  }
-
-  public static void shutdownVolume(File unixSockFile) throws IOException, InterruptedException {
-    BlockPackAdminClient client = BlockPackAdminClient.create(unixSockFile);
-    while (true) {
-      Status status = client.getStatus();
-      switch (status) {
-      case FS_MKFS:
-      case FS_MOUNT_COMPLETED:
-      case FS_MOUNT_STARTED:
-        client.umount();
-        break;
-      case FS_UMOUNT_STARTED:
-        break;
-      case FS_UMOUNT_COMPLETE:
-      case UNKNOWN:
-      case FUSE_MOUNT_COMPLETE:
-      case FUSE_MOUNT_STARTED:
-      case FS_TRIM_STARTED:
-      case FS_TRIM_COMPLETE:
-      case INITIALIZATION:
-        client.shutdown();
-        break;
-      default:
-        break;
-      }
+  public static void waitForMount(File localFileSystemMount) throws InterruptedException, IOException {
+    while (!isMounted(localFileSystemMount)) {
+      LOGGER.info("Waiting for mount {}", localFileSystemMount);
       Thread.sleep(TimeUnit.SECONDS.toMillis(1));
     }
   }
 
-  private File getLocalFileSystemMount(String volumeName) {
-    return new File(getVolumeDir(volumeName), "fs");
+  private void umountVolume(String volumeName, String id, boolean deviceOnly)
+      throws IOException, InterruptedException, FileNotFoundException, KeeperException {
+    LOGGER.info("umountVolume {} id {} deviceOnly {}", volumeName, id, deviceOnly);
+    if (!isDockerStillUsingMount(volumeName)) {
+      shutdownPack(volumeName, id);
+      File volumeDir = getVolumeDir(volumeName, id);
+      _idToFileMap.remove(volumeDir.getCanonicalPath());
+    }
   }
 
-  private File getLocalDevice(String volumeName) {
-    return new File(getVolumeDir(volumeName), "dev");
+  private void shutdownPack(String volumeName, String id) throws IOException {
+    File localDevice = getLocalDevice(volumeName, id);
+    File shutdownFile = new File(localDevice, SHUTDOWN);
+    try (OutputStream output = new FileOutputStream(shutdownFile)) {
+      output.write(1);
+    }
+  }
+
+  private File getLocalFileSystemMount(String volumeName, String id) {
+    return new File(getVolumeDir(volumeName, id), FS);
+  }
+
+  private File getLocalDevice(String volumeName, String id) {
+    return new File(getVolumeDir(volumeName, id), DEV);
   }
 
   private FileSystem getFileSystem(Path path) throws IOException {

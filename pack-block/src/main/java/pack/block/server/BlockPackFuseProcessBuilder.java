@@ -58,7 +58,6 @@ public class BlockPackFuseProcessBuilder {
   private static final String BIN_JAVA = "/bin/java";
   private static final String XMX_SWITCH = "-Xmx128m";
   private static final String XMS_SWITCH = "-Xms128m";
-  private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
   private static final String XX_USE_G1GC = "-XX:+UseG1GC";
   private static final String LOG = "log";
   private static final String RUN_SH = "run.sh";
@@ -70,8 +69,6 @@ public class BlockPackFuseProcessBuilder {
     String javaHome = System.getProperty(JAVA_HOME);
 
     String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir, null);
-
-    String dockerUnixSocket = System.getProperty(DOCKER_UNIX_SOCKET);
 
     File configFile = new File(configFilePath);
 
@@ -105,9 +102,6 @@ public class BlockPackFuseProcessBuilder {
                      .add(XX_USE_G1GC)
                      .add(XMX_SWITCH)
                      .add(XMS_SWITCH);
-      if (dockerUnixSocket != null) {
-        javaOptsBuilder.add(toProp(DOCKER_UNIX_SOCKET, dockerUnixSocket));
-      }
       String javaOpts = Joiner.on(' ')
                               .join(javaOptsBuilder.build());
       output.println(EXPORT + " " + _JAVA_OPTIONS + "=\"" + javaOpts + "\"");
@@ -133,6 +127,7 @@ public class BlockPackFuseProcessBuilder {
           copyFile(src, dst);
           String newKeytabPath = dst.getAbsolutePath();
           runWriter.println("export " + Utils.PACK_HDFS_KERBEROS_KEYTAB + "=" + newKeytabPath);
+          runWriter.println("export " + Utils.PACK_HDFS_KERBEROS_PRINCIPAL_NAME + "=" + hdfsPrinciaplName);
         }
         runWriter.println(cmd);
       }

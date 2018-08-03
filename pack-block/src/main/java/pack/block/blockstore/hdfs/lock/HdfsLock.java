@@ -240,4 +240,12 @@ public class HdfsLock implements Closeable, OwnerCheck {
       shutdownHookManager.removeShutdownHook(_shutdownHook);
     }
   }
+
+  public static boolean isLocked(Configuration configuration, Path path) throws IOException, InterruptedException {
+    try (HdfsLock lock = new HdfsLock(configuration, path, () -> {
+
+    })) {
+      return !lock.tryToLock();
+    }
+  }
 }

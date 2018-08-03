@@ -24,7 +24,6 @@ import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfigInternal;
 import pack.block.util.Utils;
-import pack.zk.utils.ZkMiniCluster;
 
 public class BlockPackFuseBlockOnlyTest {
 
@@ -32,7 +31,6 @@ public class BlockPackFuseBlockOnlyTest {
   private static final String BRICK = "brick";
   private static final String RW = "rw";
   private static final String HDFS = "hdfs";
-  private static final String ZK = "zk";
   private static final String METRICS = "metrics";
   private static final String FUSE = "fuse";
   private static final String TEST_BLOCK_PACK_FUSE = "testBlockPackFuse";
@@ -43,9 +41,6 @@ public class BlockPackFuseBlockOnlyTest {
   private static MiniDFSCluster cluster;
   private static FileSystem fileSystem;
   private static File root = new File("./target/tmp/" + BlockPackFuseBlockOnlyTest.class.getName());
-  private static ZkMiniCluster zkMiniCluster;
-  private static String zkConnection;
-  private static int zkTimeout;
   private static long seed;
 
   @BeforeClass
@@ -57,20 +52,12 @@ public class BlockPackFuseBlockOnlyTest {
     configuration.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, storePath);
     cluster = new MiniDFSCluster.Builder(configuration).build();
     fileSystem = cluster.getFileSystem();
-
-    File zk = Utils.mkdir(new File(root, ZK));
-    zkMiniCluster = new ZkMiniCluster();
-    zkMiniCluster.startZooKeeper(zk.getAbsolutePath(), 0);
-    zkConnection = zkMiniCluster.getZkConnectionString();
-    zkTimeout = 10000;
     seed = new Random().nextLong();
-
   }
 
   @AfterClass
   public static void teardown() {
     cluster.shutdown();
-    zkMiniCluster.shutdownZooKeeper();
   }
 
   @Test
@@ -98,8 +85,6 @@ public class BlockPackFuseBlockOnlyTest {
                                                             .fuseMountLocation(fuseLocalPath)
                                                             .fsMetricsLocation(metricsLocalPath)
                                                             .fsLocalCache(fsLocalCachePath)
-                                                            .zkConnection(zkConnection)
-                                                            .zkTimeout(zkTimeout)
                                                             .build();
 
     BlockPackFuseConfigInternal fuseConfig = BlockPackFuseConfigInternal.builder()

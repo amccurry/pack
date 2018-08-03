@@ -24,6 +24,8 @@ import pack.block.blockstore.BlockStore;
 
 public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
+  private static final String NONEMPTY = "nonempty";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(FuseFileSystemSingleMount.class);
 
   public static final String BRICK = "brick";
@@ -34,6 +36,8 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   private static final String FILE_SEP = "/";
   private static final String PID_FILENAME = FILE_SEP + FUSE_PID;
   private static final String BRICK_FILENAME = FILE_SEP + BRICK;
+  private static final String SHUTDOWN = "shutdown";
+  private static final String SHUTDOWN_FILENAME = FILE_SEP + SHUTDOWN;
   private static final String OPTION_SWITCH = "-o";
   private static final String AUTO_UNMOUNT = "auto_unmount";
   private static final String ALLOW_ROOT = "allow_root";
@@ -68,7 +72,8 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       break;
     case LINUX:
     default:
-      opts = new String[] { OPTION_SWITCH, ALLOW_ROOT, OPTION_SWITCH, AUTO_UNMOUNT, OPTION_SWITCH, SYNC };
+      opts = new String[] { OPTION_SWITCH, ALLOW_ROOT, OPTION_SWITCH, AUTO_UNMOUNT, OPTION_SWITCH, SYNC, OPTION_SWITCH,
+          NONEMPTY };
       break;
     }
     mount(Paths.get(_localPath), blocking, false, opts);
@@ -79,6 +84,21 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     LOGGER.info("close");
     IOUtils.closeQuietly(_blockStore);
     umount();
+  }
+
+  @Override
+  public int truncate(String path, @off_t long size) {
+    switch (path) {
+    case FILE_SEP:
+      return -ErrorCodes.EISDIR();
+    case PID_FILENAME:
+    case BRICK_FILENAME:
+      return -ErrorCodes.EIO();
+    case SHUTDOWN_FILENAME:
+      return 0;
+    default:
+      return -ErrorCodes.ENOENT();
+    }
   }
 
   @Override
@@ -94,16 +114,20 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     stat.st_mtim.tv_nsec.set(0);
     switch (path) {
     case BRICK_FILENAME:
-      stat.st_mode.set(FileStat.S_IFREG | 0777);
+      stat.st_mode.set(FileStat.S_IFREG | 0700);
       stat.st_size.set(_length);
       return 0;
     case FILE_SEP:
-      stat.st_mode.set(FileStat.S_IFDIR | 0777);
+      stat.st_mode.set(FileStat.S_IFDIR | 0755);
       stat.st_size.set(2);
       return 0;
     case PID_FILENAME:
-      stat.st_mode.set(FileStat.S_IFREG | 0444);
+      stat.st_mode.set(FileStat.S_IFREG | 0400);
       stat.st_size.set(_pidContent.length);
+      return 0;
+    case SHUTDOWN_FILENAME:
+      stat.st_mode.set(FileStat.S_IFREG | 0600);
+      stat.st_size.set(0);
       return 0;
     default:
       return -ErrorCodes.ENOENT();
@@ -118,9 +142,11 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       filter.apply(buf, PARENT_DIR, null, 0);
       filter.apply(buf, BRICK, null, 0);
       filter.apply(buf, FUSE_PID, null, 0);
+      filter.apply(buf, SHUTDOWN, null, 0);
       return 0;
     case BRICK_FILENAME:
     case PID_FILENAME:
+    case SHUTDOWN_FILENAME:
       return -ErrorCodes.ENOTDIR();
     default:
       return -ErrorCodes.ENOENT();
@@ -145,6 +171,9 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     case PID_FILENAME:
       buf.put(0, _pidContent, 0, _pidContent.length);
       return _pidContent.length;
+    case SHUTDOWN_FILENAME:
+      buf.put(0, new byte[] {}, 0, 0);
+      return 0;
     default:
       return -ErrorCodes.ENOENT();
     }
@@ -171,6 +200,10 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
           sleep(TimeUnit.SECONDS.toMillis(3));
         }
       }
+    case SHUTDOWN_FILENAME: {
+      startShutdown();
+      return (int) size;
+    }
     case FILE_SEP:
       return -ErrorCodes.EISDIR();
     case PID_FILENAME:
@@ -178,6 +211,10 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     default:
       return -ErrorCodes.ENOENT();
     }
+  }
+
+  private void startShutdown() {
+    new Thread(() -> System.exit(0)).start();
   }
 
   @Override
@@ -196,6 +233,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       }
     case FILE_SEP:
       return -ErrorCodes.EISDIR();
+    case SHUTDOWN_FILENAME:
     case PID_FILENAME:
       return 0;
     default:
@@ -224,6 +262,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       }
     case FILE_SEP:
       return -ErrorCodes.EISDIR();
+    case SHUTDOWN_FILENAME:
     case PID_FILENAME:
       return -ErrorCodes.EIO();
     default:

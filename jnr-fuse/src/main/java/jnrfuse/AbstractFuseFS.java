@@ -8,7 +8,6 @@ import jnr.ffi.mapper.FromNativeConverter;
 import jnr.ffi.provider.jffi.ClosureHelper;
 import jnrfuse.struct.*;
 import jnrfuse.utils.MountUtils;
-import jnrfuse.utils.SecurityUtils;
 
 import java.lang.reflect.Method;
 import java.nio.file.Files;

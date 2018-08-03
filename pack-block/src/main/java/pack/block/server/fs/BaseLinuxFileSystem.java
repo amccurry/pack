@@ -59,7 +59,7 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
 
   @Override
   public boolean isMounted(File mountLocation) throws IOException {
-    Result result = Utils.execAsResult(LOGGER, SUDO, MOUNT);
+    Result result = Utils.execAsResultQuietly(LOGGER, SUDO, MOUNT);
     BufferedReader reader = new BufferedReader(new StringReader(result.stdout));
     String line;
     String path = mountLocation.getAbsolutePath()

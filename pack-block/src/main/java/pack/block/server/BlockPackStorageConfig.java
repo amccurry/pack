@@ -19,12 +19,7 @@ public class BlockPackStorageConfig {
   File logDir;
   Configuration configuration;
   Path remotePath;
-  String zkConnection;
-  int zkTimeout;
   int numberOfMountSnapshots;
-  long volumeMissingPollingPeriod;
-  int volumeMissingCountBeforeAutoShutdown;
-  boolean countDockerDownAsMissing;
   boolean nohupProcess;
   HdfsSnapshotStrategy strategy;
   Service service;

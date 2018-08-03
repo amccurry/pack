@@ -13,8 +13,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -45,9 +43,7 @@ import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.fuse.FuseFileSystemSingleMount;
 import pack.block.server.admin.BlockPackAdmin;
-import pack.block.server.admin.DockerMonitor;
 import pack.block.server.admin.Status;
-import pack.block.server.admin.client.NoFileException;
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfigInternal;
 import pack.block.server.json.BlockPackFuseConfigInternal.BlockPackFuseConfigInternalBuilder;
@@ -72,9 +68,7 @@ public class BlockPackFuse implements Closeable {
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuse.class);
   private static final Logger STATUS_LOGGER = LoggerFactory.getLogger("STATUS");
 
-  private static final String DOCKER_UNIX_SOCKET = "docker.unix.socket";
   private static final String MOUNT_ZK = "/mount";
-  private static final String POLLING_CLOSER = "polling-closer";
   private static final String MOUNT = "mount";
   private static final String SUDO = "sudo";
   private static final String UMOUNT = "umount";
@@ -221,36 +215,19 @@ public class BlockPackFuse implements Closeable {
   private final Closer _closer;
   private final Thread _fuseMountThread;
   private final AtomicBoolean _closed = new AtomicBoolean(true);
-  // private final ZooKeeperLockManager _lockManager;
   private final Path _path;
   private final MetricRegistry _registry = new MetricRegistry();
   private final CsvReporter _reporter;
   private final BlockPackAdmin _blockPackAdmin;
-  private final int _maxVolumeMissingCount;
-  private final Timer _timer;
-  private final String _volumeName;
-  private final long _period;
-  private final boolean _countDockerDownAsMissing;
-  // private final ZooKeeperClientFactory _zk;
   private final HdfsLock _lock;
 
   public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
     BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
-    // String zkConnectionString = blockPackFuseConfig.getZkConnection();
-    // int zkSessionTimeout = blockPackFuseConfig.getZkTimeout();
-    // _zk = ZkUtils.newZooKeeperClientFactory(zkConnectionString,
-    // zkSessionTimeout);
-    _countDockerDownAsMissing = blockPackFuseConfig.isCountDockerDownAsMissing();
-    _period = blockPackFuseConfig.getVolumeMissingPollingPeriod();
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating Lock Manager");
-    // LOGGER.info("trying to obtain lock");
-    // _lockManager = createLockmanager(_zk, packFuseConfig.getPath()
-    // .getName());
-    // boolean lock = _lockManager.tryToLock(Utils.getLockName(_path));
 
-    Path lockPath = Utils.getLockPathForVolume(_path, "mount");
+    Path lockPath = Utils.getLockPathForVolumeMount(_path);
     LockLostAction lockLostAction = () -> {
       LOGGER.error("Mount lock lost for volume {}", _path);
       System.exit(0);
@@ -278,10 +255,6 @@ public class BlockPackFuse implements Closeable {
       _fuseLocalPath = new File(blockPackFuseConfig.getFuseMountLocation());
       _fuseLocalPath.mkdirs();
 
-      _volumeName = blockPackFuseConfig.getVolumeName();
-      _maxVolumeMissingCount = blockPackFuseConfig.getVolumeMissingCountBeforeAutoShutdown();
-      _timer = new Timer(POLLING_CLOSER, true);
-
       BlockStoreFactory factory = packFuseConfig.getBlockStoreFactory();
       LOGGER.info("creating block store");
       _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _registry);
@@ -299,13 +272,6 @@ public class BlockPackFuse implements Closeable {
     return ZkUtils.newZooKeeperLockManager(zk, MOUNT_ZK + "/" + name);
   }
 
-  private void startDockerMonitorIfNeeded(long period) {
-    if (System.getProperty(DOCKER_UNIX_SOCKET) != null) {
-      DockerMonitor monitor = new DockerMonitor(new File(System.getProperty(DOCKER_UNIX_SOCKET)));
-      _timer.schedule(getMonitorTimer(_volumeName, monitor), period, period);
-    }
-  }
-
   @Override
   public void close() {
     LOGGER.info("close");
@@ -314,13 +280,6 @@ public class BlockPackFuse implements Closeable {
         _fuseMountThread.interrupt();
         runQuietly(() -> _closer.close());
         runQuietly(() -> _fuseMountThread.join());
-        // try {
-        // _lockManager.unlock(Utils.getLockName(_path));
-        // } catch (IOException | InterruptedException | KeeperException e) {
-        // LOGGER.debug("If zookeeper is closed already this node it cleaned up
-        // automatically.", e);
-        // }
-        // runQuietly(() -> _zk.close());
         _closed.set(true);
       }
     }
@@ -346,7 +305,6 @@ public class BlockPackFuse implements Closeable {
     waitUntilFuseIsMounted();
     _blockPackAdmin.setStatus(Status.FUSE_MOUNT_COMPLETE, "Mounting FUSE @ " + _fuseLocalPath);
     LOGGER.info("fuse mount {} visible", _fuseLocalPath);
-    startDockerMonitorIfNeeded(_period);
     if (blocking) {
       _fuseMountThread.join();
     }
@@ -390,46 +348,5 @@ public class BlockPackFuse implements Closeable {
       }
       return configuration;
     }
-  }
-
-  private TimerTask getMonitorTimer(String volumeName, DockerMonitor monitor) {
-    return new TimerTask() {
-      private int count = 0;
-
-      @Override
-      public void run() {
-        try {
-          if (!isVolumeStillInUse(monitor, volumeName)) {
-            count++;
-            checkMissingCount();
-          } else {
-            count = 0;
-          }
-        } catch (Exception e) {
-          if (_countDockerDownAsMissing && e instanceof NoFileException) {
-            count++;
-            checkMissingCount();
-          } else {
-            LOGGER.error("Unknown error", e);
-          }
-        }
-      }
-
-      private void checkMissingCount() {
-        if (count >= _maxVolumeMissingCount) {
-          LOGGER.info("Volume {} no longer in use, closing.", _volumeName);
-          Utils.shutdownProcess(BlockPackFuse.this);
-        } else {
-          LOGGER.info("Volume {} no longer in use, current recheck count {} of max {}.", _volumeName, count,
-              _maxVolumeMissingCount);
-        }
-      }
-
-      private boolean isVolumeStillInUse(DockerMonitor monitor, String volumeName) throws IOException {
-        int containerCount = monitor.getContainerCount(volumeName);
-        LOGGER.debug("Volume still has {} containers using mount", containerCount);
-        return containerCount > 0;
-      }
-    };
   }
 }

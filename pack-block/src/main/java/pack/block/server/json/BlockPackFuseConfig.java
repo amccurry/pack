@@ -16,11 +16,8 @@ public class BlockPackFuseConfig {
   String fsMetricsLocation;
   String fsLocalCache;
   String hdfsVolumePath;
-  String zkConnection;
-  int zkTimeout;
-  String unixSock;
   int numberOfMountSnapshots;
-  long volumeMissingPollingPeriod;
-  int volumeMissingCountBeforeAutoShutdown;
-  boolean countDockerDownAsMissing;
+  // long volumeMissingPollingPeriod;
+  // int volumeMissingCountBeforeAutoShutdown;
+  // boolean countDockerDownAsMissing;
 }

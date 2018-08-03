@@ -37,6 +37,8 @@ import sun.misc.Unsafe;
 
 public class Utils {
 
+  private static final String MOUNT = "mount";
+
   private static final int PACK_HDFS_LOGGER_MAX_FILES_DEFAULT = 5;
 
   private static final String PACK_HDFS_LOGGER_MAX_FILES = "PACK_HDFS_LOGGER_MAX_FILES";
@@ -74,13 +76,7 @@ public class Utils {
   public static final String PACK_HDFS_USER = "PACK_HDFS_USER";
   public static final String VAR_LOG_PACK = "/var/log/pack";
   public static final String VAR_LIB_PACK = "/var/lib/pack";
-  public static final String PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN = "PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN";
-  public static final String PACK_VOLUME_MISSING_POLLING_PERIOD = "PACK_VOLUME_MISSING_POLLING_PERIOD";
   public static final String PACK_NUMBER_OF_MOUNT_SNAPSHOTS = "PACK_NUMBER_OF_MOUNT_SNAPSHOTS";
-  public static final String PACK_COUNT_DOCKER_DOWN_AS_MISSING = "PACK_COUNT_DOCKER_DOWN_AS_MISSING";
-  public static final boolean PACK_COUNT_DOCKER_DOWN_AS_MISSING_DEFAULT = true;
-  public static final int PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN_DEFAULT = 2;
-  public static final long PACK_VOLUME_MISSING_POLLING_PERIOD_DEFAULT = TimeUnit.SECONDS.toMillis(2);
   public static final int PACK_NUMBER_OF_MOUNT_SNAPSHOTS_DEFAULT = 5;
 
   private static final String LOCK = "lock";
@@ -229,30 +225,6 @@ public class Utils {
     return Integer.parseInt(v);
   }
 
-  public static long getVolumeMissingPollingPeriod() {
-    String v = getProperty(PACK_VOLUME_MISSING_POLLING_PERIOD);
-    if (v == null) {
-      return PACK_VOLUME_MISSING_POLLING_PERIOD_DEFAULT;
-    }
-    return Long.parseLong(v);
-  }
-
-  public static int getVolumeMissingCountBeforeAutoShutdown() {
-    String v = getProperty(PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN);
-    if (v == null) {
-      return PACK_VOLUME_MISSING_COUNT_BEFORE_AUTO_SHUTDOWN_DEFAULT;
-    }
-    return Integer.parseInt(v);
-  }
-
-  public static boolean getCountDockerDownAsMissing() {
-    String v = getProperty(PACK_COUNT_DOCKER_DOWN_AS_MISSING);
-    if (v == null) {
-      return PACK_COUNT_DOCKER_DOWN_AS_MISSING_DEFAULT;
-    }
-    return Boolean.parseBoolean(v);
-  }
-
   public static String getHdfsPath() {
     String v = getProperty(PACK_HDFS_PATH);
     if (v == null) {
@@ -397,16 +369,21 @@ public class Utils {
     return result.exitCode;
   }
 
-  public static void rmr(File file) {
-    if (!file.exists()) {
+  public static void rmr(File... files) {
+    if (files == null) {
       return;
     }
-    if (file.isDirectory()) {
-      for (File f : file.listFiles()) {
-        rmr(f);
+    for (File file : files) {
+      if (!file.exists()) {
+        continue;
       }
+      if (file.isDirectory()) {
+        for (File f : file.listFiles()) {
+          rmr(f);
+        }
+      }
+      file.delete();
     }
-    file.delete();
   }
 
   public static void shutdownProcess(BlockPackFuse blockPackFuse) {
@@ -515,6 +492,11 @@ public class Utils {
   public static Path getLockPathForVolume(Path volumePath, String name) {
     Path lockDir = new Path(volumePath, LOCK);
     return new Path(lockDir, name);
+  }
+
+  public static Path getLockPathForVolumeMount(Path volumePath) {
+    Path lockDir = new Path(volumePath, LOCK);
+    return new Path(lockDir, MOUNT);
   }
 
   public static int getMaxHdfsLogFiles() {
