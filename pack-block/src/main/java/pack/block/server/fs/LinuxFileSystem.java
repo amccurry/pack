@@ -10,14 +10,14 @@ public interface LinuxFileSystem {
   void umount(File mountLocation) throws IOException;
 
   void mkfs(File device, int blockSize) throws IOException;
-  
+
   boolean isMounted(File mountLocation) throws IOException;
 
   default void growOffline(File device) throws IOException {
     throw new IOException("Not supported.");
   }
 
-  default void growOnline(File device, File mountLocation) throws IOException {
+  default void growOnline(File device) throws IOException {
     throw new IOException("Not supported.");
   }
 
@@ -46,7 +46,7 @@ public interface LinuxFileSystem {
   }
 
   default void assignUuid(String uuid, File device) throws IOException {
-    
+
   }
 
 }

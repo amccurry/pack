@@ -66,9 +66,9 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
                                .replace("/./", "/");
     while ((line = reader.readLine()) != null) {
       line = line.trim();
-      LOGGER.info("mount check {} {}", path, line);
+      LOGGER.debug("mount check {} {}", path, line);
       if (line.contains(path)) {
-        LOGGER.info("mount found {} {}", path, line);
+        LOGGER.debug("mount found {} {}", path, line);
         return true;
       }
     }

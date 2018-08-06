@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FileStatus;
@@ -51,7 +52,7 @@ public class WalToBlockFileConverter implements Closeable {
   private final FileSystem _fileSystem;
   private final Cache<Path, Reader> _readerCache;
   private final int _blockSize;
-  private final long _length;
+  private final AtomicLong _length;
   private final File _cacheDir;
   private final WalFileFactory _walFactory;
   private final String _nodePrefix;
@@ -64,7 +65,7 @@ public class WalToBlockFileConverter implements Closeable {
     _nodePrefix = InetAddress.getLocalHost()
                              .getHostName();
     _cacheDir = cacheDir;
-    _length = metaData.getLength();
+    _length = new AtomicLong(metaData.getLength());
     _blockSize = metaData.getFileSystemBlockSize();
     _fileSystem = fileSystem;
     _volumePath = volumePath;

@@ -7,6 +7,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
@@ -37,6 +38,8 @@ public class LocalWalCache implements Closeable {
   private final int _blockSize;
   private final FileChannel _channel;
   private final Cache<Integer, byte[]> _cache;
+  private final AtomicLong _length;
+  private final AtomicLong _currentLength = new AtomicLong();
 
   public static void applyWal(WalFileFactory walFactory, Path path, LocalWalCache localContext) throws IOException {
     try (Reader reader = walFactory.open(path)) {
@@ -58,11 +61,12 @@ public class LocalWalCache implements Closeable {
     }
   }
 
-  public LocalWalCache(File file, long length, int blockSize) throws IOException {
+  public LocalWalCache(File file, AtomicLong length, int blockSize) throws IOException {
     this(file, length, blockSize, 1024 * 1024);
   }
 
-  public LocalWalCache(File file, long length, int blockSize, long cacheSize) throws IOException {
+  public LocalWalCache(File file, AtomicLong length, int blockSize, long cacheSize) throws IOException {
+    _length = length;
     _blockSize = blockSize;
     _file = file;
     if (_file.exists()) {
@@ -71,13 +75,21 @@ public class LocalWalCache implements Closeable {
     _file.getParentFile()
          .mkdirs();
     _rnd = new RandomAccessFile(_file, RW);
-    _rnd.setLength(length);
+    updateLength();
     _channel = _rnd.getChannel();
     Weigher<Integer, byte[]> weigher = (key, value) -> value.length;
     _cache = CacheBuilder.newBuilder()
                          .maximumWeight(cacheSize)
                          .weigher(weigher)
                          .build();
+  }
+
+  private void updateLength() throws IOException {
+    long l = _length.get();
+    if (_currentLength.get() != l) {
+      _currentLength.set(l);
+      _rnd.setLength(l);
+    }
   }
 
   public void delete(long startingBlockId, long endingBlockId) throws IOException {
@@ -124,6 +136,7 @@ public class LocalWalCache implements Closeable {
   }
 
   public void write(long blockId, ByteBuffer byteBuffer) throws IOException {
+    updateLength();
     int id = Utils.getIntKey(blockId);
     if (_cache != null) {
       _cache.put(id, toByteArray(byteBuffer));

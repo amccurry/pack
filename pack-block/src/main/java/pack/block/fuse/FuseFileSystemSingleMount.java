@@ -43,13 +43,11 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   private static final String ALLOW_ROOT = "allow_root";
   private final String _localPath;
   private final BlockStore _blockStore;
-  private final long _length;
   private final byte[] _pidContent;
 
   public FuseFileSystemSingleMount(String localPath, BlockStore blockStore) throws IOException {
     _localPath = localPath;
     _blockStore = blockStore;
-    _length = blockStore.getLength();
     _pidContent = (ManagementFactory.getRuntimeMXBean()
                                     .getName()
         + "\n").getBytes();
@@ -104,8 +102,10 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   @Override
   public int getattr(String path, FileStat stat) {
     long lastModified;
+    long length;
     try {
       lastModified = _blockStore.lastModified();
+      length = _blockStore.getLength();
     } catch (Throwable t) {
       LOGGER.error("Unknown error.", t);
       return -ErrorCodes.EIO();
@@ -115,7 +115,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     switch (path) {
     case BRICK_FILENAME:
       stat.st_mode.set(FileStat.S_IFREG | 0700);
-      stat.st_size.set(_length);
+      stat.st_size.set(length);
       return 0;
     case FILE_SEP:
       stat.st_mode.set(FileStat.S_IFDIR | 0755);

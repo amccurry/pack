@@ -11,6 +11,7 @@ import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
 import pack.block.blockstore.hdfs.error.RetryBlockStore;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.Status;
+import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfigInternal;
 
 public abstract class BlockStoreFactory {
@@ -21,16 +22,19 @@ public abstract class BlockStoreFactory {
       BlockPackFuseConfigInternal packFuseConfig, MetricRegistry registry) throws IOException;
 
   public static class BlockStoreFactoryImpl extends BlockStoreFactory {
+    private static final String BRICK = "brick";
+
     @Override
     public HdfsBlockStore getHdfsBlockStore(BlockPackAdmin blockPackAdmin, BlockPackFuseConfigInternal packFuseConfig,
         MetricRegistry registry) throws IOException {
       blockPackAdmin.setStatus(Status.INITIALIZATION, "Opening Blockstore");
-      String fsLocalCache = packFuseConfig.getBlockPackFuseConfig()
-                                          .getFsLocalCache();
+      BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
+      String fsLocalCache = blockPackFuseConfig.getFsLocalCache();
+      File brick = new File(blockPackFuseConfig.getFuseMountLocation(), BRICK);
       File cacheDir = new File(fsLocalCache);
       cacheDir.mkdirs();
       HdfsBlockStoreImpl blockStore = new HdfsBlockStoreImpl(registry, cacheDir, packFuseConfig.getFileSystem(),
-          packFuseConfig.getPath(), packFuseConfig.getConfig());
+          packFuseConfig.getPath(), packFuseConfig.getConfig(), brick);
       UgiHdfsBlockStore ugiHdfsBlockStore = UgiHdfsBlockStore.wrap(blockStore);
       RetryBlockStore retryBlockStore = RetryBlockStore.wrap(ugiHdfsBlockStore);
       return retryBlockStore;

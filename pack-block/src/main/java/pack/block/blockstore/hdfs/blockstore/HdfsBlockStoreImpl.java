@@ -1,8 +1,10 @@
 package pack.block.blockstore.hdfs.blockstore;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,17 +40,20 @@ import org.slf4j.LoggerFactory;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer.Context;
+import com.google.common.base.Splitter;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 
+import pack.PackServer.Result;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
+import pack.block.server.fs.LinuxFileSystem;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.file.WalKeyWritable;
 import pack.block.util.Utils;
@@ -69,12 +74,12 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   private final FileSystem _fileSystem;
   private final Path _path;
   private final HdfsMetaData _metaData;
-  private final long _length;
+  private final AtomicLong _length = new AtomicLong();
   private final int _fileSystemBlockSize;
   private final Path _blockPath;
   private final Cache<Path, BlockFile.Reader> _readerCache;
   private final AtomicReference<List<Path>> _blockFiles = new AtomicReference<>();
-  private final Timer _blockFileTimer;
+  private final Timer _timer;
   private final MetricRegistry _registry;
   private final com.codahale.metrics.Timer _writeTimer;
   private final com.codahale.metrics.Timer _readTimer;
@@ -94,6 +99,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   private final WalFileFactory _walFactory;
   private final AtomicBoolean _rollInProgress = new AtomicBoolean();
   private final ExecutorService _walRollExecutor;
+  private final File _brickFile;
 
   public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path)
       throws IOException {
@@ -102,7 +108,12 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
       HdfsBlockStoreConfig config) throws IOException {
+    this(registry, cacheDir, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG, null);
+  }
 
+  public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
+      HdfsBlockStoreConfig config, File brickFile) throws IOException {
+    _brickFile = brickFile;
     _registry = registry;
 
     _writeTimer = _registry.timer(WRITE_TIMER);
@@ -131,7 +142,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
     _fileSystemBlockSize = _metaData.getFileSystemBlockSize();
 
-    _length = _metaData.getLength();
+    _length.set(_metaData.getLength());
     _blockPath = Utils.qualify(fileSystem, new Path(_path, HdfsBlockStoreConfig.BLOCK));
     _fileSystem.mkdirs(_blockPath);
     _genCounter = new AtomicLong(readGenCounter());
@@ -146,9 +157,9 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     _blockFiles.set(ImmutableList.copyOf(pathList));
     // create background thread that removes orphaned block files and checks for
     // new block files that have been merged externally
-    _blockFileTimer = new Timer(HdfsBlockStoreConfig.BLOCK + "|" + _blockPath.toUri()
-                                                                             .getPath(),
-        true);
+    String name = HdfsBlockStoreConfig.BLOCK + "|" + _blockPath.toUri()
+                                                               .getPath();
+    _timer = new Timer(name, true);
 
     LOGGER.info("open block files");
     openBlockFiles();
@@ -161,8 +172,12 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
     long period = config.getBlockFileUnit()
                         .toMillis(config.getBlockFilePeriod());
-    _blockFileTimer.schedule(getBlockFileTask(), period, period);
+    _timer.schedule(getBlockFileTask(), period, period);
+    if (_brickFile != null) {
+      _timer.schedule(getFileSizeAdjustment(), TimeUnit.MINUTES.toMillis(1), TimeUnit.MINUTES.toMillis(1));
+    }
     _walRollExecutor = Executors.newSingleThreadExecutor();
+
   }
 
   private RemovalListener<Path, LocalWalCache> getRemovalListener() {
@@ -327,8 +342,8 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
         }
       }
     }
-    _blockFileTimer.cancel();
-    _blockFileTimer.purge();
+    _timer.cancel();
+    _timer.purge();
     _readerCache.invalidateAll();
     _walRollExecutor.shutdown();
     try {
@@ -342,7 +357,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   @Override
   public long getLength() {
-    return _length;
+    return _length.get();
   }
 
   @Override
@@ -885,4 +900,74 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
       _writer.flush();
     }
   }
+
+  private TimerTask getFileSizeAdjustment() {
+    return new TimerTask() {
+      @Override
+      public void run() {
+        try {
+          HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
+          long length = metaData.getLength();
+          long currentLength = _length.get();
+          if (currentLength == length) {
+            return;
+          } else if (currentLength > length) {
+            LOGGER.error("Size of volume can not be reduced from {} to {}", currentLength, length);
+          } else if (currentLength < length) {
+            LOGGER.info("Growing volume from {} to {}", currentLength, length);
+            _length.set(length);
+
+            String device = getLoopBackDevice(_brickFile.getCanonicalPath());
+            LOGGER.info("Device {}", device);
+            if (device == null) {
+              return;
+            }
+
+            readLoopDeviceCapacity(device);
+            LOGGER.info("Read device capacity {}", device);
+
+            LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
+                                                      .getLinuxFileSystem();
+            if (linuxFileSystem.isGrowOnlineSupported()) {
+              LOGGER.info("Growing filesystem {}", device);
+              linuxFileSystem.growOnline(new File(device));
+            } else {
+              LOGGER.info("Growing online filesystem not supported {}", device);
+            }
+          }
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error", t);
+        }
+      }
+    };
+  }
+
+  public static void readLoopDeviceCapacity(String device) throws IOException {
+    Utils.exec(LOGGER, "sudo", "losetup", "-c", device);
+  }
+
+  public static String getLoopBackDevice(String file) throws IOException {
+    Result result = Utils.execAsResultQuietly(LOGGER, "sudo", "losetup", "-O", "NAME,BACK-FILE");
+    if (result.exitCode != 0) {
+      throw new IOException(result.stderr + " " + result.stdout);
+    }
+    try (BufferedReader reader = new BufferedReader(new StringReader(result.stdout))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        String s = line.trim()
+                       .replaceAll("\\s+", " ");
+        List<String> list = Splitter.on(" ")
+                                    .splitToList(s);
+        if (list.size() < 2) {
+          continue;
+        }
+        if (list.get(1)
+                .equals(file)) {
+          return list.get(0);
+        }
+      }
+    }
+    return null;
+  }
+
 }
