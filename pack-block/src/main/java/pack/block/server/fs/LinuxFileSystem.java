@@ -49,4 +49,8 @@ public interface LinuxFileSystem {
 
   }
 
+  default void repair(File device) throws IOException {
+
+  }
+
 }

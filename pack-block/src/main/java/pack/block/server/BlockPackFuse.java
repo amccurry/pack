@@ -42,6 +42,7 @@ import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.fuse.FuseFileSystemSingleMount;
+import pack.block.fuse.SnapshotHandler;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.Status;
 import pack.block.server.json.BlockPackFuseConfig;
@@ -122,12 +123,20 @@ public class BlockPackFuse implements Closeable {
           LOGGER.info("admin server started");
           blockPackAdmin.setStatus(Status.INITIALIZATION);
           BlockPackFuseConfigInternalBuilder builder = BlockPackFuseConfigInternal.builder();
+          SnapshotHandler snapshotHandler = name -> {
+            UserGroupInformation ugiSnapshot = Utils.getUserGroupInformation();
+            ugiSnapshot.doAs((PrivilegedExceptionAction<Void>) () -> {
+              HdfsSnapshotUtil.createSnapshot(fileSystem, path, name);
+              return null;
+            });
+          };
           BlockPackFuseConfigInternal fuseConfig = builder.blockPackAdmin(blockPackAdmin)
                                                           .path(path)
                                                           .config(config)
                                                           .blockPackFuseConfig(blockPackFuseConfig)
                                                           .blockStoreFactory(BlockStoreFactory.DEFAULT)
                                                           .fileSystem(fileSystem)
+                                                          .snapshotHandler(snapshotHandler)
                                                           .build();
 
           BlockPackFuse blockPackFuse = closer.register(blockPackAdmin.register(new BlockPackFuse(fuseConfig)));
@@ -259,7 +268,8 @@ public class BlockPackFuse implements Closeable {
       LOGGER.info("creating block store");
       _blockStore = factory.getHdfsBlockStore(_blockPackAdmin, packFuseConfig, _registry);
       LOGGER.info("creating fuse file system");
-      _fuse = _closer.register(new FuseFileSystemSingleMount(blockPackFuseConfig.getFuseMountLocation(), _blockStore));
+      _fuse = _closer.register(new FuseFileSystemSingleMount(blockPackFuseConfig.getFuseMountLocation(), _blockStore,
+          packFuseConfig.getSnapshotHandler()));
       _fuseMountThread = new Thread(() -> _fuse.localMount());
       _fuseMountThread.setName(FUSE_MOUNT_THREAD);
     } else {

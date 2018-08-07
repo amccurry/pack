@@ -6,8 +6,8 @@ import java.util.Date;
 
 public abstract class HdfsSnapshotStrategy {
 
+  public static final String YYYYMMDDKKMMSS = "yyyyMMddkkmmssSSS";
   protected static final String MOUNT = ".mount.";
-  protected static final String YYYYMMDDKKMMSS = "yyyyMMddkkmmssSSS";
 
   public abstract Collection<String> getSnapshotsToRemove(Collection<String> currentSnapshots);
 

@@ -136,7 +136,9 @@ public class BlockPackFuseProcessBuilder {
       if (nohupProcess) {
         cmdLineBuilder.add(NOHUP);
       }
-      cmdLineBuilder.add(run.getAbsolutePath());
+      cmdLineBuilder.add(run.getAbsolutePath())
+                    .add(STDOUT_REDIRECT + logDir + STDOUT + ".run")
+                    .add(STDERR_REDIRECT + logDir + STDERR + ".run");
       if (nohupProcess) {
         cmdLineBuilder.add(BACKGROUND);
       }

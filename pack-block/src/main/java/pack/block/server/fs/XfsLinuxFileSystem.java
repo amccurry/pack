@@ -15,6 +15,7 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(XfsLinuxFileSystem.class);
 
+  private static final String DATA_LOSS = "-L";
   private static final String XFS = "XFS";
   private static final String XFS_GROWFS = "xfs_growfs";
   private static final String MKFS_XFS = "mkfs.xfs";
@@ -47,6 +48,11 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
           mountLocation.getCanonicalPath());
     }
     throw new IOException(result.stderr);
+  }
+
+  @Override
+  public void repair(File device) throws IOException {
+    Utils.exec(LOGGER, SUDO, XFS_REPAIR, DATA_LOSS, device.getCanonicalPath());
   }
 
   @Override

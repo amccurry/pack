@@ -38,14 +38,19 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
   private static final String BRICK_FILENAME = FILE_SEP + BRICK;
   private static final String SHUTDOWN = "shutdown";
   private static final String SHUTDOWN_FILENAME = FILE_SEP + SHUTDOWN;
+  private static final String SNAPSHOT = "snapshot";
+  private static final String SNAPSHOT_FILENAME = FILE_SEP + SNAPSHOT;
   private static final String OPTION_SWITCH = "-o";
   private static final String AUTO_UNMOUNT = "auto_unmount";
   private static final String ALLOW_ROOT = "allow_root";
   private final String _localPath;
   private final BlockStore _blockStore;
   private final byte[] _pidContent;
+  private final SnapshotHandler _snapshotHandler;
 
-  public FuseFileSystemSingleMount(String localPath, BlockStore blockStore) throws IOException {
+  public FuseFileSystemSingleMount(String localPath, BlockStore blockStore, SnapshotHandler snapshotHandler)
+      throws IOException {
+    _snapshotHandler = snapshotHandler;
     _localPath = localPath;
     _blockStore = blockStore;
     _pidContent = (ManagementFactory.getRuntimeMXBean()
@@ -92,6 +97,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     case PID_FILENAME:
     case BRICK_FILENAME:
       return -ErrorCodes.EIO();
+    case SNAPSHOT_FILENAME:
     case SHUTDOWN_FILENAME:
       return 0;
     default:
@@ -125,6 +131,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       stat.st_mode.set(FileStat.S_IFREG | 0400);
       stat.st_size.set(_pidContent.length);
       return 0;
+    case SNAPSHOT_FILENAME:
     case SHUTDOWN_FILENAME:
       stat.st_mode.set(FileStat.S_IFREG | 0600);
       stat.st_size.set(0);
@@ -143,9 +150,11 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       filter.apply(buf, BRICK, null, 0);
       filter.apply(buf, FUSE_PID, null, 0);
       filter.apply(buf, SHUTDOWN, null, 0);
+      filter.apply(buf, SNAPSHOT, null, 0);
       return 0;
     case BRICK_FILENAME:
     case PID_FILENAME:
+    case SNAPSHOT_FILENAME:
     case SHUTDOWN_FILENAME:
       return -ErrorCodes.ENOTDIR();
     default:
@@ -171,6 +180,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     case PID_FILENAME:
       buf.put(0, _pidContent, 0, _pidContent.length);
       return _pidContent.length;
+    case SNAPSHOT_FILENAME:
     case SHUTDOWN_FILENAME:
       buf.put(0, new byte[] {}, 0, 0);
       return 0;
@@ -200,6 +210,14 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
           sleep(TimeUnit.SECONDS.toMillis(3));
         }
       }
+    case SNAPSHOT_FILENAME: {
+      try {
+        return createNewSnapshot(buf, size, offset);
+      } catch (Throwable t) {
+        LOGGER.error("Unknown error.", t);
+        return -ErrorCodes.EIO();
+      }
+    }
     case SHUTDOWN_FILENAME: {
       startShutdown();
       return (int) size;
@@ -233,6 +251,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       }
     case FILE_SEP:
       return -ErrorCodes.EISDIR();
+    case SNAPSHOT_FILENAME:
     case SHUTDOWN_FILENAME:
     case PID_FILENAME:
       return 0;
@@ -262,6 +281,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       }
     case FILE_SEP:
       return -ErrorCodes.EISDIR();
+    case SNAPSHOT_FILENAME:
     case SHUTDOWN_FILENAME:
     case PID_FILENAME:
       return -ErrorCodes.EIO();
@@ -317,6 +337,19 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
       position += write;
     }
     return offset;
+  }
+
+  private int createNewSnapshot(Pointer buffer, long size, long position) throws Exception {
+    int len = (int) size;
+
+    byte[] buf = new byte[len];
+    buffer.get(0, buf, 0, len);
+
+    String s = new String(buf, 0, len);
+    String name = s.trim();
+    LOGGER.info("Creating new volume snapshot {}", name);
+    _snapshotHandler.createNewSnapshot(name);
+    return len;
   }
 
 }

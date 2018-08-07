@@ -7,6 +7,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.fuse.SnapshotHandler;
 import pack.block.server.BlockStoreFactory;
 import pack.block.server.admin.BlockPackAdmin;
 
@@ -20,4 +21,5 @@ public class BlockPackFuseConfigInternal {
   HdfsBlockStoreConfig config;
   BlockStoreFactory blockStoreFactory;
   FileSystem fileSystem;
+  SnapshotHandler snapshotHandler;
 }
