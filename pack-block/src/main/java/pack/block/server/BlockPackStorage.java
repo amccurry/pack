@@ -354,7 +354,7 @@ public class BlockPackStorage implements PackStorage {
       File localFileSystemMount = getLocalFileSystemMount(volumeName, id);
       if (isMounted(localFileSystemMount)) {
         LOGGER.info("volume {} is mounted {}", volumeName, localFileSystemMount);
-        return localFileSystemMount.getAbsolutePath();
+        return localFileSystemMount.getCanonicalPath();
       }
     }
     return null;
@@ -460,6 +460,8 @@ public class BlockPackStorage implements PackStorage {
     File localDevice = getLocalDevice(volumeName, id);
     LOGGER.info("Mount Id {} localDevice {}", id, localDevice);
 
+    File localIndex = getLocalIndex(volumeName, id);
+    LOGGER.info("Mount Id {} localIndex {}", id, localIndex);
     File localCache = getLocalCache(volumeName, id);
     LOGGER.info("Mount Id {} localCache {}", id, localCache);
     File libDir = getLibDir(volumeName, id);
@@ -483,6 +485,7 @@ public class BlockPackStorage implements PackStorage {
 
         libDir.mkdirs();
         localCache.mkdirs();
+        localIndex.mkdirs();
         localFileSystemMount.mkdirs();
         localDevice.mkdirs();
         localMetrics.mkdirs();
@@ -497,14 +500,15 @@ public class BlockPackStorage implements PackStorage {
 
         BlockPackFuseConfigBuilder configBuilder = BlockPackFuseConfig.builder();
         BlockPackFuseConfig config = configBuilder.volumeName(volumeName)
-                                                  .fuseMountLocation(localDevice.getAbsolutePath())
-                                                  .fsMetricsLocation(localMetrics.getAbsolutePath())
-                                                  .fsLocalCache(localCache.getAbsolutePath())
+                                                  .fuseMountLocation(localDevice.getCanonicalPath())
+                                                  .fsMetricsLocation(localMetrics.getCanonicalPath())
+                                                  .fsLocalCache(localCache.getCanonicalPath())
+                                                  .fsLocalIndex(localIndex.getCanonicalPath())
                                                   .hdfsVolumePath(path)
                                                   .numberOfMountSnapshots(_numberOfMountSnapshots)
                                                   .build();
-        BlockPackFuseProcessBuilder.startProcess(_nohupProcess, volumeName, volumeDir.getAbsolutePath(),
-            logDir.getAbsolutePath(), libDir.getAbsolutePath(), configFile.getAbsolutePath(), config);
+        BlockPackFuseProcessBuilder.startProcess(_nohupProcess, volumeName, volumeDir.getCanonicalPath(),
+            logDir.getCanonicalPath(), libDir.getCanonicalPath(), configFile.getCanonicalPath(), config);
 
         File brick = new File(localDevice, BRICK);
         if (!waitForDevice(brick, true, 60)) {
@@ -516,18 +520,22 @@ public class BlockPackStorage implements PackStorage {
       }
       File device = new File(localDevice, FuseFileSystemSingleMount.BRICK);
       if (deviceOnly) {
-        return device.getAbsolutePath();
+        return device.getCanonicalPath();
       }
       mkfsIfNeeded(metaData, volumeName, device);
       tryToAssignUuid(metaData, device);
       mountFs(metaData, device, localFileSystemMount, volumeName, id);
       waitForMount(localDevice);
       HdfsSnapshotUtil.cleanupOldMountSnapshots(fileSystem, volumePath, _snapshotStrategy);
-      return localFileSystemMount.getAbsolutePath();
+      return localFileSystemMount.getCanonicalPath();
     } catch (Exception e) {
       counter.dec();
       throw e;
     }
+  }
+
+  private File getLocalIndex(String volumeName, String id) {
+    return new File(getVolumeDir(volumeName, id), "index");
   }
 
   private void umountVolume(String volumeName, String id, boolean deviceOnly) throws Exception {
@@ -614,6 +622,9 @@ public class BlockPackStorage implements PackStorage {
     }
     if (linuxFileSystem.isFstrimSupported()) {
       linuxFileSystem.fstrim(localFileSystemMount);
+    }
+    if (linuxFileSystem.isGrowOnlineSupported()) {
+      linuxFileSystem.growOnline(device);
     }
   }
 

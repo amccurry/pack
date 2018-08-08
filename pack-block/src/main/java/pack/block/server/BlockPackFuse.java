@@ -36,6 +36,7 @@ import com.google.common.io.Closer;
 import pack.PackServer.Result;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.file.ImmutableRoaringBitmapManager;
 import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.lock.LockLostAction;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
@@ -92,6 +93,10 @@ public class BlockPackFuse implements Closeable {
 
       BlockPackFuseConfig blockPackFuseConfig = MAPPER.readValue(new File(args[0]), BlockPackFuseConfig.class);
       Path path = new Path(blockPackFuseConfig.getHdfsVolumePath());
+
+      if (blockPackFuseConfig.getFsLocalIndex() != null) {
+        ImmutableRoaringBitmapManager.setIndexDir(new File(blockPackFuseConfig.getFsLocalIndex()));
+      }
 
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
         FileSystem fileSystem = path.getFileSystem(conf);
@@ -232,6 +237,7 @@ public class BlockPackFuse implements Closeable {
 
   public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
     BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
+
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
     _path = packFuseConfig.getPath();
     _blockPackAdmin.setStatus(Status.INITIALIZATION, "Creating Lock Manager");

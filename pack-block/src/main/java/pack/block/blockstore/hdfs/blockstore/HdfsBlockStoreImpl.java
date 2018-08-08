@@ -913,6 +913,10 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
             return;
           } else if (currentLength > length) {
             LOGGER.error("Size of volume can not be reduced from {} to {}", currentLength, length);
+            HdfsMetaData fixed = metaData.toBuilder()
+                                         .length(currentLength)
+                                         .build();
+            HdfsBlockStoreAdmin.writeHdfsMetaData(fixed, _fileSystem, _path);
           } else if (currentLength < length) {
             LOGGER.info("Growing volume from {} to {}", currentLength, length);
             _length.set(length);

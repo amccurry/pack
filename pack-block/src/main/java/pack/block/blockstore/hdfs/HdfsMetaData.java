@@ -27,6 +27,8 @@ import pack.block.server.fs.FileSystemType;
 @Builder(toBuilder = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class HdfsMetaData {
+  private static final String SYNC_RATE_PER_SECOND = "syncRatePerSecond";
+  private static final String UUID_NAME = "uuid";
   private static final String MAX_IDLE_WRITER_TIME = "maxIdleWriterTime";
   private static final String MIN_TIME_BETWEEN_SYNCS = "minTimeBetweenSyncs";
   private static final String FILE_SYSTEM_TYPE = "fileSystemType";
@@ -34,8 +36,6 @@ public class HdfsMetaData {
   private static final String MAX_BLOCK_FILE_SIZE = "maxBlockFileSize";
   private static final String LENGTH = "length";
   private static final String FILE_SYSTEM_BLOCK_SIZE = "fileSystemBlockSize";
-  private static final String WAL_COMPRESSION_CODEC = "walCompressionCodec";
-  private static final String WAL_COMPRESSION_TYPE = "walCompressionType";
   private static final String MAX_WAL_FILE_SIZE = "maxWalFileSize";
   private static final String MAX_OBSOLETE_RATIO = "maxObsoleteRatio";
 
@@ -47,10 +47,10 @@ public class HdfsMetaData {
 
   public static final int DEFAULT_FILESYSTEM_BLOCKSIZE = 4096;
 
-  // 100GB
+  // 100GiB
   public static final long DEFAULT_LENGTH_BYTES = (long) (100L * Math.pow(1024, 3));
 
-  // 1GB
+  // 5GiB
   public static final long DEFAULT_MAX_BLOCK_FILE_SIZE = (long) (5L * Math.pow(1024, 3));
 
   public static final double DEFAULT_MAX_OBSOLETE_RATIO = 0.5;
@@ -106,12 +106,6 @@ public class HdfsMetaData {
   long maxWalFileSize = DEFAULT_MAX_WAL_FILE_SIZE;
 
   @JsonProperty
-  String walCompressionType;
-
-  @JsonProperty
-  String walCompressionCodec;
-
-  @JsonProperty
   String uuid;
 
   @JsonProperty
@@ -154,20 +148,21 @@ public class HdfsMetaData {
     if (options.containsKey(MAX_WAL_FILE_SIZE)) {
       builder.maxWalFileSize(toLong(options.get(MAX_WAL_FILE_SIZE)));
     }
-    if (options.containsKey(WAL_COMPRESSION_TYPE)) {
-      builder.walCompressionType(toString(options.get(WAL_COMPRESSION_TYPE)));
-    }
-    if (options.containsKey(WAL_COMPRESSION_CODEC)) {
-      builder.walCompressionCodec(toString(options.get(WAL_COMPRESSION_CODEC)));
-    }
     if (options.containsKey(MAX_IDLE_WRITER_TIME)) {
       builder.maxIdleWriterTime(toLong(options.get(MAX_IDLE_WRITER_TIME)));
     }
     if (options.containsKey(MIN_TIME_BETWEEN_SYNCS)) {
       builder.minTimeBetweenSyncs(toLong(options.get(MIN_TIME_BETWEEN_SYNCS)));
     }
-    builder.uuid(UUID.randomUUID()
-                     .toString());
+    if (options.containsKey(SYNC_RATE_PER_SECOND)) {
+      builder.syncRatePerSecond(toDouble(options.get(SYNC_RATE_PER_SECOND)));
+    }
+    if (options.containsKey(UUID_NAME)) {
+      builder.uuid(toString(options.get(UUID_NAME)));
+    } else {
+      builder.uuid(UUID.randomUUID()
+                       .toString());
+    }
     return builder.build();
   }
 

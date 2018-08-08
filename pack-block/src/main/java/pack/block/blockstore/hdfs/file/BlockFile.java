@@ -1,21 +1,14 @@
 package pack.block.blockstore.hdfs.file;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.DataInput;
 import java.io.DataOutput;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel.MapMode;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -49,7 +42,7 @@ import pack.block.util.Utils;
 public class BlockFile {
 
   private static final String BLOCKLNK = ".blocklnk";
-  private static final String PACK_BLOCK_FILE_OFFHEAP_PATH = "pack.block.file.offheap.path";
+
   private static final int DEFAULT_MERGE_READ_BATCH_SIZE = 32;
   private static final String BLOCK = ".block";
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockFile.class);
@@ -57,19 +50,7 @@ public class BlockFile {
   private static final String UTF_8 = "UTF-8";
   private static final byte[] MAGIC_STR;
 
-  private static final boolean OFF_HEAP_BITMAPS;
-  private static final File INDEX_DIR;
-
   static {
-    String path = System.getProperty(PACK_BLOCK_FILE_OFFHEAP_PATH);
-    if (path == null) {
-      OFF_HEAP_BITMAPS = false;
-      INDEX_DIR = null;
-    } else {
-      OFF_HEAP_BITMAPS = true;
-      INDEX_DIR = new File(path);
-      INDEX_DIR.mkdirs();
-    }
     try {
       MAGIC_STR = HDFS_BLOCK_FILE_V1.getBytes(UTF_8);
     } catch (UnsupportedEncodingException e) {
@@ -852,37 +833,14 @@ public class BlockFile {
       long metaDataPosition = _inputStream.readLong();
       _inputStream.seek(metaDataPosition);
 
-      _blocks = load(_inputStream);
-      _emptyBlocks = load(_inputStream);
+      _blocks = ImmutableRoaringBitmapManager.load(_inputStream);
+      _emptyBlocks = ImmutableRoaringBitmapManager.load(_inputStream);
 
       _blockSize = _inputStream.readInt();
       _sourceFiles = readStringList(_inputStream);
       _first = getFirst();
       _last = getLast();
       // @TODO read and validate the magic string
-    }
-
-    private ImmutableRoaringBitmap load(FSDataInputStream input) throws IOException {
-      RoaringBitmap bitset = new RoaringBitmap();
-      bitset.deserialize(_inputStream);
-      if (OFF_HEAP_BITMAPS) {
-        File file = File.createTempFile("index-", BLOCK, INDEX_DIR);
-        _closer.register((Closeable) () -> file.delete());
-        file.deleteOnExit();
-        try (DataOutputStream out = new DataOutputStream(new FileOutputStream(file))) {
-          bitset.serialize(out);
-        }
-        RandomAccessFile rand = _closer.register(new RandomAccessFile(file, "r"));
-        MappedByteBuffer byteBuffer = rand.getChannel()
-                                          .map(MapMode.READ_ONLY, 0, file.length());
-        return new ImmutableRoaringBitmap(byteBuffer);
-      } else {
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        try (DataOutputStream out = new DataOutputStream(byteArrayOutputStream)) {
-          bitset.serialize(out);
-        }
-        return new ImmutableRoaringBitmap(ByteBuffer.wrap(byteArrayOutputStream.toByteArray()));
-      }
     }
 
     @Override

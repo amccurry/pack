@@ -15,9 +15,7 @@ public class BlockPackFuseConfig {
   String fuseMountLocation;
   String fsMetricsLocation;
   String fsLocalCache;
+  String fsLocalIndex;
   String hdfsVolumePath;
   int numberOfMountSnapshots;
-  // long volumeMissingPollingPeriod;
-  // int volumeMissingCountBeforeAutoShutdown;
-  // boolean countDockerDownAsMissing;
 }
