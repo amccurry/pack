@@ -180,15 +180,16 @@ public class PackCompactorServer implements Closeable {
     FileStatus[] listStatus = order(fileSystem.listStatus(root));
     for (FileStatus status : listStatus) {
       try {
-        executeCompactionVolume(status.getPath());
+        executeCompactionVolume(_configuration, status.getPath());
       } catch (Exception e) {
         LOGGER.error("Compaction of " + status.getPath() + " failed", e);
       }
     }
   }
 
-  private void executeCompactionVolume(Path volumePath) throws IOException, InterruptedException {
-    FileSystem fileSystem = volumePath.getFileSystem(_configuration);
+  public static void executeCompactionVolume(Configuration configuration, Path volumePath)
+      throws IOException, InterruptedException {
+    FileSystem fileSystem = volumePath.getFileSystem(configuration);
     HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
       Utils.dropVolume(volumePath, fileSystem);
@@ -198,7 +199,7 @@ public class PackCompactorServer implements Closeable {
     LockLostAction lockLostAction = () -> {
       LOGGER.error("Compaction lock lost for volume {}", volumePath);
     };
-    try (HdfsLock lock = new HdfsLock(_configuration, lockPath, lockLostAction)) {
+    try (HdfsLock lock = new HdfsLock(configuration, lockPath, lockLostAction)) {
       if (lock.tryToLock()) {
         try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, volumePath, metaData)) {
           compactor.runCompaction(lock);

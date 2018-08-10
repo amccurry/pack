@@ -139,18 +139,18 @@ public class BlockPackStorage implements PackStorage {
     _workingDir = config.getWorkingDir();
     _workingDir.mkdirs();
 
-    long period = TimeUnit.SECONDS.toMillis(5);
+//    long period = TimeUnit.SECONDS.toMillis(5);
     _cleanupTimer = new Timer("Pack cleanup", true);
-    _cleanupTimer.scheduleAtFixedRate(new TimerTask() {
-      @Override
-      public void run() {
-        try {
-          cleanup();
-        } catch (Throwable t) {
-          LOGGER.error("Unknown error", t);
-        }
-      }
-    }, period, period);
+//    _cleanupTimer.scheduleAtFixedRate(new TimerTask() {
+//      @Override
+//      public void run() {
+//        try {
+//          cleanup();
+//        } catch (Throwable t) {
+//          LOGGER.error("Unknown error", t);
+//        }
+//      }
+//    }, period, period);
   }
 
   private void cleanup() throws IOException {
@@ -374,13 +374,13 @@ public class BlockPackStorage implements PackStorage {
 
   @Override
   public List<String> listVolumes() throws Exception {
-    return getUgi().doAs((PrivilegedExceptionAction<List<String>>) () -> listHdfsVolumes());
+    return getUgi().doAs((PrivilegedExceptionAction<List<String>>) () -> listHdfsVolumes(getFileSystem(_root), _root));
   }
 
-  protected List<String> listHdfsVolumes() throws IOException, FileNotFoundException {
+  public static List<String> listHdfsVolumes(FileSystem fileSystem, Path root)
+      throws IOException, FileNotFoundException {
     LOGGER.info("list volumes");
-    FileSystem fileSystem = getFileSystem(_root);
-    FileStatus[] listStatus = fileSystem.listStatus(_root);
+    FileStatus[] listStatus = fileSystem.listStatus(root);
     List<String> result = new ArrayList<>();
     for (FileStatus fileStatus : listStatus) {
       Path path = fileStatus.getPath();
@@ -624,7 +624,7 @@ public class BlockPackStorage implements PackStorage {
       linuxFileSystem.fstrim(localFileSystemMount);
     }
     if (linuxFileSystem.isGrowOnlineSupported()) {
-      linuxFileSystem.growOnline(device);
+      linuxFileSystem.growOnline(localFileSystemMount);
     }
   }
 

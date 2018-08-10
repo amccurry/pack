@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -180,7 +181,8 @@ public class BlockFileCompactor implements Closeable {
     CompactionJob compactionJob = new CompactionJob();
     RoaringBitmap currentCompactionBlocksToIgnore = new RoaringBitmap();
     for (FileStatus status : liveFiles) {
-      if (shouldCompactFile(_fileSystem, status, getNewerBlocksToIgnore(status, listStatus))) {
+      LOGGER.info("should compact cal {}", status.getPath());
+      if (shouldCompactFile(_fileSystem, status, getOverallBlocksToIgnore(status, liveFiles))) {
         compactionJob.add(status.getPath());
       } else {
         finishSetup(builder, compactionJob, currentCompactionBlocksToIgnore);
@@ -197,23 +199,28 @@ public class BlockFileCompactor implements Closeable {
     return builder.build();
   }
 
-  private RoaringBitmap getNewerBlocksToIgnore(FileStatus status, FileStatus[] listStatus) throws IOException {
-    FileStatus[] copy = new FileStatus[listStatus.length];
-    System.arraycopy(listStatus, 0, copy, 0, listStatus.length);
-
-    Arrays.sort(copy);
+  /**
+   * In this method we are calculating the existence of all the blocks in newer
+   * layers from the provided current layer.
+   * 
+   * @param status
+   * @param listStatus
+   * @return
+   * @throws IOException
+   */
+  private RoaringBitmap getOverallBlocksToIgnore(FileStatus currentLayer, List<FileStatus> liveFiles)
+      throws IOException {
+    List<FileStatus> allLiveFiles = new ArrayList<>(liveFiles);
+    Collections.sort(allLiveFiles, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
 
     RoaringBitmap overallBlocksToIgnore = new RoaringBitmap();
-    boolean cumulate = false;
-    for (FileStatus fileStatus : copy) {
-      if (cumulate) {
-        Reader reader = getReader(fileStatus.getPath());
-        reader.orDataBlocks(overallBlocksToIgnore);
-        reader.orEmptyBlocks(overallBlocksToIgnore);
+    for (FileStatus fileStatus : liveFiles) {
+      if (currentLayer.equals(fileStatus)) {
+        break;
       }
-      if (status.equals(fileStatus)) {
-        cumulate = true;
-      }
+      Reader reader = getReader(fileStatus.getPath());
+      reader.orDataBlocks(overallBlocksToIgnore);
+      reader.orEmptyBlocks(overallBlocksToIgnore);
     }
     return overallBlocksToIgnore;
   }
@@ -272,8 +279,12 @@ public class BlockFileCompactor implements Closeable {
     Set<String> sourceBlockFiles = new HashSet<>();
     for (FileStatus fileStatus : listStatus) {
       Path path = fileStatus.getPath();
+      LOGGER.info("opening reader {}", path);
       Reader reader = getReader(path);
       sourceBlockFiles.addAll(reader.getSourceBlockFiles());
+      RoaringBitmap empty = new RoaringBitmap();
+      reader.orEmptyBlocks(empty);
+      LOGGER.info("reader has empty cardinality {}", empty.getCardinality());
     }
 
     Builder<FileStatus> toBeDeleted = ImmutableList.builder();
@@ -319,6 +330,7 @@ public class BlockFileCompactor implements Closeable {
     List<FileStatus> list = new ArrayList<>();
     for (int i = listStatus.length - 1; i >= 0; i--) {
       FileStatus fileStatus = listStatus[i];
+      LOGGER.info("get block files {}", fileStatus.getPath());
       if (isWalFile(fileStatus.getPath())) {
         break;
       }

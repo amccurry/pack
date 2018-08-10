@@ -32,8 +32,6 @@ public interface BlockStore extends Closeable {
 
   void fsync() throws IOException;
 
-  default void delete(long position, long length) throws IOException {
-
-  }
+  void delete(long position, long length) throws IOException;
 
 }

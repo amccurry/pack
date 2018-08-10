@@ -833,8 +833,8 @@ public class BlockFile {
       long metaDataPosition = _inputStream.readLong();
       _inputStream.seek(metaDataPosition);
 
-      _blocks = ImmutableRoaringBitmapManager.load(_inputStream);
-      _emptyBlocks = ImmutableRoaringBitmapManager.load(_inputStream);
+      _blocks = ImmutableRoaringBitmapManager.load(logicalPath.getName() + "-data", _inputStream);
+      _emptyBlocks = ImmutableRoaringBitmapManager.load(logicalPath.getName() + "-empty", _inputStream);
 
       _blockSize = _inputStream.readInt();
       _sourceFiles = readStringList(_inputStream);

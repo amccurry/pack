@@ -562,6 +562,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
       WriterContext writer = getWriter();
       try {
         LocalWalCache localContext = getCurrentLocalContext(writer);
+        LOGGER.debug("writer delete {} {}", startingBlockId, endingBlockId);
         writer.delete(startingBlockId, endingBlockId);
         localContext.delete(startingBlockId, endingBlockId);
       } finally {
@@ -884,6 +885,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
     void delete(long startingBlockId, long endingBlockId) throws IOException {
       WalKeyWritable key = new WalKeyWritable(startingBlockId, endingBlockId);
+      LOGGER.debug("delete key {}", key);
       _writer.append(key, EMPTY_BLOCK);
     }
 

@@ -104,4 +104,10 @@ public class WalKeyWritable implements Writable {
     }
   }
 
+  @Override
+  public String toString() {
+    return "WalKeyWritable [type=" + type + ", startingBlockId=" + startingBlockId + ", endingBlockId=" + endingBlockId
+        + "]";
+  }
+
 }

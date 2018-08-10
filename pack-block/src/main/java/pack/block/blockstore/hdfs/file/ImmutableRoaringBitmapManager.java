@@ -57,7 +57,7 @@ public class ImmutableRoaringBitmapManager {
       try (DataOutputStream dout = new DataOutputStream(out)) {
         roaringBitmap.serialize(dout);
       }
-      ImmutableRoaringBitmap bitmap = load(new DataInputStream(new ByteArrayInputStream(out.toByteArray())));
+      ImmutableRoaringBitmap bitmap = load("test", new DataInputStream(new ByteArrayInputStream(out.toByteArray())));
       System.out.println(bitmap.getCardinality());
       Thread.sleep(1000);
     }
@@ -75,13 +75,13 @@ public class ImmutableRoaringBitmapManager {
     indexDir.mkdirs();
   }
 
-  public static ImmutableRoaringBitmap load(DataInput input) throws IOException {
+  public static ImmutableRoaringBitmap load(String name, DataInput input) throws IOException {
     RoaringBitmap bitset = new RoaringBitmap();
     bitset.deserialize(input);
     File indexDir = _indexDir.get();
     if (indexDir != null) {
-      File file = new File(indexDir, UUID.randomUUID()
-                                         .toString());
+      File file = new File(indexDir, name + "-" + UUID.randomUUID()
+                                                      .toString());
       try (DataOutputStream out = new DataOutputStream(new FileOutputStream(file))) {
         bitset.serialize(out);
       }

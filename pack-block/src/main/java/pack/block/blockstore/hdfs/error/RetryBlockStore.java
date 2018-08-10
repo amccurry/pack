@@ -16,7 +16,7 @@ public class RetryBlockStore implements HdfsBlockStore {
   private static final long MAX_WAIT_TIME = 10;
 
   private final HdfsBlockStore _base;
-  
+
   public static RetryBlockStore wrap(HdfsBlockStore blockStore) {
     return new RetryBlockStore(blockStore);
   }
@@ -71,6 +71,11 @@ public class RetryBlockStore implements HdfsBlockStore {
   @Override
   public void close() throws IOException {
     exec(() -> _base.close());
+  }
+
+  @Override
+  public void delete(long position, long length) throws IOException {
+    exec(() -> _base.delete(position, length));
   }
 
   private void exec(ExecVoid exec) {

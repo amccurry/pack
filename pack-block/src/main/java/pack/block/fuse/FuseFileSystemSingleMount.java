@@ -267,6 +267,7 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
     switch (path) {
     case BRICK_FILENAME:
       if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) && lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
+        LOGGER.debug("delete offset {} length {}", off, length);
         while (true) {
           try {
             _blockStore.delete(off, length);

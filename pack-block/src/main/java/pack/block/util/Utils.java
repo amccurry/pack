@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.List;
@@ -36,6 +37,8 @@ import pack.zk.utils.ZooKeeperClientFactory;
 import sun.misc.Unsafe;
 
 public class Utils {
+
+  private static final String PACK_PROPERTIES = "/pack.properties";
 
   private static final String MOUNT = "mount";
 
@@ -234,7 +237,11 @@ public class Utils {
   }
 
   private static String getProperty(String name) {
-    return System.getenv(name);
+    String value = System.getenv(name);
+    if (value != null) {
+      return value;
+    }
+    return System.getProperty(name);
   }
 
   public static boolean getNohupProcess() {
@@ -505,6 +512,14 @@ public class Utils {
       return PACK_HDFS_LOGGER_MAX_FILES_DEFAULT;
     }
     return Integer.parseInt(count);
+  }
+
+  public static void loadPackProperties() throws IOException {
+    InputStream inputStream = Utils.class.getResourceAsStream(PACK_PROPERTIES);
+    if (inputStream != null) {
+      System.getProperties()
+            .load(inputStream);
+    }
   }
 
 }
