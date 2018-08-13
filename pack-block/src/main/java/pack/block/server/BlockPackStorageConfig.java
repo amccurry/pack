@@ -20,7 +20,6 @@ public class BlockPackStorageConfig {
   Configuration configuration;
   Path remotePath;
   int numberOfMountSnapshots;
-  boolean nohupProcess;
   HdfsSnapshotStrategy strategy;
   Service service;
 }

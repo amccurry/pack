@@ -26,6 +26,11 @@
 		<level value="ERROR" />
 		<appender-ref ref="console" />
 	</logger>
+	<logger name="Block report processor">
+		<level value="ERROR" />
+		<appender-ref ref="console" />
+	</logger>
+
 	<root>
 		<priority value="info" />
 		<appender-ref ref="console" />

@@ -63,7 +63,6 @@ public class Utils {
   public static final String HDFS_SITE_XML = "hdfs-site.xml";
   public static final String CORE_SITE_XML = "core-site.xml";
   public static final String PACK_FILE_SYSTEM_MOUNT = "PACK_FILE_SYSTEM_MOUNT";
-  public static final String PACK_NOHUP_PROCESS = "PACK_NOHUP_PROCESS";
   public static final String GLOBAL = "global";
   public static final String PACK_SCOPE = "PACK_SCOPE";
   public static final int PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT = 30000;
@@ -244,14 +243,6 @@ public class Utils {
     return System.getProperty(name);
   }
 
-  public static boolean getNohupProcess() {
-    String v = getProperty(PACK_NOHUP_PROCESS);
-    if (v == null) {
-      return true;
-    }
-    return Boolean.parseBoolean(v.toLowerCase());
-  }
-
   public static String getLocalWorkingPath() {
     String v = getProperty(PACK_LOCAL);
     if (v == null) {
@@ -374,6 +365,16 @@ public class Utils {
       logger.info("Command id {} complete", uuid);
     }
     return result.exitCode;
+  }
+
+  public static Process execAsInteractive(Logger logger, String... command) throws IOException {
+    String uuid = UUID.randomUUID()
+                      .toString();
+    List<String> list = Arrays.asList(command);
+    logger.info("Executing command id {} cmd {}", uuid, list);
+
+    ProcessBuilder builder = new ProcessBuilder(list);
+    return builder.start();
   }
 
   public static void rmr(File... files) {

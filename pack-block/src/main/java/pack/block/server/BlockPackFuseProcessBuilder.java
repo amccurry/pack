@@ -13,6 +13,8 @@ import java.io.PrintWriter;
 import java.util.List;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +28,8 @@ import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.util.Utils;
 
 public class BlockPackFuseProcessBuilder {
+
+  private static final String HADOOP_USER_NAME = "HADOOP_USER_NAME";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuseProcessBuilder.class);
 
@@ -61,14 +65,21 @@ public class BlockPackFuseProcessBuilder {
   private static final String XX_USE_G1GC = "-XX:+UseG1GC";
   private static final String LOG = "log";
   private static final String RUN_SH = "run.sh";
+  private static final String HADOOP_CONFIG = "hadoop-config";
+  private static final String HDFS_SITE_XML = "hdfs-site.xml";
+  private static final String CORE_SITE_XML = "core-site.xml";
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  public static void startProcess(boolean nohupProcess, String volumeName, String workingDir, String logDir,
-      String libDir, String configFilePath, BlockPackFuseConfig config) throws IOException {
+  public static void startProcess(String volumeName, String workingDir, String logDir, String libDir,
+      String configFilePath, Configuration configuration, BlockPackFuseConfig config) throws IOException {
 
     String javaHome = System.getProperty(JAVA_HOME);
 
-    String classPath = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir, null);
+    String classPathLibs = buildClassPath(System.getProperty(JAVA_CLASS_PATH), libDir, null);
+    File configDir = new File(libDir, HADOOP_CONFIG);
+    copyConfig(configuration, configDir);
+    String classPath = Joiner.on(':')
+                             .join(configDir.getCanonicalPath(), classPathLibs);
 
     File configFile = new File(configFilePath);
 
@@ -92,6 +103,12 @@ public class BlockPackFuseProcessBuilder {
       output.println(BIN_BASH);
       output.println(SET_X);
       output.println(SET_E);
+
+      if (!UserGroupInformation.isSecurityEnabled()) {
+        output.println(EXPORT + " " + HADOOP_USER_NAME + "=" + Utils.getUserGroupInformation()
+                                                                    .getUserName());
+      }
+
       output.println("rm -f " + target.getAbsolutePath());
       output.println("ln -s " + logDir + " " + target.getAbsolutePath());
       output.println(EXPORT + " " + PACK_LOG4J_CONFIG + "=" + logConfig.getAbsolutePath());
@@ -131,20 +148,15 @@ public class BlockPackFuseProcessBuilder {
         }
         runWriter.println(cmd);
       }
-
-      Builder<Object> cmdLineBuilder = ImmutableList.builder();
-      if (nohupProcess) {
-        cmdLineBuilder.add(NOHUP);
-      }
-      cmdLineBuilder.add(run.getAbsolutePath())
-                    .add(STDOUT_REDIRECT + logDir + STDOUT + ".run")
-                    .add(STDERR_REDIRECT + logDir + STDERR + ".run");
-      if (nohupProcess) {
-        cmdLineBuilder.add(BACKGROUND);
-      }
-      String cmdLine = Joiner.on(' ')
-                             .join(cmdLineBuilder.build());
-      output.println(cmdLine);
+      ImmutableList<Object> command = ImmutableList.builder()
+                                                   .add(NOHUP)
+                                                   .add(run.getAbsolutePath())
+                                                   .add(STDOUT_REDIRECT + logDir + STDOUT + ".run")
+                                                   .add(STDERR_REDIRECT + logDir + STDERR + ".run")
+                                                   .add(BACKGROUND)
+                                                   .build();
+      output.println(Joiner.on(' ')
+                           .join(command));
       output.println();
     }
     if (!logConfig.exists()) {
@@ -157,6 +169,19 @@ public class BlockPackFuseProcessBuilder {
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
     Utils.exec(LOGGER, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
+  }
+
+  private static void copyConfig(Configuration configuration, File configDir) throws IOException {
+    configDir.mkdirs();
+    writeFile(configuration, configDir, CORE_SITE_XML);
+    writeFile(configuration, configDir, HDFS_SITE_XML);
+  }
+
+  private static void writeFile(Configuration configuration, File configDir, String fileName)
+      throws IOException, FileNotFoundException {
+    try (OutputStream out = new FileOutputStream(new File(configDir, fileName))) {
+      configuration.writeXml(out);
+    }
   }
 
   private static void copyFile(File src, File dst) throws IOException {

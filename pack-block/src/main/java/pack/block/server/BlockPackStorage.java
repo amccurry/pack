@@ -4,9 +4,8 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.security.PrivilegedExceptionAction;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -57,14 +56,6 @@ import spark.Service;
 
 public class BlockPackStorage implements PackStorage {
 
-  private static final String ERROR = ".error.";
-
-  private static final String SNAPSHOT = "snapshot";
-
-  private static final String LOG = "log";
-
-  private static final String FILTER = "--filter";
-
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
   public static final String VOLUME_DRIVER_MOUNT_DEVICE = "/VolumeDriver.MountDevice";
@@ -84,31 +75,29 @@ public class BlockPackStorage implements PackStorage {
   private static final String FS = "fs";
   private static final String DEV = "dev";
   private static final String SHUTDOWN = "shutdown";
-  private static final String Q = "-q";
-  private static final String NO_TRUNC = "--no-trunc";
-  private static final String PS = "ps";
-  private static final String DOCKER = "docker";
   private static final long MAX_AGE = TimeUnit.MINUTES.toMillis(20);
+  private static final String BASH = "bash";
+  private static final String LS = "ls";
+  private static final String ERROR = ".error.";
+  private static final String SNAPSHOT = "snapshot";
+  private static final String RF = "-rf";
+  private static final String RM = "rm";
 
   protected final Configuration _configuration;
   protected final Path _root;
   protected final File _localLogDir;
   protected final Set<String> _currentMountedVolumes = Collections.newSetFromMap(new ConcurrentHashMap<>());
   protected final int _numberOfMountSnapshots;
-  protected final boolean _nohupProcess;
   protected final File _workingDir;
   protected final HdfsSnapshotStrategy _snapshotStrategy;
-  protected final Service _service;
   protected final Timer _cleanupTimer;
   protected final Map<String, Long> _cleanUpMap = new ConcurrentHashMap<>();
   protected final Map<String, Long> _shutdownMap = new ConcurrentHashMap<>();
   protected final Map<String, Object> _volumeLocks = new ConcurrentHashMap<>();
 
   public BlockPackStorage(BlockPackStorageConfig config) throws IOException, InterruptedException {
-    _service = config.getService();
-    addServiceExtras(_service);
+    addServiceExtras(config.getService());
     _snapshotStrategy = config.getStrategy();
-    _nohupProcess = config.isNohupProcess();
     _numberOfMountSnapshots = config.getNumberOfMountSnapshots();
     LastestHdfsSnapshotStrategy.setMaxNumberOfMountSnapshots(_numberOfMountSnapshots);
 
@@ -139,21 +128,21 @@ public class BlockPackStorage implements PackStorage {
     _workingDir = config.getWorkingDir();
     _workingDir.mkdirs();
 
-//    long period = TimeUnit.SECONDS.toMillis(5);
+    long period = TimeUnit.SECONDS.toMillis(5);
     _cleanupTimer = new Timer("Pack cleanup", true);
-//    _cleanupTimer.scheduleAtFixedRate(new TimerTask() {
-//      @Override
-//      public void run() {
-//        try {
-//          cleanup();
-//        } catch (Throwable t) {
-//          LOGGER.error("Unknown error", t);
-//        }
-//      }
-//    }, period, period);
+    _cleanupTimer.scheduleAtFixedRate(new TimerTask() {
+      @Override
+      public void run() {
+        try {
+          cleanup();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error", t);
+        }
+      }
+    }, period, period);
   }
 
-  private void cleanup() throws IOException {
+  void cleanup() throws IOException, InterruptedException {
     LOGGER.debug("cleanup");
     File volumesDir = getVolumesDir();
     if (!volumesDir.exists()) {
@@ -164,7 +153,7 @@ public class BlockPackStorage implements PackStorage {
     }
   }
 
-  private void cleanup(File volumeDir) throws IOException {
+  private void cleanup(File volumeDir) throws IOException, InterruptedException {
     if (!volumeDir.exists()) {
       return;
     }
@@ -174,61 +163,39 @@ public class BlockPackStorage implements PackStorage {
     }
   }
 
-  private void cleanup(String volumeName, File idFile) throws IOException {
+  private void cleanup(String volumeName, File idFile) throws IOException, InterruptedException {
     if (!idFile.exists()) {
       return;
     }
     String id = idFile.getName();
-    File localDevice = getLocalDevice(volumeName, id);
     LOGGER.debug("cleanup for volume {} id {}", volumeName, id);
     synchronized (getVolumeLock(volumeName)) {
-      File brick = new File(localDevice, BRICK);
-      if (brick.exists()) {
-        LOGGER.debug("volume {} id {} still running", volumeName, id);
-        if (!isDockerStillUsingMount(volumeName)) {
-          LOGGER.debug("volume {} id {} is not in use by docker", volumeName, id);
-          if (shouldShutdown(volumeName, id)) {
-            shutdownPack(volumeName, id);
-            removeShutdownEntry(volumeName, id);
-          } else {
-            addShutdownEntry(volumeName, id);
-          }
-        } else {
-          LOGGER.debug("volume {} id {} still in use by docker", volumeName, id);
-        }
-      } else {
+      if (!isVolumeStillInUse(id)) {
         LOGGER.debug("volume {} id {} is not running", volumeName, id);
-        if (shouldCleanup(volumeName, id)) {
+        if (shouldPerformCleanup(volumeName, id)) {
           LOGGER.debug("volume {} id {} cleanup", volumeName, id);
-          for (File file : idFile.listFiles()) {
-            if (!file.getName()
-                     .equals(LOG)) {
-              LOGGER.info("delete -R {}", file);
-              Utils.rmr(file);
-            } else {
-              // This is a symlink, just delete the link not the contents.
-              LOGGER.info("delete {} {}", file, file.delete());
-            }
-          }
+          Utils.execAsResultQuietly(LOGGER, SUDO, RM, RF, idFile.getCanonicalPath());
           LOGGER.info("delete {} {}", idFile, idFile.delete());
           removeCleanupEntry(volumeName, id);
         } else {
           addCleanupEntry(volumeName, id);
         }
+      } else {
+        LOGGER.info("volume {} id {} is still in use", volumeName, id);
       }
     }
   }
 
-  private boolean shouldCleanup(String volumeName, String id) {
-    Long ts = _cleanUpMap.get(volumeName + id);
-    if (ts == null) {
-      return false;
+  private boolean isVolumeStillInUse(String id) throws IOException {
+    Result result = Utils.execAsResultQuietly(LOGGER, SUDO, MOUNT);
+    if (result.exitCode == 0) {
+      return result.stdout.contains(id);
     }
-    return ts + MAX_AGE < System.currentTimeMillis();
+    return false;
   }
 
-  private boolean shouldShutdown(String volumeName, String id) {
-    Long ts = _shutdownMap.get(volumeName + id);
+  private boolean shouldPerformCleanup(String volumeName, String id) {
+    Long ts = _cleanUpMap.get(volumeName + id);
     if (ts == null) {
       return false;
     }
@@ -240,20 +207,9 @@ public class BlockPackStorage implements PackStorage {
     _cleanUpMap.remove(volumeName + id);
   }
 
-  private void removeShutdownEntry(String volumeName, String id) {
-    LOGGER.info("remove shutdown entry volume {} id {}", volumeName, id);
-    _shutdownMap.remove(volumeName + id);
-  }
-
   private void addCleanupEntry(String volumeName, String id) {
     if (_cleanUpMap.putIfAbsent(volumeName + id, System.currentTimeMillis()) == null) {
       LOGGER.info("add cleanup entry volume {} id {}", volumeName, id);
-    }
-  }
-
-  private void addShutdownEntry(String volumeName, String id) {
-    if (_shutdownMap.putIfAbsent(volumeName + id, System.currentTimeMillis()) == null) {
-      LOGGER.info("add shutdown entry volume {} id {}", volumeName, id);
     }
   }
 
@@ -262,6 +218,9 @@ public class BlockPackStorage implements PackStorage {
   }
 
   private void addServiceExtras(Service service) {
+    if (service == null) {
+      return;
+    }
     service.post(VOLUME_DRIVER_MOUNT_DEVICE, (Route) (request, response) -> {
       PackServer.debugInfo(request);
       MountUnmountRequest mountUnmountRequest = PackServer.read(request, MountUnmountRequest.class);
@@ -328,17 +287,6 @@ public class BlockPackStorage implements PackStorage {
   @Override
   public void unmount(String volumeName, String id) throws Exception {
     getUgi().doAs(HdfsPriv.create(() -> umountVolume(volumeName, id, false)));
-  }
-
-  private boolean isDockerStillUsingMount(String volumeName) throws IOException {
-    return isVolumeInUse("proxy/" + volumeName) || isVolumeInUse(volumeName);
-  }
-
-  private boolean isVolumeInUse(String volumeName) throws IOException {
-    Result result = Utils.execAsResultQuietly(LOGGER, SUDO, DOCKER, PS, NO_TRUNC, Q, FILTER, "volume=" + volumeName);
-    return !result.stdout.toString()
-                         .trim()
-                         .isEmpty();
   }
 
   @Override
@@ -507,8 +455,8 @@ public class BlockPackStorage implements PackStorage {
                                                   .hdfsVolumePath(path)
                                                   .numberOfMountSnapshots(_numberOfMountSnapshots)
                                                   .build();
-        BlockPackFuseProcessBuilder.startProcess(_nohupProcess, volumeName, volumeDir.getCanonicalPath(),
-            logDir.getCanonicalPath(), libDir.getCanonicalPath(), configFile.getCanonicalPath(), config);
+        BlockPackFuseProcessBuilder.startProcess(volumeName, volumeDir.getCanonicalPath(), logDir.getCanonicalPath(),
+            libDir.getCanonicalPath(), configFile.getCanonicalPath(), _configuration, config);
 
         File brick = new File(localDevice, BRICK);
         if (!waitForDevice(brick, true, 60)) {
@@ -574,14 +522,15 @@ public class BlockPackStorage implements PackStorage {
     return _volumeLocks.get(volumeName);
   }
 
-  private static boolean waitForDevice(File brick, boolean toExist, int timeInSeconds) throws InterruptedException {
+  private static boolean waitForDevice(File brick, boolean toExist, int timeInSeconds)
+      throws InterruptedException, IOException {
     for (int i = 0; i < timeInSeconds; i++) {
       if (toExist) {
-        if (brick.exists()) {
+        if (Utils.execReturnExitCode(LOGGER, SUDO, LS, brick.getCanonicalPath()) == 0) {
           return true;
         }
       } else {
-        if (!brick.exists()) {
+        if (Utils.execReturnExitCode(LOGGER, SUDO, LS, brick.getCanonicalPath()) != 0) {
           return true;
         }
       }
@@ -604,7 +553,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   private void mountFs(HdfsMetaData metaData, File device, File localFileSystemMount, String volumeName, String id)
-      throws IOException {
+      throws IOException, InterruptedException {
     String mountOptions = metaData.getMountOptions();
     LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
                                               .getLinuxFileSystem();
@@ -676,23 +625,34 @@ public class BlockPackStorage implements PackStorage {
     }
   }
 
-  private void shutdownPack(String volumeName, String id) throws IOException {
+  private void shutdownPack(String volumeName, String id) throws IOException, InterruptedException {
     File localDevice = getLocalDevice(volumeName, id);
     File shutdownFile = new File(localDevice, SHUTDOWN);
-    try (OutputStream output = new FileOutputStream(shutdownFile)) {
-      output.write(1);
+
+    Process process = Utils.execAsInteractive(LOGGER, SUDO, BASH);
+    try (PrintWriter writer = new PrintWriter(process.getOutputStream())) {
+      writer.println("echo 1>" + shutdownFile.getCanonicalPath());
+    }
+    if (process.waitFor() != 0) {
+      throw new IOException("Unknown error on shutdown");
     }
   }
 
-  private void createMountErrorSnapshot(String volumeName, String id) throws FileNotFoundException, IOException {
+  private void createMountErrorSnapshot(String volumeName, String id)
+      throws FileNotFoundException, IOException, InterruptedException {
     File localDevice = getLocalDevice(volumeName, id);
     File snapshotFile = new File(localDevice, SNAPSHOT);
     SimpleDateFormat dateFormat = new SimpleDateFormat(HdfsSnapshotStrategy.YYYYMMDDKKMMSS);
-    try (OutputStream output = new FileOutputStream(snapshotFile)) {
-      String format = dateFormat.format(new Date());
-      String name = ERROR + format;
-      LOGGER.info("Creating mount error snaphost {} for volume {} id {}", name, volumeName, id);
-      output.write(name.getBytes());
+    String format = dateFormat.format(new Date());
+    String name = ERROR + format;
+
+    Process process = Utils.execAsInteractive(LOGGER, SUDO, BASH);
+    LOGGER.info("Creating mount error snapshot {} for volume {} id {}", name, volumeName, id);
+    try (PrintWriter writer = new PrintWriter(process.getOutputStream())) {
+      writer.println("echo " + name + ">" + snapshotFile.getCanonicalPath());
+    }
+    if (process.waitFor() != 0) {
+      throw new IOException("Unknown error on shutdown");
     }
   }
 

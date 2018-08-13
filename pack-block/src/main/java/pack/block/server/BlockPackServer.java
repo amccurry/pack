@@ -41,15 +41,13 @@ public class BlockPackServer extends PackServer {
     LOGGER.info("remotePath {}", remotePath);
     int numberOfMountSnapshots = Utils.getNumberOfMountSnapshots();
     LOGGER.info("numberOfMountSnapshots {}", numberOfMountSnapshots);
-    boolean nohupProcess = Utils.getNohupProcess();
-    LOGGER.info("nohupProcess {}", nohupProcess);
     HdfsSnapshotStrategy strategy = getStrategy();
 
     setupDockerDirs();
     String sockerFile = RUN_DOCKER_PLUGINS + "/pack.sock";
 
     BlockPackServer packServer = new BlockPackServer(Utils.isGlobalScope(), sockerFile, localWorkingDir, localLogDir,
-        remotePath, numberOfMountSnapshots, nohupProcess, strategy);
+        remotePath, numberOfMountSnapshots,  strategy);
     packServer.runServer();
   }
 
@@ -60,7 +58,7 @@ public class BlockPackServer extends PackServer {
     Utils.exec(LOGGER, SUDO, CHMOD, _700, RUN_DOCKER_PLUGINS);
   }
 
-  private static HdfsSnapshotStrategy getStrategy() {
+  public static HdfsSnapshotStrategy getStrategy() {
     return new LastestHdfsSnapshotStrategy();
   }
 
@@ -69,14 +67,12 @@ public class BlockPackServer extends PackServer {
   private final Path _remotePath;
   private final Configuration configuration = new Configuration();
   private final int _numberOfMountSnapshots;
-  private final boolean _nohupProcess;
   private final HdfsSnapshotStrategy _strategy;
 
   public BlockPackServer(boolean global, String sockFile, File localWorkingDir, File localLogDir, Path remotePath,
-      int numberOfMountSnapshots, boolean nohupProcess, HdfsSnapshotStrategy strategy) {
+      int numberOfMountSnapshots, HdfsSnapshotStrategy strategy) {
     super(global, sockFile);
     _strategy = strategy;
-    _nohupProcess = nohupProcess;
     _numberOfMountSnapshots = numberOfMountSnapshots;
     _localWorkingDir = localWorkingDir;
     _localLogDir = localLogDir;
@@ -93,7 +89,6 @@ public class BlockPackServer extends PackServer {
            .logDir(_localLogDir)
            .workingDir(_localWorkingDir)
            .numberOfMountSnapshots(_numberOfMountSnapshots)
-           .nohupProcess(_nohupProcess)
            .strategy(_strategy)
            .service(service)
            .build();
