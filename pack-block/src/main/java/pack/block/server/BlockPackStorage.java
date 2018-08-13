@@ -128,7 +128,7 @@ public class BlockPackStorage implements PackStorage {
     _workingDir = config.getWorkingDir();
     _workingDir.mkdirs();
 
-    long period = TimeUnit.SECONDS.toMillis(5);
+    long period = TimeUnit.SECONDS.toMillis(30);
     _cleanupTimer = new Timer("Pack cleanup", true);
     _cleanupTimer.scheduleAtFixedRate(new TimerTask() {
       @Override
