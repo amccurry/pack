@@ -7,6 +7,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 import pack.PackServer;
 import pack.PackStorage;
@@ -14,6 +15,7 @@ import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
 import pack.block.server.BlockPackStorageConfig.BlockPackStorageConfigBuilder;
 import pack.block.util.Utils;
+import pack.util.ExecUtil;
 import spark.Service;
 
 public class BlockPackServer extends PackServer {
@@ -47,15 +49,15 @@ public class BlockPackServer extends PackServer {
     String sockerFile = RUN_DOCKER_PLUGINS + "/pack.sock";
 
     BlockPackServer packServer = new BlockPackServer(Utils.isGlobalScope(), sockerFile, localWorkingDir, localLogDir,
-        remotePath, numberOfMountSnapshots,  strategy);
+        remotePath, numberOfMountSnapshots, strategy);
     packServer.runServer();
   }
 
   private static void setupDockerDirs() throws IOException {
-    Utils.exec(LOGGER, SUDO, MKDIR, P, RUN_DOCKER_PLUGINS);
-    Utils.exec(LOGGER, SUDO, CHOWN, R, ROOT_ROOT, RUN_DOCKER);
-    Utils.exec(LOGGER, SUDO, CHMOD, _700, RUN_DOCKER);
-    Utils.exec(LOGGER, SUDO, CHMOD, _700, RUN_DOCKER_PLUGINS);
+    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, MKDIR, P, RUN_DOCKER_PLUGINS);
+    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, CHOWN, R, ROOT_ROOT, RUN_DOCKER);
+    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, CHMOD, _700, RUN_DOCKER);
+    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, CHMOD, _700, RUN_DOCKER_PLUGINS);
   }
 
   public static HdfsSnapshotStrategy getStrategy() {

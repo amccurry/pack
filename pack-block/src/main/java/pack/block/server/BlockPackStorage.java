@@ -26,6 +26,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
@@ -33,7 +34,6 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Closer;
 
 import pack.PackServer;
-import pack.PackServer.Result;
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
@@ -51,6 +51,8 @@ import pack.block.util.Utils;
 import pack.json.Err;
 import pack.json.MountUnmountRequest;
 import pack.json.PathResponse;
+import pack.util.ExecUtil;
+import pack.util.Result;
 import spark.Route;
 import spark.Service;
 
@@ -174,20 +176,20 @@ public class BlockPackStorage implements PackStorage {
         LOGGER.debug("volume {} id {} is not running", volumeName, id);
         if (shouldPerformCleanup(volumeName, id)) {
           LOGGER.debug("volume {} id {} cleanup", volumeName, id);
-          Utils.execAsResultQuietly(LOGGER, SUDO, RM, RF, idFile.getCanonicalPath());
+          ExecUtil.execAsResult(LOGGER, Level.DEBUG, SUDO, RM, RF, idFile.getCanonicalPath());
           LOGGER.info("delete {} {}", idFile, idFile.delete());
           removeCleanupEntry(volumeName, id);
         } else {
           addCleanupEntry(volumeName, id);
         }
       } else {
-        LOGGER.info("volume {} id {} is still in use", volumeName, id);
+        LOGGER.debug("volume {} id {} is still in use", volumeName, id);
       }
     }
   }
 
   private boolean isVolumeStillInUse(String id) throws IOException {
-    Result result = Utils.execAsResultQuietly(LOGGER, SUDO, MOUNT);
+    Result result = ExecUtil.execAsResult(LOGGER, Level.DEBUG, SUDO, MOUNT);
     if (result.exitCode == 0) {
       return result.stdout.contains(id);
     }
@@ -393,31 +395,31 @@ public class BlockPackStorage implements PackStorage {
     if (!existsVolume(volumeName)) {
       createVolume(volumeName, ImmutableMap.of());
     }
-    LOGGER.info("Mount Id {} volumeName {}", id, volumeName);
+    LOGGER.debug("Mount Id {} volumeName {}", id, volumeName);
 
     Path volumePath = getVolumePath(volumeName);
-    LOGGER.info("Mount Id {} volumePath {}", id, volumePath);
+    LOGGER.debug("Mount Id {} volumePath {}", id, volumePath);
 
     File logDir = getLogDir(volumeName);
-    LOGGER.info("Mount Id {} logDir {}", id, logDir);
+    LOGGER.debug("Mount Id {} logDir {}", id, logDir);
     File localMetrics = getLocalMetrics(logDir);
-    LOGGER.info("Mount Id {} localMetrics {}", id, localMetrics);
+    LOGGER.debug("Mount Id {} localMetrics {}", id, localMetrics);
 
     File localFileSystemMount = getLocalFileSystemMount(volumeName, id);
-    LOGGER.info("Mount Id {} localFileSystemMount {}", id, localFileSystemMount);
+    LOGGER.debug("Mount Id {} localFileSystemMount {}", id, localFileSystemMount);
     File localDevice = getLocalDevice(volumeName, id);
-    LOGGER.info("Mount Id {} localDevice {}", id, localDevice);
+    LOGGER.debug("Mount Id {} localDevice {}", id, localDevice);
 
     File localIndex = getLocalIndex(volumeName, id);
-    LOGGER.info("Mount Id {} localIndex {}", id, localIndex);
+    LOGGER.debug("Mount Id {} localIndex {}", id, localIndex);
     File localCache = getLocalCache(volumeName, id);
-    LOGGER.info("Mount Id {} localCache {}", id, localCache);
+    LOGGER.debug("Mount Id {} localCache {}", id, localCache);
     File libDir = getLibDir(volumeName, id);
-    LOGGER.info("Mount Id {} libDir {}", id, libDir);
+    LOGGER.debug("Mount Id {} libDir {}", id, libDir);
     File configFile = getConfigFile(volumeName, id);
-    LOGGER.info("Mount Id {} configFile {}", id, configFile);
+    LOGGER.debug("Mount Id {} configFile {}", id, configFile);
     File volumeDir = getVolumeDir(volumeName, id);
-    LOGGER.info("Mount Id {} volumeDir {}", id, volumeDir);
+    LOGGER.debug("Mount Id {} volumeDir {}", id, volumeDir);
 
     FileSystem fileSystem = getFileSystem(volumePath);
     HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
@@ -505,7 +507,7 @@ public class BlockPackStorage implements PackStorage {
               "Error waiting for device " + brick.getCanonicalPath() + " volume is " + (lock ? LOCKED : UNLOCKED));
         }
       } else {
-        LOGGER.info("ref counter {}, wait for shutdown", value);
+        LOGGER.info("ref counter {}, ref too high for shutdown", value);
       }
     }
   }
@@ -526,11 +528,11 @@ public class BlockPackStorage implements PackStorage {
       throws InterruptedException, IOException {
     for (int i = 0; i < timeInSeconds; i++) {
       if (toExist) {
-        if (Utils.execReturnExitCode(LOGGER, SUDO, LS, brick.getCanonicalPath()) == 0) {
+        if (ExecUtil.execReturnExitCode(LOGGER, Level.DEBUG, SUDO, LS, brick.getCanonicalPath()) == 0) {
           return true;
         }
       } else {
-        if (Utils.execReturnExitCode(LOGGER, SUDO, LS, brick.getCanonicalPath()) != 0) {
+        if (ExecUtil.execReturnExitCode(LOGGER, Level.DEBUG, SUDO, LS, brick.getCanonicalPath()) != 0) {
           return true;
         }
       }
@@ -598,7 +600,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   private static boolean isMounted(File localFileSystemMount) throws IOException {
-    Result result = Utils.execAsResultQuietly(LOGGER, SUDO, MOUNT);
+    Result result = ExecUtil.execAsResult(LOGGER, Level.DEBUG, SUDO, MOUNT);
     return result.stdout.contains(localFileSystemMount.getCanonicalPath());
   }
 
@@ -629,7 +631,7 @@ public class BlockPackStorage implements PackStorage {
     File localDevice = getLocalDevice(volumeName, id);
     File shutdownFile = new File(localDevice, SHUTDOWN);
 
-    Process process = Utils.execAsInteractive(LOGGER, SUDO, BASH);
+    Process process = ExecUtil.execAsInteractive(LOGGER, Level.DEBUG, SUDO, BASH);
     try (PrintWriter writer = new PrintWriter(process.getOutputStream())) {
       writer.println("echo 1>" + shutdownFile.getCanonicalPath());
     }
@@ -646,7 +648,7 @@ public class BlockPackStorage implements PackStorage {
     String format = dateFormat.format(new Date());
     String name = ERROR + format;
 
-    Process process = Utils.execAsInteractive(LOGGER, SUDO, BASH);
+    Process process = ExecUtil.execAsInteractive(LOGGER, Level.DEBUG, SUDO, BASH);
     LOGGER.info("Creating mount error snapshot {} for volume {} id {}", name, volumeName, id);
     try (PrintWriter writer = new PrintWriter(process.getOutputStream())) {
       writer.println("echo " + name + ">" + snapshotFile.getCanonicalPath());

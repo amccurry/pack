@@ -17,6 +17,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
@@ -26,6 +27,7 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.util.Utils;
+import pack.util.ExecUtil;
 
 public class BlockPackFuseProcessBuilder {
 
@@ -168,7 +170,7 @@ public class BlockPackFuseProcessBuilder {
     }
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
-    Utils.exec(LOGGER, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
+    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
   }
 
   private static void copyConfig(Configuration configuration, File configDir) throws IOException {

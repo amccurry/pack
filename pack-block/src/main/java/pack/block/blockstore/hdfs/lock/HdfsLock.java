@@ -75,6 +75,7 @@ public class HdfsLock implements Closeable, OwnerCheck {
 
   }
 
+  private final AtomicBoolean _closed = new AtomicBoolean(false);
   private final Configuration _configuration;
   private final Path _path;
   private final AtomicReference<FSDataOutputStream> _outputRef = new AtomicReference<FSDataOutputStream>();
@@ -220,24 +221,27 @@ public class HdfsLock implements Closeable, OwnerCheck {
 
   @Override
   public void close() throws IOException {
-    _timer.cancel();
-    _timer.purge();
-    UserGroupInformation ugi = Utils.getUserGroupInformation();
-    try {
-      ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-        IOUtils.closeQuietly(_outputRef.get());
-        if (isLockOwner()) {
-          FileSystem fileSystem = _path.getFileSystem(_configuration);
-          fileSystem.delete(_path, false);
-        }
-        return null;
-      });
-    } catch (InterruptedException e) {
-      LOG.error("Unknown error", e);
-    }
-    ShutdownHookManager shutdownHookManager = ShutdownHookManager.get();
-    if (!shutdownHookManager.isShutdownInProgress()) {
-      shutdownHookManager.removeShutdownHook(_shutdownHook);
+    if (_closed.get()) {
+      _closed.set(true);
+      _timer.cancel();
+      _timer.purge();
+      UserGroupInformation ugi = Utils.getUserGroupInformation();
+      try {
+        ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+          IOUtils.closeQuietly(_outputRef.getAndSet(null));
+          if (isLockOwner()) {
+            FileSystem fileSystem = _path.getFileSystem(_configuration);
+            fileSystem.delete(_path, false);
+          }
+          return null;
+        });
+      } catch (InterruptedException e) {
+        LOG.error("Unknown error", e);
+      }
+      ShutdownHookManager shutdownHookManager = ShutdownHookManager.get();
+      if (!shutdownHookManager.isShutdownInProgress()) {
+        shutdownHookManager.removeShutdownHook(_shutdownHook);
+      }
     }
   }
 

@@ -5,8 +5,9 @@ import java.io.IOException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
-import pack.block.util.Utils;
+import pack.util.ExecUtil;
 
 public class Ext4LinuxFileSystem extends BaseLinuxFileSystem {
 
@@ -21,12 +22,12 @@ public class Ext4LinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void mkfs(File device, int blockSize) throws IOException {
-    Utils.exec(LOGGER, SUDO, MKFS_EXT4, FORCE_SWITCH, device.getAbsolutePath());
+    ExecUtil.exec(LOGGER, Level.INFO, SUDO, MKFS_EXT4, FORCE_SWITCH, device.getAbsolutePath());
   }
 
   @Override
   public void growOffline(File device) throws IOException {
-    Utils.exec(LOGGER, SUDO, RESIZE2FS, FORCE_SWITCH, device.getAbsolutePath());
+    ExecUtil.exec(LOGGER, Level.INFO, SUDO, RESIZE2FS, FORCE_SWITCH, device.getAbsolutePath());
   }
 
   @Override

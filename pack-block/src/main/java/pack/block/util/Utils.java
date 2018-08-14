@@ -6,11 +6,14 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Random;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.hadoop.conf.Configuration;
@@ -19,40 +22,27 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.log4j.Appender;
+import org.apache.log4j.AsyncAppender;
 import org.apache.log4j.PatternLayout;
 import org.apache.log4j.PropertyConfigurator;
 import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 import com.cloudera.io.netty.util.internal.ThreadLocalRandom;
 import com.google.common.base.Splitter;
 
-import pack.PackServer;
-import pack.PackServer.Result;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.server.BlockPackFuse;
+import pack.util.ExecUtil;
+import pack.util.Result;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClientFactory;
 import sun.misc.Unsafe;
 
 public class Utils {
-
-  private static final String PACK_PROPERTIES = "/pack.properties";
-
-  private static final String MOUNT = "mount";
-
-  private static final int PACK_HDFS_LOGGER_MAX_FILES_DEFAULT = 5;
-
-  private static final String PACK_HDFS_LOGGER_MAX_FILES = "PACK_HDFS_LOGGER_MAX_FILES";
-
-  private static final String PACK_HDFS_LOGGER_LOG4J_PATTERN = "PACK_HDFS_LOGGER_LOG4J_PATTERN";
-
-  private static final String PACK_HDFS_LOGGER_LOG4J_PATTERN_DEFAULT = "%-5p %d{yyyyMMdd_HH:mm:ss:SSS_z} [%t] %c{2}: %m%n";
-
-  private static final String THE_UNSAFE = "theUnsafe";
-
-  private static final String PACK_HDFS_KERBEROS_RELOGIN_INTERVAL = "PACK_HDFS_KERBEROS_RELOGIN_INTERVAL";
 
   public interface TimerWithException<T, E extends Throwable> {
     T time() throws E;
@@ -81,6 +71,15 @@ public class Utils {
   public static final String PACK_NUMBER_OF_MOUNT_SNAPSHOTS = "PACK_NUMBER_OF_MOUNT_SNAPSHOTS";
   public static final int PACK_NUMBER_OF_MOUNT_SNAPSHOTS_DEFAULT = 5;
 
+  private static final String PACK_PROPERTIES = "/pack.properties";
+  private static final String MOUNT = "mount";
+  private static final int PACK_HDFS_LOGGER_MAX_FILES_DEFAULT = 5;
+  private static final String PACK_HDFS_LOGGER_MAX_FILES = "PACK_HDFS_LOGGER_MAX_FILES";
+  private static final String PACK_HDFS_LOGGER_LOG4J_PATTERN = "PACK_HDFS_LOGGER_LOG4J_PATTERN";
+  private static final String PACK_HDFS_LOGGER_LOG4J_PATTERN_DEFAULT = "%-5p %d{yyyyMMdd_HH:mm:ss:SSS_z} [%t] %c{2}: %m%n";
+  private static final String THE_UNSAFE = "theUnsafe";
+  private static final String PACK_HDFS_KERBEROS_RELOGIN_INTERVAL = "PACK_HDFS_KERBEROS_RELOGIN_INTERVAL";
+  private static final Timer LOG4J_TIMER = new Timer("log4j-reconfig", true);
   private static final String LOCK = "lock";
   private static final Splitter SPACE_SPLITTER = Splitter.on(' ');
   private static final String LS = "ls";
@@ -117,23 +116,94 @@ public class Utils {
     }
   }
 
-  public static void setupLog4j() {
+  public static void setupLog4j() throws IOException {
     String log4jConfigFile = getProperty(PACK_LOG4J_CONFIG);
     if (log4jConfigFile == null) {
       return;
-    } else if (log4jConfigFile.endsWith(XML)) {
-      DOMConfigurator.configure(log4jConfigFile);
+    }
+    LOGGER.info("Setting up log file {}", log4jConfigFile);
+    File file = new File(log4jConfigFile);
+    AtomicLong lastModified = new AtomicLong(file.lastModified());
+    updateLog4jConfig(file);
+    long period = TimeUnit.SECONDS.toMillis(10);
+    LOG4J_TIMER.schedule(new TimerTask() {
+      @Override
+      public void run() {
+        try {
+          long lm = file.lastModified();
+          if (lastModified.get() != lm) {
+            LOGGER.info("log4j file changed {} updating config", file.getCanonicalPath());
+            updateLog4jConfig(file);
+            lastModified.set(lm);
+          }
+        } catch (Exception e) {
+          LOGGER.error("Unknown error trying to reconfigure log4j", e);
+        }
+      }
+    }, period, period);
+  }
+
+  private static void updateLog4jConfig(File log4jConfigFile) throws IOException {
+    if (log4jConfigFile.getName()
+                       .endsWith(XML)) {
+      DOMConfigurator.configure(log4jConfigFile.getCanonicalPath());
     } else {
-      PropertyConfigurator.configure(log4jConfigFile);
+      PropertyConfigurator.configure(log4jConfigFile.getCanonicalPath());
     }
   }
 
   public static void setupHdfsLogger(FileSystem fileSystem, Path logPath) throws IOException {
-    org.apache.log4j.Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
-    PatternLayout layout = new PatternLayout(getHdfsLog4jPattern());
+    String name = UUID.randomUUID()
+                      .toString();
     fileSystem.mkdirs(logPath.getParent());
-    FSDataOutputStream outputStream = fileSystem.create(logPath);
-    rootLogger.addAppender(new HdfsAppender(layout, outputStream));
+
+    addAppenderIfMissing(fileSystem, logPath, name);
+    long period = TimeUnit.SECONDS.toMillis(10);
+    LOG4J_TIMER.scheduleAtFixedRate(new TimerTask() {
+      @Override
+      public void run() {
+        try {
+          addAppenderIfMissing(fileSystem, logPath, name);
+        } catch (Throwable t) {
+          t.printStackTrace();
+        }
+      }
+    }, period, period);
+  }
+
+  private static void addAppenderIfMissing(FileSystem fileSystem, Path logPath, String name) throws IOException {
+    org.apache.log4j.Logger rootLogger = org.apache.log4j.Logger.getRootLogger();
+    if (!alreadyAttached(rootLogger, name)) {
+      PatternLayout layout = new PatternLayout(getHdfsLog4jPattern());
+      FSDataOutputStream out;
+      if (!fileSystem.exists(logPath)) {
+        out = fileSystem.create(logPath);
+      } else {
+        out = fileSystem.append(logPath);
+      }
+      HdfsAppender hdfsAppender = new HdfsAppender(layout, out);
+      AsyncAppender asyncAppender = new AsyncAppender();
+      asyncAppender.setName(name);
+      asyncAppender.addAppender(hdfsAppender);
+      asyncAppender.setBlocking(false);
+      rootLogger.addAppender(asyncAppender);
+    }
+
+  }
+
+  private static boolean alreadyAttached(org.apache.log4j.Logger rootLogger, String name) {
+    Enumeration<?> appenders = rootLogger.getAllAppenders();
+    while (appenders.hasMoreElements()) {
+      Object object = appenders.nextElement();
+      if (object instanceof Appender) {
+        Appender a = (Appender) object;
+        if (a.getName()
+             .equals(name)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   private static String getHdfsLog4jPattern() {
@@ -305,78 +375,6 @@ public class Utils {
     return path.replaceAll("/", "__");
   }
 
-  public static void exec(Logger logger, String... command) throws IOException {
-    String uuid = UUID.randomUUID()
-                      .toString();
-    List<String> list = Arrays.asList(command);
-    logger.info("Executing command id {} cmd {}", uuid, list);
-    Result result;
-    try {
-      result = PackServer.exec(uuid, list, logger);
-    } catch (InterruptedException e) {
-      throw new IOException(e);
-    } finally {
-      logger.info("Command id {} complete", uuid);
-    }
-    if (result.exitCode != 0) {
-      throw new IOException("Unknown error while trying to run command " + Arrays.asList(command));
-    }
-  }
-
-  public static Result execAsResultQuietly(Logger logger, String... command) throws IOException {
-    String uuid = UUID.randomUUID()
-                      .toString();
-    List<String> list = Arrays.asList(command);
-    logger.debug("Executing command id {} cmd {}", uuid, list);
-    try {
-      return PackServer.exec(uuid, list, logger, true);
-    } catch (InterruptedException e) {
-      throw new IOException(e);
-    } finally {
-      logger.debug("Command id {} complete", uuid);
-    }
-  }
-
-  public static Result execAsResult(Logger logger, String... command) throws IOException {
-    String uuid = UUID.randomUUID()
-                      .toString();
-    List<String> list = Arrays.asList(command);
-    logger.info("Executing command id {} cmd {}", uuid, list);
-    try {
-      return PackServer.exec(uuid, list, logger);
-    } catch (InterruptedException e) {
-      throw new IOException(e);
-    } finally {
-      logger.info("Command id {} complete", uuid);
-    }
-  }
-
-  public static int execReturnExitCode(Logger logger, String... command) throws IOException {
-    String uuid = UUID.randomUUID()
-                      .toString();
-    List<String> list = Arrays.asList(command);
-    logger.info("Executing command id {} cmd {}", uuid, list);
-    Result result;
-    try {
-      result = PackServer.exec(uuid, list, logger);
-    } catch (InterruptedException e) {
-      throw new IOException(e);
-    } finally {
-      logger.info("Command id {} complete", uuid);
-    }
-    return result.exitCode;
-  }
-
-  public static Process execAsInteractive(Logger logger, String... command) throws IOException {
-    String uuid = UUID.randomUUID()
-                      .toString();
-    List<String> list = Arrays.asList(command);
-    logger.info("Executing command id {} cmd {}", uuid, list);
-
-    ProcessBuilder builder = new ProcessBuilder(list);
-    return builder.start();
-  }
-
   public static void rmr(File... files) {
     if (files == null) {
       return;
@@ -437,12 +435,12 @@ public class Utils {
   }
 
   public static void punchHole(Logger logger, File file, long offset, long length) throws IOException {
-    Utils.exec(logger, FALLOCATE, KEEP_SIZE_SWITCH, PUNCH_HOLE_SWITCH, OFFSET_SWITCH, Long.toString(offset),
-        LENGTH_SWTICH, Long.toString(length), file.getAbsolutePath());
+    ExecUtil.exec(logger, Level.DEBUG, FALLOCATE, KEEP_SIZE_SWITCH, PUNCH_HOLE_SWITCH, OFFSET_SWITCH,
+        Long.toString(offset), LENGTH_SWTICH, Long.toString(length), file.getAbsolutePath());
   }
 
   public static long getNumberOfBlocksOnDisk(Logger logger, File file) throws IOException {
-    Result result = Utils.execAsResult(logger, LS, ALLOCATED_SIZE_SWITCH, file.getAbsolutePath());
+    Result result = ExecUtil.execAsResult(logger, Level.DEBUG, LS, ALLOCATED_SIZE_SWITCH, file.getAbsolutePath());
     if (result.exitCode == 0) {
       List<String> list = SPACE_SPLITTER.splitToList(result.stdout);
       return Long.parseLong(list.get(0));

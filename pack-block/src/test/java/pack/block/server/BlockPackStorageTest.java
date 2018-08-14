@@ -25,6 +25,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 import com.google.common.collect.ImmutableMap;
 
@@ -35,6 +36,7 @@ import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.lock.OwnerCheck;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.util.Utils;
+import pack.util.ExecUtil;
 
 public class BlockPackStorageTest {
 
@@ -149,7 +151,7 @@ public class BlockPackStorageTest {
         try {
           String mount = storage.mount(volumeName, id);
           String username = System.getProperty("user.name");
-          Utils.exec(LOGGER, "sudo", "chown", "-R", username + ":" + username, mount);
+          ExecUtil.exec(LOGGER, Level.INFO, "sudo", "chown", "-R", username + ":" + username, mount);
           for (int i = 0; i < filePasses; i++) {
             runTest(filePasses, mount, service);
           }

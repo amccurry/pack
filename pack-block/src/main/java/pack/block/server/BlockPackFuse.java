@@ -27,13 +27,13 @@ import org.apache.hadoop.util.ShutdownHookManager;
 import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 import com.codahale.metrics.CsvReporter;
 import com.codahale.metrics.MetricRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.Closer;
 
-import pack.PackServer.Result;
 import pack.block.blockstore.hdfs.HdfsBlockStore;
 import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
 import pack.block.blockstore.hdfs.file.ImmutableRoaringBitmapManager;
@@ -50,6 +50,8 @@ import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfigInternal;
 import pack.block.server.json.BlockPackFuseConfigInternal.BlockPackFuseConfigInternalBuilder;
 import pack.block.util.Utils;
+import pack.util.ExecUtil;
+import pack.util.Result;
 import pack.zk.utils.ZkUtils;
 import pack.zk.utils.ZooKeeperClientFactory;
 import pack.zk.utils.ZooKeeperLockManager;
@@ -199,9 +201,9 @@ public class BlockPackFuse implements Closeable {
   private static void waitForUmount(File brickFile) {
     while (true) {
       try {
-        Result result = Utils.execAsResultQuietly(LOGGER, SUDO, MOUNT);
+        Result result = ExecUtil.execAsResult(LOGGER, Level.DEBUG, SUDO, MOUNT);
         if (result.stdout.contains(brickFile.getCanonicalPath())) {
-          if (Utils.execReturnExitCode(LOGGER, SUDO, UMOUNT, brickFile.getCanonicalPath()) != 0) {
+          if (ExecUtil.execReturnExitCode(LOGGER, Level.DEBUG, SUDO, UMOUNT, brickFile.getCanonicalPath()) != 0) {
             LOGGER.info("umount of {} failed", brickFile);
           }
         } else {
