@@ -221,7 +221,7 @@ public class HdfsLock implements Closeable, OwnerCheck {
 
   @Override
   public void close() throws IOException {
-    if (_closed.get()) {
+    if (!_closed.get()) {
       _closed.set(true);
       _timer.cancel();
       _timer.purge();

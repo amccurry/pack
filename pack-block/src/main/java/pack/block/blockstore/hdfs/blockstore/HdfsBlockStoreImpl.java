@@ -816,10 +816,12 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
     List<Path> newFiles = new ArrayList<>(storageList);
     newFiles.removeAll(cacheList);
-    LOGGER.info("New files found.");
-    for (Path path : storageList) {
-      LOGGER.info("Loading {}.", path);
-      getReader(path);
+    if (!newFiles.isEmpty()) {
+      LOGGER.info("New files found.");
+      for (Path path : newFiles) {
+        LOGGER.info("Loading {}.", path);
+        getReader(path);
+      }
     }
   }
 
