@@ -6,6 +6,7 @@ import java.util.List;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.PosixParser;
@@ -27,8 +28,10 @@ public class PackCli {
 
     COMPACT("run a compaction process for a given volume"),
 
+    CONVERT("run a converter process to convert WAL files to block files"),
+
     VOLUME("view/edit/create/remove the volume"),
-        
+
     SNAPSHOT("list/create/remove spanshot"),
 
     LOG("view log files for a volume");
@@ -71,9 +74,41 @@ public class PackCli {
     case COMPACT:
       compact(getCommandArgs(args));
       break;
+    case CONVERT:
+      convert(getCommandArgs(args));
+      break;
+    case VOLUME:
+      volume(getCommandArgs(args));
+      break;
+    case SNAPSHOT:
+      snapshot(getCommandArgs(args));
+      break;
+    case LOG:
+      log(getCommandArgs(args));
+      break;
     default:
       break;
     }
+  }
+
+  private static void log(String[] args) throws Exception {
+    Options options = new Options();
+    options.addOption(new Option("h", "help", false, "show help"));
+    CommandLineParser parser = new PosixParser();
+    CommandLine cmd = parser.parse(options, args);
+    
+  }
+
+  private static void snapshot(String[] args) {
+
+  }
+
+  private static void volume(String[] args) {
+
+  }
+
+  private static void convert(String[] args) {
+
   }
 
   @SuppressWarnings("unchecked")
