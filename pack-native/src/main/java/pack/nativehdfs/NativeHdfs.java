@@ -11,8 +11,8 @@ public class NativeHdfs {
   public static void main(String[] args) throws IOException {
     Configuration configuration = new Configuration();
     Path path = new Path("/");
-    new File("./mnt").mkdirs();
-    try (NativeFuse fuse = new NativeFuse("./mnt", configuration, path)) {
+    new File("/test").mkdirs();
+    try (NativeFuse fuse = new NativeFuse("/test", configuration, path)) {
       fuse.localMount(true);
     }
   }

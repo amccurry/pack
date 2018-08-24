@@ -14,6 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -54,13 +55,18 @@ public class NativeFuse extends FuseStubFS implements Closeable {
   private final AtomicInteger _fileHandleCounter = new AtomicInteger(1);
   private final Set<Integer> _handles = Collections.newSetFromMap(new ConcurrentHashMap<>());
   private final Map<Integer, FSDataInputStream> _readers = new ConcurrentHashMap<>();
+  private final Map<Integer, FSDataOutputStream> _writers = new ConcurrentHashMap<>();
   private final Map<String, Integer> _uids = new ConcurrentHashMap<>();
   private final Map<String, Integer> _gids = new ConcurrentHashMap<>();
+  private final int _defaultGroupId;
+  private final int _defaultOwnerId;
 
   public NativeFuse(String localPath, Configuration configuration, Path path) throws IOException {
     _localPath = localPath;
     _path = path;
     _configuration = configuration;
+    _defaultGroupId = 0;
+    _defaultOwnerId = 0;
   }
 
   private Path getPath(String path) {
@@ -88,13 +94,37 @@ public class NativeFuse extends FuseStubFS implements Closeable {
           NONEMPTY };
       break;
     }
-    mount(Paths.get(_localPath), blocking, false, opts);
+    mount(Paths.get(_localPath), blocking, true, opts);
   }
 
   @Override
   public void close() throws IOException {
     LOGGER.info("close");
     umount();
+  }
+
+  @Override
+  public int create(String path, long mode, FuseFileInfo fi) {
+    int fh = getNewFileHandle();
+    fi.fh.set(fh);
+    FSDataOutputStream output = getOutputStream(fh);
+    if (output == null) {
+      Path p = getPath(path);
+      try {
+        FileSystem fileSystem = p.getFileSystem(_configuration);
+        if (fileSystem.isDirectory(p)) {
+          return -ErrorCodes.EISDIR();
+        }
+        output = fileSystem.create(p, false);
+        openWriter(fh, output);
+        return 0;
+      } catch (Throwable t) {
+        LOGGER.error("Unknown error.", t);
+        return -ErrorCodes.EIO();
+      }
+    } else {
+      return -ErrorCodes.EIO();
+    }
   }
 
   @Override
@@ -130,11 +160,8 @@ public class NativeFuse extends FuseStubFS implements Closeable {
     stat.st_mtim.tv_sec.set(fileStatus.getModificationTime() / 1000);
     stat.st_mtim.tv_nsec.set(0);
     int permissions = getPermissions(fileStatus);
-    System.out.println(permissions);
     if (fileStatus.isDirectory()) {
-      int i = 755;
-      i += 0000;
-      stat.st_mode.set(FileStat.S_IFDIR | i);
+      stat.st_mode.set(FileStat.S_IFDIR | permissions);
       stat.st_size.set(2);
       return 0;
     } else {
@@ -150,7 +177,8 @@ public class NativeFuse extends FuseStubFS implements Closeable {
     FsAction userAction = permission.getUserAction();
     FsAction groupAction = permission.getGroupAction();
     FsAction otherAction = permission.getOtherAction();
-    return (userAction.ordinal() * 100) + (groupAction.ordinal() * 10) + otherAction.ordinal();
+    return (int) ((userAction.ordinal() * Math.pow(8, 2)) + (groupAction.ordinal() * Math.pow(8, 1))
+        + otherAction.ordinal());
   }
 
   private void setGroupOwner(FileSystem fileSystem, FileStatus fileStatus, FileStat stat) {
@@ -171,7 +199,7 @@ public class NativeFuse extends FuseStubFS implements Closeable {
         LOGGER.error("Unknown error looking up uid for file", t);
       }
       if (id == null) {
-        id = Math.abs(group.hashCode());
+        id = _defaultGroupId;
       }
       _gids.put(group, id);
     }
@@ -200,7 +228,7 @@ public class NativeFuse extends FuseStubFS implements Closeable {
         LOGGER.error("Unknown error looking up uid for file", t);
       }
       if (id == null) {
-        id = Math.abs(owner.hashCode());
+        id = _defaultOwnerId;
       }
       _uids.put(owner, id);
     }
@@ -244,9 +272,21 @@ public class NativeFuse extends FuseStubFS implements Closeable {
   @Override
   public int read(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
     LOGGER.debug("read {} {} {} {} {}", path, size, offset, fi, fi.fh.get());
-    FSDataInputStream input = getInputStream((int) fi.fh.get());
+    int fh = (int) fi.fh.get();
+    FSDataInputStream input = getInputStream(fh);
     if (input == null) {
-      return -ErrorCodes.ENOENT();
+      Path p = getPath(path);
+      try {
+        FileSystem fileSystem = p.getFileSystem(_configuration);
+        if (fileSystem.isDirectory(p)) {
+          return -ErrorCodes.EISDIR();
+        }
+        input = fileSystem.open(p);
+        openReader(fh, input);
+      } catch (Throwable t) {
+        LOGGER.error("Unknown error.", t);
+        return -ErrorCodes.EIO();
+      }
     }
     try {
       int len = (int) size;
@@ -255,6 +295,9 @@ public class NativeFuse extends FuseStubFS implements Closeable {
         input.seek(offset);
       }
       int read = input.read(buffer);
+      if (read == -1) {
+        read = 0;
+      }
       buf.put(0, buffer, 0, read);
       return read;
     } catch (Throwable t) {
@@ -265,37 +308,36 @@ public class NativeFuse extends FuseStubFS implements Closeable {
 
   @Override
   public int write(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
-    // switch (path) {
-    // case BRICK_FILENAME:
-    // while (true) {
-    // try {
-    // LOGGER.debug("write {} position {} length {}", path, offset, size);
-    // return writeBlockStore(_blockStore, buf, size, offset);
-    // } catch (Throwable t) {
-    // LOGGER.error("Unknown error.", t);
-    // sleep(TimeUnit.SECONDS.toMillis(3));
-    // }
-    // }
-    // case SNAPSHOT_FILENAME: {
-    // try {
-    // return createNewSnapshot(buf, size, offset);
-    // } catch (Throwable t) {
-    // LOGGER.error("Unknown error.", t);
-    // return -ErrorCodes.EIO();
-    // }
-    // }
-    // case SHUTDOWN_FILENAME: {
-    // startShutdown();
-    // return (int) size;
-    // }
-    // case FILE_SEP:
-    // return -ErrorCodes.EISDIR();
-    // case PID_FILENAME:
-    // return -ErrorCodes.EIO();
-    // default:
-    // return -ErrorCodes.ENOENT();
-    // }
-    return -ErrorCodes.ENOENT();
+    LOGGER.debug("write {} {} {}", path, fi, fi.fh.get());
+    int fh = (int) fi.fh.get();
+    FSDataOutputStream output = getOutputStream(fh);
+    if (output == null) {
+      Path p = getPath(path);
+      try {
+        FileSystem fileSystem = p.getFileSystem(_configuration);
+        if (fileSystem.isDirectory(p)) {
+          return -ErrorCodes.EISDIR();
+        }
+        output = fileSystem.create(p, false);
+        openWriter(fh, output);
+      } catch (Throwable t) {
+        LOGGER.error("Unknown error.", t);
+        return -ErrorCodes.EIO();
+      }
+    }
+    try {
+      int len = (int) size;
+      byte[] buffer = new byte[len];
+      buf.get(0, buffer, 0, len);
+      if (output.getPos() != offset) {
+        return -ErrorCodes.EIO();
+      }
+      output.write(buffer);
+      return len;
+    } catch (Throwable t) {
+      LOGGER.error("Unknown error.", t);
+      return -ErrorCodes.EIO();
+    }
   }
 
   @Override
@@ -306,21 +348,8 @@ public class NativeFuse extends FuseStubFS implements Closeable {
 
   @Override
   public int open(String path, FuseFileInfo fi) {
-    int fh = getNewFileHandle();
-    fi.fh.set(fh);
+    fi.fh.set(getNewFileHandle());
     LOGGER.debug("open {} {} {}", path, fi, fi.fh.get());
-    Path p = getPath(path);
-    try {
-      FileSystem fileSystem = p.getFileSystem(_configuration);
-      if (fileSystem.isDirectory(p)) {
-        return -ErrorCodes.EISDIR();
-      }
-      FSDataInputStream inputStream = fileSystem.open(p);
-      openReader(fh, inputStream);
-    } catch (Throwable t) {
-      LOGGER.error("Unknown error.", t);
-      return -ErrorCodes.EIO();
-    }
     return 0;
   }
 
@@ -330,7 +359,7 @@ public class NativeFuse extends FuseStubFS implements Closeable {
     int fh = (int) fi.fh.get();
     _handles.remove(fh);
     try {
-      closeReader(fh);
+      closeFileHandle(fh);
     } catch (Throwable t) {
       LOGGER.error("Unknown error.", t);
       return -ErrorCodes.EIO();
@@ -348,13 +377,35 @@ public class NativeFuse extends FuseStubFS implements Closeable {
     _readers.put(fh, inputStream);
   }
 
+  private void openWriter(int fh, FSDataOutputStream outputStream) {
+    _writers.put(fh, outputStream);
+  }
+
+  private void closeFileHandle(int fh) throws IOException {
+    closeReader(fh);
+    closeWriter(fh);
+  }
+
   private void closeReader(int fh) throws IOException {
     FSDataInputStream inputStream = _readers.remove(fh);
-    inputStream.close();
+    if (inputStream != null) {
+      inputStream.close();
+    }
+  }
+
+  private void closeWriter(int fh) throws IOException {
+    FSDataOutputStream outputStream = _writers.remove(fh);
+    if (outputStream != null) {
+      outputStream.close();
+    }
   }
 
   private FSDataInputStream getInputStream(int fh) {
     return _readers.get(fh);
+  }
+
+  private FSDataOutputStream getOutputStream(int fh) {
+    return _writers.get(fh);
   }
 
   private synchronized int getNewFileHandle() {
