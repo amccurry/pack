@@ -1,9 +1,16 @@
 package pack.block.server;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -67,7 +74,73 @@ public class BlockPackStorageTest {
   }
 
   @Test
-  public void testBlockPackStorage() throws Throwable {
+  public void testBlockPackStorageWritesAndReadsBlind() throws Throwable {
+    int mountPasses = 10;
+    int filePasses = 10;
+    runIntegrationTest(mountPasses, filePasses, testDir -> {
+      File file = new File(testDir, UUID.randomUUID()
+                                        .toString());
+      int length = 1000000;
+      try (RandomAccessFile rand = new RandomAccessFile(file, "rw")) {
+        rand.setLength(length);
+        byte[] buf = new byte[1024];
+        Random random = new Random();
+        for (int i = 0; i < 10000; i++) {
+          int pos = random.nextInt(length - buf.length);
+          rand.seek(pos);
+          if (random.nextBoolean()) {
+            rand.readFully(buf);
+          } else {
+            random.nextBytes(buf);
+            rand.write(buf);
+          }
+        }
+      }
+      System.out.println("Finished " + file);
+    });
+  }
+
+  @Test
+  public void testBlockPackStorageWritesAndReadsWithMD5Checks() throws Throwable {
+    int mountPasses = 10;
+    int filePasses = 20;
+    int length = 100000000;
+    runIntegrationTest(mountPasses, filePasses, testDir -> {
+      File file = new File(testDir, UUID.randomUUID()
+                                        .toString());
+      int remaining = length;
+      byte[] buf = new byte[1024];
+      Random random = new Random();
+
+      MessageDigest outputDigest = MessageDigest.getInstance("MD5");
+      try (BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(file))) {
+        while (remaining > 0) {
+          random.nextBytes(buf);
+          int len = Math.min(buf.length, remaining);
+          output.write(buf, 0, len);
+          outputDigest.update(buf, 0, len);
+          remaining -= len;
+        }
+      }
+      MessageDigest inputDigest = MessageDigest.getInstance("MD5");
+      try (InputStream input = new BufferedInputStream(new FileInputStream(file))) {
+        int len;
+        while ((len = input.read(buf, 0, buf.length)) != -1) {
+          inputDigest.update(buf, 0, len);
+        }
+      }
+
+      byte[] outputMd5 = outputDigest.digest();
+      byte[] inputMd5 = inputDigest.digest();
+      if (!Arrays.equals(outputMd5, inputMd5)) {
+        throw new IOException("MD5 hashes do not match " + file.getAbsolutePath());
+      }
+      System.out.println("Finished " + file);
+    });
+  }
+
+  private void runIntegrationTest(int mountPasses, int filePasses, RunTest test)
+      throws IOException, InterruptedException, Exception, Throwable, ExecutionException {
     File workingDir = new File(FUSE_FILE, "workingDir");
     File logDir = new File(FUSE_FILE, "logDir");
     Configuration configuration = FILESYSTEM.getConf();
@@ -142,9 +215,6 @@ public class BlockPackStorageTest {
 
     try {
 
-      int mountPasses = 30;
-      int filePasses = 5;
-
       for (int pass = 0; pass < mountPasses; pass++) {
         String id = UUID.randomUUID()
                         .toString();
@@ -153,7 +223,7 @@ public class BlockPackStorageTest {
           String username = System.getProperty("user.name");
           ExecUtil.exec(LOGGER, Level.INFO, "sudo", "chown", "-R", username + ":" + username, mount);
           for (int i = 0; i < filePasses; i++) {
-            runTest(filePasses, mount, service);
+            runTest(filePasses, mount, service, test);
           }
         } finally {
           storage.unmount(volumeName, id);
@@ -170,14 +240,18 @@ public class BlockPackStorageTest {
     }
   }
 
-  private void runTest(int numberOfFiles, String mount, ExecutorService service)
+  static interface RunTest {
+    void performIO(File testDir) throws Exception;
+  }
+
+  private void runTest(int numberOfFiles, String mount, ExecutorService service, RunTest test)
       throws InterruptedException, Throwable {
     File testDir = new File(mount, "test");
     testDir.mkdirs();
     List<Future<Void>> futures = new ArrayList<>();
     for (int i = 0; i < numberOfFiles; i++) {
       futures.add(service.submit(() -> {
-        performIO(testDir);
+        test.performIO(testDir);
         return null;
       }));
     }
@@ -189,28 +263,6 @@ public class BlockPackStorageTest {
       }
     }
     Utils.rmr(testDir);
-  }
-
-  private void performIO(File testDir) throws IOException {
-    File file = new File(testDir, UUID.randomUUID()
-                                      .toString());
-    int length = 100000;
-    try (RandomAccessFile rand = new RandomAccessFile(file, "rw")) {
-      rand.setLength(length);
-      byte[] buf = new byte[1024];
-      Random random = new Random();
-      for (int i = 0; i < 10000; i++) {
-        int pos = random.nextInt(length - buf.length);
-        rand.seek(pos);
-        if (random.nextBoolean()) {
-          rand.readFully(buf);
-        } else {
-          random.nextBytes(buf);
-          rand.write(buf);
-        }
-      }
-    }
-    System.out.println("Finished " + file);
   }
 
 }

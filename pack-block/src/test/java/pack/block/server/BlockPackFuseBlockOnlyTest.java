@@ -1,5 +1,6 @@
 package pack.block.server;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
@@ -60,8 +61,52 @@ public class BlockPackFuseBlockOnlyTest {
     cluster.shutdown();
   }
 
+  interface RunTest {
+    void runTest(File fuseDir) throws IOException;
+  }
+
   @Test
   public void testBlockPackFuse() throws Exception {
+    runTest(fuseDir -> testFuseMount(fuseDir));
+  }
+
+  @Test
+  public void testBlockPackFuseRandomAccessTest() throws Exception {
+    runTest(fuseDir -> testFuseMountRandomAccess(fuseDir));
+  }
+
+  private void testFuseMountRandomAccess(File fuseDir) throws IOException {
+    File block = new File(fuseDir, BRICK);
+    try (RandomAccessFile rand = new RandomAccessFile(block, "rw")) {
+      long value = 0;
+      int index = 100;
+      for (long l = 0; l < 1000; l++) {
+        rand.seek(index);
+        rand.writeLong(value);
+        rand.seek(index);
+        long val = rand.readLong();
+        assertEquals(value, val);
+        value++;
+      }
+
+      // try (FileChannel channel = rand.getChannel()) {
+      // MappedByteBuffer mappedByteBuffer = channel.map(MapMode.READ_WRITE, 0,
+      // Math.min(Integer.MAX_VALUE, block.length()));
+      //
+      // long value = 0;
+      // int index = 100;
+      // for (long l = 0; l < 1000; l++) {
+      // mappedByteBuffer.putLong(index, value);
+      // channel.force(false);
+      // long val = mappedByteBuffer.getLong(index);
+      // assertEquals(value, val);
+      // value++;
+      // }
+      // }
+    }
+  }
+
+  private void runTest(RunTest runTest) throws Exception {
     File fuse = new File(root, TEST_BLOCK_PACK_FUSE);
     Path volumePath = new Path("/BlockPackFuseTest/" + TEST_BLOCK_PACK_FUSE);
     fileSystem.delete(volumePath, true);
@@ -98,7 +143,7 @@ public class BlockPackFuseBlockOnlyTest {
 
     try (BlockPackFuse blockPackFuse = new BlockPackFuse(fuseConfig)) {
       blockPackFuse.mount(false);
-      testFuseMount(fuseDir);
+      runTest.runTest(fuseDir);
     }
   }
 
