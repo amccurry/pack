@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -34,8 +35,8 @@ import com.codahale.metrics.MetricRegistry;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.io.Closer;
 
-import pack.block.blockstore.hdfs.HdfsBlockStore;
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 import pack.block.blockstore.hdfs.file.ImmutableRoaringBitmapManager;
 import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.lock.LockLostAction;
@@ -114,7 +115,7 @@ public class BlockPackFuse implements Closeable {
 
       LastestHdfsSnapshotStrategy.setMaxNumberOfMountSnapshots(blockPackFuseConfig.getNumberOfMountSnapshots());
 
-      HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
+      HdfsBlockStoreImplConfig config = HdfsBlockStoreImplConfig.DEFAULT_CONFIG;
 
       ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
         FileSystem fileSystem = path.getFileSystem(conf);
@@ -225,7 +226,7 @@ public class BlockPackFuse implements Closeable {
     return new LastestHdfsSnapshotStrategy();
   }
 
-  private final HdfsBlockStore _blockStore;
+  private final BlockStore _blockStore;
   private final FuseFileSystemSingleMount _fuse;
   private final File _fuseLocalPath;
   private final Closer _closer;
@@ -300,16 +301,22 @@ public class BlockPackFuse implements Closeable {
     synchronized (_closed) {
       if (!_closed.get()) {
         _fuseMountThread.interrupt();
-        runQuietly(() -> _closer.close());
-        runQuietly(() -> _fuseMountThread.join());
+        runQuietly(() -> {
+          _closer.close();
+          return null;
+        });
+        runQuietly(() -> {
+          _fuseMountThread.join();
+          return null;
+        });
         _closed.set(true);
       }
     }
   }
 
-  private void runQuietly(RunQuietly runQuietly) {
+  private void runQuietly(Callable<Void> runQuietly) {
     try {
-      runQuietly.run();
+      runQuietly.call();
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
     }

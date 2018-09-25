@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.blockstore;
+package pack.block.blockstore.hdfs.blockstore.wal;
 
 import java.io.EOFException;
 import java.io.IOException;
@@ -20,9 +20,8 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.util.concurrent.RateLimiter;
 
-import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.blockstore.hdfs.blockstore.WalFile.Reader;
-import pack.block.blockstore.hdfs.file.WalKeyWritable;
+import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFile.Reader;
 
 public class WalFileFactoryPackFileSync extends WalFileFactory {
 
@@ -31,14 +30,14 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
   private final long _minTimeBetweenSyncs;
   private final double _syncRatePerSecond;
 
-  public WalFileFactoryPackFileSync(FileSystem fileSystem, HdfsMetaData metaData) {
+  public WalFileFactoryPackFileSync(FileSystem fileSystem, BlockStoreMetaData metaData) {
     super(fileSystem, metaData);
     long maxIdleWriterTime = metaData.getMaxIdleWriterTime();
-    _maxIdleWriterTime = maxIdleWriterTime == 0 ? HdfsMetaData.DEFAULT_MAX_IDLE_WRITER_TIME : maxIdleWriterTime;
+    _maxIdleWriterTime = maxIdleWriterTime == 0 ? BlockStoreMetaData.DEFAULT_MAX_IDLE_WRITER_TIME : maxIdleWriterTime;
     long minTimeBetweenSyncs = metaData.getMinTimeBetweenSyncs();
-    _minTimeBetweenSyncs = minTimeBetweenSyncs == 0 ? HdfsMetaData.DEFAULT_MIN_TIME_BETWEEN_SYNCS : minTimeBetweenSyncs;
+    _minTimeBetweenSyncs = minTimeBetweenSyncs == 0 ? BlockStoreMetaData.DEFAULT_MIN_TIME_BETWEEN_SYNCS : minTimeBetweenSyncs;
     double syncRatePerSecond = metaData.getSyncRatePerSecond();
-    _syncRatePerSecond = syncRatePerSecond == 0.0 ? HdfsMetaData.DEFAULT_SYNC_RATE_PER_SECOND : syncRatePerSecond;
+    _syncRatePerSecond = syncRatePerSecond == 0.0 ? BlockStoreMetaData.DEFAULT_SYNC_RATE_PER_SECOND : syncRatePerSecond;
   }
 
   public WalFile.Writer create(Path path) throws IOException {

@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.util.Utils;
 
 public class FileBlockStore implements BlockStore {
@@ -82,6 +83,11 @@ public class FileBlockStore implements BlockStore {
 
   public long getNumberOfBlocksOnDisk() throws IOException {
     return Utils.getNumberOfBlocksOnDisk(LOGGER, _file);
+  }
+
+  @Override
+  public BlockStoreMetaData getMetaData() throws IOException {
+    throw new RuntimeException("not impl");
   }
 
 }

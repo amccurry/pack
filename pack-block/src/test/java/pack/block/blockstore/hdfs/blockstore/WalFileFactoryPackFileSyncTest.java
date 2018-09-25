@@ -16,11 +16,12 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.blockstore.hdfs.blockstore.WalFile.Reader;
-import pack.block.blockstore.hdfs.blockstore.WalFile.Writer;
-import pack.block.blockstore.hdfs.file.WalKeyWritable;
-import pack.block.blockstore.hdfs.file.WalKeyWritable.Type;
+import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFileFactoryPackFileSync;
+import pack.block.blockstore.hdfs.blockstore.wal.WalKeyWritable;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFile.Reader;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFile.Writer;
+import pack.block.blockstore.hdfs.blockstore.wal.WalKeyWritable.Type;
 
 public class WalFileFactoryPackFileSyncTest {
 
@@ -45,7 +46,7 @@ public class WalFileFactoryPackFileSyncTest {
   @Test
   public void testWalFile() throws Exception {
     Path dir = new Path("/testWalFile");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA;
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA;
     WalFileFactoryPackFileSync file = new WalFileFactoryPackFileSync(fileSystem, metaData);
     Path src = new Path(dir, "wal.tmp");
     FSDataOutputStream out = fileSystem.create(src, false);
@@ -75,7 +76,7 @@ public class WalFileFactoryPackFileSyncTest {
   @Test
   public void testWalFileWithTimeout() throws Exception {
     Path dir = new Path("/testWalFileWithTimeout");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                           .maxIdleWriterTime(TimeUnit.SECONDS.toNanos(1))
                                                           .build();
 

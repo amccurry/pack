@@ -23,11 +23,10 @@ import org.junit.Test;
 import com.codahale.metrics.MetricRegistry;
 import com.google.common.base.Joiner;
 
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.compactor.BlockFileCompactor;
 import pack.block.blockstore.compactor.WalToBlockFileConverter;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.HdfsMetaData;
 
 public class HdfsBlockStoreImplTest {
 
@@ -53,7 +52,7 @@ public class HdfsBlockStoreImplTest {
   @Test
   public void testServer() throws Exception {
     Path path = new Path("/test");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                           .length(100000000)
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
@@ -93,7 +92,7 @@ public class HdfsBlockStoreImplTest {
   public void testDeleteBlocks() throws Exception {
 
     Path path = new Path("/testDeleteBlocks");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                           .length(100000000)
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
@@ -115,7 +114,7 @@ public class HdfsBlockStoreImplTest {
       store.delete(0, 10000 * blockSize);
     }
 
-    HdfsMetaData newMetaData = metaData.toBuilder()
+    BlockStoreMetaData newMetaData = metaData.toBuilder()
                                        .maxBlockFileSize(Long.MAX_VALUE)
                                        .maxObsoleteRatio(-0.1)
                                        .build();
@@ -133,15 +132,15 @@ public class HdfsBlockStoreImplTest {
       store.processBlockFiles();
     }
 
-    FileStatus[] fileStatus = fileSystem.listStatus(new Path(path, HdfsBlockStoreConfig.BLOCK),
+    FileStatus[] fileStatus = fileSystem.listStatus(new Path(path, HdfsBlockStoreImplConfig.BLOCK),
         (PathFilter) path1 -> path1.getName()
-                                   .endsWith(HdfsBlockStoreConfig.BLOCK));
+                                   .endsWith(HdfsBlockStoreImplConfig.BLOCK));
     assertEquals(getMessage(fileStatus), 1, fileStatus.length);
 
     for (FileStatus status : fileStatus) {
       assertTrue(status.getPath()
                        .getName()
-                       .endsWith(HdfsBlockStoreConfig.BLOCK));
+                       .endsWith(HdfsBlockStoreImplConfig.BLOCK));
     }
   }
 
@@ -161,7 +160,7 @@ public class HdfsBlockStoreImplTest {
   @Test
   public void testReadingWritingNotBlockAligned() throws Exception {
     Path path = new Path("/testReadingWritingNotBlockAligned");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                           .length(100000000)
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
@@ -207,7 +206,7 @@ public class HdfsBlockStoreImplTest {
   @Test
   public void testReadingWritingBufferLargerThanBlockSize() throws Exception {
     Path path = new Path("/testReadingWritingBufferLargerThanBlockSize");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                           .length(100000000)
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
@@ -271,7 +270,7 @@ public class HdfsBlockStoreImplTest {
   @Test
   public void testBlockStoreClone() throws Exception {
     Path path = new Path("/testBlockStoreClone");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                           .length(100000000)
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
@@ -324,7 +323,7 @@ public class HdfsBlockStoreImplTest {
     }
 
     Path clonePath = new Path("/testBlockStoreClone2");
-    HdfsMetaData cloneMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData cloneMetaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                                .length(100000000)
                                                                .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(cloneMetaData, fileSystem, clonePath);

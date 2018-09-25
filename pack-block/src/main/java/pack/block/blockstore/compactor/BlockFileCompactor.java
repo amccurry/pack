@@ -30,8 +30,8 @@ import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.WriterOrdered;
@@ -53,13 +53,13 @@ public class BlockFileCompactor implements Closeable {
   private final double _maxObsoleteRatio;
   private final String _nodePrefix;
 
-  public BlockFileCompactor(FileSystem fileSystem, Path path, HdfsMetaData metaData) throws IOException {
+  public BlockFileCompactor(FileSystem fileSystem, Path path, BlockStoreMetaData metaData) throws IOException {
     _nodePrefix = InetAddress.getLocalHost()
                              .getHostName();
     _maxBlockFileSize = metaData.getMaxBlockFileSize();
     _maxObsoleteRatio = metaData.getMaxObsoleteRatio();
     _fileSystem = fileSystem;
-    _blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
+    _blockPath = new Path(path, HdfsBlockStoreImplConfig.BLOCK);
     cleanupBlocks();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
     _readerCache = CacheBuilder.newBuilder()
@@ -349,10 +349,10 @@ public class BlockFileCompactor implements Closeable {
     List<String> list = SPLITTER.splitToList(name);
     String newName;
     if (list.size() == 2) {
-      newName = JOINER.join(list.get(0), "0", HdfsBlockStoreConfig.BLOCK);
+      newName = JOINER.join(list.get(0), "0", HdfsBlockStoreImplConfig.BLOCK);
     } else if (list.size() == 3) {
       long gen = Long.parseLong(list.get(1));
-      newName = JOINER.join(list.get(0), Long.toString(gen + 1), HdfsBlockStoreConfig.BLOCK);
+      newName = JOINER.join(list.get(0), Long.toString(gen + 1), HdfsBlockStoreImplConfig.BLOCK);
     } else {
       throw new IOException("Path " + path + " invalid");
     }

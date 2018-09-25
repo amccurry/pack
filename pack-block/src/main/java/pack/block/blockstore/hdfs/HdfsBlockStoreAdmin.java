@@ -18,6 +18,8 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 import pack.block.blockstore.hdfs.file.BlockFile;
 
 public class HdfsBlockStoreAdmin {
@@ -34,10 +36,10 @@ public class HdfsBlockStoreAdmin {
     FileSystem fileSystem = FileSystem.get(configuration);
 
     Path volumePath = new Path("/block/testing1");
-    HdfsMetaData metaData = readMetaData(fileSystem, volumePath);
+    BlockStoreMetaData metaData = readMetaData(fileSystem, volumePath);
     System.out.println(metaData);
 
-    HdfsMetaData newMetaData = metaData.toBuilder()
+    BlockStoreMetaData newMetaData = metaData.toBuilder()
                                        .length(metaData.getLength() * 2)
                                        .build();
 
@@ -52,7 +54,7 @@ public class HdfsBlockStoreAdmin {
       if (fileSystem.mkdirs(volumePath)) {
         clonePath(fileSystem, request.getClonePath(), request.getVolumePath(), request.isSymlinkClone());
         LOGGER.info("Create volume {}", volumeName);
-        HdfsMetaData metaData = request.getMetaData();
+        BlockStoreMetaData metaData = request.getMetaData();
         LOGGER.info("HdfsMetaData volume {} {}", volumeName, metaData);
         HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
         return true;
@@ -72,8 +74,8 @@ public class HdfsBlockStoreAdmin {
     if (srcPath == null) {
       return;
     }
-    Path srcBlocks = new Path(srcPath, HdfsBlockStoreConfig.BLOCK);
-    Path volumeBlocks = new Path(volumePath, HdfsBlockStoreConfig.BLOCK);
+    Path srcBlocks = new Path(srcPath, HdfsBlockStoreImplConfig.BLOCK);
+    Path volumeBlocks = new Path(volumePath, HdfsBlockStoreImplConfig.BLOCK);
     if (fileSystem.exists(srcBlocks)) {
       if (symlinkClone) {
         if (!BlockFile.createLinkDir(fileSystem, srcBlocks, volumeBlocks)) {
@@ -94,31 +96,31 @@ public class HdfsBlockStoreAdmin {
     }
   }
 
-  public static void writeHdfsMetaData(HdfsMetaData metaData, FileSystem fileSystem, Path volumePath)
+  public static void writeHdfsMetaData(BlockStoreMetaData metaData, FileSystem fileSystem, Path volumePath)
       throws IOException {
     try (OutputStream output = fileSystem.create(new Path(volumePath, METADATA))) {
       MAPPER.writeValue(output, metaData);
     }
   }
 
-  public static HdfsMetaData readMetaData(FileSystem fileSystem, Path volumePath) throws IOException {
+  public static BlockStoreMetaData readMetaData(FileSystem fileSystem, Path volumePath) throws IOException {
     if (!fileSystem.exists(new Path(volumePath, METADATA))) {
       return null;
     }
-    HdfsMetaData hdfsMetaData;
+    BlockStoreMetaData hdfsMetaData;
     try (InputStream input = fileSystem.open(new Path(volumePath, METADATA))) {
-      hdfsMetaData = MAPPER.readValue(input, HdfsMetaData.class);
+      hdfsMetaData = MAPPER.readValue(input, BlockStoreMetaData.class);
     }
     return assignUuidIfMissing(hdfsMetaData, fileSystem, volumePath);
   }
 
-  public static HdfsMetaData assignUuidIfMissing(HdfsMetaData hdfsMetaData, FileSystem fileSystem, Path volumePath)
+  public static BlockStoreMetaData assignUuidIfMissing(BlockStoreMetaData hdfsMetaData, FileSystem fileSystem, Path volumePath)
       throws IOException {
     String uuid = hdfsMetaData.getUuid();
     if (uuid == null) {
       uuid = UUID.randomUUID()
                  .toString();
-      HdfsMetaData newMetaData = hdfsMetaData.toBuilder()
+      BlockStoreMetaData newMetaData = hdfsMetaData.toBuilder()
                                              .uuid(uuid)
                                              .build();
       writeHdfsMetaData(newMetaData, fileSystem, volumePath);

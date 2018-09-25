@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.error;
+package pack.block.blockstore.hdfs.util;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -6,22 +6,22 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.block.blockstore.hdfs.HdfsBlockStore;
-import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.BlockStoreMetaData;
 
-public class RetryBlockStore implements HdfsBlockStore {
+public class RetryBlockStore implements BlockStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RetryBlockStore.class);
 
   private static final long MAX_WAIT_TIME = 10;
 
-  private final HdfsBlockStore _base;
+  private final BlockStore _base;
 
-  public static RetryBlockStore wrap(HdfsBlockStore blockStore) {
+  public static RetryBlockStore wrap(BlockStore blockStore) {
     return new RetryBlockStore(blockStore);
   }
 
-  public RetryBlockStore(HdfsBlockStore base) {
+  public RetryBlockStore(BlockStore base) {
     _base = base;
   }
 
@@ -34,7 +34,7 @@ public class RetryBlockStore implements HdfsBlockStore {
   }
 
   @Override
-  public HdfsMetaData getMetaData() throws IOException {
+  public BlockStoreMetaData getMetaData() throws IOException {
     return exec(() -> _base.getMetaData());
   }
 

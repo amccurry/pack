@@ -29,10 +29,10 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.HdfsMetaData;
-import pack.block.blockstore.hdfs.blockstore.LocalWalCache;
-import pack.block.blockstore.hdfs.blockstore.WalFileFactory;
+import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
+import pack.block.blockstore.hdfs.blockstore.wal.LocalWalCache;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFileFactory;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
@@ -59,7 +59,7 @@ public class WalToBlockFileConverter implements Closeable {
   private final Path _volumePath;
   private final boolean _useLock;
 
-  public WalToBlockFileConverter(File cacheDir, FileSystem fileSystem, Path volumePath, HdfsMetaData metaData,
+  public WalToBlockFileConverter(File cacheDir, FileSystem fileSystem, Path volumePath, BlockStoreMetaData metaData,
       boolean useLock) throws IOException {
     _useLock = useLock;
     _nodePrefix = InetAddress.getLocalHost()
@@ -69,7 +69,7 @@ public class WalToBlockFileConverter implements Closeable {
     _blockSize = metaData.getFileSystemBlockSize();
     _fileSystem = fileSystem;
     _volumePath = volumePath;
-    _blockPath = new Path(volumePath, HdfsBlockStoreConfig.BLOCK);
+    _blockPath = new Path(volumePath, HdfsBlockStoreImplConfig.BLOCK);
     _walFactory = WalFileFactory.create(_fileSystem, metaData);
     cleanupOldFiles();
     RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
@@ -121,7 +121,7 @@ public class WalToBlockFileConverter implements Closeable {
     if (list.size() != 2) {
       throw new IOException("Wal file " + path + " name is malformed.");
     }
-    String blockName = JOINER.join(list.get(0), HdfsBlockStoreConfig.BLOCK);
+    String blockName = JOINER.join(list.get(0), HdfsBlockStoreImplConfig.BLOCK);
     Path newPath = Utils.qualify(_fileSystem, new Path(path.getParent(), blockName));
     Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpNameConvert()));
     if (_fileSystem.exists(newPath)) {

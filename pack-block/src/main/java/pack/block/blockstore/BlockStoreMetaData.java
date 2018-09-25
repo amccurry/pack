@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs;
+package pack.block.blockstore;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,7 +26,7 @@ import pack.block.server.fs.FileSystemType;
 @EqualsAndHashCode
 @Builder(toBuilder = true)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class HdfsMetaData {
+public class BlockStoreMetaData {
   private static final String SYNC_RATE_PER_SECOND = "syncRatePerSecond";
   private static final String UUID_NAME = "uuid";
   private static final String MAX_IDLE_WRITER_TIME = "maxIdleWriterTime";
@@ -63,16 +63,22 @@ public class HdfsMetaData {
 
   public static final double DEFAULT_SYNC_RATE_PER_SECOND = 0.5d;
 
-  public static final HdfsMetaData DEFAULT_META_DATA = HdfsMetaData.builder()
-                                                                   .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
-                                                                   .fileSystemType(FileSystemType.XFS)
-                                                                   .length(DEFAULT_LENGTH_BYTES)
-                                                                   .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE)
-                                                                   .maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
-                                                                   .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
-                                                                   .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
-                                                                   .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS)
-                                                                   .build();
+  public static final BlockStoreMetaData DEFAULT_META_DATA = BlockStoreMetaData.builder()
+                                                                               .fileSystemBlockSize(
+                                                                                   DEFAULT_FILESYSTEM_BLOCKSIZE)
+                                                                               .fileSystemType(FileSystemType.XFS)
+                                                                               .length(DEFAULT_LENGTH_BYTES)
+                                                                               .maxBlockFileSize(
+                                                                                   DEFAULT_MAX_BLOCK_FILE_SIZE)
+                                                                               .maxObsoleteRatio(
+                                                                                   DEFAULT_MAX_OBSOLETE_RATIO)
+                                                                               .maxWalFileSize(
+                                                                                   DEFAULT_MAX_WAL_FILE_SIZE)
+                                                                               .maxIdleWriterTime(
+                                                                                   DEFAULT_MAX_IDLE_WRITER_TIME)
+                                                                               .minTimeBetweenSyncs(
+                                                                                   DEFAULT_MIN_TIME_BETWEEN_SYNCS)
+                                                                               .build();
 
   @JsonProperty
   @Builder.Default
@@ -121,12 +127,12 @@ public class HdfsMetaData {
     ObjectMapper mapper = new ObjectMapper();
     System.out.println(mapper.writeValueAsString(DEFAULT_META_DATA));
 
-    HdfsMetaData hdfsMetaData = mapper.readValue(new File("test.json"), HdfsMetaData.class);
+    BlockStoreMetaData hdfsMetaData = mapper.readValue(new File("test.json"), BlockStoreMetaData.class);
     System.out.println(hdfsMetaData.getMaxIdleWriterTime());
   }
 
-  public static HdfsMetaData setupOptions(HdfsMetaData defaultmetaData, Map<String, Object> options) {
-    HdfsMetaDataBuilder builder = defaultmetaData.toBuilder();
+  public static BlockStoreMetaData setupOptions(BlockStoreMetaData defaultmetaData, Map<String, Object> options) {
+    BlockStoreMetaDataBuilder builder = defaultmetaData.toBuilder();
     if (options.containsKey(LENGTH)) {
       builder.length(toLong(options.get(LENGTH)));
     }

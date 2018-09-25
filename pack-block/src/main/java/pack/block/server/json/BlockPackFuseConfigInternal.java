@@ -6,7 +6,7 @@ import org.apache.hadoop.fs.Path;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Value;
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 import pack.block.fuse.SnapshotHandler;
 import pack.block.server.BlockStoreFactory;
 import pack.block.server.admin.BlockPackAdmin;
@@ -18,7 +18,7 @@ public class BlockPackFuseConfigInternal {
   BlockPackFuseConfig blockPackFuseConfig;
   BlockPackAdmin blockPackAdmin;
   Path path;
-  HdfsBlockStoreConfig config;
+  HdfsBlockStoreImplConfig config;
   BlockStoreFactory blockStoreFactory;
   FileSystem fileSystem;
   SnapshotHandler snapshotHandler;

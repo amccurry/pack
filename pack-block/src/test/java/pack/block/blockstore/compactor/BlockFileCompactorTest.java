@@ -26,8 +26,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.io.Closer;
 
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
@@ -125,7 +125,7 @@ public class BlockFileCompactorTest {
     int maxNumberOfBlocksToWrite = 100;
     generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
 
-    HdfsMetaData newMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData newMetaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                              .maxBlockFileSize(0)
                                                              .maxObsoleteRatio(0.0)
                                                              .build();
@@ -149,7 +149,7 @@ public class BlockFileCompactorTest {
     int maxNumberOfBlocksToWrite = 100;
     generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
 
-    HdfsMetaData newMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData newMetaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                              .maxBlockFileSize(Long.MAX_VALUE)
                                                              .maxObsoleteRatio(10.0)
                                                              .build();
@@ -176,7 +176,7 @@ public class BlockFileCompactorTest {
     generatBlockFilesNotConsidered(data, path, random, blockSize, maxFilesUnderBlockFileSize, maxFilesOverBlockFileSize,
         maxBlockIdsIncr, maxNumberOfBlocksToWrite, maxBlockFileSize);
 
-    HdfsMetaData newMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData newMetaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                              .maxBlockFileSize(maxBlockFileSize)
                                                              .maxObsoleteRatio(10.0)
                                                              .build();
@@ -259,7 +259,7 @@ public class BlockFileCompactorTest {
   }
 
   private List<Path> getMultipleBlockFiles(Path path) throws IOException {
-    Path blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
+    Path blockPath = new Path(path, HdfsBlockStoreImplConfig.BLOCK);
     FileStatus[] listStatus = fileSystem.listStatus(blockPath);
     Builder<Path> builder = ImmutableList.builder();
     for (FileStatus status : listStatus) {
@@ -272,7 +272,7 @@ public class BlockFileCompactorTest {
       int maxFilesUnderBlockFileSize, int maxFilesOverBlockFileSize, int maxBlockIdsIncr, int maxNumberOfBlocksToWrite,
       long maxBlockFileSize) throws IOException {
 
-    Path blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
+    Path blockPath = new Path(path, HdfsBlockStoreImplConfig.BLOCK);
     fileSystem.mkdirs(blockPath);
 
     int numberFilesUnderBlockFileSize = random.nextInt(maxFilesUnderBlockFileSize - 1) + 1;
@@ -298,7 +298,7 @@ public class BlockFileCompactorTest {
   }
 
   private void dropOldBlockFiles(Path root) throws IOException {
-    Path blockPath = new Path(root, HdfsBlockStoreConfig.BLOCK);
+    Path blockPath = new Path(root, HdfsBlockStoreImplConfig.BLOCK);
     FileStatus[] listStatus = fileSystem.listStatus(blockPath);
     for (FileStatus status : listStatus) {
       if (!fileSystem.exists(status.getPath())) {
@@ -324,7 +324,7 @@ public class BlockFileCompactorTest {
   }
 
   private Path getSingleBlockFile(Path path) throws IOException {
-    Path blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
+    Path blockPath = new Path(path, HdfsBlockStoreImplConfig.BLOCK);
     FileStatus[] listStatus = fileSystem.listStatus(blockPath);
     assertEquals(1, listStatus.length);
     return listStatus[0].getPath();
@@ -332,7 +332,7 @@ public class BlockFileCompactorTest {
 
   private void generatBlockFiles(List<byte[]> data, Path path, Random random, int blockSize, int maxFiles,
       int maxBlockIdsIncr, int maxNumberOfBlocksToWrite) throws IOException {
-    Path blockPath = new Path(path, HdfsBlockStoreConfig.BLOCK);
+    Path blockPath = new Path(path, HdfsBlockStoreImplConfig.BLOCK);
     fileSystem.mkdirs(blockPath);
 
     int numberOfFilesToProduce = random.nextInt(maxFiles);

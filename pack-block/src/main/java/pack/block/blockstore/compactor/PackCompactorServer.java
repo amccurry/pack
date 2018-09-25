@@ -22,8 +22,8 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Splitter;
 import com.google.common.io.Closer;
 
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
-import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.lock.LockLostAction;
 import pack.block.util.Utils;
@@ -157,7 +157,7 @@ public class PackCompactorServer implements Closeable {
 
   private void executeConverterVolume(Path volumePath) throws IOException, InterruptedException {
     FileSystem fileSystem = volumePath.getFileSystem(_configuration);
-    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+    BlockStoreMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
       Utils.dropVolume(volumePath, fileSystem);
       return;
@@ -190,7 +190,7 @@ public class PackCompactorServer implements Closeable {
   public static void executeCompactionVolume(Configuration configuration, Path volumePath)
       throws IOException, InterruptedException {
     FileSystem fileSystem = volumePath.getFileSystem(configuration);
-    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+    BlockStoreMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
       Utils.dropVolume(volumePath, fileSystem);
       return;

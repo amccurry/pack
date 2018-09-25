@@ -12,6 +12,7 @@ import org.apache.hadoop.hdfs.MiniDFSCluster;
 
 import com.codahale.metrics.MetricRegistry;
 
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
 import pack.block.fuse.FuseFileSystem;
 
@@ -36,7 +37,7 @@ public class HdfsBlockStoreUsing {
     writeConfiguration(new File(file, "hdfs-site.xml"));
 
     Path path = new Path("/test");
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, path);
     try (FuseFileSystem memfs = new FuseFileSystem("./mnt")) {

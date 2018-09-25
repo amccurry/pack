@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.blockstore;
+package pack.block.blockstore.hdfs.blockstore.wal;
 
 import java.io.Closeable;
 import java.io.File;
@@ -19,10 +19,9 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.Weigher;
 
-import pack.block.blockstore.hdfs.blockstore.WalFile.Reader;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFile.Reader;
+import pack.block.blockstore.hdfs.blockstore.wal.WalKeyWritable.Type;
 import pack.block.blockstore.hdfs.file.ReadRequest;
-import pack.block.blockstore.hdfs.file.WalKeyWritable;
-import pack.block.blockstore.hdfs.file.WalKeyWritable.Type;
 import pack.block.util.Utils;
 
 public class LocalWalCache implements Closeable {

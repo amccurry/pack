@@ -1,11 +1,9 @@
-package pack.block.blockstore.hdfs.blockstore;
+package pack.block.blockstore.hdfs.blockstore.wal;
 
 import java.io.Closeable;
 import java.io.IOException;
 
 import org.apache.hadoop.io.BytesWritable;
-
-import pack.block.blockstore.hdfs.file.WalKeyWritable;
 
 public class WalFile {
 

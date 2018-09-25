@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.file;
+package pack.block.blockstore.hdfs.blockstore.wal;
 
 import java.io.DataInput;
 import java.io.DataOutput;

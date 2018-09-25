@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package pack.block.blockstore.hdfs.file;
+package pack.block.blockstore.hdfs.util;
 
 import java.io.FilterInputStream;
 import java.io.IOException;

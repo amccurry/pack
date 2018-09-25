@@ -34,4 +34,6 @@ public interface BlockStore extends Closeable {
 
   void delete(long position, long length) throws IOException;
 
+  BlockStoreMetaData getMetaData() throws IOException;
+
 }

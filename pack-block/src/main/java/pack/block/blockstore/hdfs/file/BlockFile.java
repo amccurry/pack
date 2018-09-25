@@ -37,6 +37,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.io.Closer;
 
+import pack.block.blockstore.hdfs.util.HdfsUtils;
+import pack.block.blockstore.hdfs.util.PeekableIterator;
 import pack.block.util.Utils;
 
 public class BlockFile {

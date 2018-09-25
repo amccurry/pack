@@ -36,10 +36,10 @@ import org.slf4j.event.Level;
 
 import com.google.common.collect.ImmutableMap;
 
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.compactor.BlockFileCompactor;
 import pack.block.blockstore.compactor.WalToBlockFileConverter;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
-import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.lock.OwnerCheck;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.util.Utils;
@@ -173,7 +173,7 @@ public class BlockPackStorageTest {
     storage.create(volumeName, ImmutableMap.of());
 
     Path volumePath = new Path(remotePath, volumeName);
-    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(FILESYSTEM, volumePath);
+    BlockStoreMetaData metaData = HdfsBlockStoreAdmin.readMetaData(FILESYSTEM, volumePath);
 
     Future<Object> compactorFuture = service.submit(() -> {
       OwnerCheck ownerCheck = () -> true;

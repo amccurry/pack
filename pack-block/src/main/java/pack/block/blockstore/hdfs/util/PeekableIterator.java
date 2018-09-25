@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.file;
+package pack.block.blockstore.hdfs.util;
 
 import java.util.Iterator;
 

@@ -5,10 +5,10 @@ import java.io.IOException;
 
 import com.codahale.metrics.MetricRegistry;
 
-import pack.block.blockstore.hdfs.HdfsBlockStore;
-import pack.block.blockstore.hdfs.UgiHdfsBlockStore;
+import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImpl;
-import pack.block.blockstore.hdfs.error.RetryBlockStore;
+import pack.block.blockstore.hdfs.util.RetryBlockStore;
+import pack.block.blockstore.hdfs.util.UgiHdfsBlockStore;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.admin.Status;
 import pack.block.server.json.BlockPackFuseConfig;
@@ -18,14 +18,14 @@ public abstract class BlockStoreFactory {
 
   public static final BlockStoreFactory DEFAULT = new BlockStoreFactoryImpl();
 
-  public abstract HdfsBlockStore getHdfsBlockStore(BlockPackAdmin blockPackAdmin,
+  public abstract BlockStore getHdfsBlockStore(BlockPackAdmin blockPackAdmin,
       BlockPackFuseConfigInternal packFuseConfig, MetricRegistry registry) throws IOException;
 
   public static class BlockStoreFactoryImpl extends BlockStoreFactory {
     private static final String BRICK = "brick";
 
     @Override
-    public HdfsBlockStore getHdfsBlockStore(BlockPackAdmin blockPackAdmin, BlockPackFuseConfigInternal packFuseConfig,
+    public BlockStore getHdfsBlockStore(BlockPackAdmin blockPackAdmin, BlockPackFuseConfigInternal packFuseConfig,
         MetricRegistry registry) throws IOException {
       blockPackAdmin.setStatus(Status.INITIALIZATION, "Opening Blockstore");
       BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();

@@ -11,8 +11,8 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 
 public class BlockFileCompactorUsing {
 
@@ -38,7 +38,7 @@ public class BlockFileCompactorUsing {
           }
         }
         {
-          FileStatus[] listStatus = fileSystem.listStatus(new Path(path, HdfsBlockStoreConfig.BLOCK));
+          FileStatus[] listStatus = fileSystem.listStatus(new Path(path, HdfsBlockStoreImplConfig.BLOCK));
           for (FileStatus fileStatus : listStatus) {
             System.out.println(fileStatus.getPath() + " " + fileStatus.getLen());
           }
@@ -48,7 +48,7 @@ public class BlockFileCompactorUsing {
 
         long maxBlockFileSize = 1_000_000_000;
 
-        HdfsMetaData newMetaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+        BlockStoreMetaData newMetaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                                  .maxBlockFileSize(maxBlockFileSize)
                                                                  .maxObsoleteRatio(-0.1)
                                                                  .build();

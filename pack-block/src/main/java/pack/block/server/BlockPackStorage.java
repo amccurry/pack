@@ -35,9 +35,9 @@ import com.google.common.io.Closer;
 
 import pack.PackServer;
 import pack.PackStorage;
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
-import pack.block.blockstore.hdfs.HdfsMetaData;
 import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
@@ -349,8 +349,8 @@ public class BlockPackStorage implements PackStorage {
 
   protected void createVolume(String volumeName, Map<String, Object> options) throws IOException {
     LOGGER.info("create volume {}", volumeName);
-    HdfsMetaData defaultmetaData = HdfsMetaData.DEFAULT_META_DATA;
-    HdfsMetaData metaData = HdfsMetaData.setupOptions(defaultmetaData, options);
+    BlockStoreMetaData defaultmetaData = BlockStoreMetaData.DEFAULT_META_DATA;
+    BlockStoreMetaData metaData = BlockStoreMetaData.setupOptions(defaultmetaData, options);
 
     Path volumePath = getVolumePath(volumeName);
     FileSystem fileSystem = getFileSystem(volumePath);
@@ -422,7 +422,7 @@ public class BlockPackStorage implements PackStorage {
     LOGGER.debug("Mount Id {} volumeDir {}", id, volumeDir);
 
     FileSystem fileSystem = getFileSystem(volumePath);
-    HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+    BlockStoreMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
       throw new IOException("No metadata found for path " + volumePath);
     }
@@ -546,7 +546,7 @@ public class BlockPackStorage implements PackStorage {
     return new File(getVolumeDir(volumeName, id), CONFIG_JSON);
   }
 
-  private void tryToAssignUuid(HdfsMetaData metaData, File device) throws IOException {
+  private void tryToAssignUuid(BlockStoreMetaData metaData, File device) throws IOException {
     LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
                                               .getLinuxFileSystem();
     if (linuxFileSystem.isUuidAssignmentSupported()) {
@@ -554,7 +554,7 @@ public class BlockPackStorage implements PackStorage {
     }
   }
 
-  private void mountFs(HdfsMetaData metaData, File device, File localFileSystemMount, String volumeName, String id)
+  private void mountFs(BlockStoreMetaData metaData, File device, File localFileSystemMount, String volumeName, String id)
       throws IOException, InterruptedException {
     String mountOptions = metaData.getMountOptions();
     LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
@@ -579,7 +579,7 @@ public class BlockPackStorage implements PackStorage {
     }
   }
 
-  private void mkfsIfNeeded(HdfsMetaData metaData, String volumeName, File device) throws IOException {
+  private void mkfsIfNeeded(BlockStoreMetaData metaData, String volumeName, File device) throws IOException {
     LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
                                               .getLinuxFileSystem();
     if (!linuxFileSystem.isFileSystemExists(device)) {

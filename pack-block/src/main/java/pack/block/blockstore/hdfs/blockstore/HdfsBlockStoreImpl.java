@@ -49,20 +49,22 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 
-import pack.block.blockstore.hdfs.HdfsBlockStore;
+import pack.block.blockstore.BlockStore;
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.blockstore.wal.LocalWalCache;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFile;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFileFactory;
+import pack.block.blockstore.hdfs.blockstore.wal.WalKeyWritable;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
-import pack.block.server.fs.LinuxFileSystem;
 import pack.block.blockstore.hdfs.file.ReadRequest;
-import pack.block.blockstore.hdfs.file.WalKeyWritable;
+import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.Utils;
 import pack.util.ExecUtil;
 import pack.util.Result;
 
-public class HdfsBlockStoreImpl implements HdfsBlockStore {
+public class HdfsBlockStoreImpl implements BlockStore {
 
   private final static Logger LOGGER = LoggerFactory.getLogger(HdfsBlockStoreImpl.class);
 
@@ -77,7 +79,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   private final FileSystem _fileSystem;
   private final Path _path;
-  private final HdfsMetaData _metaData;
+  private final BlockStoreMetaData _metaData;
   private final AtomicLong _length = new AtomicLong();
   private final int _fileSystemBlockSize;
   private final Path _blockPath;
@@ -108,16 +110,16 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path)
       throws IOException {
-    this(registry, cacheDir, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG);
+    this(registry, cacheDir, fileSystem, path, HdfsBlockStoreImplConfig.DEFAULT_CONFIG);
   }
 
   public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
-      HdfsBlockStoreConfig config) throws IOException {
-    this(registry, cacheDir, fileSystem, path, HdfsBlockStoreConfig.DEFAULT_CONFIG, null);
+      HdfsBlockStoreImplConfig config) throws IOException {
+    this(registry, cacheDir, fileSystem, path, HdfsBlockStoreImplConfig.DEFAULT_CONFIG, null);
   }
 
   public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
-      HdfsBlockStoreConfig config, File brickFile) throws IOException {
+      HdfsBlockStoreImplConfig config, File brickFile) throws IOException {
 
     _fileWriteLock = new ReentrantReadWriteLock(true).writeLock();
     _fileReadLock = new ReentrantReadWriteLock(true).readLock();
@@ -152,7 +154,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     _fileSystemBlockSize = _metaData.getFileSystemBlockSize();
 
     _length.set(_metaData.getLength());
-    _blockPath = Utils.qualify(fileSystem, new Path(_path, HdfsBlockStoreConfig.BLOCK));
+    _blockPath = Utils.qualify(fileSystem, new Path(_path, HdfsBlockStoreImplConfig.BLOCK));
     _fileSystem.mkdirs(_blockPath);
     _genCounter = new AtomicLong(readGenCounter());
 
@@ -166,7 +168,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
     _blockFiles.set(ImmutableList.copyOf(pathList));
     // create background thread that removes orphaned block files and checks for
     // new block files that have been merged externally
-    String name = HdfsBlockStoreConfig.BLOCK + "|" + _blockPath.toUri()
+    String name = HdfsBlockStoreImplConfig.BLOCK + "|" + _blockPath.toUri()
                                                                .getPath();
     _timer = new Timer(name, true);
 
@@ -649,7 +651,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   }
 
   @Override
-  public HdfsMetaData getMetaData() {
+  public BlockStoreMetaData getMetaData() {
     return _metaData;
   }
 
@@ -758,7 +760,7 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
         continue;
       }
       if (path.getName()
-              .endsWith(HdfsBlockStoreConfig.BLOCK)
+              .endsWith(HdfsBlockStoreImplConfig.BLOCK)
           && _fileSystem.exists(path)) {
         Reader reader = getReader(path);
         removeBlockFiles(reader.getSourceBlockFiles(), currentFiles);
@@ -924,14 +926,14 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
       @Override
       public void run() {
         try {
-          HdfsMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
+          BlockStoreMetaData metaData = HdfsBlockStoreAdmin.readMetaData(_fileSystem, _path);
           long length = metaData.getLength();
           long currentLength = _length.get();
           if (currentLength == length) {
             return;
           } else if (currentLength > length) {
             LOGGER.error("Size of volume can not be reduced from {} to {}", currentLength, length);
-            HdfsMetaData fixed = metaData.toBuilder()
+            BlockStoreMetaData fixed = metaData.toBuilder()
                                          .length(currentLength)
                                          .build();
             HdfsBlockStoreAdmin.writeHdfsMetaData(fixed, _fileSystem, _path);

@@ -18,9 +18,9 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
-import pack.block.blockstore.hdfs.HdfsBlockStoreConfig;
-import pack.block.blockstore.hdfs.HdfsMetaData;
+import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 import pack.block.server.admin.BlockPackAdmin;
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.server.json.BlockPackFuseConfigInternal;
@@ -110,11 +110,11 @@ public class BlockPackFuseBlockOnlyTest {
     File fuse = new File(root, TEST_BLOCK_PACK_FUSE);
     Path volumePath = new Path("/BlockPackFuseTest/" + TEST_BLOCK_PACK_FUSE);
     fileSystem.delete(volumePath, true);
-    HdfsMetaData metaData = HdfsMetaData.DEFAULT_META_DATA.toBuilder()
+    BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
                                                           .length(100 * 1024 * 1024)
                                                           .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
-    HdfsBlockStoreConfig config = HdfsBlockStoreConfig.DEFAULT_CONFIG;
+    HdfsBlockStoreImplConfig config = HdfsBlockStoreImplConfig.DEFAULT_CONFIG;
     File fuseDir = new File(fuse, FUSE);
     String fuseLocalPath = Utils.mkdir(fuseDir)
                                 .getAbsolutePath();
