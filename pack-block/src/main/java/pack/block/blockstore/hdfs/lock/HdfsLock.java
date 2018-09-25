@@ -1,6 +1,5 @@
 package pack.block.blockstore.hdfs.lock;
 
-import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
@@ -30,7 +29,7 @@ import org.slf4j.LoggerFactory;
 
 import pack.block.util.Utils;
 
-public class HdfsLock implements Closeable, OwnerCheck {
+public class HdfsLock implements PackLock {
 
   private static final String ALREADY_BEING_CREATED_EXCEPTION = "org.apache.hadoop.hdfs.protocol.AlreadyBeingCreatedException";
   private static final String RECOVERY_IN_PRPGRESS_EXCEPTION = "org.apache.hadoop.hdfs.protocol.RecoveryInProgressException";
@@ -131,6 +130,9 @@ public class HdfsLock implements Closeable, OwnerCheck {
     }
   }
 
+  /* (non-Javadoc)
+   * @see pack.block.blockstore.hdfs.lock.PackLock#isLockOwner()
+   */
   @Override
   public boolean isLockOwner() throws IOException {
     if (!_initialized.get()) {
@@ -210,6 +212,10 @@ public class HdfsLock implements Closeable, OwnerCheck {
     }
   }
 
+  /* (non-Javadoc)
+   * @see pack.block.blockstore.hdfs.lock.PackLock#tryToLock()
+   */
+  @Override
   public boolean tryToLock() throws IOException {
     UserGroupInformation ugi = Utils.getUserGroupInformation();
     try {

@@ -30,7 +30,7 @@ public class BlockFileCompactorUsing {
       @Override
       public Void run() throws Exception {
         FileSystem fileSystem = FileSystem.get(configuration);
-        Path path = new Path("/user/sigma/block-volumes/testing");
+        Path path = new Path(args[0]);
         {
           FileStatus[] listStatus = fileSystem.listStatus(path);
           for (FileStatus fileStatus : listStatus) {

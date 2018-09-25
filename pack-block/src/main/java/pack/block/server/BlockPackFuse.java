@@ -38,8 +38,9 @@ import com.google.common.io.Closer;
 import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 import pack.block.blockstore.hdfs.file.ImmutableRoaringBitmapManager;
-import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.lock.LockLostAction;
+import pack.block.blockstore.hdfs.lock.PackLock;
+import pack.block.blockstore.hdfs.lock.PackLockFactory;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
@@ -236,7 +237,7 @@ public class BlockPackFuse implements Closeable {
   private final MetricRegistry _registry = new MetricRegistry();
   private final CsvReporter _reporter;
   private final BlockPackAdmin _blockPackAdmin;
-  private final HdfsLock _lock;
+  private final PackLock _lock;
 
   public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
     BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
@@ -253,7 +254,7 @@ public class BlockPackFuse implements Closeable {
     Configuration conf = packFuseConfig.getFileSystem()
                                        .getConf();
     _closer = Closer.create();
-    _lock = _closer.register(new HdfsLock(conf, lockPath, lockLostAction));
+    _lock = _closer.register(PackLockFactory.create(conf, lockPath, lockLostAction));
     boolean lock = _lock.tryToLock();
 
     if (!lock) {

@@ -58,6 +58,10 @@ public class HdfsSnapshotUtil {
 
   public static void enableSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
       throws IOException, InterruptedException {
+    if (!(fileSystem instanceof DistributedFileSystem)) {
+      LOGGER.warn("fileSystem {} not a DistributedFileSystem", fileSystem);
+      return;
+    }
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
     LOGGER.info("Using ugi {} to enable volume snapshots", ugi);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
@@ -71,8 +75,11 @@ public class HdfsSnapshotUtil {
 
   public static void createSnapshot(FileSystem fileSystem, Path path, String snapshotName, UserGroupInformation ugi)
       throws IOException, InterruptedException {
+    if (!(fileSystem instanceof DistributedFileSystem)) {
+      LOGGER.warn("fileSystem {} not a DistributedFileSystem", fileSystem);
+      return;
+    }
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
-
     LOGGER.info("Using ugi {} to create volume snapshots", ugi);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       if (!dfs.exists(new Path(path, SNAPSHOT))) {
@@ -86,6 +93,10 @@ public class HdfsSnapshotUtil {
 
   public static void cleanupOldMountSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi,
       HdfsSnapshotStrategy strategy) throws IOException, InterruptedException {
+    if (!(fileSystem instanceof DistributedFileSystem)) {
+      LOGGER.warn("fileSystem {} not a DistributedFileSystem", fileSystem);
+      return;
+    }
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       FileStatus[] listStatus = dfs.listStatus(new Path(path, SNAPSHOT));
@@ -107,8 +118,11 @@ public class HdfsSnapshotUtil {
 
   public static void removeAllSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
       throws IOException, InterruptedException {
+    if (!(fileSystem instanceof DistributedFileSystem)) {
+      LOGGER.warn("fileSystem {} not a DistributedFileSystem", fileSystem);
+      return;
+    }
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
-
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       if (!dfs.exists(new Path(path, SNAPSHOT))) {
         return null;
@@ -126,8 +140,11 @@ public class HdfsSnapshotUtil {
 
   public static void disableSnapshots(FileSystem fileSystem, Path path, UserGroupInformation ugi)
       throws IOException, InterruptedException {
+    if (!(fileSystem instanceof DistributedFileSystem)) {
+      LOGGER.warn("fileSystem {} not a DistributedFileSystem", fileSystem);
+      return;
+    }
     DistributedFileSystem dfs = (DistributedFileSystem) fileSystem;
-
     LOGGER.info("Using ugi {} to disable volume snapshots", ugi);
     ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
       if (!dfs.exists(new Path(path, SNAPSHOT))) {

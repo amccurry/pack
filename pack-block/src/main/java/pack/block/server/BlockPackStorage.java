@@ -39,6 +39,7 @@ import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.lock.HdfsLock;
+import pack.block.blockstore.hdfs.lock.PackLockFactory;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.blockstore.hdfs.util.LastestHdfsSnapshotStrategy;
@@ -463,7 +464,7 @@ public class BlockPackStorage implements PackStorage {
         File brick = new File(localDevice, BRICK);
         if (!waitForDevice(brick, true, 60)) {
           Path lockPath = Utils.getLockPathForVolumeMount(volumePath);
-          boolean lock = HdfsLock.isLocked(_configuration, lockPath);
+          boolean lock = PackLockFactory.isLocked(_configuration, lockPath);
           throw new IOException(
               "Error waiting for device " + brick.getCanonicalPath() + " volume is " + (lock ? LOCKED : UNLOCKED));
         }
@@ -502,7 +503,7 @@ public class BlockPackStorage implements PackStorage {
         File brick = new File(localDevice, BRICK);
         if (!waitForDevice(brick, false, 60)) {
           Path lockPath = Utils.getLockPathForVolumeMount(volumePath);
-          boolean lock = HdfsLock.isLocked(_configuration, lockPath);
+          boolean lock = PackLockFactory.isLocked(_configuration, lockPath);
           throw new IOException(
               "Error waiting for device " + brick.getCanonicalPath() + " volume is " + (lock ? LOCKED : UNLOCKED));
         }

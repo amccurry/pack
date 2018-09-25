@@ -24,8 +24,9 @@ import com.google.common.io.Closer;
 
 import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
-import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.lock.LockLostAction;
+import pack.block.blockstore.hdfs.lock.PackLock;
+import pack.block.blockstore.hdfs.lock.PackLockFactory;
 import pack.block.util.Utils;
 
 public class PackCompactorServer implements Closeable {
@@ -199,7 +200,7 @@ public class PackCompactorServer implements Closeable {
     LockLostAction lockLostAction = () -> {
       LOGGER.error("Compaction lock lost for volume {}", volumePath);
     };
-    try (HdfsLock lock = new HdfsLock(configuration, lockPath, lockLostAction)) {
+    try (PackLock lock = PackLockFactory.create(configuration, lockPath, lockLostAction)) {
       if (lock.tryToLock()) {
         try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, volumePath, metaData)) {
           compactor.runCompaction(lock);

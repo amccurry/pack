@@ -37,8 +37,9 @@ import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.ReadRequest;
-import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.lock.LockLostAction;
+import pack.block.blockstore.hdfs.lock.PackLock;
+import pack.block.blockstore.hdfs.lock.PackLockFactory;
 import pack.block.util.Utils;
 
 public class WalToBlockFileConverter implements Closeable {
@@ -103,7 +104,7 @@ public class WalToBlockFileConverter implements Closeable {
         LockLostAction lockLostAction = () -> {
           LOGGER.error("Lock lost for wal {}", path);
         };
-        try (HdfsLock lock = new HdfsLock(_fileSystem.getConf(), path, lockLostAction)) {
+        try (PackLock lock = PackLockFactory.create(_fileSystem.getConf(), path, lockLostAction)) {
           if (lock.tryToLock()) {
             convertWalFile(walPath);
           } else {
