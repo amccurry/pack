@@ -26,6 +26,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FileStatus;
@@ -87,7 +89,8 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
   private final com.codahale.metrics.Timer _readTimer;
   private final Meter _writeMeter;
   private final Meter _readMeter;
-  private final Lock _fileWriteLock = new ReentrantReadWriteLock().writeLock();
+  private final WriteLock _fileWriteLock;
+  private final ReadLock _fileReadLock;
   private final ReentrantReadWriteLock _blockFileLock = new ReentrantReadWriteLock();
   private final Lock _blockFileWriteLock = _blockFileLock.writeLock();
   private final Lock _blockFileReadLock = _blockFileLock.readLock();
@@ -115,6 +118,10 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   public HdfsBlockStoreImpl(MetricRegistry registry, File cacheDir, FileSystem fileSystem, Path path,
       HdfsBlockStoreConfig config, File brickFile) throws IOException {
+
+    _fileWriteLock = new ReentrantReadWriteLock(true).writeLock();
+    _fileReadLock = new ReentrantReadWriteLock(true).readLock();
+
     _brickFile = brickFile;
     _registry = registry;
 
@@ -513,19 +520,24 @@ public class HdfsBlockStoreImpl implements HdfsBlockStore {
 
   @Override
   public int read(long position, byte[] buffer, int offset, int len) throws IOException {
-    int blockSize = _fileSystemBlockSize;
-    try (Context context = _readTimer.time()) {
-      long blockId = getBlockId(position);
-      LOGGER.debug("read blockId {} len {} position {}", blockId, len, position);
-      ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
-      List<ReadRequest> requests = createRequests(position, byteBuffer, blockSize);
-      if (readBlocksFromLocalWalCaches(requests)) {
-        readBlocks(requests);
+    _fileReadLock.lock();
+    try {
+      int blockSize = _fileSystemBlockSize;
+      try (Context context = _readTimer.time()) {
+        long blockId = getBlockId(position);
+        LOGGER.debug("read blockId {} len {} position {}", blockId, len, position);
+        ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, len);
+        List<ReadRequest> requests = createRequests(position, byteBuffer, blockSize);
+        if (readBlocksFromLocalWalCaches(requests)) {
+          readBlocks(requests);
+        }
+        _readMeter.mark(len);
+        return len;
+      } finally {
+        // Nothing
       }
-      _readMeter.mark(len);
-      return len;
     } finally {
-      // Nothing
+      _fileReadLock.unlock();
     }
   }
 

@@ -290,6 +290,10 @@ public class BlockPackFuse implements Closeable {
     return ZkUtils.newZooKeeperLockManager(zk, MOUNT_ZK + "/" + name);
   }
 
+  FuseFileSystemSingleMount getFuse() {
+    return _fuse;
+  }
+
   @Override
   public void close() {
     LOGGER.info("close");
