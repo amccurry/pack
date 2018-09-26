@@ -62,8 +62,8 @@ public class BlockPackFuseProcessBuilder {
   private static final String JAVA_HOME = "java.home";
   private static final String JAVA_CLASS_PATH = "java.class.path";
   private static final String BIN_JAVA = "/bin/java";
-  private static final String XMX_SWITCH = "-Xmx128m";
-  private static final String XMS_SWITCH = "-Xms128m";
+  private static final String XMX_SWITCH = "-Xmx256m";
+  private static final String XMS_SWITCH = "-Xms256m";
   private static final String XX_USE_G1GC = "-XX:+UseG1GC";
   private static final String LOG = "log";
   private static final String RUN_SH = "run.sh";

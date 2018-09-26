@@ -127,4 +127,8 @@ public class UgiHdfsBlockStore implements BlockStore {
     }
   }
 
+  @Override
+  public long getSizeOf() {
+    return _blockStore.getSizeOf();
+  }
 }

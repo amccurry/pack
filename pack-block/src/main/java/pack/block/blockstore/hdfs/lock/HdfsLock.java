@@ -27,6 +27,7 @@ import org.apache.hadoop.util.ShutdownHookManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.block.util.PackSizeOf;
 import pack.block.util.Utils;
 
 public class HdfsLock implements PackLock {
@@ -130,9 +131,6 @@ public class HdfsLock implements PackLock {
     }
   }
 
-  /* (non-Javadoc)
-   * @see pack.block.blockstore.hdfs.lock.PackLock#isLockOwner()
-   */
   @Override
   public boolean isLockOwner() throws IOException {
     if (!_initialized.get()) {
@@ -212,9 +210,6 @@ public class HdfsLock implements PackLock {
     }
   }
 
-  /* (non-Javadoc)
-   * @see pack.block.blockstore.hdfs.lock.PackLock#tryToLock()
-   */
   @Override
   public boolean tryToLock() throws IOException {
     UserGroupInformation ugi = Utils.getUserGroupInformation();
@@ -257,5 +252,10 @@ public class HdfsLock implements PackLock {
     })) {
       return !lock.tryToLock();
     }
+  }
+
+  @Override
+  public long getSizeOf() {
+    return PackSizeOf.getSizeOfObject(this, true);
   }
 }

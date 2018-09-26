@@ -3,7 +3,9 @@ package pack.block.blockstore;
 import java.io.Closeable;
 import java.io.IOException;
 
-public interface BlockStore extends Closeable {
+import pack.block.util.PackSizeOf;
+
+public interface BlockStore extends Closeable, PackSizeOf {
 
   /**
    * Name of the BlockStore, must be a valid filename.

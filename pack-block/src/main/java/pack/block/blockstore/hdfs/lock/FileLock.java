@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 
+import pack.block.util.PackSizeOf;
+
 public class FileLock implements PackLock {
 
   private final File _file;
@@ -84,5 +86,10 @@ public class FileLock implements PackLock {
     try (FileLock lock = new FileLock(path)) {
       return !lock.tryToLock();
     }
+  }
+
+  @Override
+  public long getSizeOf() {
+    return PackSizeOf.getSizeOfObject(this, true);
   }
 }

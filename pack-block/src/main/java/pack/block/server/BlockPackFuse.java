@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -238,8 +240,11 @@ public class BlockPackFuse implements Closeable {
   private final CsvReporter _reporter;
   private final BlockPackAdmin _blockPackAdmin;
   private final PackLock _lock;
+  private final Timer _timer;
 
   public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
+    _timer = new Timer("SizeOfReport", true);
+    _timer.schedule(getSizeOfReport(), TimeUnit.SECONDS.toMillis(1), TimeUnit.SECONDS.toMillis(1));
     BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
 
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
@@ -286,6 +291,17 @@ public class BlockPackFuse implements Closeable {
       LOGGER.error("volume {} already is use.", _path);
       throw new IOException("volume " + _path + " already is use.");
     }
+  }
+
+  private TimerTask getSizeOfReport() {
+    return new TimerTask() {
+      @Override
+      public void run() {
+        if (_blockStore != null) {
+          LOGGER.info("BlockStore {} contains {} memory", _blockStore, _blockStore.getSizeOf());
+        }
+      }
+    };
   }
 
   public static ZooKeeperLockManager createLockmanager(ZooKeeperClientFactory zk, String name) throws IOException {
@@ -379,4 +395,5 @@ public class BlockPackFuse implements Closeable {
       return configuration;
     }
   }
+
 }

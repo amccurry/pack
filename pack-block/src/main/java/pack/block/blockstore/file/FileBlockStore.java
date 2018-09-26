@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.util.PackSizeOf;
 import pack.block.util.Utils;
 
 public class FileBlockStore implements BlockStore {
@@ -88,6 +89,11 @@ public class FileBlockStore implements BlockStore {
   @Override
   public BlockStoreMetaData getMetaData() throws IOException {
     throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public long getSizeOf() {
+    return PackSizeOf.getSizeOfObject(this, true);
   }
 
 }

@@ -1,4 +1,4 @@
-package pack.block.blockstore.hdfs.blockstore;
+package pack.block.blockstore.hdfs.blockstore.wal;
 
 import static org.junit.Assert.fail;
 

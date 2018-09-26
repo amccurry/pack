@@ -78,6 +78,11 @@ public class RetryBlockStore implements BlockStore {
     exec(() -> _base.delete(position, length));
   }
 
+  @Override
+  public long getSizeOf() {
+    return _base.getSizeOf();
+  }
+
   private void exec(ExecVoid exec) {
     exec(() -> {
       exec.exec();
