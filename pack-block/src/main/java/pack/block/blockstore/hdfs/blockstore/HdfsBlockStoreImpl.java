@@ -169,7 +169,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
     // create background thread that removes orphaned block files and checks for
     // new block files that have been merged externally
     String name = HdfsBlockStoreImplConfig.BLOCK + "|" + _blockPath.toUri()
-                                                               .getPath();
+                                                                   .getPath();
     _timer = new Timer(name, true);
 
     LOGGER.info("open block files");
@@ -188,7 +188,6 @@ public class HdfsBlockStoreImpl implements BlockStore {
       _timer.schedule(getFileSizeAdjustment(), TimeUnit.MINUTES.toMillis(1), TimeUnit.MINUTES.toMillis(1));
     }
     _walRollExecutor = Executors.newSingleThreadExecutor();
-
   }
 
   private RemovalListener<Path, LocalWalCache> getRemovalListener() {
@@ -515,7 +514,6 @@ public class HdfsBlockStoreImpl implements BlockStore {
   private void commitWriter(WriterContext context, boolean force) throws IOException {
     if (context != null) {
       context.close(force);
-
       _fileSystem.rename(context._path, newExtPath(context._path, WAL));
     }
   }
@@ -934,8 +932,8 @@ public class HdfsBlockStoreImpl implements BlockStore {
           } else if (currentLength > length) {
             LOGGER.error("Size of volume can not be reduced from {} to {}", currentLength, length);
             BlockStoreMetaData fixed = metaData.toBuilder()
-                                         .length(currentLength)
-                                         .build();
+                                               .length(currentLength)
+                                               .build();
             HdfsBlockStoreAdmin.writeHdfsMetaData(fixed, _fileSystem, _path);
           } else if (currentLength < length) {
             LOGGER.info("Growing volume from {} to {}", currentLength, length);

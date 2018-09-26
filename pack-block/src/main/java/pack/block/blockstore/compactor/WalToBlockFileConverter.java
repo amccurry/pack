@@ -5,13 +5,10 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -24,9 +21,6 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.RemovalListener;
 import com.google.common.collect.ImmutableList;
 
 import pack.block.blockstore.BlockStoreMetaData;
@@ -34,7 +28,6 @@ import pack.block.blockstore.hdfs.blockstore.HdfsBlockStoreImplConfig;
 import pack.block.blockstore.hdfs.blockstore.wal.LocalWalCache;
 import pack.block.blockstore.hdfs.blockstore.wal.WalFileFactory;
 import pack.block.blockstore.hdfs.file.BlockFile;
-import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.blockstore.hdfs.lock.LockLostAction;
@@ -51,7 +44,6 @@ public class WalToBlockFileConverter implements Closeable {
   private static final Splitter SPLITTER = Splitter.on('.');
   private final Path _blockPath;
   private final FileSystem _fileSystem;
-  private final Cache<Path, Reader> _readerCache;
   private final int _blockSize;
   private final AtomicLong _length;
   private final File _cacheDir;
@@ -73,15 +65,10 @@ public class WalToBlockFileConverter implements Closeable {
     _blockPath = new Path(volumePath, HdfsBlockStoreImplConfig.BLOCK);
     _walFactory = WalFileFactory.create(_fileSystem, metaData);
     cleanupOldFiles();
-    RemovalListener<Path, BlockFile.Reader> listener = notification -> IOUtils.closeQuietly(notification.getValue());
-    _readerCache = CacheBuilder.newBuilder()
-                               .removalListener(listener)
-                               .build();
   }
 
   @Override
   public void close() throws IOException {
-    _readerCache.invalidateAll();
   }
 
   public void runConverter() throws IOException, InterruptedException {
@@ -124,7 +111,7 @@ public class WalToBlockFileConverter implements Closeable {
     }
     String blockName = JOINER.join(list.get(0), HdfsBlockStoreImplConfig.BLOCK);
     Path newPath = Utils.qualify(_fileSystem, new Path(path.getParent(), blockName));
-    Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpNameConvert()));
+    Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpNameConvert(_nodePrefix)));
     if (_fileSystem.exists(newPath)) {
       return;
     }
@@ -136,47 +123,50 @@ public class WalToBlockFileConverter implements Closeable {
 
     try (LocalWalCache localContext = new LocalWalCache(file, _length, _blockSize)) {
       LocalWalCache.applyWal(_walFactory, path, localContext);
-
       LOGGER.info("Wal convert - Starting to write block");
-
-      try (Writer writer = BlockFile.create(true, _fileSystem, tmpPath, _blockSize, ImmutableList.of(path.getName()),
-          () -> {
-            LOGGER.info("Wal convert complete path {}", tmpPath);
-            if (_fileSystem.rename(tmpPath, newPath)) {
-              LOGGER.info("Wal convert commit path {}", newPath);
-            } else {
-              throw new IOException("Wal convert commit failed");
-            }
-          })) {
-
-        RoaringBitmap allBlocks = new RoaringBitmap();
-        allBlocks.or(localContext.getDataBlocks());
-        RoaringBitmap emptyBlocks = localContext.getEmptyBlocks();
-        allBlocks.or(emptyBlocks);
-        IntConsumer ic = value -> {
-          try {
-            appendBlock(localContext, writer, emptyBlocks, value);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-        };
-        allBlocks.forEach(ic);
-      }
+      writeNewBlockFromWalCache(_fileSystem, path, newPath, tmpPath, localContext, _blockSize);
     }
     Utils.rmr(dir);
   }
 
-  private void appendBlock(LocalWalCache localContext, Writer writer, RoaringBitmap emptyBlocks, int value)
-      throws IOException {
-    if (emptyBlocks.contains(value)) {
-      writer.appendEmpty(value);
-    } else {
-      writer.append(value, getValue(value, localContext));
+  public static void writeNewBlockFromWalCache(FileSystem fileSystem, Path sourceWalPath, Path newBlockPath,
+      Path tmpBlockPath, LocalWalCache localContext, int blockSize) throws IOException {
+    try (Writer writer = BlockFile.create(true, fileSystem, tmpBlockPath, blockSize,
+        ImmutableList.of(sourceWalPath.getName()), () -> {
+          LOGGER.info("Wal convert complete path {}", tmpBlockPath);
+          if (fileSystem.rename(tmpBlockPath, newBlockPath)) {
+            LOGGER.info("Wal convert commit path {}", newBlockPath);
+          } else {
+            throw new IOException("Wal convert commit failed");
+          }
+        })) {
+
+      RoaringBitmap allBlocks = new RoaringBitmap();
+      allBlocks.or(localContext.getDataBlocks());
+      RoaringBitmap emptyBlocks = localContext.getEmptyBlocks();
+      allBlocks.or(emptyBlocks);
+      IntConsumer ic = value -> {
+        try {
+          appendBlock(localContext, writer, emptyBlocks, value, blockSize);
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+      };
+      allBlocks.forEach(ic);
     }
   }
 
-  private BytesWritable getValue(int blockId, LocalWalCache localContext) throws IOException {
-    ByteBuffer dest = ByteBuffer.allocate(_blockSize);
+  private static void appendBlock(LocalWalCache localContext, Writer writer, RoaringBitmap emptyBlocks, int value,
+      int blockSize) throws IOException {
+    if (emptyBlocks.contains(value)) {
+      writer.appendEmpty(value);
+    } else {
+      writer.append(value, getValue(blockSize, value, localContext));
+    }
+  }
+
+  private static BytesWritable getValue(int blockSize, int blockId, LocalWalCache localContext) throws IOException {
+    ByteBuffer dest = ByteBuffer.allocate(blockSize);
     ReadRequest request = new ReadRequest(blockId, 0, dest);
     if (localContext.readBlock(request)) {
       throw new IOException("Could not find blockid " + blockId);
@@ -185,58 +175,14 @@ public class WalToBlockFileConverter implements Closeable {
     return Utils.toBw(dest);
   }
 
-  private String getRandomTmpNameConvert() {
+  public static String getRandomTmpNameConvert(String nodePrefix) {
     String uuid = UUID.randomUUID()
                       .toString();
-    return JOINER.join(getFilePrefix(), uuid);
+    return JOINER.join(getFilePrefix(nodePrefix), uuid);
   }
 
-  private String getFilePrefix() {
-    return CONVERT + "." + _nodePrefix;
-  }
-
-  class CompactionJob {
-
-    RoaringBitmap _blocksToIgnore;
-    List<Path> _pathList = new ArrayList<>();
-
-    public List<Path> getPathListToCompact() {
-      return ImmutableList.copyOf(_pathList);
-    }
-
-    public RoaringBitmap getBlocksToIgnore() {
-      return _blocksToIgnore;
-    }
-
-    void add(Path path) {
-      _pathList.add(path);
-    }
-
-    void finishSetup(RoaringBitmap blocksToIgnore) {
-      _blocksToIgnore = blocksToIgnore.clone();
-    }
-
-    void addCurrentBlocksForThisCompaction(RoaringBitmap bitSet) throws IOException {
-      for (Path p : _pathList) {
-        Reader reader = getReader(p);
-        reader.orDataBlocks(bitSet);
-        reader.orEmptyBlocks(bitSet);
-      }
-    }
-
-  }
-
-  private Reader getReader(Path path) throws IOException {
-    try {
-      return _readerCache.get(path, () -> BlockFile.openForStreaming(_fileSystem, path));
-    } catch (ExecutionException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof IOException) {
-        throw (IOException) cause;
-      } else {
-        throw new RuntimeException(cause);
-      }
-    }
+  private static String getFilePrefix(String nodePrefix) {
+    return CONVERT + "." + nodePrefix;
   }
 
   private void cleanupOldFiles() throws IOException {
@@ -255,7 +201,7 @@ public class WalToBlockFileConverter implements Closeable {
 
   private boolean shouldCleanupFile(Path path) {
     String name = path.getName();
-    return name.startsWith(getFilePrefix());
+    return name.startsWith(getFilePrefix(_nodePrefix));
   }
 
 }
