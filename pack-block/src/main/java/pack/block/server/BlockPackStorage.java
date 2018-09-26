@@ -38,7 +38,6 @@ import pack.PackStorage;
 import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.hdfs.CreateVolumeRequest;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
-import pack.block.blockstore.hdfs.lock.HdfsLock;
 import pack.block.blockstore.hdfs.lock.PackLockFactory;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
