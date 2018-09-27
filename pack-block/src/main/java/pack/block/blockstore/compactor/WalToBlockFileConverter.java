@@ -5,6 +5,9 @@ import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
@@ -36,6 +39,8 @@ import pack.block.blockstore.hdfs.lock.PackLockFactory;
 import pack.block.util.Utils;
 
 public class WalToBlockFileConverter implements Closeable {
+
+  private static final String WAL = "wal";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WalToBlockFileConverter.class);
 
@@ -76,31 +81,34 @@ public class WalToBlockFileConverter implements Closeable {
       LOGGER.info("Path {} does not exist, exiting", _blockPath);
       return;
     }
-    convertWalFiles();
+
+    if (_useLock) {
+      Path path = Utils.getLockPathForVolume(_volumePath, WAL);
+      LockLostAction lockLostAction = () -> {
+        LOGGER.error("Lock lost for wal {}", path);
+      };
+      try (PackLock lock = PackLockFactory.create(_fileSystem.getConf(), path, lockLostAction)) {
+        if (lock.tryToLock()) {
+          convertWalFiles();
+        } else {
+          LOGGER.info("Skipping convert no lock {}", path);
+        }
+      }
+    } else {
+      convertWalFiles();
+    }
   }
 
   private void convertWalFiles() throws IOException, InterruptedException {
     FileStatus[] listStatus = _fileSystem.listStatus(_blockPath, (PathFilter) path -> path.getName()
                                                                                           .endsWith(".wal"));
-    for (FileStatus fileStatus : listStatus) {
-      // add logging and check on wal file....
-      Path walPath = fileStatus.getPath();
-
-      if (_useLock) {
-        Path path = Utils.getLockPathForVolume(_volumePath, walPath.getName());
-        LockLostAction lockLostAction = () -> {
-          LOGGER.error("Lock lost for wal {}", path);
-        };
-        try (PackLock lock = PackLockFactory.create(_fileSystem.getConf(), path, lockLostAction)) {
-          if (lock.tryToLock()) {
-            convertWalFile(walPath);
-          } else {
-            LOGGER.info("Skipping convert no lock {}", path);
-          }
-        }
-      } else {
-        convertWalFile(walPath);
-      }
+    List<FileStatus> list = new ArrayList<>(Arrays.asList(listStatus));
+    // Sorted order for reads
+    Collections.sort(list, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
+    // Reverse order converting oldest to newest
+    Collections.reverse(list);
+    for (FileStatus fileStatus : list) {
+      convertWalFile(fileStatus.getPath());
     }
   }
 
@@ -121,7 +129,8 @@ public class WalToBlockFileConverter implements Closeable {
                                   .toString()
         + ".context");
 
-    try (LocalWalCache localContext = new LocalWalCache(file, _length, _blockSize)) {
+    long layer = BlockFile.getLayer(newPath);
+    try (LocalWalCache localContext = new LocalWalCache(file, _length, _blockSize, layer)) {
       LocalWalCache.applyWal(_walFactory, path, localContext);
       LOGGER.info("Wal convert - Starting to write block");
       writeNewBlockFromWalCache(_fileSystem, path, newPath, tmpPath, localContext, _blockSize);

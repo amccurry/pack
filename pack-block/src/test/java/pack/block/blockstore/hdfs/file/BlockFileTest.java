@@ -137,6 +137,7 @@ public class BlockFileTest {
         }
       }
       reader.read(requests);
+
       {
         Random random = new Random(seed);
         long longKey = random.nextInt(startingPoint);

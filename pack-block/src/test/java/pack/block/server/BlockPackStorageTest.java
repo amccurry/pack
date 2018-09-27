@@ -75,8 +75,8 @@ public class BlockPackStorageTest {
 
   @Test
   public void testBlockPackStorageWritesAndReadsBlind() throws Throwable {
-    int mountPasses = 10;
-    int filePasses = 10;
+    int mountPasses = 2;
+    int filePasses = 2;
     runIntegrationTest(mountPasses, filePasses, testDir -> {
       File file = new File(testDir, UUID.randomUUID()
                                         .toString());
@@ -85,7 +85,7 @@ public class BlockPackStorageTest {
         rand.setLength(length);
         byte[] buf = new byte[1024];
         Random random = new Random();
-        for (int i = 0; i < 10000; i++) {
+        for (int i = 0; i < 100; i++) {
           int pos = random.nextInt(length - buf.length);
           rand.seek(pos);
           if (random.nextBoolean()) {
@@ -102,8 +102,8 @@ public class BlockPackStorageTest {
 
   @Test
   public void testBlockPackStorageWritesAndReadsWithMD5Checks() throws Throwable {
-    int mountPasses = 10;
-    int filePasses = 20;
+    int mountPasses = 2;
+    int filePasses = 2;
     int length = 100000000;
     runIntegrationTest(mountPasses, filePasses, testDir -> {
       File file = new File(testDir, UUID.randomUUID()

@@ -69,8 +69,8 @@ public class BlockPackFuseBlockOnlyDirectTest {
     Path volumePath = new Path("/testBlockPackFuseDirect/" + TEST_BLOCK_PACK_FUSE);
     fileSystem.delete(volumePath, true);
     BlockStoreMetaData metaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
-                                                          .length(100 * 1024 * 1024)
-                                                          .build();
+                                                                      .length(100 * 1024 * 1024)
+                                                                      .build();
     HdfsBlockStoreAdmin.writeHdfsMetaData(metaData, fileSystem, volumePath);
     HdfsBlockStoreImplConfig config = HdfsBlockStoreImplConfig.DEFAULT_CONFIG;
     File fuseDir = new File(fuse, FUSE);
@@ -108,6 +108,7 @@ public class BlockPackFuseBlockOnlyDirectTest {
 
       ExecutorService pool = Executors.newFixedThreadPool(threads);
       try {
+        Object lock = new Object();
         List<Future<String>> futures = new ArrayList<>();
         for (int t = 0; t < threads; t++) {
           long offset = 0 + (t * 512);
@@ -125,8 +126,10 @@ public class BlockPackFuseBlockOnlyDirectTest {
               putLong(buf1, 0, random.nextLong());
               byte[] buf2 = new byte[size];
               pointer1.put(0, buf1, 0, size);
-              assertEquals("Seed " + seed + " " + i, size, fuseMount.write("/brick", pointer1, size, offset, null));
-              assertEquals("Seed " + seed + " " + i, size, fuseMount.read("/brick", pointer2, size, offset, null));
+              synchronized (lock) {
+                assertEquals("Seed " + seed + " " + i, size, fuseMount.write("/brick", pointer1, size, offset, null));
+                assertEquals("Seed " + seed + " " + i, size, fuseMount.read("/brick", pointer2, size, offset, null));
+              }
               pointer2.get(0, buf2, 0, size);
               assertTrue("Seed " + seed + " " + i, Arrays.equals(buf1, buf2));
             }

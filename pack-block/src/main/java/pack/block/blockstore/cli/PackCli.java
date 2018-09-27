@@ -6,7 +6,6 @@ import java.util.List;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.PosixParser;
@@ -92,11 +91,11 @@ public class PackCli {
   }
 
   private static void log(String[] args) throws Exception {
-    Options options = new Options();
-    options.addOption(new Option("h", "help", false, "show help"));
-    CommandLineParser parser = new PosixParser();
-    CommandLine cmd = parser.parse(options, args);
-    
+    // Options options = new Options();
+    // options.addOption(new Option("h", "help", false, "show help"));
+    // CommandLineParser parser = new PosixParser();
+    // CommandLine cmd = parser.parse(options, args);
+
   }
 
   private static void snapshot(String[] args) {

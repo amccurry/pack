@@ -32,6 +32,7 @@ import pack.block.util.Utils;
 
 public class HdfsLock implements PackLock {
 
+  private static final String FILE_NOT_FOUND_EXCEPTION = "java.io.FileNotFoundException";
   private static final String ALREADY_BEING_CREATED_EXCEPTION = "org.apache.hadoop.hdfs.protocol.AlreadyBeingCreatedException";
   private static final String RECOVERY_IN_PRPGRESS_EXCEPTION = "org.apache.hadoop.hdfs.protocol.RecoveryInProgressException";
 
@@ -145,30 +146,36 @@ public class HdfsLock implements PackLock {
 
   private boolean tryToLockInternal() throws IOException {
     FileSystem fileSystem = _path.getFileSystem(_configuration);
-    if (fileSystem.exists(_path)) {
-      try {
-        _outputRef.set(fileSystem.append(_path));
-      } catch (RemoteException e) {
-        switch (e.getClassName()) {
-        case ALREADY_BEING_CREATED_EXCEPTION: {
-          LOG.info("Path {} already locked", _path);
-          return false;
+    LOOP: while (true) {
+      if (fileSystem.exists(_path)) {
+        try {
+          _outputRef.set(fileSystem.append(_path));
+        } catch (RemoteException e) {
+          switch (e.getClassName()) {
+          case ALREADY_BEING_CREATED_EXCEPTION: {
+            LOG.info("Path {} already locked", _path);
+            return false;
+          }
+          case RECOVERY_IN_PRPGRESS_EXCEPTION: {
+            LOG.info("Path {} already locked", _path);
+            return false;
+          }
+          case FILE_NOT_FOUND_EXCEPTION: {
+            // This happens when a file was detected and deleted before this process could try to append. 
+            continue LOOP;
+          }
+          default:
+            throw e;
+          }
         }
-        case RECOVERY_IN_PRPGRESS_EXCEPTION: {
-          LOG.info("Path {} already locked", _path);
-          return false;
-        }
-        default:
-          throw e;
-        }
+      } else {
+        _outputRef.set(fileSystem.create(_path, false));
       }
-    } else {
-      _outputRef.set(fileSystem.create(_path, false));
+      writeDataForKeepAlive();
+      _blockId.set(getFirstBlockIdOfLockFile());
+      _initialized.set(true);
+      return true;
     }
-    writeDataForKeepAlive();
-    _blockId.set(getFirstBlockIdOfLockFile());
-    _initialized.set(true);
-    return true;
   }
 
   private long getFirstBlockIdOfLockFile() throws IOException {

@@ -15,17 +15,20 @@ import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.Weigher;
-
 import pack.block.blockstore.crc.CrcLayer;
+import pack.block.blockstore.crc.CrcLayerFactory;
+import pack.block.blockstore.hdfs.ReadRequestHandler;
 import pack.block.blockstore.hdfs.blockstore.wal.WalFile.Reader;
 import pack.block.blockstore.hdfs.blockstore.wal.WalKeyWritable.Type;
+import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.ReadRequest;
 import pack.block.util.Utils;
 
-public class LocalWalCache implements Closeable {
+public class LocalWalCache implements ReadRequestHandler, Closeable {
+
+  private static final String LOCAL_WAL_CACHE_DATA_MISSING = "LocalWalCache data missing";
+
+  private static final String LOCAL_WAL_CACHE_DATA_READ = "LocalWalCache data read";
 
   private static final String RW = "rw";
 
@@ -37,10 +40,10 @@ public class LocalWalCache implements Closeable {
   private final RandomAccessFile _rnd;
   private final int _blockSize;
   private final FileChannel _channel;
-  private final Cache<Integer, byte[]> _cache;
   private final AtomicLong _length;
   private final AtomicLong _currentLength = new AtomicLong();
   private final CrcLayer _crc;
+  private final long _layer;
 
   public static void applyWal(WalFileFactory walFactory, Path path, LocalWalCache localContext) throws IOException {
     try (Reader reader = walFactory.open(path)) {
@@ -63,10 +66,10 @@ public class LocalWalCache implements Closeable {
   }
 
   public LocalWalCache(File file, AtomicLong length, int blockSize) throws IOException {
-    this(file, length, blockSize, 1024 * 1024);
+    this(file, length, blockSize, -1L);
   }
 
-  public LocalWalCache(File file, AtomicLong length, int blockSize, long cacheSize) throws IOException {
+  public LocalWalCache(File file, AtomicLong length, int blockSize, long layer) throws IOException {
     _length = length;
     _blockSize = blockSize;
     _file = file;
@@ -75,27 +78,26 @@ public class LocalWalCache implements Closeable {
     }
     _file.getParentFile()
          .mkdirs();
+    if (layer < 0) {
+      _layer = BlockFile.getLayer(_file);
+    } else {
+      _layer = layer;
+    }
     _rnd = new RandomAccessFile(_file, RW);
     updateLength();
     _channel = _rnd.getChannel();
-    Weigher<Integer, byte[]> weigher = (key, value) -> value.length;
-    _cache = CacheBuilder.newBuilder()
-                         .maximumWeight(cacheSize)
-                         .weigher(weigher)
-                         .build();
-    _crc = new CrcLayer(file.getName(), (int) (length.get() / blockSize), blockSize);
+    _crc = CrcLayerFactory.create(file.getName(), (int) (length.get() / blockSize), blockSize);
+  }
+
+  @Override
+  public long getLayer() {
+    return _layer;
   }
 
   public void delete(long startingBlockId, long endingBlockId) throws IOException {
     _emptyIndex.add(startingBlockId, endingBlockId);
     _dataIndex.remove(startingBlockId, endingBlockId);
-    if (_crc != null) {
-      byte[] buf = new byte[_blockSize];
-      int end = (int) endingBlockId;
-      for (int blockId = (int) startingBlockId; blockId < end; blockId++) {
-        _crc.put(blockId, buf);
-      }
-    }
+    _crc.delete((int) startingBlockId, (int) endingBlockId);
   }
 
   public boolean readBlocks(List<ReadRequest> requests) throws IOException {
@@ -110,34 +112,20 @@ public class LocalWalCache implements Closeable {
 
   public boolean readBlock(ReadRequest readRequest) throws IOException {
     int id = Utils.getIntKey(readRequest.getBlockId());
-    if (_cache != null) {
-      byte[] bs = _cache.getIfPresent(id);
-      if (bs != null) {
-        if (_crc != null) {
-          _crc.validate(id, bs);
-        }
-        readRequest.handleResult(bs);
-        return false;
-      }
-    }
     if (_dataIndex.contains(id)) {
       ByteBuffer src = ByteBuffer.allocate(_blockSize);
       long blockId = readRequest.getBlockId();
-      long pos = blockId * _blockSize;
+      long pos = blockId * (long) _blockSize;
       while (src.remaining() > 0) {
         int read = _channel.read(src, pos);
         pos += read;
       }
       src.flip();
-      if (_crc != null) {
-        _crc.validate(id, src.array());
-      }
+      _crc.validate(LOCAL_WAL_CACHE_DATA_READ, id, src.array());
       readRequest.handleResult(src);
       return false;
     } else if (_emptyIndex.contains(id)) {
-      if (_crc != null) {
-        _crc.validate(id, new byte[_blockSize]);
-      }
+      _crc.validateDeleted(LOCAL_WAL_CACHE_DATA_MISSING, id);
       readRequest.handleEmptyResult();
       return false;
     } else {
@@ -148,13 +136,7 @@ public class LocalWalCache implements Closeable {
   public void write(long blockId, ByteBuffer byteBuffer) throws IOException {
     updateLength();
     int id = Utils.getIntKey(blockId);
-    byte[] bs = toByteArray(byteBuffer);
-    if (_crc != null) {
-      _crc.put(id, bs);
-    }
-    if (_cache != null) {
-      _cache.put(id, bs);
-    }
+    _crc.put(id, byteBuffer);
     _dataIndex.add(id);
     _emptyIndex.remove(id);
     long pos = blockId * _blockSize;
@@ -197,10 +179,4 @@ public class LocalWalCache implements Closeable {
     }
   }
 
-  private byte[] toByteArray(ByteBuffer byteBuffer) {
-    ByteBuffer duplicate = byteBuffer.duplicate();
-    byte[] bs = new byte[duplicate.remaining()];
-    duplicate.get(bs);
-    return bs;
-  }
 }

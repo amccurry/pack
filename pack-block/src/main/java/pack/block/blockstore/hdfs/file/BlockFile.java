@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
@@ -37,6 +38,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.io.Closer;
 
+import pack.block.blockstore.hdfs.ReadRequestHandler;
 import pack.block.blockstore.hdfs.util.HdfsUtils;
 import pack.block.blockstore.hdfs.util.PeekableIterator;
 import pack.block.util.Utils;
@@ -604,7 +606,12 @@ public class BlockFile {
     }
   }
 
-  public abstract static class Reader implements Iterable<BlockFileEntry>, Closeable {
+  public abstract static class Reader implements ReadRequestHandler, Iterable<BlockFileEntry>, Closeable {
+
+    @Override
+    public boolean readBlocks(List<ReadRequest> requests) throws IOException {
+      return read(requests);
+    }
 
     public abstract boolean read(Collection<ReadRequest> requests) throws IOException;
 
@@ -645,6 +652,7 @@ public class BlockFile {
     private final int _blockSize;
     private final Path _logicalPath;
     private final Path _storagePath;
+    private final long _layer;
 
     protected ReaderMultiOrdered(FSDataInputStream inputStream, Path logicalPath, Path storagePath, long length)
         throws IOException {
@@ -659,6 +667,7 @@ public class BlockFile {
       _orderedReaders = openOrderedReaders(length, existingReaders);
       _blockSize = _orderedReaders.get(0)
                                   .getBlockSize();
+      _layer = BlockFile.getLayer(logicalPath);
     }
 
     private List<RandomAccessReaderOrdered> openOrderedReaders(long length,
@@ -793,6 +802,11 @@ public class BlockFile {
     public Path getStoragePath() {
       return _storagePath;
     }
+
+    @Override
+    public long getLayer() {
+      return _layer;
+    }
   }
 
   public abstract static class ReaderOrdered extends Reader {
@@ -809,6 +823,7 @@ public class BlockFile {
     protected final Closer _closer = Closer.create();
     protected final Path _logicalPath;
     protected final Path _storagePath;
+    protected final long _layer;
 
     protected ReaderOrdered(ReaderOrdered reader, FSDataInputStream inputStream) throws IOException {
       _blocks = reader._blocks;
@@ -822,6 +837,7 @@ public class BlockFile {
       _last = reader._last;
       _startingPosition = reader._startingPosition;
       _endingPosition = reader._endingPosition;
+      _layer = BlockFile.getLayer(_logicalPath);
     }
 
     protected ReaderOrdered(FSDataInputStream inputStream, Path logicalPath, Path storagePath, long endingPosition)
@@ -842,7 +858,13 @@ public class BlockFile {
       _sourceFiles = readStringList(_inputStream);
       _first = getFirst();
       _last = getLast();
+      _layer = BlockFile.getLayer(_logicalPath);
       // @TODO read and validate the magic string
+    }
+
+    @Override
+    public long getLayer() {
+      return _layer;
     }
 
     @Override
@@ -1263,14 +1285,20 @@ public class BlockFile {
     }
   };
 
+  public static Comparator<ReadRequestHandler> ORDERED_READ_REQUEST_HANDLER_COMPARATOR = new Comparator<ReadRequestHandler>() {
+    @Override
+    public int compare(ReadRequestHandler o1, ReadRequestHandler o2) {
+      return ORDERED_LAYER_COMPARATOR.compare(o1.getLayer(), o2.getLayer());
+    }
+  };
+
   public static List<Reader> orderReaders(List<Reader> readers) {
     List<Reader> ordered = new ArrayList<>(readers);
     Collections.sort(ordered, ORDERED_READER_COMPARATOR);
     return ordered;
   }
 
-  public static Long getLayer(Path p) {
-    String name = p.getName();
+  public static long getLayer(String name) {
     int indexOf = name.indexOf('.');
     return Long.parseLong(name.substring(0, indexOf));
   }
@@ -1279,5 +1307,13 @@ public class BlockFile {
     Path resolvePath = resolvePath(fileSystem, path);
     FileStatus fileStatus = fileSystem.getFileStatus(resolvePath);
     return fileStatus.getLen();
+  }
+
+  public static long getLayer(File file) {
+    return getLayer(file.getName());
+  }
+
+  public static long getLayer(Path path) {
+    return getLayer(path.getName());
   }
 }

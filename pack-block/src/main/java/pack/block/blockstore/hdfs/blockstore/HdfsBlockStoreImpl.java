@@ -52,7 +52,9 @@ import com.google.common.collect.ImmutableList;
 import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.blockstore.crc.CrcLayer;
+import pack.block.blockstore.crc.CrcLayerFactory;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
+import pack.block.blockstore.hdfs.ReadRequestHandler;
 import pack.block.blockstore.hdfs.blockstore.wal.LocalWalCache;
 import pack.block.blockstore.hdfs.blockstore.wal.WalFile;
 import pack.block.blockstore.hdfs.blockstore.wal.WalFileFactory;
@@ -215,8 +217,8 @@ public class HdfsBlockStoreImpl implements BlockStore {
       _timer.schedule(getFileSizeAdjustment(), TimeUnit.MINUTES.toMillis(1), TimeUnit.MINUTES.toMillis(1));
     }
     _walRollExecutor = Executors.newSingleThreadExecutor();
-    _crcLayer = new CrcLayer("HdfsBlockStoreImpl", (int) (_metaData.getLength() / _fileSystemBlockSize),
-        _fileSystemBlockSize);
+    _crcLayer = CrcLayerFactory.create(HdfsBlockStoreImpl.class.getName(),
+        (int) (_metaData.getLength() / _fileSystemBlockSize), _fileSystemBlockSize);
   }
 
   private RemovalListener<Path, LocalWalCache> getRemovalListener() {
@@ -433,10 +435,9 @@ public class HdfsBlockStoreImpl implements BlockStore {
         }
         WriterContext writer = getWriter();
         try {
-          writer.append(blockId, getValue(byteBuffer));
-          if (_crcLayer != null) {
-            _crcLayer.put((int) blockId, byteBuffer.array());
-          }
+          BytesWritable value = getValue(byteBuffer);
+          writer.append(blockId, value);
+          _crcLayer.put((int) blockId, value.getBytes());
           LocalWalCache local = getCurrentLocalContext(writer);
           local.write(blockId, byteBuffer);
           _writeMeter.mark(len);
@@ -528,7 +529,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
 
   private WriterContext creatNewContext() throws IOException {
     Path tmpPath = newDataGenerationFile(WAL_TMP);
-    return new WriterContext(_walFactory.create(tmpPath), tmpPath, _fileSystemBlockSize);
+    return new WriterContext(_walFactory.create(tmpPath), tmpPath, _fileSystemBlockSize, _crcLayer);
   }
 
   private void destroyWriter(WriterContext context, boolean force) throws IOException {
@@ -563,10 +564,10 @@ public class HdfsBlockStoreImpl implements BlockStore {
         if (readBlocksFromLocalWalCaches(requests)) {
           boolean readBlocks = readBlocks(requests);
           if (readBlocks) {
-            //LOGGER.warn("block requests not met for all read requests from position {}", position);
+            // LOGGER.warn("block requests not met for all read requests from
+            // position {}", position);
           }
         }
-        validate(blockId, buffer, offset, len);
         _readMeter.mark(len);
         return len;
       } finally {
@@ -574,20 +575,6 @@ public class HdfsBlockStoreImpl implements BlockStore {
       }
     } finally {
       _fileReadLock.unlock();
-    }
-  }
-
-  private void validate(long blockId, byte[] buffer, int offset, int len) {
-    if (_crcLayer == null) {
-      return;
-    }
-    int blockSize = _fileSystemBlockSize;
-    int bId = (int) blockId;
-    while (len > 0) {
-      _crcLayer.validate(bId, buffer, offset, blockSize);
-      bId++;
-      len -= blockSize;
-      offset += blockSize;
     }
   }
 
@@ -600,6 +587,41 @@ public class HdfsBlockStoreImpl implements BlockStore {
       }
     }
     return true;
+  }
+
+  private boolean readBlocks(List<ReadRequest> requests) throws IOException {
+    _blockFileReadLock.lock();
+    try {
+      List<ReadRequestHandler> handlers = getReadRequestHandlers();
+      if (handlers != null) {
+        for (ReadRequestHandler handler : handlers) {
+          if (!handler.readBlocks(requests)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    } finally {
+      _blockFileReadLock.unlock();
+    }
+  }
+
+  private List<ReadRequestHandler> getReadRequestHandlers() throws IOException {
+    List<ReadRequestHandler> handlers = new ArrayList<>();
+    List<Path> blockFiles = _blockFiles.get();
+    if (blockFiles != null) {
+      for (Path p : blockFiles) {
+        handlers.add(getReader(p));
+      }
+    }
+    List<Path> walFiles = _localCacheList.get();
+    if (walFiles != null) {
+      for (Path p : walFiles) {
+        handlers.add(getLocalWalCache(p));
+      }
+    }
+    Collections.sort(handlers, BlockFile.ORDERED_READ_REQUEST_HANDLER_COMPARATOR);
+    return handlers;
   }
 
   @Override
@@ -639,30 +661,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
   }
 
   private void updateCrcLayer(long startingBlockId, long endingBlockId) {
-    if (_crcLayer != null) {
-      byte[] buf = new byte[_fileSystemBlockSize];
-      for (; startingBlockId < endingBlockId; startingBlockId++) {
-        _crcLayer.put((int) startingBlockId, buf);
-      }
-    }
-  }
-
-  private boolean readBlocks(List<ReadRequest> requests) throws IOException {
-    _blockFileReadLock.lock();
-    try {
-      List<Path> list = _blockFiles.get();
-      if (list != null) {
-        for (Path path : list) {
-          Reader reader = getReader(path);
-          if (!reader.read(requests)) {
-            return false;
-          }
-        }
-      }
-      return true;
-    } finally {
-      _blockFileReadLock.unlock();
-    }
+    _crcLayer.delete((int) startingBlockId, (int) endingBlockId);
   }
 
   private List<ReadRequest> createRequests(long position, ByteBuffer byteBuffer, int blockSize) {
@@ -678,7 +677,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
       byteBuffer.limit(bufferPosition + len);
 
       ByteBuffer slice = byteBuffer.slice();
-      result.add(new ReadRequest(blockId, blockOffset, slice));
+      result.add(new ReadRequest(blockId, blockOffset, slice, _crcLayer));
 
       position += len;
       bufferPosition += len;
@@ -911,8 +910,10 @@ public class HdfsBlockStoreImpl implements BlockStore {
     private final Path _path;
     private final AtomicInteger _refs = new AtomicInteger();
     private final int _fileSystemBlockSize;
+    private final CrcLayer _crcLayer;
 
-    WriterContext(WalFile.Writer writer, Path path, int fileSystemBlockSize) {
+    WriterContext(WalFile.Writer writer, Path path, int fileSystemBlockSize, CrcLayer crcLayer) {
+      _crcLayer = crcLayer;
       _fileSystemBlockSize = fileSystemBlockSize;
       _writer = writer;
       _path = path;
@@ -927,7 +928,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
       ByteBuffer byteBuffer = ByteBuffer.allocate(_fileSystemBlockSize);
       for (Integer blockId : dataBlocks) {
         byteBuffer.clear();
-        ReadRequest readRequest = new ReadRequest(blockId, 0, byteBuffer);
+        ReadRequest readRequest = new ReadRequest(blockId, 0, byteBuffer, _crcLayer);
         if (!localWalCache.readBlock(readRequest)) {
           byteBuffer.flip();
           append(blockId, getValue(byteBuffer));
