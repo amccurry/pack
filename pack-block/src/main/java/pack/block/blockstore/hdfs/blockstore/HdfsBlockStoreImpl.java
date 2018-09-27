@@ -215,7 +215,8 @@ public class HdfsBlockStoreImpl implements BlockStore {
       _timer.schedule(getFileSizeAdjustment(), TimeUnit.MINUTES.toMillis(1), TimeUnit.MINUTES.toMillis(1));
     }
     _walRollExecutor = Executors.newSingleThreadExecutor();
-    _crcLayer = new CrcLayer((int) (_metaData.getLength() / _fileSystemBlockSize), _fileSystemBlockSize);
+    _crcLayer = new CrcLayer("HdfsBlockStoreImpl", (int) (_metaData.getLength() / _fileSystemBlockSize),
+        _fileSystemBlockSize);
   }
 
   private RemovalListener<Path, LocalWalCache> getRemovalListener() {
@@ -562,7 +563,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
         if (readBlocksFromLocalWalCaches(requests)) {
           boolean readBlocks = readBlocks(requests);
           if (readBlocks) {
-            LOGGER.warn("block requests not met for all read requests from position {}", position);
+            //LOGGER.warn("block requests not met for all read requests from position {}", position);
           }
         }
         validate(blockId, buffer, offset, len);

@@ -244,7 +244,7 @@ public class BlockPackFuse implements Closeable {
 
   public BlockPackFuse(BlockPackFuseConfigInternal packFuseConfig) throws Exception {
     _timer = new Timer("SizeOfReport", true);
-    _timer.schedule(getSizeOfReport(), TimeUnit.SECONDS.toMillis(1), TimeUnit.SECONDS.toMillis(1));
+//    _timer.schedule(getSizeOfReport(), TimeUnit.SECONDS.toMillis(1), TimeUnit.SECONDS.toMillis(1));
     BlockPackFuseConfig blockPackFuseConfig = packFuseConfig.getBlockPackFuseConfig();
 
     _blockPackAdmin = packFuseConfig.getBlockPackAdmin();
