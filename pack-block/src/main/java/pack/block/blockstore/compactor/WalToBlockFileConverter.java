@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -47,21 +48,27 @@ public class WalToBlockFileConverter implements Closeable {
   private static final String CONVERT = "0_convert";
   private static final Joiner JOINER = Joiner.on('.');
   private static final Splitter SPLITTER = Splitter.on('.');
+  private static final String NODE_PREFIX;
+  static {
+    try {
+      NODE_PREFIX = InetAddress.getLocalHost()
+                               .getHostName();
+    } catch (UnknownHostException e) {
+      throw new RuntimeException(e);
+    }
+  }
   private final Path _blockPath;
   private final FileSystem _fileSystem;
   private final int _blockSize;
   private final AtomicLong _length;
   private final File _cacheDir;
   private final WalFileFactory _walFactory;
-  private final String _nodePrefix;
   private final Path _volumePath;
   private final boolean _useLock;
 
   public WalToBlockFileConverter(File cacheDir, FileSystem fileSystem, Path volumePath, BlockStoreMetaData metaData,
       boolean useLock) throws IOException {
     _useLock = useLock;
-    _nodePrefix = InetAddress.getLocalHost()
-                             .getHostName();
     _cacheDir = cacheDir;
     _length = new AtomicLong(metaData.getLength());
     _blockSize = metaData.getFileSystemBlockSize();
@@ -113,13 +120,9 @@ public class WalToBlockFileConverter implements Closeable {
   }
 
   private void convertWalFile(Path path) throws IOException {
-    List<String> list = SPLITTER.splitToList(path.getName());
-    if (list.size() != 2) {
-      throw new IOException("Wal file " + path + " name is malformed.");
-    }
-    String blockName = JOINER.join(list.get(0), HdfsBlockStoreImplConfig.BLOCK);
+    String blockName = getBlockNameFromWalPath(path);
     Path newPath = Utils.qualify(_fileSystem, new Path(path.getParent(), blockName));
-    Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpNameConvert(_nodePrefix)));
+    Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, getRandomTmpNameConvert()));
     if (_fileSystem.exists(newPath)) {
       return;
     }
@@ -136,6 +139,14 @@ public class WalToBlockFileConverter implements Closeable {
       writeNewBlockFromWalCache(_fileSystem, path, newPath, tmpPath, localContext, _blockSize);
     }
     Utils.rmr(dir);
+  }
+
+  public static String getBlockNameFromWalPath(Path path) throws IOException {
+    List<String> list = SPLITTER.splitToList(path.getName());
+    if (list.size() != 2) {
+      throw new IOException("Wal file " + path + " name is malformed.");
+    }
+    return JOINER.join(list.get(0), HdfsBlockStoreImplConfig.BLOCK);
   }
 
   public static void writeNewBlockFromWalCache(FileSystem fileSystem, Path sourceWalPath, Path newBlockPath,
@@ -184,14 +195,14 @@ public class WalToBlockFileConverter implements Closeable {
     return Utils.toBw(dest);
   }
 
-  public static String getRandomTmpNameConvert(String nodePrefix) {
+  public static String getRandomTmpNameConvert() {
     String uuid = UUID.randomUUID()
                       .toString();
-    return JOINER.join(getFilePrefix(nodePrefix), uuid);
+    return JOINER.join(getFilePrefix(), uuid);
   }
 
-  private static String getFilePrefix(String nodePrefix) {
-    return CONVERT + "." + nodePrefix;
+  private static String getFilePrefix() {
+    return CONVERT + "." + NODE_PREFIX;
   }
 
   private void cleanupOldFiles() throws IOException {
@@ -210,7 +221,7 @@ public class WalToBlockFileConverter implements Closeable {
 
   private boolean shouldCleanupFile(Path path) {
     String name = path.getName();
-    return name.startsWith(getFilePrefix(_nodePrefix));
+    return name.startsWith(getFilePrefix());
   }
 
 }

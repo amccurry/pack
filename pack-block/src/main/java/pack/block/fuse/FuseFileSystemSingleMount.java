@@ -91,101 +91,121 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int truncate(String path, @off_t long size) {
-    switch (path) {
-    case FILE_SEP:
-      return -ErrorCodes.EISDIR();
-    case PID_FILENAME:
-    case BRICK_FILENAME:
+    try {
+      switch (path) {
+      case FILE_SEP:
+        return -ErrorCodes.EISDIR();
+      case PID_FILENAME:
+      case BRICK_FILENAME:
+        return -ErrorCodes.EIO();
+      case SNAPSHOT_FILENAME:
+      case SHUTDOWN_FILENAME:
+        return 0;
+      default:
+        return -ErrorCodes.ENOENT();
+      }
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
-    case SNAPSHOT_FILENAME:
-    case SHUTDOWN_FILENAME:
-      return 0;
-    default:
-      return -ErrorCodes.ENOENT();
     }
   }
 
   @Override
   public int getattr(String path, FileStat stat) {
-    long lastModified;
-    long length;
     try {
-      lastModified = _blockStore.lastModified();
-      length = _blockStore.getLength();
+      long lastModified;
+      long length;
+      try {
+        lastModified = _blockStore.lastModified();
+        length = _blockStore.getLength();
+      } catch (Throwable t) {
+        LOGGER.error("Unknown error.", t);
+        return -ErrorCodes.EIO();
+      }
+      stat.st_mtim.tv_sec.set(lastModified / 1000);
+      stat.st_mtim.tv_nsec.set(0);
+      switch (path) {
+      case BRICK_FILENAME:
+        stat.st_mode.set(FileStat.S_IFREG | 0700);
+        stat.st_size.set(length);
+        return 0;
+      case FILE_SEP:
+        stat.st_mode.set(FileStat.S_IFDIR | 0755);
+        stat.st_size.set(2);
+        return 0;
+      case PID_FILENAME:
+        stat.st_mode.set(FileStat.S_IFREG | 0400);
+        stat.st_size.set(_pidContent.length);
+        return 0;
+      case SNAPSHOT_FILENAME:
+      case SHUTDOWN_FILENAME:
+        stat.st_mode.set(FileStat.S_IFREG | 0600);
+        stat.st_size.set(0);
+        return 0;
+      default:
+        return -ErrorCodes.ENOENT();
+      }
     } catch (Throwable t) {
-      LOGGER.error("Unknown error.", t);
+      LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
-    }
-    stat.st_mtim.tv_sec.set(lastModified / 1000);
-    stat.st_mtim.tv_nsec.set(0);
-    switch (path) {
-    case BRICK_FILENAME:
-      stat.st_mode.set(FileStat.S_IFREG | 0700);
-      stat.st_size.set(length);
-      return 0;
-    case FILE_SEP:
-      stat.st_mode.set(FileStat.S_IFDIR | 0755);
-      stat.st_size.set(2);
-      return 0;
-    case PID_FILENAME:
-      stat.st_mode.set(FileStat.S_IFREG | 0400);
-      stat.st_size.set(_pidContent.length);
-      return 0;
-    case SNAPSHOT_FILENAME:
-    case SHUTDOWN_FILENAME:
-      stat.st_mode.set(FileStat.S_IFREG | 0600);
-      stat.st_size.set(0);
-      return 0;
-    default:
-      return -ErrorCodes.ENOENT();
     }
   }
 
   @Override
   public int readdir(String path, Pointer buf, FuseFillDir filter, @off_t long offset, FuseFileInfo fi) {
-    switch (path) {
-    case FILE_SEP:
-      filter.apply(buf, CURRENT_DIR, null, 0);
-      filter.apply(buf, PARENT_DIR, null, 0);
-      filter.apply(buf, BRICK, null, 0);
-      filter.apply(buf, FUSE_PID, null, 0);
-      filter.apply(buf, SHUTDOWN, null, 0);
-      filter.apply(buf, SNAPSHOT, null, 0);
-      return 0;
-    case BRICK_FILENAME:
-    case PID_FILENAME:
-    case SNAPSHOT_FILENAME:
-    case SHUTDOWN_FILENAME:
-      return -ErrorCodes.ENOTDIR();
-    default:
-      return -ErrorCodes.ENOENT();
+    try {
+      switch (path) {
+      case FILE_SEP:
+        filter.apply(buf, CURRENT_DIR, null, 0);
+        filter.apply(buf, PARENT_DIR, null, 0);
+        filter.apply(buf, BRICK, null, 0);
+        filter.apply(buf, FUSE_PID, null, 0);
+        filter.apply(buf, SHUTDOWN, null, 0);
+        filter.apply(buf, SNAPSHOT, null, 0);
+        return 0;
+      case BRICK_FILENAME:
+      case PID_FILENAME:
+      case SNAPSHOT_FILENAME:
+      case SHUTDOWN_FILENAME:
+        return -ErrorCodes.ENOTDIR();
+      default:
+        return -ErrorCodes.ENOENT();
+      }
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
+      return -ErrorCodes.EIO();
     }
   }
 
   @Override
   public int read(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
-    switch (path) {
-    case BRICK_FILENAME:
-      while (true) {
-        try {
-          LOGGER.debug("read {} position {} length {}", path, offset, size);
-          return readBlockStore(_blockStore, buf, size, offset);
-        } catch (Throwable t) {
-          LOGGER.error("Unknown error.", t);
-          sleep(TimeUnit.SECONDS.toMillis(3));
+    try {
+      switch (path) {
+      case BRICK_FILENAME:
+        while (true) {
+          try {
+            LOGGER.debug("read {} position {} length {}", path, offset, size);
+            return readBlockStore(_blockStore, buf, size, offset);
+          } catch (Throwable t) {
+            LOGGER.error("Unknown error.", t);
+            sleep(TimeUnit.SECONDS.toMillis(3));
+          }
         }
+      case FILE_SEP:
+        return -ErrorCodes.EISDIR();
+      case PID_FILENAME:
+        buf.put(0, _pidContent, 0, _pidContent.length);
+        return _pidContent.length;
+      case SNAPSHOT_FILENAME:
+      case SHUTDOWN_FILENAME:
+        buf.put(0, new byte[] {}, 0, 0);
+        return 0;
+      default:
+        return -ErrorCodes.ENOENT();
       }
-    case FILE_SEP:
-      return -ErrorCodes.EISDIR();
-    case PID_FILENAME:
-      buf.put(0, _pidContent, 0, _pidContent.length);
-      return _pidContent.length;
-    case SNAPSHOT_FILENAME:
-    case SHUTDOWN_FILENAME:
-      buf.put(0, new byte[] {}, 0, 0);
-      return 0;
-    default:
-      return -ErrorCodes.ENOENT();
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
+      return -ErrorCodes.EIO();
     }
   }
 
@@ -199,35 +219,40 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int write(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
-    switch (path) {
-    case BRICK_FILENAME:
-      while (true) {
+    try {
+      switch (path) {
+      case BRICK_FILENAME:
+        while (true) {
+          try {
+            LOGGER.debug("write {} position {} length {}", path, offset, size);
+            return writeBlockStore(_blockStore, buf, size, offset);
+          } catch (Throwable t) {
+            LOGGER.error("Unknown error.", t);
+            sleep(TimeUnit.SECONDS.toMillis(3));
+          }
+        }
+      case SNAPSHOT_FILENAME: {
         try {
-          LOGGER.debug("write {} position {} length {}", path, offset, size);
-          return writeBlockStore(_blockStore, buf, size, offset);
+          return createNewSnapshot(buf, size, offset);
         } catch (Throwable t) {
           LOGGER.error("Unknown error.", t);
-          sleep(TimeUnit.SECONDS.toMillis(3));
+          return -ErrorCodes.EIO();
         }
       }
-    case SNAPSHOT_FILENAME: {
-      try {
-        return createNewSnapshot(buf, size, offset);
-      } catch (Throwable t) {
-        LOGGER.error("Unknown error.", t);
-        return -ErrorCodes.EIO();
+      case SHUTDOWN_FILENAME: {
+        startShutdown();
+        return (int) size;
       }
-    }
-    case SHUTDOWN_FILENAME: {
-      startShutdown();
-      return (int) size;
-    }
-    case FILE_SEP:
-      return -ErrorCodes.EISDIR();
-    case PID_FILENAME:
+      case FILE_SEP:
+        return -ErrorCodes.EISDIR();
+      case PID_FILENAME:
+        return -ErrorCodes.EIO();
+      default:
+        return -ErrorCodes.ENOENT();
+      }
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
-    default:
-      return -ErrorCodes.ENOENT();
     }
   }
 
@@ -237,76 +262,101 @@ public class FuseFileSystemSingleMount extends FuseStubFS implements Closeable {
 
   @Override
   public int fsync(String path, int isdatasync, FuseFileInfo fi) {
-    LOGGER.debug("fsync {} {} {}", path, isdatasync, fi);
-    switch (path) {
-    case BRICK_FILENAME:
-      while (true) {
-        try {
-          _blockStore.fsync();
-          return 0;
-        } catch (Throwable t) {
-          LOGGER.error("Unknown error.", t);
-          sleep(TimeUnit.SECONDS.toMillis(3));
-        }
-      }
-    case FILE_SEP:
-      return -ErrorCodes.EISDIR();
-    case SNAPSHOT_FILENAME:
-    case SHUTDOWN_FILENAME:
-    case PID_FILENAME:
-      return 0;
-    default:
-      return -ErrorCodes.ENOENT();
-    }
-  }
-
-  @Override
-  public int fallocate(String path, int mode, long off, long length, FuseFileInfo fi) {
-    LOGGER.debug("fallocate {} {} {} {} {}", path, mode, off, length, fi);
-    Set<FallocFlags> lookup = FallocFlags.lookup(mode);
-    switch (path) {
-    case BRICK_FILENAME:
-      if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) && lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
-        LOGGER.debug("delete offset {} length {}", off, length);
+    try {
+      LOGGER.debug("fsync {} {} {}", path, isdatasync, fi);
+      switch (path) {
+      case BRICK_FILENAME:
         while (true) {
           try {
-            _blockStore.delete(off, length);
+            _blockStore.fsync();
             return 0;
           } catch (Throwable t) {
             LOGGER.error("Unknown error.", t);
             sleep(TimeUnit.SECONDS.toMillis(3));
           }
         }
-      } else {
-        return -ErrorCodes.EOPNOTSUPP();
+      case FILE_SEP:
+        return -ErrorCodes.EISDIR();
+      case SNAPSHOT_FILENAME:
+      case SHUTDOWN_FILENAME:
+      case PID_FILENAME:
+        return 0;
+      default:
+        return -ErrorCodes.ENOENT();
       }
-    case FILE_SEP:
-      return -ErrorCodes.EISDIR();
-    case SNAPSHOT_FILENAME:
-    case SHUTDOWN_FILENAME:
-    case PID_FILENAME:
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
-    default:
-      return -ErrorCodes.ENOENT();
+    }
+  }
+
+  @Override
+  public int fallocate(String path, int mode, long off, long length, FuseFileInfo fi) {
+    try {
+      LOGGER.debug("fallocate {} {} {} {} {}", path, mode, off, length, fi);
+      Set<FallocFlags> lookup = FallocFlags.lookup(mode);
+      switch (path) {
+      case BRICK_FILENAME:
+        if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) && lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
+          LOGGER.debug("delete offset {} length {}", off, length);
+          while (true) {
+            try {
+              _blockStore.delete(off, length);
+              return 0;
+            } catch (Throwable t) {
+              LOGGER.error("Unknown error.", t);
+              sleep(TimeUnit.SECONDS.toMillis(3));
+            }
+          }
+        } else {
+          return -ErrorCodes.EOPNOTSUPP();
+        }
+      case FILE_SEP:
+        return -ErrorCodes.EISDIR();
+      case SNAPSHOT_FILENAME:
+      case SHUTDOWN_FILENAME:
+      case PID_FILENAME:
+        return -ErrorCodes.EIO();
+      default:
+        return -ErrorCodes.ENOENT();
+      }
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
+      return -ErrorCodes.EIO();
     }
   }
 
   @Override
   public int open(String path, FuseFileInfo fi) {
-    LOGGER.debug("open {} {}", path, fi);
-    return 0;
+    try {
+      LOGGER.debug("open {} {}", path, fi);
+      return 0;
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
+      return -ErrorCodes.EIO();
+    }
   }
 
   @Override
   public int release(String path, FuseFileInfo fi) {
-    LOGGER.debug("release {} {}", path, fi);
-    return fsync(path, 0, fi);
+    try {
+      LOGGER.debug("release {} {}", path, fi);
+      return fsync(path, 0, fi);
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
+      return -ErrorCodes.EIO();
+    }
   }
 
   @Override
   public int flush(String path, FuseFileInfo fi) {
-    LOGGER.debug("flush {} {}", path, fi);
-    return fsync(path, 0, fi);
+    try {
+      LOGGER.debug("flush {} {}", path, fi);
+      return fsync(path, 0, fi);
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
+      return -ErrorCodes.EIO();
+    }
   }
 
   public static int readBlockStore(BlockStore blockStore, Pointer buffer, long size, long position) throws IOException {

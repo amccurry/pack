@@ -643,6 +643,8 @@ public class BlockFile {
           + "/" + path.getName();
     }
 
+    public abstract void andNotEmptyBlocks(RoaringBitmap bitmap);
+
   }
 
   public static class ReaderMultiOrdered extends Reader {
@@ -747,6 +749,11 @@ public class BlockFile {
     }
 
     @Override
+    public void andNotEmptyBlocks(RoaringBitmap bitmap) {
+      _orderedReaders.forEach(t -> t.andNotEmptyBlocks(bitmap));
+    }
+
+    @Override
     public boolean hasEmptyBlock(int blockId) {
       for (ReaderOrdered readerOrdered : _orderedReaders) {
         if (readerOrdered.hasBlock(blockId)) {
@@ -807,6 +814,7 @@ public class BlockFile {
     public long getLayer() {
       return _layer;
     }
+
   }
 
   public abstract static class ReaderOrdered extends Reader {
@@ -990,12 +998,19 @@ public class BlockFile {
       return true;
     }
 
+    @Override
     public void orDataBlocks(RoaringBitmap bitmap) {
       bitmap.or(_blocks.toRoaringBitmap());
     }
 
+    @Override
     public void orEmptyBlocks(RoaringBitmap bitmap) {
       bitmap.or(_emptyBlocks.toRoaringBitmap());
+    }
+
+    @Override
+    public void andNotEmptyBlocks(RoaringBitmap bitmap) {
+      bitmap.andNot(_emptyBlocks.toRoaringBitmap());
     }
 
     @Override

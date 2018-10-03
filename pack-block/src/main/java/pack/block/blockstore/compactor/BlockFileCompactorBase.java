@@ -50,6 +50,8 @@ public abstract class BlockFileCompactorBase {
 
   protected abstract long getMaxBlockFileSize();
 
+  protected abstract int getFileSystemBlockSize();
+
   public void runCompaction(OwnerCheck ownerCheck) throws IOException {
     if (!getFileSystem().exists(getBlockPath())) {
       LOGGER.info("Path {} does not exist, exiting", getBlockPath());
@@ -162,7 +164,7 @@ public abstract class BlockFileCompactorBase {
     RoaringBitmap currentCompactionBlocksToIgnore = new RoaringBitmap();
     for (FileStatus status : liveFiles) {
       LOGGER.info("should compact cal {}", status.getPath());
-      if (shouldCompactFile(getFileSystem(), status, getOverallBlocksToIgnore(status, liveFiles))) {
+      if (shouldCompactFile(getFileSystem(), status, getOverallBlocksToIgnore(status, liveFiles), compactionJob)) {
         compactionJob.add(status.getPath());
       } else {
         finishSetup(builder, compactionJob, currentCompactionBlocksToIgnore);
@@ -205,7 +207,39 @@ public abstract class BlockFileCompactorBase {
     return overallBlocksToIgnore;
   }
 
-  private boolean shouldCompactFile(FileSystem fileSystem, FileStatus status, RoaringBitmap overallBlocksToIgnore)
+  private boolean shouldCompactFile(FileSystem fileSystem, FileStatus status, RoaringBitmap overallBlocksToIgnore,
+      CompactionJob compactionJob) throws IOException {
+    if (checkFileSize(fileSystem, status, overallBlocksToIgnore)) {
+      if (!currentJobTooLarge(compactionJob, status.getPath())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean currentJobTooLarge(CompactionJob compactionJob, Path path) throws IOException {
+    List<Path> pathListToCompact = compactionJob.getPathListToCompact();
+    Builder<Path> builder = ImmutableList.builder();
+    long size = getMergeSizeEstimatedSize(builder.addAll(pathListToCompact)
+                                                 .add(path)
+                                                 .build());
+    LOGGER.info("Calculated size of merge is {}", size);
+    return size > getMaxBlockFileSize();
+  }
+
+  private long getMergeSizeEstimatedSize(List<Path> blocks) throws IOException {
+    List<Path> allLiveFiles = new ArrayList<>(blocks);
+    Collections.sort(allLiveFiles, BlockFile.ORDERED_PATH_COMPARATOR);
+    RoaringBitmap overallBlocksToInclude = new RoaringBitmap();
+    for (Path path : blocks) {
+      Reader reader = getReader(path);
+      reader.andNotEmptyBlocks(overallBlocksToInclude);
+      reader.orDataBlocks(overallBlocksToInclude);
+    }
+    return overallBlocksToInclude.getLongCardinality() * getFileSystemBlockSize();
+  }
+
+  private boolean checkFileSize(FileSystem fileSystem, FileStatus status, RoaringBitmap overallBlocksToIgnore)
       throws IOException {
     Path path = status.getPath();
     long len = BlockFile.getLen(fileSystem, status.getPath());
@@ -326,4 +360,22 @@ public abstract class BlockFileCompactorBase {
     return new Path(path.getParent(), newName);
   }
 
+  public void cleanupBlocks() throws IOException {
+    if (!getFileSystem().exists(getBlockPath())) {
+      return;
+    }
+    FileStatus[] listStatus = getFileSystem().listStatus(getBlockPath());
+    for (FileStatus fileStatus : listStatus) {
+      Path path = fileStatus.getPath();
+      if (shouldCleanupFile(path)) {
+        LOGGER.info("Deleting old temp merge file {}", path);
+        getFileSystem().delete(path, false);
+      }
+    }
+  }
+
+  private boolean shouldCleanupFile(Path path) {
+    String name = path.getName();
+    return name.startsWith(getFilePrefix());
+  }
 }

@@ -58,12 +58,13 @@ public class PackCompactorServer implements Closeable {
       compactionThread.setName(COMPACTION_THREAD);
       compactionThread.start();
 
-      Thread converterThread = new Thread(() -> runConverter(running, packCompactorServer));
-      converterThread.setName(CONVERTER_THREAD);
-      converterThread.start();
+      // Thread converterThread = new Thread(() -> runConverter(running,
+      // packCompactorServer));
+      // converterThread.setName(CONVERTER_THREAD);
+      // converterThread.start();
 
       compactionThread.join();
-      converterThread.join();
+      // converterThread.join();
     }
   }
 

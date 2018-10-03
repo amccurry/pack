@@ -64,6 +64,7 @@ public class BlockPackFuse implements Closeable {
 
   private static final String LOG = ".log";
   private static final String YYYY_MM_DD_HH_MM_SS = "yyyy.MM.dd-HH.mm.ss";
+  private static final boolean ENABLE_HDFS_LOGS = false;
 
   private static <T extends Closeable> T autoClose(T t, int priority) {
     ShutdownHookManager.get()
@@ -104,15 +105,17 @@ public class BlockPackFuse implements Closeable {
         ImmutableRoaringBitmapManager.setIndexDir(new File(blockPackFuseConfig.getFsLocalIndex()));
       }
 
-      ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
-        FileSystem fileSystem = path.getFileSystem(conf);
-        Path logDirPath = new Path(path, "log");
-        Path logPath = new Path(logDirPath, getHdfsLogName());
-        Utils.setupHdfsLogger(fileSystem, logPath);
-        cleanupOldLogFiles(fileSystem, logDirPath, Utils.getMaxHdfsLogFiles());
-        LOGGER.info("hdfs logger setup");
-        return null;
-      });
+      if (ENABLE_HDFS_LOGS) {
+        ugi.doAs((PrivilegedExceptionAction<Void>) () -> {
+          FileSystem fileSystem = path.getFileSystem(conf);
+          Path logDirPath = new Path(path, "log");
+          Path logPath = new Path(logDirPath, getHdfsLogName());
+          Utils.setupHdfsLogger(fileSystem, logPath);
+          cleanupOldLogFiles(fileSystem, logDirPath, Utils.getMaxHdfsLogFiles());
+          LOGGER.info("hdfs logger setup");
+          return null;
+        });
+      }
 
       HdfsSnapshotStrategy strategy = getHdfsSnapshotStrategy();
 

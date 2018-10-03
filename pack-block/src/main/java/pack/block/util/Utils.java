@@ -12,6 +12,7 @@ import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -113,6 +114,18 @@ public class Utils {
       }
     } catch (final IOException ioe) {
       logger.error("Unknown error while trying to close.", ioe);
+    }
+  }
+
+  public static void shutdown(ExecutorService executorService, long waitForShutdownTime,
+      TimeUnit waitForShutdownTimeUnit) {
+    executorService.shutdown();
+    try {
+      if (!executorService.awaitTermination(waitForShutdownTime, waitForShutdownTimeUnit)) {
+        executorService.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      LOGGER.error("Unknown error", e);
     }
   }
 

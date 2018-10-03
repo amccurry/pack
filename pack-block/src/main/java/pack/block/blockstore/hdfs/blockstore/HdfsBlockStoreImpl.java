@@ -51,6 +51,7 @@ import com.google.common.collect.ImmutableList;
 
 import pack.block.blockstore.BlockStore;
 import pack.block.blockstore.BlockStoreMetaData;
+import pack.block.blockstore.compactor.WalToBlockFileConverter;
 import pack.block.blockstore.crc.CrcLayer;
 import pack.block.blockstore.crc.CrcLayerFactory;
 import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
@@ -112,6 +113,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
   private final ExecutorService _walRollExecutor;
   private final File _brickFile;
   private final CrcLayer _crcLayer;
+  private final ExecutorService _walConvertExecutor;
 
   @Override
   public long getSizeOf() {
@@ -200,6 +202,8 @@ public class HdfsBlockStoreImpl implements BlockStore {
     String name = HdfsBlockStoreImplConfig.BLOCK + "|" + _blockPath.toUri()
                                                                    .getPath();
     _timer = new Timer(name, true);
+    
+    _walConvertExecutor = Executors.newSingleThreadExecutor();
 
     LOGGER.info("open block files");
     openBlockFiles();
@@ -216,6 +220,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
     if (_brickFile != null) {
       _timer.schedule(getFileSizeAdjustment(), TimeUnit.MINUTES.toMillis(1), TimeUnit.MINUTES.toMillis(1));
     }
+    
     _walRollExecutor = Executors.newSingleThreadExecutor();
     _crcLayer = CrcLayerFactory.create(HdfsBlockStoreImpl.class.getName(),
         (int) (_metaData.getLength() / _fileSystemBlockSize), _fileSystemBlockSize);
@@ -277,6 +282,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
         LocalWalCache localWalCache = getLocalWalCache(path);
         LocalWalCache.applyWal(_walFactory, path, localWalCache);
         walPathList.add(path);
+        startConvertWalToBlock(path, localWalCache);
       }
     }
     Collections.sort(walPathList, BlockFile.ORDERED_PATH_COMPARATOR);
@@ -386,14 +392,8 @@ public class HdfsBlockStoreImpl implements BlockStore {
     _timer.cancel();
     _timer.purge();
     _readerCache.invalidateAll();
-    _walRollExecutor.shutdown();
-    try {
-      if (!_walRollExecutor.awaitTermination(10, TimeUnit.SECONDS)) {
-        _walRollExecutor.shutdownNow();
-      }
-    } catch (InterruptedException e) {
-      LOGGER.error("Unknown error", e);
-    }
+    Utils.shutdown(_walConvertExecutor, 10, TimeUnit.SECONDS);
+    Utils.shutdown(_walRollExecutor, 10, TimeUnit.SECONDS);
   }
 
   @Override
@@ -509,8 +509,8 @@ public class HdfsBlockStoreImpl implements BlockStore {
           try {
             rollWriter();
             _rollInProgress.set(false);
-          } catch (IOException e) {
-            LOGGER.error("Unknown error while trying to roll wal.", e);
+          } catch (Throwable t) {
+            LOGGER.error("Unknown error while trying to roll wal.", t);
           }
         });
       }
@@ -547,8 +547,33 @@ public class HdfsBlockStoreImpl implements BlockStore {
   private void commitWriter(WriterContext context, boolean force) throws IOException {
     if (context != null) {
       context.close(force);
-      _fileSystem.rename(context._path, newExtPath(context._path, WAL));
+      LocalWalCache localWalCache = getLocalWalCache(context._path);
+      Path committedWalPath = newExtPath(context._path, WAL);
+      _fileSystem.rename(context._path, committedWalPath);
+      startConvertWalToBlock(committedWalPath, localWalCache);
     }
+  }
+
+  private void startConvertWalToBlock(Path path, LocalWalCache localWalCache) {
+    _walConvertExecutor.submit(() -> {
+      try {
+        convertWalToBlock(path, localWalCache);
+      } catch (Throwable t) {
+        LOGGER.error("Unknown error during wal to block conversation", t);
+      }
+    });
+  }
+
+  private void convertWalToBlock(Path path, LocalWalCache localWalCache) throws IOException {
+    String blockName = WalToBlockFileConverter.getBlockNameFromWalPath(path);
+    Path newPath = Utils.qualify(_fileSystem, new Path(path.getParent(), blockName));
+    Path tmpPath = Utils.qualify(_fileSystem, new Path(_blockPath, WalToBlockFileConverter.getRandomTmpNameConvert()));
+    if (_fileSystem.exists(newPath)) {
+      return;
+    }
+    LOGGER.info("Wal convert - Starting to write block");
+    WalToBlockFileConverter.writeNewBlockFromWalCache(_fileSystem, path, newPath, tmpPath, localWalCache,
+        _fileSystemBlockSize);
   }
 
   @Override

@@ -26,10 +26,12 @@ public class BlockFileCompactor extends BlockFileCompactorBase implements Closea
   private final Cache<Path, Reader> _readerCache;
   private final double _maxObsoleteRatio;
   private final String _nodePrefix;
+  private final int _fileSystemBlockSize;
 
   public BlockFileCompactor(FileSystem fileSystem, Path path, BlockStoreMetaData metaData) throws IOException {
     _nodePrefix = InetAddress.getLocalHost()
                              .getHostName();
+    _fileSystemBlockSize = metaData.getFileSystemBlockSize();
     _maxBlockFileSize = metaData.getMaxBlockFileSize();
     _maxObsoleteRatio = metaData.getMaxObsoleteRatio();
     _fileSystem = fileSystem;
@@ -38,6 +40,7 @@ public class BlockFileCompactor extends BlockFileCompactorBase implements Closea
     _readerCache = CacheBuilder.newBuilder()
                                .removalListener(listener)
                                .build();
+    cleanupBlocks();
   }
 
   @Override
@@ -82,6 +85,11 @@ public class BlockFileCompactor extends BlockFileCompactorBase implements Closea
   @Override
   public void close() throws IOException {
     _readerCache.invalidateAll();
+  }
+
+  @Override
+  protected int getFileSystemBlockSize() {
+    return _fileSystemBlockSize;
   }
 
 }
