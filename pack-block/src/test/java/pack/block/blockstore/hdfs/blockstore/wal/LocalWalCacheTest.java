@@ -22,12 +22,14 @@ import org.apache.hadoop.io.MD5Hash;
 import org.junit.Test;
 
 import pack.block.blockstore.hdfs.file.ReadRequest;
+import pack.block.util.Utils;
 
 public class LocalWalCacheTest {
 
   @Test
   public void testLocalWalCacheTest() throws Throwable {
-    File file = new File("./target/tmp/LocalWalCacheTest/test");
+    File file = new File("./target/tmp/LocalWalCacheTest/0.wal");
+    Utils.rmr(file);
     file.getParentFile()
         .mkdirs();
     long maxLength = 1024l * 1024l * 1024l;
@@ -36,7 +38,6 @@ public class LocalWalCacheTest {
     ExecutorService service = Executors.newFixedThreadPool(100);
     try (LocalWalCache cache = new LocalWalCache(file, length, blockSize)) {
       Random random = new Random(1);
-      int upperBound = (int) (maxLength / blockSize);
 
       ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
       WriteLock writeLock = reentrantReadWriteLock.writeLock();

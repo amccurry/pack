@@ -4,7 +4,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,9 +15,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hdfs.MiniDFSCluster;
 import org.apache.hadoop.io.BytesWritable;
-import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -34,31 +31,26 @@ import pack.block.blockstore.hdfs.file.BlockFile.Writer;
 
 public class BlockFileCompactorTest {
 
-  private static MiniDFSCluster cluster;
-  private static File storePathDir = new File("./test");
+  private static Path storePathDir = new Path("./test");
   private static FileSystem fileSystem;
   private static long seed;
 
   @BeforeClass
   public static void beforeClass() throws IOException {
     Configuration configuration = new Configuration();
-    String storePath = storePathDir.getAbsolutePath();
-    configuration.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, storePath);
-    cluster = new MiniDFSCluster.Builder(configuration).build();
-    fileSystem = cluster.getFileSystem();
+    fileSystem = FileSystem.getLocal(configuration);
+    fileSystem.delete(storePathDir, true);
+    fileSystem.mkdirs(storePathDir);
     seed = new Random().nextLong();
   }
 
-  @AfterClass
-  public static void afterClass() {
-    cluster.shutdown();
-  }
-
-  private int maxPases = 2;
+  private int maxPases = 1;
 
   @Test
   public void testCompactorSingleResultBlockSize() throws IOException {
-    Path path = new Path("/testCompactorSingleResultBlockSize");
+    Path path = new Path(storePathDir, "testCompactorSingleResultBlockSize");
+    fileSystem.delete(storePathDir, true);
+    fileSystem.mkdirs(storePathDir);
     Random random = new Random(seed);
     for (int pass = 0; pass < maxPases; pass++) {
       Path basePath = new Path(path, Integer.toString(pass));
@@ -69,7 +61,7 @@ public class BlockFileCompactorTest {
 
   @Test
   public void testCompactorSingleResultObsoleteRatio() throws IOException {
-    Path path = new Path("/testCompactorSingleResultObsoleteRatio");
+    Path path = new Path(storePathDir, "testCompactorSingleResultObsoleteRatio");
     Random random = new Random(seed);
     for (int pass = 0; pass < maxPases; pass++) {
       Path basePath = new Path(path, Integer.toString(pass));
@@ -80,18 +72,22 @@ public class BlockFileCompactorTest {
 
   @Test
   public void testCompactorMultipleResults() throws IOException {
-    Path path = new Path("/testCompactorMultipleResults");
-    Random random = new Random(seed);
-    for (int pass = 0; pass < maxPases; pass++) {
-      Path basePath = new Path(path, Integer.toString(pass));
-      fileSystem.mkdirs(basePath);
-      runCompactorMultipleResults(basePath, random);
+    while (true) {
+      Path path = new Path(storePathDir, "testCompactorMultipleResults");
+      fileSystem.delete(storePathDir, true);
+      fileSystem.mkdirs(storePathDir);
+      Random random = new Random(seed);
+      for (int pass = 0; pass < maxPases; pass++) {
+        Path basePath = new Path(path, Integer.toString(pass));
+        fileSystem.mkdirs(basePath);
+        runCompactorMultipleResults(basePath, random);
+      }
     }
   }
 
   @Test
   public void testGetBlockFiles() throws IOException {
-    Path path = new Path("/testGetBlockFiles");
+    Path path = new Path(storePathDir, "testGetBlockFiles");
     touchFileSystem(new Path(path, "8.block"));
     touchFileSystem(new Path(path, "9.block"));
     touchFileSystem(new Path(path, "10.wal"));
@@ -99,13 +95,22 @@ public class BlockFileCompactorTest {
     touchFileSystem(new Path(path, "12.block"));
 
     FileStatus[] blockFiles = BlockFileCompactor.getBlockFiles(fileSystem, path);
-    assertEquals(2, blockFiles.length);
-    assertEquals(getSimplePath(blockFiles[0]), "/testGetBlockFiles/8.block");
-    assertEquals(getSimplePath(blockFiles[1]), "/testGetBlockFiles/9.block");
+    assertEquals(getSeed(), 2, blockFiles.length);
+    assertEquals(getSeed(), getSimplePath(blockFiles[0]),
+        getSimplePath(fileSystem.makeQualified(new Path(path, "8.block"))));
+    assertEquals(getSeed(), getSimplePath(blockFiles[1]),
+        getSimplePath(fileSystem.makeQualified(new Path(path, "9.block"))));
+  }
+
+  private String getSeed() {
+    return "seed " + seed;
   }
 
   private String getSimplePath(FileStatus fileStatus) {
-    Path path = fileStatus.getPath();
+    return getSimplePath(fileStatus.getPath());
+  }
+
+  private String getSimplePath(Path path) {
     return path.toUri()
                .getPath();
   }
@@ -126,9 +131,9 @@ public class BlockFileCompactorTest {
     generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
 
     BlockStoreMetaData newMetaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
-                                                             .maxBlockFileSize(0)
-                                                             .maxObsoleteRatio(0.0)
-                                                             .build();
+                                                                         .maxBlockFileSize(0)
+                                                                         .maxObsoleteRatio(0.0)
+                                                                         .build();
 
     try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData)) {
       compactor.runCompaction(() -> true);
@@ -150,9 +155,9 @@ public class BlockFileCompactorTest {
     generatBlockFiles(data, path, random, blockSize, maxFiles, maxBlockIdsIncr, maxNumberOfBlocksToWrite);
 
     BlockStoreMetaData newMetaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
-                                                             .maxBlockFileSize(Long.MAX_VALUE)
-                                                             .maxObsoleteRatio(10.0)
-                                                             .build();
+                                                                         .maxBlockFileSize(Long.MAX_VALUE)
+                                                                         .maxObsoleteRatio(10.0)
+                                                                         .build();
 
     try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData)) {
       compactor.runCompaction(() -> true);
@@ -177,9 +182,9 @@ public class BlockFileCompactorTest {
         maxBlockIdsIncr, maxNumberOfBlocksToWrite, maxBlockFileSize);
 
     BlockStoreMetaData newMetaData = BlockStoreMetaData.DEFAULT_META_DATA.toBuilder()
-                                                             .maxBlockFileSize(maxBlockFileSize)
-                                                             .maxObsoleteRatio(10.0)
-                                                             .build();
+                                                                         .maxBlockFileSize(maxBlockFileSize)
+                                                                         .maxObsoleteRatio(10.0)
+                                                                         .build();
 
     try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, path, newMetaData)) {
       compactor.runCompaction(() -> true);
@@ -201,7 +206,7 @@ public class BlockFileCompactorTest {
       }
       for (int id = 0; id < data.size(); id++) {
         byte[] bs = data.get(id);
-        String message = "Block id " + id;
+        String message = getSeed() + "Block id " + id;
         if (bs == null) {
           // System.out.println("Checking - missing block " + i);
           // Missing block, no empty writes or data writes
@@ -326,7 +331,7 @@ public class BlockFileCompactorTest {
   private Path getSingleBlockFile(Path path) throws IOException {
     Path blockPath = new Path(path, HdfsBlockStoreImplConfig.BLOCK);
     FileStatus[] listStatus = fileSystem.listStatus(blockPath);
-    assertEquals(1, listStatus.length);
+    assertEquals(getSeed(), 1, listStatus.length);
     return listStatus[0].getPath();
   }
 
