@@ -43,6 +43,7 @@ public class PackCompactorServer implements Closeable {
 
     String hdfsPath = Utils.getHdfsPath();
     String localWorkingPath = Utils.getLocalWorkingPath();
+    boolean convert = Utils.getAllowCompactorsToConvertWalToBlocks();
     File cacheDir = new File(localWorkingPath, CACHE);
     cacheDir.mkdirs();
     AtomicBoolean running = new AtomicBoolean(true);
@@ -58,13 +59,14 @@ public class PackCompactorServer implements Closeable {
       compactionThread.setName(COMPACTION_THREAD);
       compactionThread.start();
 
-      // Thread converterThread = new Thread(() -> runConverter(running,
-      // packCompactorServer));
-      // converterThread.setName(CONVERTER_THREAD);
-      // converterThread.start();
+      if (convert) {
+        Thread converterThread = new Thread(() -> runConverter(running, packCompactorServer));
+        converterThread.setName(CONVERTER_THREAD);
+        converterThread.start();
+        converterThread.join();
+      }
 
       compactionThread.join();
-      // converterThread.join();
     }
   }
 

@@ -51,6 +51,7 @@ public class Utils {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(Utils.class);
 
+  public static final String PACK_COMPACTOR_ALLOW_WAL_CONVERTIONS = "PACK_COMPACTOR_ALLOW_WAL_CONVERTIONS";
   public static final String HDFS_SITE_XML = "hdfs-site.xml";
   public static final String CORE_SITE_XML = "core-site.xml";
   public static final String PACK_FILE_SYSTEM_MOUNT = "PACK_FILE_SYSTEM_MOUNT";
@@ -332,6 +333,14 @@ public class Utils {
       return VAR_LIB_PACK;
     }
     return v;
+  }
+
+  public static boolean getAllowCompactorsToConvertWalToBlocks() {
+    String v = getProperty(PACK_COMPACTOR_ALLOW_WAL_CONVERTIONS);
+    if (v == null) {
+      return false;
+    }
+    return Boolean.parseBoolean(v.toLowerCase());
   }
 
   public static boolean getFileSystemMount() {
