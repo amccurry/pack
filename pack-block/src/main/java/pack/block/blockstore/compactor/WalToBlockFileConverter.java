@@ -157,7 +157,11 @@ public class WalToBlockFileConverter implements Closeable {
           if (fileSystem.rename(tmpBlockPath, newBlockPath)) {
             LOGGER.info("Wal convert commit path {}", newBlockPath);
           } else {
-            throw new IOException("Wal convert commit failed");
+            if (fileSystem.exists(newBlockPath)) {
+              fileSystem.delete(tmpBlockPath, false);
+            } else {
+              throw new IOException("Wal convert commit failed");
+            }
           }
         })) {
 
