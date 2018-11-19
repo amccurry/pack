@@ -5,14 +5,14 @@
   "version": 1,
   "runAs": {
     "user": "root",
-    "group": "root"
+    "group": "root",
+    "principal" : "hdfs"
   },
   "icon": "images/icon.png",
+  "parcel" : {
+    "requiredTags" : [ "pack" ]
+  },
   "serviceDependencies": [
-    {
-      "name": "ZOOKEEPER",
-      "required": "true"
-    },
     {
       "name": "HDFS",
       "required": "true"
@@ -38,16 +38,6 @@
   ],
   "parameters": [
     {
-      "name": "PACK_ZK_CHROOT",
-      "label": "Pack ZooKeeper Chroot",
-      "description": "Pack ZooKeeper Chroot",
-      "configName": "PACK_ZK_CHROOT",
-      "required": true,
-      "configurableInWizard": true,
-      "default": "/pack",
-      "type": "string"
-    },
-    {
       "name": "PACK_HDFS_PATH",
       "label": "Pack HDFS Path",
       "description": "Pack HDFS Path",
@@ -66,16 +56,6 @@
       "configurableInWizard": true,
       "default": "/var/lib/pack",
       "type": "string"
-    },
-    {
-      "name": "PACK_SCOPE",
-      "label": "Pack Docker Scope",
-      "description": "Pack Docker Scope",
-      "configName": "PACK_SCOPE",
-      "required": true,
-      "configurableInWizard": false,
-      "default": "global",
-      "type": "string"
     }
   ],
   "roles": [
@@ -86,13 +66,11 @@
       "startRunner": {
         "program": "scripts/control.sh",
         "args": [
-          "pack"
+          "server"
         ],
         "environmentVariables": {
-          "PACK_ZK_CHROOT": "${PACK_ZK_CHROOT}",
           "PACK_HDFS_PATH": "${PACK_HDFS_PATH}",
-          "PACK_LOCAL": "${PACK_LOCAL}",
-          "PACK_SCOPE": "${PACK_SCOPE}"
+          "PACK_LOCAL": "${PACK_LOCAL}"
         }
       },
       "logging": {
@@ -110,13 +88,11 @@
       "startRunner": {
         "program": "scripts/control.sh",
         "args": [
-          "compaction"
+          "compactor"
         ],
         "environmentVariables": {
-          "PACK_ZK_CHROOT": "${PACK_ZK_CHROOT}",
           "PACK_HDFS_PATH": "${PACK_HDFS_PATH}",
-          "PACK_LOCAL": "${PACK_LOCAL}",
-          "PACK_SCOPE": "${PACK_SCOPE}"
+          "PACK_LOCAL": "${PACK_LOCAL}"
         }
       },
       "logging": {

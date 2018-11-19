@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 export CLASSPATH="<hadoop-conf>"
-for f in ./target/PACK-17*/PACK-17*/lib/*
+for f in ./target/PACK-*/PACK-*/lib/*
 do
   export CLASSPATH="${CLASSPATH}:${f}"
 done
@@ -9,8 +9,6 @@ echo $CLASSPATH
 set -x
 sudo \
  PACK_LOCAL="/var/lib/pack-block" \
- PACK_SCOPE="global" \
  PACK_HDFS_PATH="/user/pack/block-volumes" \
  PACK_ZOOKEEPER_CONNECTION_STR="<zk>/pack" \
  java -Xmx1g -Xms1g -cp ${CLASSPATH} pack.block.server.BlockPackServer
-

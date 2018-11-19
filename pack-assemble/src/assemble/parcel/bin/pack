@@ -49,12 +49,6 @@ else
  echo "PACK_LOCAL=${PACK_LOCAL}";
 fi
 
-if [ -z ${PACK_SCOPE+x} ]; then
- echo "PACK_SCOPE is not defined";
-else
- echo "PACK_SCOPE=${PACK_SCOPE}";
-fi
-
 if [ -z ${PACK_LOG4J_CONFIG+x} ]; then
  echo "PACK_LOG4J_CONFIG is not defined";
 else
@@ -70,13 +64,13 @@ else
 fi
 
 case $CMD in
-  (pack)
+  (server)
     exec -a pack ${JAVA_CMD} -Xmx256m -Xms256m pack.block.server.BlockPackServer
     ;;
-  (compaction)
+  (compactor)
     exec -a pack-compactor ${JAVA_CMD} -Xmx256m -Xms256m pack.block.blockstore.compactor.PackCompactorServer
     ;;
   (*)
-    echo "Don't understand [$CMD]"
+    exec -a pack-cli ${JAVA_CMD} -Xmx256m -Xms256m pack.block.blockstore.cli.PackCli "$@"
     ;;
 esac
