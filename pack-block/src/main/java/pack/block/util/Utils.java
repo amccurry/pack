@@ -13,6 +13,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,15 +33,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
-import com.cloudera.io.netty.util.internal.ThreadLocalRandom;
 import com.google.common.base.Splitter;
 
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.server.BlockPackFuse;
 import pack.util.ExecUtil;
 import pack.util.Result;
-import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClientFactory;
 import sun.misc.Unsafe;
 
 public class Utils {
@@ -55,8 +53,6 @@ public class Utils {
   public static final String HDFS_SITE_XML = "hdfs-site.xml";
   public static final String CORE_SITE_XML = "core-site.xml";
   public static final String PACK_FILE_SYSTEM_MOUNT = "PACK_FILE_SYSTEM_MOUNT";
-  public static final String GLOBAL = "global";
-  public static final String PACK_SCOPE = "PACK_SCOPE";
   public static final int PACK_ZOOKEEPER_CONNECTION_TIMEOUT_DEFAULT = 30000;
   public static final String PACK_ZOOKEEPER_CONNECTION_TIMEOUT = "PACK_ZOOKEEPER_CONNECTION_TIMEOUT";
   public static final String PACK_ZOOKEEPER_CONNECTION_STR = "PACK_ZOOKEEPER_CONNECTION_STR";
@@ -92,7 +88,6 @@ public class Utils {
   private static final String KEEP_SIZE_SWITCH = "--keep-size";
   private static final String FALLOCATE = "fallocate";
   private static final AtomicReference<UserGroupInformation> UGI = new AtomicReference<>();
-  private static final AtomicReference<ZooKeeperClientFactory> _zk = new AtomicReference<>();
 
   public static Path qualify(FileSystem fileSystem, Path path) {
     return path.makeQualified(fileSystem.getUri(), fileSystem.getWorkingDirectory());
@@ -478,22 +473,6 @@ public class Utils {
       ar[index] = ar[i];
       ar[i] = a;
     }
-  }
-
-  public static boolean isGlobalScope() {
-    String v = getProperty(PACK_SCOPE);
-    if (v != null && GLOBAL.equals(v.toLowerCase())) {
-      return true;
-    }
-    return false;
-  }
-
-  public synchronized static ZooKeeperClientFactory getZooKeeperClientFactory() {
-    ZooKeeperClientFactory zk = _zk.get();
-    if (zk == null) {
-      _zk.set(zk = ZkUtils.newZooKeeperClientFactory(getZooKeeperConnectionString(), getZooKeeperConnectionTimeout()));
-    }
-    return zk;
   }
 
   public static void crashJVM() throws Exception {

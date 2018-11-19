@@ -48,7 +48,7 @@ public class BlockPackServer extends PackServer {
     setupDockerDirs();
     String sockerFile = RUN_DOCKER_PLUGINS + "/pack.sock";
 
-    BlockPackServer packServer = new BlockPackServer(Utils.isGlobalScope(), sockerFile, localWorkingDir, localLogDir,
+    BlockPackServer packServer = new BlockPackServer(true, sockerFile, localWorkingDir, localLogDir,
         remotePath, numberOfMountSnapshots, strategy);
     packServer.runServer();
   }

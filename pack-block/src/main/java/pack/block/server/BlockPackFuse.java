@@ -27,7 +27,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ShutdownHookManager;
-import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
@@ -56,9 +55,6 @@ import pack.block.server.json.BlockPackFuseConfigInternal.BlockPackFuseConfigInt
 import pack.block.util.Utils;
 import pack.util.ExecUtil;
 import pack.util.Result;
-import pack.zk.utils.ZkUtils;
-import pack.zk.utils.ZooKeeperClientFactory;
-import pack.zk.utils.ZooKeeperLockManager;
 
 public class BlockPackFuse implements Closeable {
 
@@ -77,7 +73,6 @@ public class BlockPackFuse implements Closeable {
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackFuse.class);
   private static final Logger STATUS_LOGGER = LoggerFactory.getLogger("STATUS");
 
-  private static final String MOUNT_ZK = "/mount";
   private static final String MOUNT = "mount";
   private static final String SUDO = "sudo";
   private static final String UMOUNT = "umount";
@@ -307,10 +302,6 @@ public class BlockPackFuse implements Closeable {
     };
   }
 
-  public static ZooKeeperLockManager createLockmanager(ZooKeeperClientFactory zk, String name) throws IOException {
-    return ZkUtils.newZooKeeperLockManager(zk, MOUNT_ZK + "/" + name);
-  }
-
   FuseFileSystemSingleMount getFuse() {
     return _fuse;
   }
@@ -342,11 +333,11 @@ public class BlockPackFuse implements Closeable {
     }
   }
 
-  public void mount() throws IOException, InterruptedException, KeeperException {
+  public void mount() throws IOException, InterruptedException {
     mount(true);
   }
 
-  public void mount(boolean blocking) throws IOException, InterruptedException, KeeperException {
+  public void mount(boolean blocking) throws IOException, InterruptedException {
     _closed.set(false);
     startFuseMount();
     _blockPackAdmin.setStatus(Status.FUSE_MOUNT_STARTED, "Mounting FUSE @ " + _fuseLocalPath);

@@ -11,19 +11,19 @@ export PACK_ZOOKEEPER_CONNECTION_STR="${ZK_QUORUM}${PACK_ZK_CHROOT}"
 if [ -z ${PACK_HDFS_KERBEROS_KEYTAB+x} ]; then
  export PACK_HDFS_USER=hdfs
  export HADOOP_USER_NAME=hdfs
-#else
-#export PACK_HDFS_KERBEROS_KEYTAB
-#export PACK_HDFS_KERBEROS_PRINCIPAL_NAME
+else
+ export PACK_HDFS_KERBEROS_KEYTAB="./pack.keytab"
+ export PACK_HDFS_KERBEROS_PRINCIPAL_NAME="${SOME_ENV_VAR}"
 fi
 
 CMD=$1
 
 case $CMD in
-  (pack)
-    exec -a pack ${PACK_PARCEL_PATH}/bin/run.sh pack
+  (server)
+    exec -a pack ${PACK_PARCEL_PATH}/bin/pack server
     ;;
-  (compaction)
-    exec -a pack ${PACK_PARCEL_PATH}/bin/run.sh compaction
+  (compactor)
+    exec -a pack ${PACK_PARCEL_PATH}/bin/pack compactor
     ;;
   (*)
     echo "Don't understand [$CMD]"
