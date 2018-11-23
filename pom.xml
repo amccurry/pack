@@ -21,7 +21,8 @@
 		<sizeof.version>0.3.0</sizeof.version>
 		<commons-io.version>2.5</commons-io.version>
 		<slf4j.version>1.7.21</slf4j.version>
-		<sparkjava.version>2.6.0</sparkjava.version>
+		<sparkjava.version>2.7.2</sparkjava.version>
+		<jetty.version>9.4.6.v20170531</jetty.version>
 	</properties>
 
 	<repositories>
@@ -145,7 +146,7 @@
 			<dependency>
 				<groupId>org.eclipse.jetty</groupId>
 				<artifactId>jetty-unixsocket</artifactId>
-				<version>9.4.4.v20170414</version>
+				<version>${jetty.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>org.roaringbitmap</groupId>
@@ -164,6 +165,12 @@
 				<scope>test</scope>
 			</dependency>
 			<dependency>
+				<groupId>org.projectlombok</groupId>
+				<artifactId>lombok</artifactId>
+				<version>1.16.18</version>
+				<scope>provided</scope>
+			</dependency>
+			<dependency>
 				<groupId>junit</groupId>
 				<artifactId>junit</artifactId>
 				<version>4.12</version>
@@ -175,8 +182,15 @@
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
-			<version>1.16.18</version>
 			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-log4j12</artifactId>
 		</dependency>
 	</dependencies>
 	<build>

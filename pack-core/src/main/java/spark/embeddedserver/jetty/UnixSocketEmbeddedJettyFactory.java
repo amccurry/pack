@@ -29,7 +29,7 @@ public class UnixSocketEmbeddedJettyFactory implements EmbeddedServerFactory {
   private final JettyServerFactory serverFactory;
 
   public UnixSocketEmbeddedJettyFactory() {
-    this.serverFactory = JettyServer::create;
+    this.serverFactory = new JettyServer();
   }
 
   public UnixSocketEmbeddedJettyFactory(JettyServerFactory serverFactory) {
