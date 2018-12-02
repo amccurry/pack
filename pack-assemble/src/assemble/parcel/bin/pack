@@ -20,8 +20,8 @@ case $CMD in
     exec -a pack-cli sudo \
     curl --unix-socket /var/run/docker/plugins/pack.sock \
          -H "Content-Type: application/json" \
-         -d "{}" \
-         -X POST http:/VolumeDriver.List
+         -X POST http://localhost/VolumeDriver.List 2>/dev/null | \
+        jq -r '.Volumes[].Name'
     ;;
   (*)
     echo "Don't understand [$CMD]"
