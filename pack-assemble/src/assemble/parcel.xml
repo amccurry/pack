@@ -15,12 +15,6 @@
 			<outputDirectory>${parcel.name}-${parcel.version}/lib</outputDirectory>
 			<unpack>false</unpack>
 		</dependencySet>
-		<dependencySet>
-			<scope>test</scope>
-			<useProjectArtifact>false</useProjectArtifact>
-			<outputDirectory>${parcel.name}-${parcel.version}/lib-test</outputDirectory>
-			<unpack>false</unpack>
-		</dependencySet>
 	</dependencySets>
 
 	<fileSets>
