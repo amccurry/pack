@@ -52,6 +52,8 @@ public class LocalWalCache implements ReadRequestHandler, Closeable {
       while (reader.next(key, value)) {
         Type type = key.getType();
         switch (type) {
+        case NOOP:
+          break;
         case DATA:
           localContext.write(key.getStartingBlockId(), toBuffer(value));
           break;

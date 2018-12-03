@@ -10,7 +10,7 @@ import org.apache.hadoop.io.Writable;
 public class WalKeyWritable implements Writable {
 
   public static enum Type {
-    DATA((byte) 0), TRIM((byte) 1);
+    DATA((byte) 0), TRIM((byte) 1), NOOP((byte) 2);
     private final byte type;
 
     private Type(byte b) {
@@ -80,6 +80,8 @@ public class WalKeyWritable implements Writable {
   public void write(DataOutput out) throws IOException {
     out.writeByte(type.getValue());
     switch (type) {
+    case NOOP:
+      break;
     case TRIM:
       endingBlockId.write(out);
     case DATA:
@@ -94,6 +96,8 @@ public class WalKeyWritable implements Writable {
   public void readFields(DataInput in) throws IOException {
     type = Type.value(in.readByte());
     switch (type) {
+    case NOOP:
+      break;
     case TRIM:
       endingBlockId.readFields(in);
     case DATA:
