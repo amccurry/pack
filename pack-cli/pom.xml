@@ -8,13 +8,13 @@
 		<version>2.0-SNAPSHOT</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
-	<artifactId>pack-block</artifactId>
+	<artifactId>pack-cli</artifactId>
 	<packaging>jar</packaging>
 
 	<dependencies>
 		<dependency>
 			<groupId>pack</groupId>
-			<artifactId>pack-agent</artifactId>
+			<artifactId>pack-block</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>

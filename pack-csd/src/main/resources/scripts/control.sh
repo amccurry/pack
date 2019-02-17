@@ -18,8 +18,8 @@ fi
 CMD=$1
 
 case $CMD in
-  (server)
-    exec -a pack ${PACK_PARCEL_PATH}/bin/run.sh server
+  (agent)
+    exec -a pack ${PACK_PARCEL_PATH}/bin/run.sh agent
     ;;
   (compactor)
     exec -a pack ${PACK_PARCEL_PATH}/bin/run.sh compactor

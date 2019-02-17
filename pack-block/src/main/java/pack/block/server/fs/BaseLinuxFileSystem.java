@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.util.ExecUtil;
 import pack.util.Result;
 
@@ -27,7 +28,6 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
   protected static final String UMOUNT = "umount";
   protected static final String MOUNT = "mount";
   protected static final String OPTIONS_SWITCH = "-o";
-  protected static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
 
   @Override
   public void mount(File device, File mountLocation, String options) throws IOException {
@@ -37,7 +37,7 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
     } catch (IOException e) {
 
     }
-    options = options == null ? DEFAULT_MOUNT_OPTIONS : options;
+    options = options == null ? BlockStoreMetaData.DEFAULT_MOUNT_OPTIONS : options;
     ExecUtil.exec(LOGGER, Level.INFO, SUDO, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options, device.getAbsolutePath(),
         mountLocation.getAbsolutePath());
   }

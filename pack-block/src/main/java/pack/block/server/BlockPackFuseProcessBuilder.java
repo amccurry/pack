@@ -25,6 +25,7 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.util.Utils;
 import pack.util.ExecUtil;
@@ -62,9 +63,6 @@ public class BlockPackFuseProcessBuilder {
   private static final String JAVA_HOME = "java.home";
   private static final String JAVA_CLASS_PATH = "java.class.path";
   private static final String BIN_JAVA = "/bin/java";
-  private static final String XMX_SWITCH = "-Xmx256m";
-  private static final String XMS_SWITCH = "-Xms256m";
-  private static final String XX_USE_G1GC = "-XX:+UseG1GC";
   private static final String LOG = "log";
   private static final String RUN_SH = "run.sh";
   private static final String HADOOP_CONFIG = "hadoop-config";
@@ -73,7 +71,8 @@ public class BlockPackFuseProcessBuilder {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   public static void startProcess(String volumeName, String workingDir, String logDir, String libDir,
-      String configFilePath, Configuration configuration, BlockPackFuseConfig config) throws IOException {
+      String configFilePath, Configuration configuration, BlockPackFuseConfig config, BlockStoreMetaData metaData)
+      throws IOException {
 
     String javaHome = System.getProperty(JAVA_HOME);
 
@@ -117,10 +116,9 @@ public class BlockPackFuseProcessBuilder {
       output.println(EXPORT + " " + CLASSPATH + "=" + classPath);
 
       Builder<String> javaOptsBuilder = ImmutableList.builder();
-      javaOptsBuilder.add(toProp(PACK_LOG_DIR, logDir))
-                     .add(XX_USE_G1GC)
-                     .add(XMX_SWITCH)
-                     .add(XMS_SWITCH);
+
+      javaOptsBuilder.add(toProp(PACK_LOG_DIR, logDir));
+      addJavaOptions(javaOptsBuilder, metaData);
       String javaOpts = Joiner.on(' ')
                               .join(javaOptsBuilder.build());
       output.println(EXPORT + " " + _JAVA_OPTIONS + "=\"" + javaOpts + "\"");
@@ -148,6 +146,9 @@ public class BlockPackFuseProcessBuilder {
           runWriter.println("export " + Utils.PACK_HDFS_KERBEROS_KEYTAB + "=" + newKeytabPath);
           runWriter.println("export " + Utils.PACK_HDFS_KERBEROS_PRINCIPAL_NAME + "=" + hdfsPrinciaplName);
         }
+        int openFileUlimit = metaData.getUlimitOpenFiles() == 0 ? BlockStoreMetaData.DEFAULT_ULIMIT_OPEN_FILES
+            : metaData.getUlimitOpenFiles();
+        runWriter.println("ulimit -n " + openFileUlimit);
         runWriter.println(cmd);
       }
       ImmutableList<Object> command = ImmutableList.builder()
@@ -171,6 +172,17 @@ public class BlockPackFuseProcessBuilder {
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
     ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
+  }
+
+  private static void addJavaOptions(Builder<String> javaOptsBuilder, BlockStoreMetaData metaData) {
+    String javaOptions = metaData.getJavaOptions();
+    if (javaOptions == null) {
+      javaOptsBuilder.add(BlockStoreMetaData.XX_USE_G1GC)
+                     .add(BlockStoreMetaData.XMX_SWITCH)
+                     .add(BlockStoreMetaData.XMS_SWITCH);
+    } else {
+      javaOptsBuilder.add(javaOptions);
+    }
   }
 
   private static void copyConfig(Configuration configuration, File configDir) throws IOException {

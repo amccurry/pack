@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.event.Level;
 
+import pack.block.blockstore.BlockStoreMetaData;
 import pack.util.ExecUtil;
 import pack.util.Result;
 
@@ -35,7 +36,7 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
     } catch (IOException e) {
 
     }
-    options = options == null ? DEFAULT_MOUNT_OPTIONS : options;
+    options = options == null ? BlockStoreMetaData.DEFAULT_MOUNT_OPTIONS : options;
     Result result = ExecUtil.execAsResult(LOGGER, Level.INFO, SUDO, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options,
         device.getCanonicalPath(), mountLocation.getCanonicalPath());
 

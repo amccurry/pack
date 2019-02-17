@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Joiner;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -38,6 +39,9 @@ public class BlockStoreMetaData {
   private static final String FILE_SYSTEM_BLOCK_SIZE = "fileSystemBlockSize";
   private static final String MAX_WAL_FILE_SIZE = "maxWalFileSize";
   private static final String MAX_OBSOLETE_RATIO = "maxObsoleteRatio";
+  public static final String XMX_SWITCH = "-Xmx256m";
+  public static final String XMS_SWITCH = "-Xms256m";
+  public static final String XX_USE_G1GC = "-XX:+UseG1GC";
 
   public static final int DEFAULT_MAX_CACHE_CAPACITY_PER_ACTIVE_FILE = 10_000;
 
@@ -63,22 +67,34 @@ public class BlockStoreMetaData {
 
   public static final double DEFAULT_SYNC_RATE_PER_SECOND = 0.5d;
 
-  public static final BlockStoreMetaData DEFAULT_META_DATA = BlockStoreMetaData.builder()
-                                                                               .fileSystemBlockSize(
-                                                                                   DEFAULT_FILESYSTEM_BLOCKSIZE)
-                                                                               .fileSystemType(FileSystemType.XFS)
-                                                                               .length(DEFAULT_LENGTH_BYTES)
-                                                                               .maxBlockFileSize(
-                                                                                   DEFAULT_MAX_BLOCK_FILE_SIZE)
-                                                                               .maxObsoleteRatio(
-                                                                                   DEFAULT_MAX_OBSOLETE_RATIO)
-                                                                               .maxWalFileSize(
-                                                                                   DEFAULT_MAX_WAL_FILE_SIZE)
-                                                                               .maxIdleWriterTime(
-                                                                                   DEFAULT_MAX_IDLE_WRITER_TIME)
-                                                                               .minTimeBetweenSyncs(
-                                                                                   DEFAULT_MIN_TIME_BETWEEN_SYNCS)
-                                                                               .build();
+  public static final String DEFAULT_MOUNT_OPTIONS = "noatime,sync";
+
+  public static final String DEFAULT_JAVA_OPTIONS = Joiner.on(' ')
+                                                          .join(XX_USE_G1GC, XMX_SWITCH, XMS_SWITCH);
+
+  public static final int DEFAULT_ULIMIT_OPEN_FILES = 16 * 1024;
+
+  public static final BlockStoreMetaData DEFAULT_META_DATA = getDefaultMetaData();
+
+  public BlockStoreMetaData() {
+    
+  }
+
+  private static BlockStoreMetaData getDefaultMetaData() {
+    return BlockStoreMetaData.builder()
+                             .fileSystemBlockSize(DEFAULT_FILESYSTEM_BLOCKSIZE)
+                             .fileSystemType(FileSystemType.XFS)
+                             .length(DEFAULT_LENGTH_BYTES)
+                             .maxBlockFileSize(DEFAULT_MAX_BLOCK_FILE_SIZE)
+                             .maxObsoleteRatio(DEFAULT_MAX_OBSOLETE_RATIO)
+                             .maxWalFileSize(DEFAULT_MAX_WAL_FILE_SIZE)
+                             .maxIdleWriterTime(DEFAULT_MAX_IDLE_WRITER_TIME)
+                             .minTimeBetweenSyncs(DEFAULT_MIN_TIME_BETWEEN_SYNCS)
+                             .mountOptions(DEFAULT_MOUNT_OPTIONS)
+                             .javaOptions(DEFAULT_JAVA_OPTIONS)
+                             .ulimitOpenFiles(DEFAULT_ULIMIT_OPEN_FILES)
+                             .build();
+  }
 
   @JsonProperty
   @Builder.Default
@@ -101,7 +117,12 @@ public class BlockStoreMetaData {
   long maxBlockFileSize = DEFAULT_MAX_BLOCK_FILE_SIZE;
 
   @JsonProperty
-  String mountOptions;
+  @Builder.Default
+  String mountOptions = DEFAULT_MOUNT_OPTIONS;
+
+  @JsonProperty
+  @Builder.Default
+  String javaOptions = DEFAULT_JAVA_OPTIONS;
 
   @JsonProperty
   @Builder.Default
@@ -122,13 +143,17 @@ public class BlockStoreMetaData {
   @Builder.Default
   long minTimeBetweenSyncs = DEFAULT_MIN_TIME_BETWEEN_SYNCS;
 
+  @JsonProperty
+  @Builder.Default
+  int ulimitOpenFiles = DEFAULT_ULIMIT_OPEN_FILES;
+
   public static void main(String[] args) throws IOException {
     System.out.println(DEFAULT_META_DATA);
     ObjectMapper mapper = new ObjectMapper();
     System.out.println(mapper.writeValueAsString(DEFAULT_META_DATA));
 
     BlockStoreMetaData hdfsMetaData = mapper.readValue(new File("test.json"), BlockStoreMetaData.class);
-    System.out.println(hdfsMetaData.getMaxIdleWriterTime());
+    System.out.println(hdfsMetaData.getUlimitOpenFiles());
   }
 
   public static BlockStoreMetaData setupOptions(BlockStoreMetaData defaultmetaData, Map<String, Object> options) {

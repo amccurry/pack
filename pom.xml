@@ -4,7 +4,7 @@
 	<groupId>pack</groupId>
 	<artifactId>pack</artifactId>
 	<packaging>pom</packaging>
-	<version>1.0-SNAPSHOT</version>
+	<version>2.0-SNAPSHOT</version>
 	<name>pack</name>
 
 	<properties>
@@ -23,7 +23,7 @@
 		<slf4j.version>1.7.21</slf4j.version>
 		<sparkjava.version>2.7.2</sparkjava.version>
 		<jetty.version>9.4.8.v20171121</jetty.version>
-		<csd.version>1.0</csd.version>
+		<csd.version>2.0</csd.version>
 	</properties>
 
 	<repositories>
@@ -39,7 +39,8 @@
 	</repositories>
 
 	<modules>
-		<module>pack-server</module>
+		<module>pack-agent</module>
+		<module>pack-cli</module>
 		<module>pack-assemble</module>
 		<module>pack-spi</module>
 		<module>pack-block</module>
@@ -51,7 +52,7 @@
 		<dependencies>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>pack-server</artifactId>
+				<artifactId>pack-agent</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>

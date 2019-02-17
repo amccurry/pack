@@ -458,7 +458,7 @@ public class BlockPackStorage implements PackStorage {
                                                   .numberOfMountSnapshots(_numberOfMountSnapshots)
                                                   .build();
         BlockPackFuseProcessBuilder.startProcess(volumeName, volumeDir.getCanonicalPath(), logDir.getCanonicalPath(),
-            libDir.getCanonicalPath(), configFile.getCanonicalPath(), _configuration, config);
+            libDir.getCanonicalPath(), configFile.getCanonicalPath(), _configuration, config, metaData);
 
         File brick = new File(localDevice, BRICK);
         if (!waitForDevice(brick, true, 60)) {
@@ -554,8 +554,8 @@ public class BlockPackStorage implements PackStorage {
     }
   }
 
-  private void mountFs(BlockStoreMetaData metaData, File device, File localFileSystemMount, String volumeName, String id)
-      throws IOException, InterruptedException {
+  private void mountFs(BlockStoreMetaData metaData, File device, File localFileSystemMount, String volumeName,
+      String id) throws IOException, InterruptedException {
     String mountOptions = metaData.getMountOptions();
     LinuxFileSystem linuxFileSystem = metaData.getFileSystemType()
                                               .getLinuxFileSystem();

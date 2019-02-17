@@ -55,6 +55,18 @@ else
  echo "PACK_LOG4J_CONFIG=${PACK_LOG4J_CONFIG}";
 fi
 
+if [ -z ${PACK_AGENT_JAVA_HEAP+x} ]; then
+ export PACK_AGENT_JAVA_HEAP="256m"
+else
+ echo "PACK_AGENT_JAVA_HEAP=${PACK_AGENT_JAVA_HEAP}";
+fi
+
+if [ -z ${PACK_COMPACTOR_JAVA_HEAP+x} ]; then
+ export PACK_COMPACTOR_JAVA_HEAP="1G"
+else
+ echo "PACK_COMPACTOR_JAVA_HEAP=${PACK_COMPACTOR_JAVA_HEAP}";
+fi
+
 CMD=$1
 
 if [ -z ${JAVA_HOME+x} ] ; then
@@ -64,11 +76,13 @@ else
 fi
 
 case $CMD in
-  (server)
-    exec -a pack ${JAVA_CMD} -Xmx256m -Xms256m pack.block.server.BlockPackServer
+  (agent)
+    JAVA_OPTIONS="${JAVA_OPTIONS} -Xmx${PACK_AGENT_JAVA_HEAP} -Xms${PACK_AGENT_JAVA_HEAP}"
+    exec -a pack-agent ${JAVA_CMD} ${JAVA_OPTIONS} pack.block.server.BlockPackServer
     ;;
   (compactor)
-    exec -a pack-compactor ${JAVA_CMD} -Xmx256m -Xms256m pack.block.blockstore.compactor.PackCompactorServer
+    JAVA_OPTIONS="${JAVA_OPTIONS} -Xmx${PACK_COMPACTOR_JAVA_HEAP} -Xms${PACK_COMPACTOR_JAVA_HEAP}"
+    exec -a pack-compactor ${JAVA_CMD} ${JAVA_OPTIONS} pack.block.blockstore.compactor.PackCompactorServer
     ;;
   (*)
     exec -a pack-cli ${JAVA_CMD} -Xmx256m -Xms256m pack.block.blockstore.cli.PackCli "$@"
