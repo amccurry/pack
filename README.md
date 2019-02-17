@@ -1,34 +1,33 @@
-# pack
+# Pack
 
-Simple docker volume driver to pack the contents of a mount and store in a HDFS cluster.  This driver does NOT make incremental changes to HDFS.  After a container exits pack creates a tar of the data in the volume and stores the tar in HDFS.  When the volume is mounted the tar is read from HDFS and extracted on the local host machine for the container to mount.  The tar maintains the permissions, group, and owner information between mounts.
+Pack is a HDFS backed block device and volume manager.  Pack is targeted to work with Docker as a Volume Plugin and Cloudera Manager for deployment.
 
-## Building pack as a Docker container.
+## Building Pack
 ~~~~
-docker build -t pack .
-~~~~
-
-## Running pack as a Docker container.
-~~~~
-docker run -d \
-  --name pack \
-  --cap-add SYS_ADMIN \
-  --device /dev/fuse \
-  -e PACK_ZOOKEEPER_CONNECTION_STR="<zk>/pack" \
-  -e HDFS_CONF_DIR="/pack/hadoop-conf" \
-  -v <hdfs config>:/pack/hadoop-conf \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /var/run/docker/plugins/:/var/run/docker/plugins/ \
-  pack <[pack|compactor]>
+mvn clean install -DskipTests
 ~~~~
 
-~~~~
-docker run -it --rm \
-  --name pack \
-  --cap-add SYS_ADMIN \
-  --device /dev/fuse \
-  -e TEST_ZK=true \
-  -e TEST_HDFS=true \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /var/run/docker/plugins/:/var/run/docker/plugins/ \
-  pack pack
-~~~~
+## Installation
+
+### CSD
+First the CSD jar ```pack-csd/target/PACK-2.0.jar``` needs to be copied to the Cloudera Manager Server into path ```/opt/cloudera/csd/```.
+
+Then go to the following URIs:
+```
+http://hostname:7180/cmf/csd/refresh
+http://hostname:7180/cmf/csd/install?csdName=PACK-2.0
+```
+
+Or simply restart the Cloudera Manager process.
+
+### Parcel
+Run the parcel server script:
+~~~
+./run_parcel_server.sh
+~~~
+
+In Cloudera Manager now add the computer hostname and port to the Cloudera Manager -> Parcels -> Configuration -> Remote Parcel Repository URLs list.  The parcel server port is 8001.
+
+### Cloudera Manager Setup
+
+At this point you should be able to add Pack as a service to your cluster.  Install the Pack Agents on all the nodes where the Docker daemon is running.  Install the Pack Compactors on HDFS Datanodes (this is not a requirement).
