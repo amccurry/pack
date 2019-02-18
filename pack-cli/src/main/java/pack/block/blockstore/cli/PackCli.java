@@ -151,7 +151,9 @@ public class PackCli {
         FileSystem fileSystem = root.getFileSystem(configuration);
         return BlockPackStorage.getBlockPackStorageInfo(fileSystem, root, volumeName);
       });
-      System.out.printf("%s%n", volumeName);
+      System.out.printf("%-40s%-14d%-14d%-5d%-5d%-14d%-5d%-14d%n", info.getName(), info.getVolumeSize(),
+          info.getHdfsSize(), info.getNumberOfBlockFiles(), info.getNumberOfWalFiles(), info.getMaxWalSize(),
+          info.getNumberOfSnapshots(), info.getHdfsSizeWithSnapshots());
     }
   }
 

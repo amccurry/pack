@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.ContentSummary;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -57,6 +58,12 @@ import spark.Route;
 import spark.Service;
 
 public class BlockPackStorage implements PackStorage {
+
+  private static final String WALTMP = ".waltmp";
+
+  private static final String WAL = ".wal";
+
+  private static final String BLOCK = ".block";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockPackStorage.class);
 
@@ -698,8 +705,56 @@ public class BlockPackStorage implements PackStorage {
     return new Path(_root, volumeName);
   }
 
-  public static BlockPackStorageInfo getBlockPackStorageInfo(FileSystem fileSystem, Path root, String volumeName) {
-    // TODO Auto-generated method stub
-    return null;
+  public static BlockPackStorageInfo getBlockPackStorageInfo(FileSystem fileSystem, Path root, String volumeName)
+      throws IOException {
+    Path volumePath = new Path(root, volumeName);
+    BlockStoreMetaData blockStoreMetaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
+
+    ContentSummary contentSummary = fileSystem.getContentSummary(volumePath);
+
+    long maxWalSize = 0;
+    int numberOfBlockFiles = 0;
+    int numberOfWalFiles = 0;
+    long hdfsSize = contentSummary.getLength();
+    long volumeSize = blockStoreMetaData.getLength();
+
+    int numberOfSnapshots = getNumberOfSnapshots(fileSystem, volumePath);
+    long hdfsSizeWithSnapshots = contentSummary.getSnapshotSpaceConsumed();
+
+    Path blockPath = new Path(volumePath, "block");
+    FileStatus[] listStatus = fileSystem.listStatus(blockPath);
+    for (FileStatus fileStatus : listStatus) {
+      Path path = fileStatus.getPath();
+      long len = fileStatus.getLen();
+      String name = path.getName();
+      if (name.endsWith(BLOCK)) {
+        numberOfBlockFiles++;
+      } else if (name.endsWith(WAL) || name.endsWith(WALTMP)) {
+        numberOfWalFiles++;
+        if (len > maxWalSize) {
+          maxWalSize = len;
+        }
+      }
+    }
+
+    return BlockPackStorageInfo.builder()
+                               .maxWalSize(maxWalSize)
+                               .name(volumeName)
+                               .numberOfBlockFiles(numberOfBlockFiles)
+                               .numberOfSnapshots(numberOfSnapshots)
+                               .numberOfWalFiles(numberOfWalFiles)
+                               .hdfsSize(hdfsSize)
+                               .hdfsSizeWithSnapshots(hdfsSizeWithSnapshots)
+                               .volumeSize(volumeSize)
+                               .build();
+  }
+
+  private static int getNumberOfSnapshots(FileSystem fileSystem, Path volumePath) throws IOException {
+    Path snapshot = new Path(volumePath, ".snapshot");
+    FileStatus[] listStatus = fileSystem.listStatus(snapshot);
+    if (listStatus == null) {
+      return 0;
+    }
+    return listStatus.length;
   }
 }
