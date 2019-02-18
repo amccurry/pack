@@ -38,7 +38,6 @@ import org.apache.hadoop.io.BytesWritable;
 import org.roaringbitmap.RoaringBitmap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
@@ -69,6 +68,7 @@ import pack.block.server.fs.LinuxFileSystem;
 import pack.block.util.PackSizeOf;
 import pack.block.util.Utils;
 import pack.util.ExecUtil;
+import pack.util.LogLevel;
 import pack.util.Result;
 
 public class HdfsBlockStoreImpl implements BlockStore {
@@ -1069,11 +1069,11 @@ public class HdfsBlockStoreImpl implements BlockStore {
   }
 
   public static void readLoopDeviceCapacity(String device) throws IOException {
-    ExecUtil.exec(LOGGER, Level.DEBUG, "sudo", "losetup", "-c", device);
+    ExecUtil.exec(LOGGER, LogLevel.DEBUG, "sudo", "losetup", "-c", device);
   }
 
   public static String getLoopBackDevice(String file) throws IOException {
-    Result result = ExecUtil.execAsResult(LOGGER, Level.DEBUG, "sudo", "losetup", "-O", "NAME,BACK-FILE");
+    Result result = ExecUtil.execAsResult(LOGGER, LogLevel.DEBUG, "sudo", "losetup", "-O", "NAME,BACK-FILE");
     if (result.exitCode != 0) {
       throw new IOException(result.stderr + " " + result.stdout);
     }

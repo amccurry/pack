@@ -5,10 +5,10 @@ import java.io.IOException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import pack.block.blockstore.BlockStoreMetaData;
 import pack.util.ExecUtil;
+import pack.util.LogLevel;
 import pack.util.Result;
 
 public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
@@ -37,7 +37,7 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
     }
     options = options == null ? BlockStoreMetaData.DEFAULT_MOUNT_OPTIONS : options;
-    Result result = ExecUtil.execAsResult(LOGGER, Level.INFO, SUDO, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options,
+    Result result = ExecUtil.execAsResult(LOGGER, LogLevel.INFO, SUDO, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options,
         device.getCanonicalPath(), mountLocation.getCanonicalPath());
 
     if (result.exitCode == 0) {
@@ -45,8 +45,8 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
     }
 
     if (result.stderr.contains("Structure needs cleaning")) {
-      ExecUtil.exec(LOGGER, Level.INFO, SUDO, XFS_REPAIR, DEVICE_IS_FILE, device.getCanonicalPath());
-      ExecUtil.exec(LOGGER, Level.INFO, SUDO, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options, device.getCanonicalPath(),
+      ExecUtil.exec(LOGGER, LogLevel.INFO, SUDO, XFS_REPAIR, DEVICE_IS_FILE, device.getCanonicalPath());
+      ExecUtil.exec(LOGGER, LogLevel.INFO, SUDO, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options, device.getCanonicalPath(),
           mountLocation.getCanonicalPath());
     }
     throw new IOException(result.stderr);
@@ -54,17 +54,17 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void repair(File device) throws IOException {
-    ExecUtil.exec(LOGGER, Level.INFO, SUDO, XFS_REPAIR, DATA_LOSS, device.getCanonicalPath());
+    ExecUtil.exec(LOGGER, LogLevel.INFO, SUDO, XFS_REPAIR, DATA_LOSS, device.getCanonicalPath());
   }
 
   @Override
   public void mkfs(File device, int blockSize) throws IOException {
-    ExecUtil.exec(LOGGER, Level.INFO, SUDO, MKFS_XFS, device.getCanonicalPath());
+    ExecUtil.exec(LOGGER, LogLevel.INFO, SUDO, MKFS_XFS, device.getCanonicalPath());
   }
 
   @Override
   public void growOnline(File device) throws IOException {
-    ExecUtil.exec(LOGGER, Level.INFO, SUDO, XFS_GROWFS, device.getCanonicalPath());
+    ExecUtil.exec(LOGGER, LogLevel.INFO, SUDO, XFS_GROWFS, device.getCanonicalPath());
   }
 
   @Override
@@ -84,7 +84,7 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void fstrim(File mountLocation) throws IOException {
-    ExecUtil.exec(LOGGER, Level.INFO, SUDO, FSTRIM, VERBOSE_SWITCH, mountLocation.getAbsolutePath());
+    ExecUtil.exec(LOGGER, LogLevel.INFO, SUDO, FSTRIM, VERBOSE_SWITCH, mountLocation.getAbsolutePath());
   }
 
   @Override
@@ -94,7 +94,7 @@ public class XfsLinuxFileSystem extends BaseLinuxFileSystem {
 
   @Override
   public void assignUuid(String uuid, File device) throws IOException {
-    ExecUtil.exec(LOGGER, Level.INFO, SUDO, XFS_ADMIN, UUID, uuid, device.getAbsolutePath());
+    ExecUtil.exec(LOGGER, LogLevel.INFO, SUDO, XFS_ADMIN, UUID, uuid, device.getAbsolutePath());
   }
 
 }

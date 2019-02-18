@@ -31,13 +31,13 @@ import org.apache.log4j.PropertyConfigurator;
 import org.apache.log4j.xml.DOMConfigurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import com.google.common.base.Splitter;
 
 import pack.block.blockstore.hdfs.util.HdfsSnapshotUtil;
 import pack.block.server.BlockPackFuse;
 import pack.util.ExecUtil;
+import pack.util.LogLevel;
 import pack.util.Result;
 import sun.misc.Unsafe;
 
@@ -452,12 +452,12 @@ public class Utils {
   }
 
   public static void punchHole(Logger logger, File file, long offset, long length) throws IOException {
-    ExecUtil.exec(logger, Level.DEBUG, FALLOCATE, KEEP_SIZE_SWITCH, PUNCH_HOLE_SWITCH, OFFSET_SWITCH,
+    ExecUtil.exec(logger, LogLevel.DEBUG, FALLOCATE, KEEP_SIZE_SWITCH, PUNCH_HOLE_SWITCH, OFFSET_SWITCH,
         Long.toString(offset), LENGTH_SWTICH, Long.toString(length), file.getAbsolutePath());
   }
 
   public static long getNumberOfBlocksOnDisk(Logger logger, File file) throws IOException {
-    Result result = ExecUtil.execAsResult(logger, Level.DEBUG, LS, ALLOCATED_SIZE_SWITCH, file.getAbsolutePath());
+    Result result = ExecUtil.execAsResult(logger, LogLevel.DEBUG, LS, ALLOCATED_SIZE_SWITCH, file.getAbsolutePath());
     if (result.exitCode == 0) {
       List<String> list = SPACE_SPLITTER.splitToList(result.stdout);
       return Long.parseLong(list.get(0));

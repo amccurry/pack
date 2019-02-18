@@ -8,10 +8,10 @@ import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import pack.block.blockstore.BlockStoreMetaData;
 import pack.util.ExecUtil;
+import pack.util.LogLevel;
 import pack.util.Result;
 
 public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
@@ -38,7 +38,7 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
 
     }
     options = options == null ? BlockStoreMetaData.DEFAULT_MOUNT_OPTIONS : options;
-    ExecUtil.exec(LOGGER, Level.INFO, SUDO, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options, device.getAbsolutePath(),
+    ExecUtil.exec(LOGGER, LogLevel.INFO, SUDO, MOUNT, VERBOSE_SWITCH, OPTIONS_SWITCH, options, device.getAbsolutePath(),
         mountLocation.getAbsolutePath());
   }
 
@@ -46,7 +46,7 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
   public void umount(File mountLocation) throws IOException {
     while (isMounted(mountLocation)) {
       LOGGER.info("Trying to umount {}", mountLocation);
-      if (ExecUtil.execReturnExitCode(LOGGER, Level.INFO, SUDO, UMOUNT, mountLocation.getAbsolutePath()) == 0) {
+      if (ExecUtil.execReturnExitCode(LOGGER, LogLevel.INFO, SUDO, UMOUNT, mountLocation.getAbsolutePath()) == 0) {
         return;
       }
       try {
@@ -60,7 +60,7 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
 
   @Override
   public boolean isMounted(File mountLocation) throws IOException {
-    Result result = ExecUtil.execAsResult(LOGGER, Level.INFO, SUDO, MOUNT);
+    Result result = ExecUtil.execAsResult(LOGGER, LogLevel.INFO, SUDO, MOUNT);
     BufferedReader reader = new BufferedReader(new StringReader(result.stdout));
     String line;
     String path = mountLocation.getAbsolutePath()
@@ -78,7 +78,7 @@ public abstract class BaseLinuxFileSystem implements LinuxFileSystem {
 
   @Override
   public boolean isFileSystemExists(File device) throws IOException {
-    if (ExecUtil.execReturnExitCode(LOGGER, Level.INFO, SUDO, BLKID, OUTPUT_FORMAT_SWITCH, VALUE, TAG_SWITCH, TYPE,
+    if (ExecUtil.execReturnExitCode(LOGGER, LogLevel.INFO, SUDO, BLKID, OUTPUT_FORMAT_SWITCH, VALUE, TAG_SWITCH, TYPE,
         device.getAbsolutePath()) == 0) {
       return true;
     }

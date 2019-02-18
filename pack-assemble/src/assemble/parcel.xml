@@ -30,6 +30,10 @@
 			<directory>${project.basedir}/src/assemble/parcel/bin</directory>
 			<outputDirectory>${parcel.name}-${parcel.version}/bin</outputDirectory>
 		</fileSet>
+		<fileSet>
+			<directory>${project.basedir}/src/assemble/parcel/etc/pack/conf.dist</directory>
+			<outputDirectory>${parcel.name}-${parcel.version}/etc/pack/conf.dist</outputDirectory>
+		</fileSet>
 	</fileSets>
 
 	<files>

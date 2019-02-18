@@ -7,7 +7,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import pack.PackStorage;
 import pack.block.blockstore.hdfs.util.HdfsSnapshotStrategy;
@@ -16,6 +15,7 @@ import pack.block.server.BlockPackStorageConfig.BlockPackStorageConfigBuilder;
 import pack.block.util.Utils;
 import pack.docker.PackServer;
 import pack.util.ExecUtil;
+import pack.util.LogLevel;
 import spark.Service;
 
 public class BlockPackServer extends PackServer {
@@ -54,10 +54,10 @@ public class BlockPackServer extends PackServer {
   }
 
   private static void setupDockerDirs() throws IOException {
-    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, MKDIR, P, RUN_DOCKER_PLUGINS);
-    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, CHOWN, R, ROOT_ROOT, RUN_DOCKER);
-    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, CHMOD, _700, RUN_DOCKER);
-    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, CHMOD, _700, RUN_DOCKER_PLUGINS);
+    ExecUtil.exec(LOGGER, LogLevel.DEBUG, SUDO, MKDIR, P, RUN_DOCKER_PLUGINS);
+    ExecUtil.exec(LOGGER, LogLevel.DEBUG, SUDO, CHOWN, R, ROOT_ROOT, RUN_DOCKER);
+    ExecUtil.exec(LOGGER, LogLevel.DEBUG, SUDO, CHMOD, _700, RUN_DOCKER);
+    ExecUtil.exec(LOGGER, LogLevel.DEBUG, SUDO, CHMOD, _700, RUN_DOCKER_PLUGINS);
   }
 
   public static HdfsSnapshotStrategy getStrategy() {

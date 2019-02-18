@@ -16,6 +16,10 @@
 			<groupId>pack</groupId>
 			<artifactId>pack-block</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>pack-cli</artifactId>
+		</dependency>
 	</dependencies>
 
 	<build>

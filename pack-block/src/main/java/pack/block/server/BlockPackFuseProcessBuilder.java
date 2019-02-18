@@ -17,7 +17,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
@@ -29,6 +28,7 @@ import pack.block.blockstore.BlockStoreMetaData;
 import pack.block.server.json.BlockPackFuseConfig;
 import pack.block.util.Utils;
 import pack.util.ExecUtil;
+import pack.util.LogLevel;
 
 public class BlockPackFuseProcessBuilder {
 
@@ -171,7 +171,7 @@ public class BlockPackFuseProcessBuilder {
     }
 
     LOGGER.info("Starting fuse mount from script file {}", start.getAbsolutePath());
-    ExecUtil.exec(LOGGER, Level.DEBUG, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
+    ExecUtil.exec(LOGGER, LogLevel.DEBUG, SUDO, INHERENT_ENV_VAR_SWITCH, BASH, "-x", start.getAbsolutePath());
   }
 
   private static void addJavaOptions(Builder<String> javaOptsBuilder, BlockStoreMetaData metaData) {

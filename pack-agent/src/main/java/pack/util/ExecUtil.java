@@ -12,13 +12,12 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 public class ExecUtil {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(ExecUtil.class);
 
-  public static void exec(Logger logger, Level level, String... command) throws IOException {
+  public static void exec(Logger logger, LogLevel level, String... command) throws IOException {
     String uuid = UUID.randomUUID()
                       .toString();
     List<String> list = Arrays.asList(command);
@@ -36,7 +35,7 @@ public class ExecUtil {
     }
   }
 
-  public static Result execAsResult(Logger logger, Level level, String... command) throws IOException {
+  public static Result execAsResult(Logger logger, LogLevel level, String... command) throws IOException {
     String uuid = UUID.randomUUID()
                       .toString();
     List<String> list = Arrays.asList(command);
@@ -50,7 +49,7 @@ public class ExecUtil {
     }
   }
 
-  public static int execReturnExitCode(Logger logger, Level level, String... command) throws IOException {
+  public static int execReturnExitCode(Logger logger, LogLevel level, String... command) throws IOException {
     String uuid = UUID.randomUUID()
                       .toString();
     List<String> list = Arrays.asList(command);
@@ -66,7 +65,7 @@ public class ExecUtil {
     return result.exitCode;
   }
 
-  public static Process execAsInteractive(Logger logger, Level level, String... command) throws IOException {
+  public static Process execAsInteractive(Logger logger, LogLevel level, String... command) throws IOException {
     String uuid = UUID.randomUUID()
                       .toString();
     List<String> list = Arrays.asList(command);
@@ -130,7 +129,7 @@ public class ExecUtil {
     });
   }
 
-  public static void log(Logger logger, Level level, String msg, Object... arguments) {
+  public static void log(Logger logger, LogLevel level, String msg, Object... arguments) {
     switch (level) {
     case DEBUG:
       logger.debug(msg, arguments);
@@ -152,7 +151,7 @@ public class ExecUtil {
     }
   }
 
-  public static void log(Logger logger, Level level, String msg, Throwable t) {
+  public static void log(Logger logger, LogLevel level, String msg, Throwable t) {
     switch (level) {
     case DEBUG:
       logger.debug(msg, t);

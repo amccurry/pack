@@ -16,6 +16,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 
 import pack.block.blockstore.compactor.PackCompactorServer;
 import pack.block.server.BlockPackStorage;
+import pack.block.server.BlockPackStorageInfo;
 import pack.block.util.Utils;
 
 public class PackCli {
@@ -145,6 +146,11 @@ public class PackCli {
       return BlockPackStorage.listHdfsVolumes(fileSystem, root);
     });
     for (String volumeName : list) {
+      BlockPackStorageInfo info = ugi.doAs((PrivilegedExceptionAction<BlockPackStorageInfo>) () -> {
+        Path root = new Path(Utils.getHdfsPath());
+        FileSystem fileSystem = root.getFileSystem(configuration);
+        return BlockPackStorage.getBlockPackStorageInfo(fileSystem, root, volumeName);
+      });
       System.out.printf("%s%n", volumeName);
     }
   }

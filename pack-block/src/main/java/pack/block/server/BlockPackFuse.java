@@ -29,7 +29,6 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ShutdownHookManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import com.codahale.metrics.CsvReporter;
 import com.codahale.metrics.MetricRegistry;
@@ -54,6 +53,7 @@ import pack.block.server.json.BlockPackFuseConfigInternal;
 import pack.block.server.json.BlockPackFuseConfigInternal.BlockPackFuseConfigInternalBuilder;
 import pack.block.util.Utils;
 import pack.util.ExecUtil;
+import pack.util.LogLevel;
 import pack.util.Result;
 
 public class BlockPackFuse implements Closeable {
@@ -203,9 +203,9 @@ public class BlockPackFuse implements Closeable {
   private static void waitForUmount(File brickFile) {
     while (true) {
       try {
-        Result result = ExecUtil.execAsResult(LOGGER, Level.DEBUG, SUDO, MOUNT);
+        Result result = ExecUtil.execAsResult(LOGGER, LogLevel.DEBUG, SUDO, MOUNT);
         if (result.stdout.contains(brickFile.getCanonicalPath())) {
-          if (ExecUtil.execReturnExitCode(LOGGER, Level.DEBUG, SUDO, UMOUNT, brickFile.getCanonicalPath()) != 0) {
+          if (ExecUtil.execReturnExitCode(LOGGER, LogLevel.DEBUG, SUDO, UMOUNT, brickFile.getCanonicalPath()) != 0) {
             LOGGER.info("umount of {} failed", brickFile);
           }
         } else {

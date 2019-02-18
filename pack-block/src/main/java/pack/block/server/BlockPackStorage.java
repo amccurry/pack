@@ -26,7 +26,6 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.slf4j.event.Level;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
@@ -52,6 +51,7 @@ import pack.docker.json.Err;
 import pack.docker.json.MountUnmountRequest;
 import pack.docker.json.PathResponse;
 import pack.util.ExecUtil;
+import pack.util.LogLevel;
 import pack.util.Result;
 import spark.Route;
 import spark.Service;
@@ -176,7 +176,7 @@ public class BlockPackStorage implements PackStorage {
         LOGGER.debug("volume {} id {} is not running", volumeName, id);
         if (shouldPerformCleanup(volumeName, id)) {
           LOGGER.debug("volume {} id {} cleanup", volumeName, id);
-          ExecUtil.execAsResult(LOGGER, Level.DEBUG, SUDO, RM, RF, idFile.getCanonicalPath());
+          ExecUtil.execAsResult(LOGGER, LogLevel.DEBUG, SUDO, RM, RF, idFile.getCanonicalPath());
           LOGGER.info("delete {} {}", idFile, idFile.delete());
           removeCleanupEntry(volumeName, id);
         } else {
@@ -189,7 +189,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   private boolean isVolumeStillInUse(String id) throws IOException {
-    Result result = ExecUtil.execAsResult(LOGGER, Level.DEBUG, SUDO, MOUNT);
+    Result result = ExecUtil.execAsResult(LOGGER, LogLevel.DEBUG, SUDO, MOUNT);
     if (result.exitCode == 0) {
       return result.stdout.contains(id);
     }
@@ -528,11 +528,11 @@ public class BlockPackStorage implements PackStorage {
       throws InterruptedException, IOException {
     for (int i = 0; i < timeInSeconds; i++) {
       if (toExist) {
-        if (ExecUtil.execReturnExitCode(LOGGER, Level.DEBUG, SUDO, LS, brick.getCanonicalPath()) == 0) {
+        if (ExecUtil.execReturnExitCode(LOGGER, LogLevel.DEBUG, SUDO, LS, brick.getCanonicalPath()) == 0) {
           return true;
         }
       } else {
-        if (ExecUtil.execReturnExitCode(LOGGER, Level.DEBUG, SUDO, LS, brick.getCanonicalPath()) != 0) {
+        if (ExecUtil.execReturnExitCode(LOGGER, LogLevel.DEBUG, SUDO, LS, brick.getCanonicalPath()) != 0) {
           return true;
         }
       }
@@ -600,7 +600,7 @@ public class BlockPackStorage implements PackStorage {
   }
 
   private static boolean isMounted(File localFileSystemMount) throws IOException {
-    Result result = ExecUtil.execAsResult(LOGGER, Level.DEBUG, SUDO, MOUNT);
+    Result result = ExecUtil.execAsResult(LOGGER, LogLevel.DEBUG, SUDO, MOUNT);
     return result.stdout.contains(localFileSystemMount.getCanonicalPath());
   }
 
@@ -631,7 +631,7 @@ public class BlockPackStorage implements PackStorage {
     File localDevice = getLocalDevice(volumeName, id);
     File shutdownFile = new File(localDevice, SHUTDOWN);
 
-    Process process = ExecUtil.execAsInteractive(LOGGER, Level.DEBUG, SUDO, BASH);
+    Process process = ExecUtil.execAsInteractive(LOGGER, LogLevel.DEBUG, SUDO, BASH);
     try (PrintWriter writer = new PrintWriter(process.getOutputStream())) {
       writer.println("echo 1>" + shutdownFile.getCanonicalPath());
     }
@@ -648,7 +648,7 @@ public class BlockPackStorage implements PackStorage {
     String format = dateFormat.format(new Date());
     String name = ERROR + format;
 
-    Process process = ExecUtil.execAsInteractive(LOGGER, Level.DEBUG, SUDO, BASH);
+    Process process = ExecUtil.execAsInteractive(LOGGER, LogLevel.DEBUG, SUDO, BASH);
     LOGGER.info("Creating mount error snapshot {} for volume {} id {}", name, volumeName, id);
     try (PrintWriter writer = new PrintWriter(process.getOutputStream())) {
       writer.println("echo " + name + ">" + snapshotFile.getCanonicalPath());
@@ -696,5 +696,10 @@ public class BlockPackStorage implements PackStorage {
 
   private Path getVolumePath(String volumeName) {
     return new Path(_root, volumeName);
+  }
+
+  public static BlockPackStorageInfo getBlockPackStorageInfo(FileSystem fileSystem, Path root, String volumeName) {
+    // TODO Auto-generated method stub
+    return null;
   }
 }

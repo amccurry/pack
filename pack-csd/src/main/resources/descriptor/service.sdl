@@ -1,16 +1,18 @@
 {
   "name": "PACK",
   "label": "Pack",
-  "description": "The pack volume service",
+  "description": "The Pack Volume Service",
   "version": 1,
   "runAs": {
     "user": "root",
     "group": "root",
-    "principal" : "hdfs"
+    "principal": "hdfs"
   },
   "icon": "images/icon.png",
-  "parcel" : {
-    "requiredTags" : [ "pack" ]
+  "parcel": {
+    "requiredTags": [
+      "pack"
+    ]
   },
   "serviceDependencies": [
     {
@@ -22,6 +24,9 @@
     "preStartSteps": [
       {
         "commandName": "CreatePackDirCommand"
+      },
+      {
+        "commandName": "ChownPackDirCommand"
       }
     ]
   },
@@ -34,6 +39,16 @@
       "directoryDescription": "Pack storage directory.",
       "path": "/pack",
       "permissions": "0700"
+    }
+  ],
+  "commands": [
+    {
+      "name": "ChownPackDirCommand",
+      "label": "Chown Pack Dir Command",
+      "description": "Chowns the Pack storage directory.",
+      "roleName": "PACK_AGENT",
+      "roleCommand": "AgentChownPackDirCommand",
+      "runMode": "single"
     }
   ],
   "parameters": [
@@ -58,23 +73,80 @@
       "type": "string"
     }
   ],
+  "gateway": {
+    "alternatives": {
+      "name": "pack-conf",
+      "linkRoot": "/etc/pack",
+      "priority": 50
+    },
+    "scriptRunner": {
+      "program": "scripts/control.sh",
+      "args": [
+        "gateway"
+      ]
+    },
+    "configWriter": {
+      "generators": [
+        {
+          "filename": "pack.properties",
+          "configFormat": "properties",
+          "includedParams": [
+            "PACK_HDFS_PATH",
+            "PACK_LOCAL"
+          ],
+          "additionalConfigs": [
+            {
+              "key": "HDFS_CONF_DIR",
+              "value": "/etc/hadoop/conf"
+            }
+          ]
+        }
+      ],
+      "auxConfigGenerators": [
+        {
+          "filename": "pack-conf/__cloudera_metadata__",
+          "sourceFilename": "aux/__cloudera_metadata__"
+        }
+      ]
+    }
+  },
   "roles": [
     {
       "name": "PACK_AGENT",
       "label": "Pack Agent",
       "pluralLabel": "Pack Agent",
-      "parameters" : [
+      "parameters": [
         {
-          "name" : "PACK_AGENT_JAVA_HEAP",
-          "label" : "Pack Agent java heap in bytes",
-          "description" : "Pack Agent java heap in bytes",
-          "required" : "true",
-          "type" : "memory",
-          "unit" : "bytes",
-          "min" : 268435456,
-          "default" : 268435456,
-          "scaleFactor" : 1.3,
-          "autoConfigShare" : 100
+          "name": "PACK_AGENT_JAVA_HEAP",
+          "label": "Pack Agent java heap in bytes",
+          "description": "Pack Agent java heap in bytes",
+          "required": "true",
+          "type": "memory",
+          "unit": "bytes",
+          "min": 268435456,
+          "default": 268435456,
+          "scaleFactor": 1.3,
+          "autoConfigShare": 100
+        }
+      ],
+      "commands": [
+        {
+          "name": "AgentChownPackDirCommand",
+          "label": "Chown Pack Dir Command",
+          "description": "Chowns the Pack storage directory.",
+          "expectedExitCodes": [
+            0
+          ],
+          "requiredRoleState": "stopped",
+          "commandRunner": {
+            "program": "scripts/control.sh",
+            "args": [
+              "chown"
+            ],
+            "environmentVariables": {
+              "PACK_HDFS_PATH": "${PACK_HDFS_PATH}"
+            }
+          }
         }
       ],
       "startRunner": {
@@ -100,18 +172,18 @@
       "name": "PACK_COMPACTOR",
       "label": "Pack Compactor",
       "pluralLabel": "Pack Compactor",
-      "parameters" : [
+      "parameters": [
         {
-          "name" : "PACK_COMPACTOR_JAVA_HEAP",
-          "label" : "Pack Compactor java heap in bytes",
-          "description" : "Pack Compactor java heap in bytes",
-          "required" : "true",
-          "type" : "memory",
-          "unit" : "bytes",
-          "min" : 1073741824,
-          "default" : 2147483648,
-          "scaleFactor" : 1.3,
-          "autoConfigShare" : 100
+          "name": "PACK_COMPACTOR_JAVA_HEAP",
+          "label": "Pack Compactor java heap in bytes",
+          "description": "Pack Compactor java heap in bytes",
+          "required": "true",
+          "type": "memory",
+          "unit": "bytes",
+          "min": 1073741824,
+          "default": 2147483648,
+          "scaleFactor": 1.3,
+          "autoConfigShare": 100
         }
       ],
       "startRunner": {
