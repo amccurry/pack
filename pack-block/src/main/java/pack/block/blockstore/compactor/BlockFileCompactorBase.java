@@ -52,6 +52,26 @@ public abstract class BlockFileCompactorBase {
 
   protected abstract int getFileSystemBlockSize();
 
+  public boolean shouldCompact() throws IOException {
+    if (!getFileSystem().exists(getBlockPath())) {
+      LOGGER.info("Path {} does not exist, exiting", getBlockPath());
+      return false;
+    }
+
+    FileStatus[] listStatus = getBlockFiles();
+    if (listStatus.length < 2) {
+      LOGGER.debug("Path {} contains less than 2 block files, exiting", getBlockPath());
+      return false;
+    }
+
+    Arrays.sort(listStatus, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
+    List<CompactionJob> compactionJobs = getCompactionJobs(listStatus);
+    if (compactionJobs.isEmpty()) {
+      return false;
+    }
+    return true;
+  }
+
   public void runCompaction(OwnerCheck ownerCheck) throws IOException {
     if (!getFileSystem().exists(getBlockPath())) {
       LOGGER.info("Path {} does not exist, exiting", getBlockPath());

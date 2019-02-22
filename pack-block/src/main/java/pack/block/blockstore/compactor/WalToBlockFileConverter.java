@@ -88,22 +88,7 @@ public class WalToBlockFileConverter implements Closeable {
       LOGGER.info("Path {} does not exist, exiting", _blockPath);
       return;
     }
-
-    if (_useLock) {
-      Path path = Utils.getLockPathForVolume(_volumePath, WAL);
-      LockLostAction lockLostAction = () -> {
-        LOGGER.error("Lock lost for wal {}", path);
-      };
-      try (PackLock lock = PackLockFactory.create(_fileSystem.getConf(), path, lockLostAction)) {
-        if (lock.tryToLock()) {
-          convertWalFiles();
-        } else {
-          LOGGER.info("Skipping convert no lock {}", path);
-        }
-      }
-    } else {
-      convertWalFiles();
-    }
+    convertWalFiles();
   }
 
   private void convertWalFiles() throws IOException, InterruptedException {
@@ -114,8 +99,28 @@ public class WalToBlockFileConverter implements Closeable {
     Collections.sort(list, BlockFile.ORDERED_FILESTATUS_COMPARATOR);
     // Reverse order converting oldest to newest
     Collections.reverse(list);
-    for (FileStatus fileStatus : list) {
-      convertWalFile(fileStatus.getPath());
+
+    if (list.isEmpty()) {
+      return;
+    }
+    if (_useLock) {
+      Path path = Utils.getLockPathForVolume(_volumePath, WAL);
+      LockLostAction lockLostAction = () -> {
+        LOGGER.error("Lock lost for wal {}", path);
+      };
+      try (PackLock lock = PackLockFactory.create(_fileSystem.getConf(), path, lockLostAction)) {
+        if (lock.tryToLock()) {
+          for (FileStatus fileStatus : list) {
+            convertWalFile(fileStatus.getPath());
+          }
+        } else {
+          LOGGER.info("Skipping convert no lock {}", path);
+        }
+      }
+    } else {
+      for (FileStatus fileStatus : list) {
+        convertWalFile(fileStatus.getPath());
+      }
     }
   }
 
