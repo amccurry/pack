@@ -14,11 +14,11 @@
 	<dependencies>
 		<dependency>
 			<groupId>pack</groupId>
-			<artifactId>pack-core</artifactId>
+			<artifactId>pack-server</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
-			<artifactId>jnr-fuse</artifactId>
+			<artifactId>pack-jnr-fuse</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.roaringbitmap</groupId>

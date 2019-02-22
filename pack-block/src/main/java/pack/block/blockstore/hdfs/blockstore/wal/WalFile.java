@@ -14,6 +14,7 @@ public class WalFile {
   public static abstract class Writer implements Closeable {
     /**
      * Append the data to the WAL.
+     * 
      * @param key
      * @param value
      * @throws IOException
@@ -22,6 +23,7 @@ public class WalFile {
 
     /**
      * Get the number of bytes written to the writer.
+     * 
      * @return
      * @throws IOException
      */
@@ -29,12 +31,23 @@ public class WalFile {
 
     /**
      * Forces the data to be flushed.
+     * 
      * @throws IOException
      */
-    public abstract void flush() throws IOException;
-    
+    public void flush() throws IOException {
+      flush(false);
+    }
+
     /**
-     * Is this WAL file in an error state. 
+     * Forces the data to be flushed.
+     * 
+     * @throws IOException
+     */
+    public abstract void flush(boolean force) throws IOException;
+
+    /**
+     * Is this WAL file in an error state.
+     * 
      * @return
      */
     public abstract boolean isErrorState();

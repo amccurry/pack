@@ -1,0 +1,8 @@
+{
+  "pack": {
+    "destination": "/usr/bin/pack",
+    "source": "bin/pack",
+    "priority": 10,
+    "isDirectory": false
+  }
+}

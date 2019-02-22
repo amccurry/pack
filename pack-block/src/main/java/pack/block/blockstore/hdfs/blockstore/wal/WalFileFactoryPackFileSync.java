@@ -171,7 +171,7 @@ public class WalFileFactoryPackFileSync extends WalFileFactory {
     }
 
     @Override
-    public void flush() throws IOException {
+    public void flush(boolean force) throws IOException {
       try {
         if (shouldFlushOutputStream()) {
           performFlush();

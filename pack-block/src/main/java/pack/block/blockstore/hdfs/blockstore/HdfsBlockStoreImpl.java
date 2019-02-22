@@ -58,8 +58,10 @@ import pack.block.blockstore.hdfs.HdfsBlockStoreAdmin;
 import pack.block.blockstore.hdfs.ReadRequestHandler;
 import pack.block.blockstore.hdfs.blockstore.wal.LocalWalCache;
 import pack.block.blockstore.hdfs.blockstore.wal.WalFile;
+import pack.block.blockstore.hdfs.blockstore.wal.WalFile.Writer;
 import pack.block.blockstore.hdfs.blockstore.wal.WalFileFactory;
 import pack.block.blockstore.hdfs.blockstore.wal.WalKeyWritable;
+import pack.block.blockstore.hdfs.blockstore.wal.WalKeyWritable.Type;
 import pack.block.blockstore.hdfs.file.BlockFile;
 import pack.block.blockstore.hdfs.file.BlockFile.Reader;
 import pack.block.blockstore.hdfs.file.ReadRequest;
@@ -202,7 +204,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
     String name = HdfsBlockStoreImplConfig.BLOCK + "|" + _blockPath.toUri()
                                                                    .getPath();
     _timer = new Timer(name, true);
-    
+
     _walConvertExecutor = Executors.newSingleThreadExecutor();
 
     LOGGER.info("open block files");
@@ -220,7 +222,7 @@ public class HdfsBlockStoreImpl implements BlockStore {
     if (_brickFile != null) {
       _timer.schedule(getFileSizeAdjustment(), TimeUnit.MINUTES.toMillis(1), TimeUnit.MINUTES.toMillis(1));
     }
-    
+
     _walRollExecutor = Executors.newSingleThreadExecutor();
     _crcLayer = CrcLayerFactory.create(HdfsBlockStoreImpl.class.getName(),
         (int) (_metaData.getLength() / _fileSystemBlockSize), _fileSystemBlockSize);
@@ -937,11 +939,26 @@ public class HdfsBlockStoreImpl implements BlockStore {
     private final int _fileSystemBlockSize;
     private final CrcLayer _crcLayer;
 
-    WriterContext(WalFile.Writer writer, Path path, int fileSystemBlockSize, CrcLayer crcLayer) {
+    WriterContext(WalFile.Writer writer, Path path, int fileSystemBlockSize, CrcLayer crcLayer) throws IOException {
+      this(writer, path, fileSystemBlockSize, crcLayer, false);
+    }
+
+    WriterContext(WalFile.Writer writer, Path path, int fileSystemBlockSize, CrcLayer crcLayer, boolean primeWriter)
+        throws IOException {
       _crcLayer = crcLayer;
       _fileSystemBlockSize = fileSystemBlockSize;
       _writer = writer;
       _path = path;
+      if (primeWriter) {
+        prime(writer);
+      }
+    }
+
+    private void prime(Writer writer) throws IOException {
+      WalKeyWritable key = new WalKeyWritable();
+      key.setType(Type.NOOP);
+      writer.append(key, new BytesWritable(new byte[10000]));
+      writer.flush(true);
     }
 
     public void replay(LocalWalCache localWalCache) throws IOException {

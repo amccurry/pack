@@ -21,7 +21,9 @@
 		<sizeof.version>0.3.0</sizeof.version>
 		<commons-io.version>2.5</commons-io.version>
 		<slf4j.version>1.7.21</slf4j.version>
-		<sparkjava.version>2.6.0</sparkjava.version>
+		<sparkjava.version>2.7.2</sparkjava.version>
+		<jetty.version>9.4.8.v20171121</jetty.version>
+		<csd.version>1.0</csd.version>
 	</properties>
 
 	<repositories>
@@ -37,18 +39,19 @@
 	</repositories>
 
 	<modules>
-		<module>pack-core</module>
+		<module>pack-server</module>
 		<module>pack-assemble</module>
 		<module>pack-spi</module>
 		<module>pack-block</module>
-		<module>jnr-fuse</module>
+		<module>pack-jnr-fuse</module>
+		<module>pack-csd</module>
 	</modules>
 
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>pack-core</artifactId>
+				<artifactId>pack-server</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
@@ -69,7 +72,7 @@
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>jnr-fuse</artifactId>
+				<artifactId>pack-jnr-fuse</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
@@ -145,7 +148,7 @@
 			<dependency>
 				<groupId>org.eclipse.jetty</groupId>
 				<artifactId>jetty-unixsocket</artifactId>
-				<version>9.4.4.v20170414</version>
+				<version>${jetty.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>org.roaringbitmap</groupId>
@@ -164,6 +167,12 @@
 				<scope>test</scope>
 			</dependency>
 			<dependency>
+				<groupId>org.projectlombok</groupId>
+				<artifactId>lombok</artifactId>
+				<version>1.16.18</version>
+				<scope>provided</scope>
+			</dependency>
+			<dependency>
 				<groupId>junit</groupId>
 				<artifactId>junit</artifactId>
 				<version>4.12</version>
@@ -175,8 +184,15 @@
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
-			<version>1.16.18</version>
 			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-log4j12</artifactId>
 		</dependency>
 	</dependencies>
 	<build>
