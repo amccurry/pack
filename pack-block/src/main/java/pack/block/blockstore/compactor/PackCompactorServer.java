@@ -203,13 +203,17 @@ public class PackCompactorServer implements Closeable {
     LockLostAction lockLostAction = () -> {
       LOGGER.error("Compaction lock lost for volume {}", volumePath);
     };
-    try (PackLock lock = PackLockFactory.create(configuration, lockPath, lockLostAction)) {
-      if (lock.tryToLock()) {
-        try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, volumePath, metaData)) {
-          compactor.runCompaction(lock);
+    try (BlockFileCompactor compactor = new BlockFileCompactor(fileSystem, volumePath, metaData)) {
+      if (!compactor.shouldCompact()) {
+        LOGGER.info("Skipping compaction no work {}", volumePath);
+        return;
+      }
+      try (PackLock lock = PackLockFactory.create(configuration, lockPath, lockLostAction)) {
+        if (lock.tryToLock()) {
+            compactor.runCompaction(lock);
+        } else {
+          LOGGER.info("Skipping compaction no lock {}", volumePath);
         }
-      } else {
-        LOGGER.info("Skipping compaction no lock {}", volumePath);
       }
     }
   }
