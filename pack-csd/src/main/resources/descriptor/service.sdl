@@ -166,7 +166,14 @@
         "modifiable": true,
         "configName": "log.dir",
         "loggingType": "log4j"
-      }
+      },
+      "kerberosPrincipals": [
+        {
+          "name": "hdfs_principal",
+          "primary": "hdfs",
+          "instance": "${host}"
+        }
+      ]
     },
     {
       "name": "PACK_COMPACTOR",
@@ -203,7 +210,14 @@
         "modifiable": true,
         "configName": "log.dir",
         "loggingType": "log4j"
-      }
+      },
+      "kerberosPrincipals": [
+        {
+          "name": "hdfs_principal",
+          "primary": "hdfs",
+          "instance": "${host}"
+        }
+      ]
     }
   ]
 }
