@@ -58,7 +58,6 @@ public class LocalWalCacheTest {
           }));
         }
         list.add(service.submit(() -> {
-          System.out.println(cache.getSizeOnDisk());
           try {
             writeLock.lock();
             cache.write(blockId, ByteBuffer.wrap(writeBuf));
