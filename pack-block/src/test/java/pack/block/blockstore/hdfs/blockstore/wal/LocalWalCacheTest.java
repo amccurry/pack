@@ -51,7 +51,14 @@ public class LocalWalCacheTest {
         random.nextBytes(writeBuf);
         byte[] readBuf = new byte[blockSize];
         int blockId = i;
+        if (i == 30000) {
+          list.add(service.submit(() -> {
+            length.set(maxLength * 2);
+            return null;
+          }));
+        }
         list.add(service.submit(() -> {
+          System.out.println(cache.getSizeOnDisk());
           try {
             writeLock.lock();
             cache.write(blockId, ByteBuffer.wrap(writeBuf));
@@ -77,6 +84,7 @@ public class LocalWalCacheTest {
           throw e.getCause();
         }
       }
+      System.out.println(cache.getSizeOnDisk() + " " + cache.getLength());
     }
   }
 
