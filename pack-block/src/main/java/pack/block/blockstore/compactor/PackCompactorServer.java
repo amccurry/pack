@@ -163,7 +163,7 @@ public class PackCompactorServer implements Closeable {
     FileSystem fileSystem = volumePath.getFileSystem(_configuration);
     BlockStoreMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
-      Utils.dropVolume(volumePath, fileSystem);
+      // Utils.dropVolume(volumePath, fileSystem);
       return;
     }
 
@@ -196,7 +196,7 @@ public class PackCompactorServer implements Closeable {
     FileSystem fileSystem = volumePath.getFileSystem(configuration);
     BlockStoreMetaData metaData = HdfsBlockStoreAdmin.readMetaData(fileSystem, volumePath);
     if (metaData == null) {
-      Utils.dropVolume(volumePath, fileSystem);
+      // Utils.dropVolume(volumePath, fileSystem);
       return;
     }
     Path lockPath = Utils.getLockPathForVolume(volumePath, COMPACTION_LOCK);
@@ -210,7 +210,7 @@ public class PackCompactorServer implements Closeable {
       }
       try (PackLock lock = PackLockFactory.create(configuration, lockPath, lockLostAction)) {
         if (lock.tryToLock()) {
-            compactor.runCompaction(lock);
+          compactor.runCompaction(lock);
         } else {
           LOGGER.info("Skipping compaction no lock {}", volumePath);
         }
