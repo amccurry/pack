@@ -42,6 +42,7 @@
 		<module>pack-spi</module>
 		<module>pack-block</module>
 		<module>jnr-fuse</module>
+		<module>pack-s3</module>
 	</modules>
 
 	<dependencyManagement>
