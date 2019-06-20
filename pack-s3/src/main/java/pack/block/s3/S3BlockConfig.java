@@ -1,25 +1,23 @@
-package pack.s3;
+package pack.block.s3;
 
 import java.io.File;
-import java.util.concurrent.ExecutorService;
 
 import com.amazonaws.services.s3.AmazonS3;
 
 import lombok.Builder;
 import lombok.Value;
+import pack.block.BlockConfig;
 
 @Value
 @Builder(toBuilder = true)
 public class S3BlockConfig {
 
+  BlockConfig blockConfig;
+
   AmazonS3 client;
   String bucketName;
   String prefix;
-  long blockSize;
-  long blockId;
-  long currentCrc;
-  long idleWriteTime;
+  long consistencyWaitTime;
   File localCacheFile;
-  ExecutorService service;
 
 }

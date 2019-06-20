@@ -5,8 +5,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import org.apache.commons.io.IOUtils;
@@ -42,25 +40,22 @@ public class PackV2 extends FuseStubFS implements Closeable {
 
   private final String _localPath;
   private final AtomicReferenceArray<FileHandle> _handles = new AtomicReferenceArray<>(4 * 1024);
-  private final BlockingQueue<byte[]> _buffers = new ArrayBlockingQueue<>(200);
+
   private final boolean _sync = true;
   private final boolean _bigWrites = true;
   private final FileHandleManger _fileHandleManger;
 
-  public static void main(String[] args) throws IOException {
+  public static void main(String[] args) throws Exception {
     try (PackV2 pack = new PackV2(args[0], args[1], args[2])) {
       pack.localMount();
     }
   }
 
-  public PackV2(String localPath, String cache, String sync) {
+  public PackV2(String localPath, String cache, String sync) throws Exception {
     mkdir(localPath);
     mkdir(cache);
     _localPath = localPath;
     _fileHandleManger = new FileHandleManger(cache, sync);
-    for (int i = 0; i < 100; i++) {
-      _buffers.add(new byte[128 * 1024]);
-    }
   }
 
   @Override
@@ -159,7 +154,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
   @Override
   public int open(String path, FuseFileInfo fi) {
     try {
-      LOGGER.debug("open {} {}", path, fi);
+      LOGGER.info("open {} {}", path, fi);
       if (isRoot(path)) {
         return -ErrorCodes.EISDIR();
       }
@@ -195,7 +190,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
   @Override
   public int release(String path, FuseFileInfo fi) {
     try {
-      LOGGER.debug("release {} {}", path, fi);
+      LOGGER.info("release {} {}", path, fi);
       closeHandle(fi.fh.intValue());
       return OK;
     } catch (Throwable t) {

@@ -1,11 +1,13 @@
-package pack.s3;
+package pack.block.util;
 
 public class CRC64 {
+
+  public static final long DEFAULT_VALUE = 0;
 
   private static final long poly = 0xC96C5795D7870F42L;
   private static final long crcTable[] = new long[256];
 
-  private long _crc = -1;
+  private long _crc = DEFAULT_VALUE;
 
   static {
     for (int b = 0; b < crcTable.length; ++b) {
