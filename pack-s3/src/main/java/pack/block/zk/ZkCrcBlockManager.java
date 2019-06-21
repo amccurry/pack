@@ -22,17 +22,7 @@ public class ZkCrcBlockManager implements CrcBlockManager {
 
   public ZkCrcBlockManager(ZkCrcBlockManagerConfig config) {
     _volume = config.getVolume();
-    RetryPolicy retryPolicy = new RetryForever((int) TimeUnit.SECONDS.toMillis(10));
-    _client = CuratorFrameworkFactory.newClient(config.getZk(), retryPolicy);
-    _client.getUnhandledErrorListenable()
-           .addListener((message, e) -> {
-             LOGGER.error("Unknown error " + message, e);
-           });
-    _client.getConnectionStateListenable()
-           .addListener((c, newState) -> {
-             LOGGER.info("Connection state {}", newState);
-           });
-    _client.start();
+    _client = config.getClient();
   }
 
   @Override

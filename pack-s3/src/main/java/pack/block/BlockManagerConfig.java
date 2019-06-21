@@ -10,7 +10,6 @@ public class BlockManagerConfig {
   long blockSize;
   long cacheSize;
   long idleWriteTime;
-  long crcBlockSize;
   String volume;
   BlockFactory blockFactory;
   CrcBlockManager crcBlockManager;

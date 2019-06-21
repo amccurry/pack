@@ -43,19 +43,19 @@ public class BlockManager implements Block {
     _writeSyncLock = reentrantReadWriteLock.writeLock();
     _readSyncLock = reentrantReadWriteLock.readLock();
 
-    if (_useBulkCrc) {
-      BlockConfig crcConfig = BlockConfig.builder()
-                                         .blockId(Long.MAX_VALUE)
-                                         .blockSize(config.getCrcBlockSize())
-                                         .crcBlockManager(config.getCrcBlockManager())
-                                         .volume(config.getVolume())
-                                         .build();
-
-      Block crcBlock = _blockFactory.createBlock(crcConfig);
-      _crcBlockManager = CrcBlockManager.create(crcBlock);
-    } else {
-      _crcBlockManager = config.getCrcBlockManager();
-    }
+    // if (_useBulkCrc) {
+    // BlockConfig crcConfig = BlockConfig.builder()
+    // .blockId(Long.MAX_VALUE)
+    // .blockSize(config.getCrcBlockSize())
+    // .crcBlockManager(config.getCrcBlockManager())
+    // .volume(config.getVolume())
+    // .build();
+    //
+    // Block crcBlock = _blockFactory.createBlock(crcConfig);
+    // _crcBlockManager = CrcBlockManager.create(crcBlock);
+    // } else {
+    _crcBlockManager = config.getCrcBlockManager();
+    // }
 
     BlockConfig baseConfig = BlockConfig.builder()
                                         .blockSize(_blockSize)
