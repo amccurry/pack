@@ -56,7 +56,6 @@ public class S3BlockManagerTest {
     BlockFactory blockFactory = new S3BlockFactory(s3FactoryConfig);
     long blockSize = 1_000_000;
     long cacheSize = 20_000_000;
-    long crcBlockSize = 1_000_000;
     long idleWriteTime = TimeUnit.SECONDS.toMillis(10);
     CrcBlockManager crcBlockManager = InMemoryCrcBlockManager.newInstance();
     BlockManagerConfig config = BlockManagerConfig.builder()
@@ -65,7 +64,6 @@ public class S3BlockManagerTest {
                                                   .blockSize(blockSize)
                                                   .cacheSize(cacheSize)
                                                   .crcBlockManager(crcBlockManager)
-                                                  .crcBlockSize(crcBlockSize)
                                                   .idleWriteTime(idleWriteTime)
                                                   .build();
 
@@ -74,7 +72,7 @@ public class S3BlockManagerTest {
     int maxPosition = 200_000_000;
 
     long seed = 1;
-    int passes = 1000;
+    int passes = 100;
     File file = new File(ROOT, "validation");
     Utils.rmr(file);
 
@@ -96,6 +94,8 @@ public class S3BlockManagerTest {
         }
       }
     }
+    
+    Thread.sleep(10000);
 
     System.out.println("--------------------------------------");
 

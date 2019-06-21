@@ -199,4 +199,9 @@ public class S3Block implements Block {
     }
   }
 
+  @Override
+  public long getIdleTime() {
+    return System.nanoTime() - _lastWriteTime.get();
+  }
+
 }

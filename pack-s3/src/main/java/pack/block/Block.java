@@ -7,6 +7,8 @@ public interface Block extends Closeable {
   int read(long position, byte[] buf, int off, int len) throws Exception;
 
   int write(long position, byte[] buf, int off, int len) throws Exception;
+  
+  long getIdleTime();
 
   void sync();
 

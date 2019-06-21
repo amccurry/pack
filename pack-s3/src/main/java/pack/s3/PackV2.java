@@ -46,16 +46,16 @@ public class PackV2 extends FuseStubFS implements Closeable {
   private final FileHandleManger _fileHandleManger;
 
   public static void main(String[] args) throws Exception {
-    try (PackV2 pack = new PackV2(args[0], args[1], args[2])) {
+    try (PackV2 pack = new PackV2(args[0], args[1], args[2], args[3], args[4])) {
       pack.localMount();
     }
   }
 
-  public PackV2(String localPath, String cache, String sync) throws Exception {
+  public PackV2(String localPath, String cache, String sync, String zk, String bucketName) throws Exception {
     mkdir(localPath);
     mkdir(cache);
     _localPath = localPath;
-    _fileHandleManger = new FileHandleManger(cache, sync);
+    _fileHandleManger = new FileHandleManger(cache, sync, zk, bucketName);
   }
 
   @Override

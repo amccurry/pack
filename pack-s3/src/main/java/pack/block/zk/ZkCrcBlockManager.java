@@ -1,21 +1,12 @@
 package pack.block.zk;
 
-import java.util.concurrent.TimeUnit;
-
-import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.retry.RetryForever;
 import org.apache.zookeeper.data.Stat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import pack.block.CrcBlockManager;
 import pack.block.util.CRC64;
 
 public class ZkCrcBlockManager implements CrcBlockManager {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(ZkCrcBlockManager.class);
 
   private final CuratorFramework _client;
   private final String _volume;
@@ -72,7 +63,7 @@ public class ZkCrcBlockManager implements CrcBlockManager {
 
   @Override
   public void close() {
-    _client.close();
+
   }
 
 }

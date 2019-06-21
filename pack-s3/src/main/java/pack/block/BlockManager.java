@@ -3,10 +3,14 @@ package pack.block;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
@@ -21,6 +25,8 @@ import com.google.common.cache.RemovalListener;
 
 public class BlockManager implements Block {
 
+  public static final long MAX_VOLUME_SIZE = 10_000_000_000_000L;
+
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockManager.class);
 
   private final long _blockSize;
@@ -31,27 +37,36 @@ public class BlockManager implements Block {
   private final WriteLock _writeSyncLock;
   private final ReadLock _readSyncLock;
   private final String _volume;
-  private final boolean _useBulkCrc = true;
+  private final AtomicLong _lastWriteTime = new AtomicLong();
+  private final Timer _timer;
+  private final long _idleTime = TimeUnit.SECONDS.toNanos(15);
 
   public BlockManager(BlockManagerConfig config) throws Exception {
     _blockFactory = config.getBlockFactory();
     _blockSize = config.getBlockSize();
-    _service = Executors.newCachedThreadPool();
+    _service = Executors.newFixedThreadPool(10);
     _volume = config.getVolume();
 
     ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
     _writeSyncLock = reentrantReadWriteLock.writeLock();
     _readSyncLock = reentrantReadWriteLock.readLock();
 
+    _timer = new Timer(_volume, true);
+    _timer.scheduleAtFixedRate(getTask(), TimeUnit.NANOSECONDS.toMillis(_idleTime),
+        TimeUnit.NANOSECONDS.toMillis(_idleTime));
+
     // if (_useBulkCrc) {
     // BlockConfig crcConfig = BlockConfig.builder()
     // .blockId(Long.MAX_VALUE)
-    // .blockSize(config.getCrcBlockSize())
+    // .blockSize(getCrcBlockSize(config.getBlockSize()))
     // .crcBlockManager(config.getCrcBlockManager())
     // .volume(config.getVolume())
     // .build();
     //
     // Block crcBlock = _blockFactory.createBlock(crcConfig);
+    //
+    //
+    //
     // _crcBlockManager = CrcBlockManager.create(crcBlock);
     // } else {
     _crcBlockManager = config.getCrcBlockManager();
@@ -67,6 +82,20 @@ public class BlockManager implements Block {
                          .removalListener(getRemovalListener())
                          .maximumSize(config.getCacheSize() / _blockSize)
                          .build(getCacheLoader(baseConfig));
+  }
+
+  private TimerTask getTask() {
+    return new TimerTask() {
+      @Override
+      public void run() {
+        doSync(true);
+      }
+    };
+  }
+
+  @Override
+  public long getIdleTime() {
+    return System.nanoTime() - _lastWriteTime.get();
   }
 
   @Override
@@ -105,18 +134,18 @@ public class BlockManager implements Block {
 
   @Override
   public void sync() {
-    _writeSyncLock.lock();
-    Collection<Block> collection;
-    try {
-      collection = _cache.asMap()
-                         .values();
-    } finally {
-      _writeSyncLock.unlock();
-    }
+    doSync(false);
+  }
+
+  private void doSync(boolean idleOnly) {
+    LOGGER.info("sync for volume {} started", _volume);
+    Collection<Block> blocks = getBlocks();
     List<Future<Void>> futures = new ArrayList<>();
-    for (Block block : collection) {
+    for (Block block : blocks) {
       futures.add(_service.submit(() -> {
-        block.sync();
+        if (!idleOnly || isIdle(block)) {
+          block.sync();
+        }
         return null;
       }));
     }
@@ -130,10 +159,29 @@ public class BlockManager implements Block {
       }
     }
     _crcBlockManager.sync();
+    LOGGER.info("sync for volume {} complete", _volume);
+  }
+
+  private boolean isIdle(Block block) {
+    return block.getIdleTime() > _idleTime;
+  }
+
+  private Collection<Block> getBlocks() {
+    Collection<Block> collection;
+    _writeSyncLock.lock();
+    try {
+      collection = _cache.asMap()
+                         .values();
+    } finally {
+      _writeSyncLock.unlock();
+    }
+    return collection;
   }
 
   @Override
   public void close() {
+    _timer.cancel();
+    _timer.purge();
     sync();
     _cache.invalidateAll();
     _crcBlockManager.close();

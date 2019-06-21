@@ -22,6 +22,8 @@ import pack.block.BlockManagerConfig;
 import pack.block.CrcBlockManager;
 import pack.block.s3.S3BlockFactory;
 import pack.block.s3.S3BlockFactoryConfig;
+import pack.block.s3.S3CrcBlockManager;
+import pack.block.s3.S3CrcBlockManagerConfig;
 import pack.block.zk.ZkCrcBlockManager;
 import pack.block.zk.ZkCrcBlockManagerConfig;
 
@@ -32,11 +34,14 @@ public class FileHandleManger {
   private final String _cacheLocation;
   private final long _blockSize = 64 * 1024 * 1024;
   private final BlockingQueue<byte[]> _queue;
-  private String _bucketName;
+  private final String _bucketName;
   private final CuratorFramework _client;
   private final AmazonS3 _s3Client;
+  private final String _prefix = "";
 
-  public FileHandleManger(String cacheLocation, String syncLocations, String zk) throws InterruptedException {
+  public FileHandleManger(String cacheLocation, String syncLocations, String zk, String bucketName)
+      throws InterruptedException {
+    _bucketName = bucketName;
     _cacheLocation = cacheLocation;
     int capacity = 100;
     _queue = new ArrayBlockingQueue<>(capacity + 1);
@@ -85,14 +90,24 @@ public class FileHandleManger {
                                                   .bucketName(_bucketName)
                                                   .cacheDir(new File(_cacheLocation))
                                                   .client(_s3Client)
+                                                  .prefix(_prefix)
                                                   .build());
   }
 
-  private CrcBlockManager getCrcBlockManager(String volumeName) {
-    return new ZkCrcBlockManager(ZkCrcBlockManagerConfig.builder()
-                                                        .volume(volumeName)
-                                                        .client(_client)
-                                                        .build());
+  private CrcBlockManager getCrcBlockManager(String volumeName) throws Exception {
+    ZkCrcBlockManager baseCrcBlockManager = new ZkCrcBlockManager(ZkCrcBlockManagerConfig.builder()
+                                                                                         .volume(volumeName)
+                                                                                         .client(_client)
+                                                                                         .build());
+
+    S3CrcBlockManagerConfig s3CrcBlockManagerConfig = S3CrcBlockManagerConfig.builder()
+                                                                             .bucketName(_bucketName)
+                                                                             .client(_s3Client)
+                                                                             .crcBlockManager(baseCrcBlockManager)
+                                                                             .prefix(_prefix)
+                                                                             .volume(volumeName)
+                                                                             .build();
+    return new S3CrcBlockManager(s3CrcBlockManagerConfig);
   }
 
 }
