@@ -22,6 +22,7 @@
 		<commons-io.version>2.5</commons-io.version>
 		<slf4j.version>1.7.21</slf4j.version>
 		<sparkjava.version>2.6.0</sparkjava.version>
+		<hadoop-rpc.version>1.0</hadoop-rpc.version>
 	</properties>
 
 	<repositories>
@@ -33,6 +34,11 @@
 			<id>central</id>
 			<name>bintray</name>
 			<url>http://jcenter.bintray.com</url>
+		</repository>
+		<repository>
+			<id>hadoop-rpc</id>
+			<name>hadoop-rpc</name>
+			<url>https://raw.githubusercontent.com/amccurry/hadoop-rpc/1.0/</url>
 		</repository>
 	</repositories>
 
@@ -72,6 +78,11 @@
 				<groupId>pack</groupId>
 				<artifactId>jnr-fuse</artifactId>
 				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>hadoop-rpc</groupId>
+				<artifactId>hadoop-rpc</artifactId>
+				<version>${hadoop-rpc.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>commons-cli</groupId>
