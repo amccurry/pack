@@ -59,7 +59,8 @@ public class S3Block implements Block {
     _bucketName = config.getBucketName();
     _client = config.getClient();
     _blockId = blockConfig.getBlockId();
-    if (config.getPrefix() == null) {
+    if (config.getPrefix() == null || config.getPrefix()
+                                            .isEmpty()) {
       _baseKey = KEY_JOINER.join(blockConfig.getVolume(), Long.toString(_blockId));
     } else {
       _baseKey = KEY_JOINER.join(config.getPrefix(), blockConfig.getVolume(), Long.toString(_blockId));
@@ -125,7 +126,6 @@ public class S3Block implements Block {
       if (_lastCrcSync.get() == _currentCrc.get()) {
         return true;
       }
-
       long crc = _currentCrc.get();
       String key = getS3Key(crc);
       PutObjectRequest putObjectRequest = new PutObjectRequest(_bucketName, key, _localCacheFile);

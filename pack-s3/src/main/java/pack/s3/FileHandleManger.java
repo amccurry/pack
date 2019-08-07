@@ -25,10 +25,10 @@ import pack.block.s3.S3BlockFactory;
 import pack.block.s3.S3BlockFactoryConfig;
 import pack.block.s3.S3CrcBlockManager;
 import pack.block.s3.S3CrcBlockManagerConfig;
+import pack.block.s3.S3MetadataStore;
+import pack.block.s3.S3MetadataStoreConfig;
 import pack.block.zk.ZkCrcBlockManager;
 import pack.block.zk.ZkCrcBlockManagerConfig;
-import pack.volume.MetadataStore;
-import pack.volume.ZkMetadataStore;
 
 public class FileHandleManger {
 
@@ -65,8 +65,14 @@ public class FileHandleManger {
              LOGGER.info("Connection state {}", newState);
            });
     _client.start();
-    _metadataStore = new ZkMetadataStore(_client);
+
     _s3Client = AmazonS3ClientBuilder.defaultClient();
+    S3MetadataStoreConfig config = S3MetadataStoreConfig.builder()
+                                                        .bucketName(_bucketName)
+                                                        .prefix(_prefix)
+                                                        .client(_s3Client)
+                                                        .build();
+    _metadataStore = new S3MetadataStore(config);
   }
 
   public List<String> getVolumes() throws Exception {

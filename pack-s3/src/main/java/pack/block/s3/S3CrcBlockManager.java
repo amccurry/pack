@@ -55,7 +55,8 @@ public class S3CrcBlockManager implements CrcBlockManager {
 
     _crcBlockManager = config.getCrcBlockManager();
 
-    if (config.getPrefix() == null) {
+    if (config.getPrefix() == null || config.getPrefix()
+                                            .isEmpty()) {
       _baseKey = KEY_JOINER.join(config.getVolume(), SYNCS);
     } else {
       _baseKey = KEY_JOINER.join(config.getPrefix(), config.getVolume(), SYNCS);

@@ -1,8 +1,10 @@
-package pack.volume;
+package pack.block.zk;
 
 import java.util.List;
 
 import org.apache.curator.framework.CuratorFramework;
+
+import pack.s3.MetadataStore;
 
 public class ZkMetadataStore implements MetadataStore {
 

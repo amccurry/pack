@@ -200,21 +200,6 @@ public class PackV2 extends FuseStubFS implements Closeable {
     }
   }
 
-  // @Override
-  // public int mknod(String path, long mode, long rdev) {
-  // try {
-  // if (!FileStat.S_ISREG((int) mode)) {
-  // return -ErrorCodes.EIO();
-  // }
-  // File file = getFile(path);
-  // touch(file);
-  // return OK;
-  // } catch (Throwable t) {
-  // LOGGER.error(t.getMessage(), t);
-  // return -ErrorCodes.EIO();
-  // }
-  // }
-
   @Override
   public int read(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
     try {
@@ -239,6 +224,22 @@ public class PackV2 extends FuseStubFS implements Closeable {
         return -ErrorCodes.EIO();
       }
       return handle.write(buf, (int) size, offset);
+    } catch (Throwable t) {
+      LOGGER.error(t.getMessage(), t);
+      return -ErrorCodes.EIO();
+    }
+  }
+
+  @Override
+  public int mknod(String path, long mode, long rdev) {
+    try {
+      String volumeName = getVolumeName(path);
+      if (_fileHandleManger.getVolumes()
+                           .contains(volumeName)) {
+        return -ErrorCodes.EEXIST();
+      }
+      _fileHandleManger.setVolumeSize(volumeName, 0);
+      return OK;
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
