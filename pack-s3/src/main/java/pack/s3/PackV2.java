@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
 import org.apache.commons.io.IOUtils;
@@ -20,6 +21,7 @@ import jnr.ffi.types.size_t;
 import jnrfuse.ErrorCodes;
 import jnrfuse.FuseFillDir;
 import jnrfuse.FuseStubFS;
+import jnrfuse.flags.FallocFlags;
 import jnrfuse.struct.FileStat;
 import jnrfuse.struct.FuseFileInfo;
 
@@ -154,7 +156,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
   @Override
   public int open(String path, FuseFileInfo fi) {
     try {
-      LOGGER.info("open {} {}", path, fi);
+      LOGGER.info("open {} {}", path, fi.fh.get());
       if (isRoot(path)) {
         return -ErrorCodes.EISDIR();
       }
@@ -163,10 +165,9 @@ public class PackV2 extends FuseStubFS implements Closeable {
         return -ErrorCodes.ENOENT();
       }
 
-      FileHandle fileHandle = _fileHandleManger.createHandle(getVolumeName(path));
+      FileHandle fileHandle = _fileHandleManger.getHandle(getVolumeName(path));
       int handle = registerHandle(fileHandle);
       fi.fh.set(handle);
-
       return OK;
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
@@ -190,7 +191,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
   @Override
   public int release(String path, FuseFileInfo fi) {
     try {
-      LOGGER.info("release {} {}", path, fi);
+      LOGGER.info("release {} {}", path, fi.fh.get());
       closeHandle(fi.fh.intValue());
       return OK;
     } catch (Throwable t) {
@@ -247,44 +248,33 @@ public class PackV2 extends FuseStubFS implements Closeable {
   @Override
   public int fallocate(String path, int mode, long off, long length, FuseFileInfo fi) {
     try {
-      // LOGGER.debug("fallocate {} {} {} {} {}", path, mode, off, length, fi);
-      // Set<FallocFlags> lookup = FallocFlags.lookup(mode);
-      // switch (path) {
-      // case BRICK_FILENAME:
-      // if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) &&
-      // lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
-      // LOGGER.debug("delete offset {} length {}", off, length);
-      // while (true) {
-      // try {
-      // _blockStore.delete(off, length);
-      // return 0;
-      // } catch (Throwable t) {
-      // LOGGER.error("Unknown error.", t);
-      // sleep(TimeUnit.SECONDS.toMillis(3));
-      // }
-      // }
-      // } else {
-      // return -ErrorCodes.EOPNOTSUPP();
-      // }
-      // case FILE_SEP:
-      // return -ErrorCodes.EISDIR();
-      // case SNAPSHOT_FILENAME:
-      // case SHUTDOWN_FILENAME:
-      // case PID_FILENAME:
-      // return -ErrorCodes.EIO();
-      // default:
-      // return -ErrorCodes.ENOENT();
-      // }
-      return OK;
+      LOGGER.info("fallocate {} {} {} {} {}", path, mode, off, length, fi.fh.get());
+      int fh = fi.fh.intValue();
+      FileHandle handle = getHandle(fh);
+      if (handle == null) {
+        return -ErrorCodes.EIO();
+      }
+      Set<FallocFlags> lookup = FallocFlags.lookup(mode);
+      String volumeName = handle.getVolumeName();
+      if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) && lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
+        handle.delete(off, length);
+        return OK;
+      } else if (lookup.isEmpty()) {
+        // grow the file
+        long volumeSize = _fileHandleManger.getVolumeSize(volumeName);
+        if (volumeSize == off) {
+          _fileHandleManger.setVolumeSize(volumeName, off + length);
+          return OK;
+        }
+        return -ErrorCodes.EIO();
+      } else {
+        return -ErrorCodes.EIO();
+      }
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
     }
   }
-
-  // private void touch(File file) throws IOException, FileNotFoundException {
-  // new RandomAccessFile(file, "rw").close();
-  // }
 
   @Override
   public int access(String path, int mask) {
@@ -312,7 +302,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
     }
   }
 
-  private boolean isVolume(String path) {
+  private boolean isVolume(String path) throws Exception {
     String volumeName = getVolumeName(path);
     if (volumeName.contains("/")) {
       return false;

@@ -129,7 +129,7 @@ public class S3Block implements Block {
       long crc = _currentCrc.get();
       String key = getS3Key(crc);
       PutObjectRequest putObjectRequest = new PutObjectRequest(_bucketName, key, _localCacheFile);
-      LOGGER.debug("sync s3://{}/{} from {}", _bucketName, key, _localCacheFile);
+      LOGGER.info("sync s3://{}/{} from {}", _bucketName, key, _localCacheFile);
       ObjectMetadata metadata = new ObjectMetadata();
 
       Map<String, String> userMetadata = ImmutableMap.of(BLOCK_CRC, Long.toString(crc));

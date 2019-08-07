@@ -1,10 +1,11 @@
 package pack.s3;
 
 import java.io.File;
-import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.curator.RetryPolicy;
@@ -26,6 +27,8 @@ import pack.block.s3.S3CrcBlockManager;
 import pack.block.s3.S3CrcBlockManagerConfig;
 import pack.block.zk.ZkCrcBlockManager;
 import pack.block.zk.ZkCrcBlockManagerConfig;
+import pack.volume.MetadataStore;
+import pack.volume.ZkMetadataStore;
 
 public class FileHandleManger {
 
@@ -38,9 +41,12 @@ public class FileHandleManger {
   private final CuratorFramework _client;
   private final AmazonS3 _s3Client;
   private final String _prefix = "";
+  private final MetadataStore _metadataStore;
+  private final Map<String, FileHandle> _handles = new ConcurrentHashMap<>();
 
   public FileHandleManger(String cacheLocation, String syncLocations, String zk, String bucketName)
       throws InterruptedException {
+
     _bucketName = bucketName;
     _cacheLocation = cacheLocation;
     int capacity = 100;
@@ -59,18 +65,28 @@ public class FileHandleManger {
              LOGGER.info("Connection state {}", newState);
            });
     _client.start();
+    _metadataStore = new ZkMetadataStore(_client);
     _s3Client = AmazonS3ClientBuilder.defaultClient();
   }
 
-  public List<String> getVolumes() {
-    return Arrays.asList("testv2");
+  public List<String> getVolumes() throws Exception {
+    return _metadataStore.getVolumes();
   }
 
-  public long getVolumeSize(String volumeName) {
-    return 100L * 1024L * 1024L * 1024L;
+  public long getVolumeSize(String volumeName) throws Exception {
+    return _metadataStore.getVolumeSize(volumeName);
   }
 
-  public FileHandle createHandle(String volumeName) throws Exception {
+  public void setVolumeSize(String volumeName, long length) throws Exception {
+    _metadataStore.setVolumeSize(volumeName, length);
+  }
+
+  public synchronized FileHandle getHandle(String volumeName) throws Exception {
+    FileHandle fileHandle = _handles.get(volumeName);
+    if (fileHandle != null) {
+      fileHandle.incRef();
+      return fileHandle;
+    }
     BlockFactory blockFactory = getBlockFactory();
     CrcBlockManager crcBlockManager = getCrcBlockManager(volumeName);
     long blockSize = _blockSize;
@@ -82,7 +98,10 @@ public class FileHandleManger {
                                                   .crcBlockManager(crcBlockManager)
                                                   .volume(volumeName)
                                                   .build();
-    return new BlockManagerFileHandle(_queue, config);
+    fileHandle = new BlockManagerFileHandle(_queue, config, () -> _handles.remove(volumeName));
+    fileHandle.incRef();
+    _handles.put(volumeName, fileHandle);
+    return fileHandle;
   }
 
   private BlockFactory getBlockFactory() {

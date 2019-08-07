@@ -10,4 +10,10 @@ public interface FileHandle extends Closeable {
 
   int write(Pointer buf, int size, long offset) throws Exception;
 
+  void delete(long offset, long length) throws Exception;
+
+  String getVolumeName();
+  
+  void incRef();
+
 }

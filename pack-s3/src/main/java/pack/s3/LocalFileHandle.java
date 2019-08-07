@@ -12,7 +12,7 @@ import org.apache.commons.io.IOUtils;
 import jnr.ffi.Pointer;
 
 public class LocalFileHandle implements Closeable, FileHandle {
-  
+
   private final RandomAccessFile _rand;
   private final FileChannel _channel;
   private final BlockingQueue<byte[]> _buffer;
@@ -55,5 +55,20 @@ public class LocalFileHandle implements Closeable, FileHandle {
     } finally {
       _buffer.put(buffer);
     }
+  }
+
+  @Override
+  public void delete(long offset, long length) throws Exception {
+
+  }
+
+  @Override
+  public String getVolumeName() {
+    return null;
+  }
+
+  @Override
+  public void incRef() {
+
   }
 }
