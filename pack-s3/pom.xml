@@ -12,20 +12,23 @@
 	<artifactId>pack-s3</artifactId>
 	<packaging>jar</packaging>
 
-<repositories>
-	<repository>
-		<id>github</id>
-		<url>https://github.com/amccurry/consistent-s3/raw/repository/</url>
-	</repository>
-</repositories>
+	<repositories>
+		<repository>
+			<id>github</id>
+			<url>https://github.com/amccurry/consistent-s3/raw/repository/</url>
+		</repository>
+	</repositories>
 
 	<dependencies>
 		<dependency>
 			<groupId>pack</groupId>
 			<artifactId>jnr-fuse</artifactId>
 		</dependency>
-
-
+		<dependency>
+			<groupId>com.github.jnr</groupId>
+			<artifactId>jnr-unixsocket</artifactId>
+			<version>0.23</version>
+		</dependency>
 		<dependency>
 			<groupId>org.apache.zookeeper</groupId>
 			<artifactId>zookeeper</artifactId>
@@ -49,11 +52,11 @@
 			<version>1.1</version>
 		</dependency>
 
-<dependency>
-    <groupId>org.apache.thrift</groupId>
-    <artifactId>libthrift</artifactId>
-    <version>0.12.0</version>
-</dependency>
+		<dependency>
+			<groupId>org.apache.thrift</groupId>
+			<artifactId>libthrift</artifactId>
+			<version>0.12.0</version>
+		</dependency>
 
 		<dependency>
 			<groupId>org.apache.hadoop</groupId>
