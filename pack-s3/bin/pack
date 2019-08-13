@@ -1,0 +1,141 @@
+#!/bin/bash
+set -e
+source /etc/pack/pack.env
+
+LOGFILE=$(mktemp /tmp/pack.log.XXXXXX)
+ERRFILE=$(mktemp /tmp/pack.err.XXXXXX)
+
+function ls_func() {
+  for FILE in $PACK_ROOT_DIR/volume/* ; do
+    FILE_SIZE=$(stat --printf="%s" $FILE)
+    FILE_SIZE_HUMAN=$(numfmt --to=iec-i --suffix=B $FILE_SIZE)
+    printf "%-40s %-30s\n" $(basename $FILE) ${FILE_SIZE_HUMAN}
+  done
+  return 0
+}
+
+function mkfs_func() {
+  VOLUME="$1"
+  SIZE="$2"
+  FILE="$PACK_ROOT_DIR/volume/$VOLUME"
+  SIZE=$(echo $SIZE | awk '/[0-9]$/{print $1;next};/[tT]$/{printf "%u\n", $1*(1024*1024*1024*1024);next};/[gG]$/{printf "%u\n", $1*(1024*1024*1024);next};/[mM]$/{printf "%u\n", $1*(1024*1024);next};/[kK]$/{printf "%u\n", $1*1024;next}')
+  if ! fallocate -o 0 -l $SIZE $FILE 2>>$ERRFILE 1>>$LOGFILE ; then
+    return 1
+  fi
+  if ! mkfs.xfs -L $VOLUME $FILE 2>>$ERRFILE 1>>$LOGFILE ; then
+    return 1
+  fi
+  return 0
+}
+
+function mount_func() {
+  VOLUME="$1"
+  DST="$2"
+  FILE="$PACK_ROOT_DIR/volume/$VOLUME"
+  if ! mount $FILE $DST 2>>$ERRFILE 1>>$LOGFILE ; then
+    return 1
+  fi
+  if ! growfs_func "$VOLUME" ; then
+    return 1
+  fi
+  return 0
+}
+
+function growfs_func() {
+  VOLUME="$1"
+  FILE="$PACK_ROOT_DIR/volume/$VOLUME"
+  LOOP_COUNT=$(losetup -j $FILE 2>/dev/null | wc -l)
+  if [ "$LOOP_COUNT" == "1" ] ; then
+    # Live grow fs
+    DEVICE_RESULT=$(losetup -j $FILE 2>>$ERRFILE)
+    IFS=' ' read -ra ARRAY <<< "$DEVICE_RESULT"
+    DEVICE=$(echo "${ARRAY[0]}" | sed 's/://g')
+    if losetup -c $DEVICE 2>>$ERRFILE 1>>$LOGFILE ; then
+      echo "Loop device $DEVICE size updated"
+    fi
+    FSTYPE=$(lsblk -n --output FSTYPE -f $DEVICE 2>>$ERRFILE)
+    if [ "$FSTYPE" == "xfs" ]; then
+      ORIG_SIZE=$(df -h --output=size $DEVICE | grep -v Size)
+      xfs_growfs $DEVICE 2>>$ERRFILE 1>>$LOGFILE
+      echo "XFS file system grow was successful, from$ORIG_SIZE to$(df -h --output=size $DEVICE | grep -v Size)"
+    else
+      echo "File type $FSTYPE not supported, you will have to grow the file system yourself."
+    fi
+  else
+    echo "Volume $VOLUME not mounted"
+    exit 1
+  fi
+}
+
+function resize_func() {
+  VOLUME="$1"
+  SIZE="$2"
+  FILE="$PACK_ROOT_DIR/volume/$VOLUME"
+  if [[ $SIZE == "+"* ]] ; then
+    ADD_TO=true
+  else
+    ADD_TO=false
+  fi
+
+  SIZE=$(echo $SIZE | awk '/[0-9]$/{print $1;next};/[tT]$/{printf "%u\n", $1*(1024*1024*1024*1024);next};/[gG]$/{printf "%u\n", $1*(1024*1024*1024);next};/[mM]$/{printf "%u\n", $1*(1024*1024);next};/[kK]$/{printf "%u\n", $1*1024;next}')
+  CURRENT_SIZE=$(stat --printf="%s" $FILE 2>>$ERRFILE)
+
+  if $ADD_TO ; then
+    fallocate -o $CURRENT_SIZE -l $SIZE $FILE 2>>$ERRFILE 1>>$LOGFILE
+    echo "Pack device size increased from $CURRENT_SIZE to $(($CURRENT_SIZE + $SIZE))"
+  else
+    if (( $SIZE < $CURRENT_SIZE )) ; then
+      echo "ERROR: Size $SIZE can not be less then current size $CURRENT_SIZE"
+      return 1
+    fi
+    DELTA_SIZE=$(($SIZE - $CURRENT_SIZE))
+    fallocate -o $CURRENT_SIZE -l $DELTA_SIZE $FILE 2>>$ERRFILE 1>>$LOGFILE
+    echo "Pack device size increased from $CURRENT_SIZE to $(($CURRENT_SIZE + $DELTA_SIZE))"
+  fi
+  if ! growfs_func "$VOLUME" ; then
+    return 1
+  fi
+  return 0
+}
+
+CMD="${1}"
+case $CMD in
+ls)
+  if ! ls_func ; then
+    cat $ERRFILE
+    exit 1
+  fi
+  ;;
+mkfs)
+  if ! mkfs_func "$2" "$3" ; then
+    cat $ERRFILE
+    exit 1
+  fi
+  exit 0
+  ;;
+mount)
+  if ! mount_func "$2" "$3" ; then
+    cat $ERRFILE
+    exit 1
+  fi
+  exit 0
+  ;;
+resize)
+  if ! resize_func "$2" "$3" ; then
+    cat $ERRFILE
+    exit 1
+  fi
+  exit 0
+  ;;
+growfs)
+  if ! growfs_func "$2" ; then
+    cat $ERRFILE
+    exit 1
+  fi
+  exit 0
+  ;;
+*)
+  echo "Command \"$CMD\" not found.  ls, mkfs, mount, resize, growfs"
+  exit 1
+  ;;
+esac

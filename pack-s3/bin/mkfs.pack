@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+if [ "$#" == "2" ] ; then
+  exec pack mkfs "$1" "$2"
+elif [ "$#" == "1" ] ; then
+  exec pack mkfs "$1" "100G"
+else
+  echo "Missing arguments <volume> [<size>]"
+fi

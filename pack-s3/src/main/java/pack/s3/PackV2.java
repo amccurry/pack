@@ -4,7 +4,11 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
@@ -27,6 +31,12 @@ import jnrfuse.struct.FuseFileInfo;
 
 public class PackV2 extends FuseStubFS implements Closeable {
 
+  private static final String VOLUME = "volume";
+  private static final String VOLUME_PREFIX = "/" + VOLUME + "/";
+  private static final String STAT = "stat";
+  private static final String STAT_PREFIX = "/" + STAT + "/";
+  private static final String MOUNT = "mount";
+  private static final String MOUNT_PREFIX = "/" + MOUNT + "/";
   private static final String BIG_WRITES = "big_writes";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackV2.class);
@@ -109,18 +119,43 @@ public class PackV2 extends FuseStubFS implements Closeable {
   @Override
   public int getattr(String path, FileStat stat) {
     try {
-      List<String> volumes = _fileHandleManger.getVolumes();
       if (isRoot(path)) {
+        stat.st_mode.set(FileStat.S_IFDIR | 0755);
+        stat.st_size.set(3);
+        stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
+        stat.st_mtim.tv_nsec.set(0);
+        return OK;
+      } else if (isVolumeRoot(path)) {
+        List<String> volumes = _fileHandleManger.getVolumes();
         stat.st_mode.set(FileStat.S_IFDIR | 0755);
         stat.st_size.set(volumes.size());
         stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
         stat.st_mtim.tv_nsec.set(0);
         return OK;
-      } else if (isVolume(path)) {
+      } else if (isStatRoot(path)) {
+        stat.st_mode.set(FileStat.S_IFDIR | 0755);
+        stat.st_size.set(0);
+        stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
+        stat.st_mtim.tv_nsec.set(0);
+        return OK;
+      } else if (isMountRoot(path)) {
+        Map<String, FileHandle> handles = _fileHandleManger.getCurrentHandles();
+        stat.st_mode.set(FileStat.S_IFDIR | 0755);
+        stat.st_size.set(handles.size());
+        stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
+        stat.st_mtim.tv_nsec.set(0);
+        return OK;
+      } else if (isVolumePath(path)) {
         String volumeName = getVolumeName(path);
         long length = _fileHandleManger.getVolumeSize(volumeName);
         stat.st_mode.set(FileStat.S_IFREG | 0700);
         stat.st_size.set(length);
+        stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
+        stat.st_mtim.tv_nsec.set(0);
+        return OK;
+      } else if (isMountPath(path)) {
+        stat.st_mode.set(FileStat.S_IFREG | 0700);
+        stat.st_size.set(0);
         stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
         stat.st_mtim.tv_nsec.set(0);
         return OK;
@@ -136,17 +171,37 @@ public class PackV2 extends FuseStubFS implements Closeable {
   @Override
   public int readdir(String path, Pointer buf, FuseFillDir filter, @off_t long offset, FuseFileInfo fi) {
     try {
-      if (!isRoot(path)) {
+      if (isRoot(path)) {
+        filter.apply(buf, CURRENT_DIR, null, 0);
+        filter.apply(buf, PARENT_DIR, null, 0);
+        filter.apply(buf, MOUNT, null, 0);
+        filter.apply(buf, STAT, null, 0);
+        filter.apply(buf, VOLUME, null, 0);
+        return OK;
+      } else if (isVolumeRoot(path)) {
+        List<String> volumes = _fileHandleManger.getVolumes();
+        filter.apply(buf, CURRENT_DIR, null, 0);
+        filter.apply(buf, PARENT_DIR, null, 0);
+        for (String s : sort(volumes)) {
+          filter.apply(buf, s, null, 0);
+        }
+        return OK;
+      } else if (isStatRoot(path)) {
+        filter.apply(buf, CURRENT_DIR, null, 0);
+        filter.apply(buf, PARENT_DIR, null, 0);
+        return OK;
+      } else if (isMountRoot(path)) {
+        Map<String, FileHandle> handles = _fileHandleManger.getCurrentHandles();
+        filter.apply(buf, CURRENT_DIR, null, 0);
+        filter.apply(buf, PARENT_DIR, null, 0);
+        for (String s : sort(handles.keySet())) {
+          filter.apply(buf, s, null, 0);
+        }
+        return OK;
+      } else {
         return -ErrorCodes.ENOTDIR();
       }
 
-      List<String> volumes = _fileHandleManger.getVolumes();
-      filter.apply(buf, CURRENT_DIR, null, 0);
-      filter.apply(buf, PARENT_DIR, null, 0);
-      for (String s : volumes) {
-        filter.apply(buf, s, null, 0);
-      }
-      return OK;
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
@@ -157,18 +212,20 @@ public class PackV2 extends FuseStubFS implements Closeable {
   public int open(String path, FuseFileInfo fi) {
     try {
       LOGGER.info("open {} {}", path, fi.fh.get());
-      if (isRoot(path)) {
+      if (isRoot(path) || isMountRoot(path) || isVolumeRoot(path) || isStatRoot(path)) {
         return -ErrorCodes.EISDIR();
-      }
-
-      if (!isVolume(path)) {
+      } else if (isVolumePath(path)) {
+        FileHandle fileHandle = _fileHandleManger.getHandle(getVolumeName(path));
+        int handle = registerHandle(fileHandle);
+        fi.fh.set(handle);
+        return OK;
+      } else if (isMountPath(path)) {
+        return OK;
+      } else if (isStatPath(path)) {
+        return OK;
+      } else {
         return -ErrorCodes.ENOENT();
       }
-
-      FileHandle fileHandle = _fileHandleManger.getHandle(getVolumeName(path));
-      int handle = registerHandle(fileHandle);
-      fi.fh.set(handle);
-      return OK;
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
@@ -303,7 +360,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
     }
   }
 
-  private boolean isVolume(String path) throws Exception {
+  private boolean isVolumePath(String path) throws Exception {
     String volumeName = getVolumeName(path);
     if (volumeName.contains("/")) {
       return false;
@@ -317,8 +374,8 @@ public class PackV2 extends FuseStubFS implements Closeable {
   }
 
   private String getVolumeName(String path) {
-    if (path.startsWith("/")) {
-      return path.substring(1);
+    if (path.startsWith(VOLUME_PREFIX)) {
+      return path.substring(VOLUME_PREFIX.length());
     }
     return path;
   }
@@ -330,4 +387,57 @@ public class PackV2 extends FuseStubFS implements Closeable {
   private void mkdir(String p) {
     new File(p).mkdirs();
   }
+
+  private static <T extends Comparable<? super T>> Collection<T> sort(Collection<T> col) {
+    List<T> list = new ArrayList<>(col);
+    Collections.sort(list);
+    return list;
+  }
+
+  private boolean isMountRoot(String path) {
+    return path.equals("/" + MOUNT);
+  }
+
+  private boolean isStatRoot(String path) {
+    return path.equals("/" + STAT);
+  }
+
+  private boolean isVolumeRoot(String path) {
+    return path.equals("/" + VOLUME);
+  }
+
+  private String getMountName(String path) {
+    if (path.startsWith(MOUNT_PREFIX)) {
+      return path.substring(MOUNT_PREFIX.length());
+    }
+    return path;
+  }
+
+  private boolean isMountPath(String path) {
+    String volumeName = getMountName(path);
+    if (volumeName.contains("/")) {
+      return false;
+    }
+    return _fileHandleManger.getCurrentHandles()
+                            .keySet()
+                            .contains(volumeName);
+  }
+
+  private boolean isStatPath(String path) {
+    String volumeName = getStatName(path);
+    if (volumeName.contains("/")) {
+      return false;
+    }
+    return _fileHandleManger.getCurrentHandles()
+                            .keySet()
+                            .contains(volumeName);
+  }
+
+  private String getStatName(String path) {
+    if (path.startsWith(STAT_PREFIX)) {
+      return path.substring(STAT_PREFIX.length());
+    }
+    return path;
+  }
+
 }

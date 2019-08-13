@@ -15,12 +15,14 @@ public class S3BlockFactory implements BlockFactory {
   private final AmazonS3 _client;
   private final File _cacheDir;
   private final String _prefix;
+  private final File _uploadDir;
 
   public S3BlockFactory(S3BlockFactoryConfig config) {
     _bucketName = config.getBucketName();
     _client = config.getClient();
     _cacheDir = config.getCacheDir();
     _prefix = config.getPrefix();
+    _uploadDir = config.getUploadDir();
   }
 
   @Override
@@ -31,6 +33,7 @@ public class S3BlockFactory implements BlockFactory {
                                     .bucketName(_bucketName)
                                     .client(_client)
                                     .localCacheFile(localCacheFile)
+                                    .uploadDir(_uploadDir)
                                     .prefix(_prefix)
                                     .build());
   }

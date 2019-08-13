@@ -19,5 +19,6 @@ public class S3BlockConfig {
   String prefix;
   long consistencyWaitTime;
   File localCacheFile;
+  File uploadDir;
 
 }

@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+if [ "$#" == "2" ] ; then
+  exec pack mount "$1" "$2"
+else
+  echo "Missing arguments <volume> <mount path>"
+fi
