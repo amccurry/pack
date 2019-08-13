@@ -10,4 +10,10 @@ public interface MetadataStore {
 
   void setVolumeSize(String volumeName, long length) throws Exception;
 
+  void umount(String volumeName);
+
+  void mount(String volumeName);
+
+  boolean isMounted(String volumeName);
+
 }

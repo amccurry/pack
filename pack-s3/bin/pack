@@ -32,7 +32,7 @@ function mount_func() {
   VOLUME="$1"
   DST="$2"
   FILE="$PACK_ROOT_DIR/volume/$VOLUME"
-  if ! mount $FILE $DST 2>>$ERRFILE 1>>$LOGFILE ; then
+  if ! mount -o sync $FILE $DST 2>>$ERRFILE 1>>$LOGFILE ; then
     return 1
   fi
   if ! growfs_func "$VOLUME" ; then
