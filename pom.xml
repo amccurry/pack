@@ -14,7 +14,6 @@
 		<!--parcel.version>${project.version}${parcel.version.suffix}</parcel.version>-->
 		<parcel.version>${maven.build.timestamp}</parcel.version>
 		<maven.build.timestamp.format>yy.MM.dd.HH.mm</maven.build.timestamp.format>
-		<hadoop.version>2.6.0-cdh5.10.2</hadoop.version>
 	</properties>
 
 	<repositories>
@@ -30,22 +29,15 @@
 	</repositories>
 
 	<modules>
-		<module>pack-core</module>
-		<module>pack-assemble</module>
 		<module>pack-spi</module>
-		<module>pack-block</module>
 		<module>pack-iscsi</module>
-		<module>jnr-fuse</module>
-		<module>zk-utils</module>
+		<module>pack-jscsi</module>
+		<module>pack-storage-modules/pack-file-storage-module</module>
+		<module>pack-storage-modules/pack-s3-storage-module</module>
 	</modules>
 
 	<dependencyManagement>
 		<dependencies>
-			<dependency>
-				<groupId>pack</groupId>
-				<artifactId>pack-core</artifactId>
-				<version>${project.version}</version>
-			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
 				<artifactId>pack-iscsi</artifactId>
@@ -53,13 +45,7 @@
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>pack-block</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>pack</groupId>
-				<artifactId>pack-block</artifactId>
-				<classifier>tests</classifier>
+				<artifactId>pack-jscsi</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
@@ -69,18 +55,28 @@
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>jnr-fuse</artifactId>
+				<artifactId>pack-file-storage-module</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>zk-utils</artifactId>
+				<artifactId>pack-s3-storage-module</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
-			    <groupId>org.apache.zookeeper</groupId>
-			    <artifactId>zookeeper</artifactId>
-			    <version>3.4.10</version>
+				<groupId>org.jscsi</groupId>
+				<artifactId>target</artifactId>
+				<version>2.5.2</version>
+				<exclusions>
+					<exclusion>
+						<groupId>ch.qos.logback</groupId>
+						<artifactId>logback-core</artifactId>
+					</exclusion>
+					<exclusion>
+						<groupId>ch.qos.logback</groupId>
+						<artifactId>logback-classic</artifactId>
+					</exclusion>
+				</exclusions>
 			</dependency>
 			<dependency>
 				<groupId>commons-io</groupId>
@@ -98,70 +94,9 @@
 				<version>1.7.21</version>
 			</dependency>
 			<dependency>
-				<groupId>org.apache.hadoop</groupId>
-				<artifactId>hadoop-client</artifactId>
-				<version>${hadoop.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>com.fasterxml.jackson.core</groupId>
-				<artifactId>jackson-core</artifactId>
-				<version>2.8.4</version>
-			</dependency>
-			<dependency>
-				<groupId>com.fasterxml.jackson.core</groupId>
-				<artifactId>jackson-annotations</artifactId>
-				<version>2.8.4</version>
-			</dependency>
-			<dependency>
-				<groupId>com.fasterxml.jackson.core</groupId>
-				<artifactId>jackson-databind</artifactId>
-				<version>2.8.4</version>
-			</dependency>
-			<dependency>
 				<groupId>com.google.guava</groupId>
 				<artifactId>guava</artifactId>
 				<version>19.0</version>
-			</dependency>
-			<dependency>
-				<groupId>com.github.jnr</groupId>
-				<artifactId>jnr-ffi</artifactId>
-				<version>2.1.5</version>
-			</dependency>
-			<dependency>
-				<groupId>com.github.jnr</groupId>
-				<artifactId>jnr-posix</artifactId>
-				<version>3.0.41</version>
-			</dependency>
-			<dependency>
-				<groupId>com.github.jnr</groupId>
-				<artifactId>jnr-constants</artifactId>
-				<version>0.9.9</version>
-			</dependency>
-			<dependency>
-				<groupId>com.sparkjava</groupId>
-				<artifactId>spark-core</artifactId>
-				<version>2.6.0</version>
-			</dependency>
-			<dependency>
-				<groupId>org.eclipse.jetty</groupId>
-				<artifactId>jetty-unixsocket</artifactId>
-				<version>9.4.4.v20170414</version>
-			</dependency>
-			<dependency>
-				<groupId>org.roaringbitmap</groupId>
-				<artifactId>RoaringBitmap</artifactId>
-				<version>0.6.51</version>
-			</dependency>
-			<dependency>
-				<groupId>io.dropwizard.metrics</groupId>
-				<artifactId>metrics-core</artifactId>
-				<version>3.2.4</version>
-			</dependency>
-			<dependency>
-				<groupId>org.apache.hadoop</groupId>
-				<artifactId>hadoop-minicluster</artifactId>
-				<version>${hadoop.version}</version>
-				<scope>test</scope>
 			</dependency>
 			<dependency>
 				<groupId>junit</groupId>
@@ -175,9 +110,17 @@
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
-			<version>1.16.18</version>
+			<version>1.18.8</version>
 			<scope>provided</scope>
 		</dependency>
+		<dependency>
+	<groupId>org.slf4j</groupId>
+	<artifactId>slf4j-api</artifactId>
+</dependency>
+<dependency>
+	<groupId>org.slf4j</groupId>
+	<artifactId>slf4j-log4j12</artifactId>
+</dependency>
 	</dependencies>
 	<build>
 		<pluginManagement>

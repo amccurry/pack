@@ -27,15 +27,6 @@
 			<param name="ConversionPattern" value="%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1}:%L - %m%n" />
 		</layout>
 	</appender>
-	<logger name="org.apache.kafka">
-		<level value="error" />
-	</logger>
-	<logger name="org.apache.hadoop">
-		<level value="error" />
-	</logger>
-	<logger name="org.apache.zookeeper">
-		<level value="error" />
-	</logger>
 	<root>
 		<priority value="info" />
 		<appender-ref ref="console" />

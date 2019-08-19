@@ -6,32 +6,15 @@
 		<groupId>pack</groupId>
 		<artifactId>pack</artifactId>
 		<version>1.0-SNAPSHOT</version>
-		<relativePath>../pom.xml</relativePath>
+		<relativePath>../../pom.xml</relativePath>
 	</parent>
-	<artifactId>pack-iscsi</artifactId>
+	<artifactId>pack-file-storage-module</artifactId>
 	<packaging>jar</packaging>
 
 	<dependencies>
 		<dependency>
 			<groupId>pack</groupId>
 			<artifactId>pack-spi</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pack</groupId>
-			<artifactId>pack-jscsi</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pack</groupId>
-			<artifactId>pack-file-storage-module</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pack</groupId>
-			<artifactId>pack-s3-storage-module</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>junit</groupId>
-			<artifactId>junit</artifactId>
-			<scope>test</scope>
 		</dependency>
 	</dependencies>
 </project>
