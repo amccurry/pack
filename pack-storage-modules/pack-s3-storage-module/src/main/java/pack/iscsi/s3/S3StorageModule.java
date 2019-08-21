@@ -1,4 +1,4 @@
-package pack.iscsi.file;
+package pack.iscsi.s3;
 
 import java.io.File;
 import java.io.IOException;
@@ -8,23 +8,18 @@ import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.List;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import pack.iscsi.spi.BaseStorageModule;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
 import pack.util.IOUtils;
 
-public class FileStorageModule extends BaseStorageModule {
+public class S3StorageModule extends BaseStorageModule {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(FileStorageModule.class);
-
-  public static class FileStorageModuleFactory implements StorageModuleFactory {
+  public static class S3StorageModuleFactory implements StorageModuleFactory {
 
     private final File _volumeDir;
 
-    public FileStorageModuleFactory(File volumeDir) {
+    public S3StorageModuleFactory(File volumeDir) {
       _volumeDir = volumeDir;
       _volumeDir.mkdirs();
     }
@@ -36,23 +31,20 @@ public class FileStorageModule extends BaseStorageModule {
 
     @Override
     public StorageModule getStorageModule(String name) throws IOException {
-      return new FileStorageModule(new File(_volumeDir, name));
+      return new S3StorageModule(new File(_volumeDir, name));
     }
 
   }
 
-  public static FileStorageModuleFactory createFactory(File volumeDir) {
-    return new FileStorageModuleFactory(volumeDir);
+  public static S3StorageModuleFactory createFactory(File volumeDir) {
+    return new S3StorageModuleFactory(volumeDir);
   }
 
   private final RandomAccessFile _raf;
   private final FileChannel _channel;
-  private final File _volumeFile;
 
-  public FileStorageModule(File volumeFile) throws IOException {
+  public S3StorageModule(File volumeFile) throws IOException {
     super(volumeFile.length());
-    _volumeFile = volumeFile;
-    LOGGER.info("Creating {}", volumeFile);
     _raf = new RandomAccessFile(volumeFile, "rw");
     _channel = _raf.getChannel();
   }
@@ -76,7 +68,6 @@ public class FileStorageModule extends BaseStorageModule {
   @Override
   public void close() throws IOException {
     IOUtils.closeQuietly(_channel, _raf);
-    LOGGER.info("Closing {}", _volumeFile);
   }
 
 }

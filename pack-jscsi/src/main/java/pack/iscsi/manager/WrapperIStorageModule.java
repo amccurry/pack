@@ -1,4 +1,4 @@
-package pack.iscsi.storage.utils;
+package pack.iscsi.manager;
 
 import java.io.IOException;
 import java.net.InetAddress;

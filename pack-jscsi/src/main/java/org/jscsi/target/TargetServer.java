@@ -1,5 +1,6 @@
 package org.jscsi.target;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -121,8 +122,9 @@ public final class TargetServer implements Callable<Void> {
 
     TargetThreadFactory() {
       SecurityManager s = System.getSecurityManager();
-      group = (s != null) ? s.getThreadGroup() : Thread.currentThread()
-                                                       .getThreadGroup();
+      group = (s != null) ? s.getThreadGroup()
+          : Thread.currentThread()
+                  .getThreadGroup();
       namePrefix = "pool-" + poolNumber.getAndIncrement() + "-thread-";
     }
 
@@ -263,6 +265,10 @@ public final class TargetServer implements Callable<Void> {
     }
     return iscsiTargetManager.getTarget(targetName);
   }
+  
+  public String getTargetAlias(String targetName) {
+    return iscsiTargetManager.getTargetAlias(targetName);
+  }
 
   /**
    * Removes a session from the jSCSI Target's list of active sessions.
@@ -272,6 +278,20 @@ public final class TargetServer implements Callable<Void> {
    */
   public synchronized void removeTargetSession(TargetSession session) {
     sessions.remove(session);
+    Target target = session.getTarget();
+    if (target != null) {
+      close(target.getStorageModule());
+    }
+  }
+
+  private void close(Closeable closeable) {
+    if (closeable != null) {
+      try {
+        closeable.close();
+      } catch (IOException e) {
+        LOGGER.error("Error while closing object " + closeable, closeable);
+      }
+    }
   }
 
   public String[] getTargetNames() {

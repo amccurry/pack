@@ -101,8 +101,10 @@ public class InquiryStage extends TargetFullFeatureStage {
           responseData = SupportedVpdPages.getInstance();
           break;
         case DEVICE_IDENTIFICATION:
-          responseData = session.getTargetServer()
-                                .getDeviceIdentificationVpdPage();
+          // responseData = session.getTargetServer()
+          // .getDeviceIdentificationVpdPage();
+          // bug with too many devices
+          responseData = StandardInquiryData.getInstance();
           break;
         case UNIT_SERIAL_NUMBER:
           responseData = session.getTargetServer()

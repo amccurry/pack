@@ -3,7 +3,8 @@ package pack.iscsi.manager;
 import java.io.IOException;
 
 import org.jscsi.target.Target;
-import org.jscsi.target.storage.IStorageModule;
+
+import pack.iscsi.spi.StorageModuleFactory;
 
 public interface TargetManager {
 
@@ -13,7 +14,10 @@ public interface TargetManager {
 
   boolean isValidTarget(String targetName);
 
-  void register(String name, String alias, IStorageModule module) throws IOException;
+  void register(StorageModuleFactory moduleFactory) throws IOException;
 
-  String getFullName(String name);
+  String getTargetName(String name);
+
+  String getTargetAlias(String targetName);
+
 }

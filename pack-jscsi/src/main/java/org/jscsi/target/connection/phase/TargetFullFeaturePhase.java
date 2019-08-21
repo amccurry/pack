@@ -150,9 +150,14 @@ public final class TargetFullFeaturePhase extends TargetPhase {
             }
           } // else, or if default block was entered (programmer error)
           if (scsiOpCode == null) {
-            LOGGER.error("Unsupported SCSI OpCode 0x" + Integer.toHexString(parser.getCDB()
-                                                                                  .get(0)
-                & 255) + " in SCSI Command PDU.");
+            int opcode = parser.getCDB()
+                               .get(0)
+                & 255;
+            if (opcode == 0xa3) {
+              LOGGER.debug("Unsupported SCSI OpCode 0x" + Integer.toHexString(opcode) + " in SCSI Command PDU.");
+            } else {
+              LOGGER.error("Unsupported SCSI OpCode 0x" + Integer.toHexString(opcode) + " in SCSI Command PDU.");
+            }
             stage = new UnsupportedOpCodeStage(this);
           }
 

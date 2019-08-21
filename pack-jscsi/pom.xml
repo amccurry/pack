@@ -13,6 +13,10 @@
 
 	<dependencies>
 		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>pack-spi</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.jscsi</groupId>
 			<artifactId>target</artifactId>
 			<exclusions>
