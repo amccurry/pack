@@ -1,9 +1,10 @@
 package pack.iscsi.spi;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 
-public interface StorageModule {
+public interface StorageModule extends Closeable {
   public static final int VIRTUAL_BLOCK_SIZE = 512;
 
   /**

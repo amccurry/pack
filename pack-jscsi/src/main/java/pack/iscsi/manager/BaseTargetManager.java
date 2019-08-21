@@ -17,7 +17,7 @@ public class BaseTargetManager implements TargetManager {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseTargetManager.class);
   private static final String PACK = "pack";
-  private static final String TARGET_PREFIX = PACK + ":";
+  private static final String TARGET_PREFIX = "iqn.2019-08." + PACK + ":";
 
   private final List<StorageModuleFactory> _factories;
 
