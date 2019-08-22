@@ -1,9 +1,14 @@
 package pack.iscsi.s3;
 
+import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -11,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.model.GetObjectRequest;
+import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
@@ -18,6 +24,7 @@ import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.github.benmanes.caffeine.cache.Weigher;
 
 import consistent.s3.ConsistentAmazonS3;
+import pack.iscsi.s3.S3Block.S3BlockIOExecutor;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
 
@@ -27,7 +34,7 @@ public class S3StorageModule implements StorageModule {
 
   public static class S3StorageModuleFactory implements StorageModuleFactory {
 
-    private final LoadingCache<S3CacheKey, S3CacheValue> _cache;
+    private final LoadingCache<S3CacheKey, S3Block> _cache;
     private final ConsistentAmazonS3 _consistentAmazonS3;
     private final File _volumesDir;
     private final String _s3Bucket;
@@ -40,9 +47,9 @@ public class S3StorageModule implements StorageModule {
       _volumesDir = config.getVolumesDir();
       _volumesDir.mkdirs();
 
-      CacheLoader<S3CacheKey, S3CacheValue> loader = getCacheLoader();
-      RemovalListener<S3CacheKey, S3CacheValue> removalListener = getRemovalListener();
-      Weigher<S3CacheKey, S3CacheValue> weigher = getWeigher();
+      CacheLoader<S3CacheKey, S3Block> loader = getCacheLoader();
+      RemovalListener<S3CacheKey, S3Block> removalListener = getRemovalListener();
+      Weigher<S3CacheKey, S3Block> weigher = getWeigher();
       _cache = Caffeine.newBuilder()
                        .removalListener(removalListener)
                        .weigher(weigher)
@@ -51,32 +58,27 @@ public class S3StorageModule implements StorageModule {
 
     }
 
-    private Weigher<S3CacheKey, S3CacheValue> getWeigher() {
+    private Weigher<S3CacheKey, S3Block> getWeigher() {
       return (key, value) -> value.getBlockSize();
     }
 
-    private RemovalListener<S3CacheKey, S3CacheValue> getRemovalListener() {
+    private RemovalListener<S3CacheKey, S3Block> getRemovalListener() {
       return (key, value, cause) -> {
-        if (value.isDirty()) {
-          LOGGER.info("Dirty block removed, uploading {}", key);
-          _consistentAmazonS3.putObject(key.getS3Bucket(), key.getS3Key(), value.getBlockFile());
-        }
-        value.getBlockFile()
-             .delete();
+        value.exec(new S3UploadBlockIO(_consistentAmazonS3, key, value, true));
       };
     }
 
-    private CacheLoader<S3CacheKey, S3CacheValue> getCacheLoader() {
+    private CacheLoader<S3CacheKey, S3Block> getCacheLoader() {
       return key -> {
         File blockFile = getBlockFileLocation(key);
         GetObjectRequest getRequest = new GetObjectRequest(key.getS3Bucket(), key.getS3Key());
         while (true) {
           try {
             _consistentAmazonS3.getObject(getRequest, blockFile);
-            return S3CacheValue.createExisting(blockFile, key.getBlockSize());
+            return S3Block.createExisting(blockFile, key.getBlockSize());
           } catch (AmazonServiceException e) {
             if (e.getStatusCode() == 404) {
-              return S3CacheValue.createEmptyBlock(blockFile, key.getBlockSize());
+              return S3Block.createEmptyBlock(blockFile, key.getBlockSize());
             }
             LOGGER.error("Unknown error, trying", e);
             Thread.sleep(TimeUnit.SECONDS.toMillis(3));
@@ -95,7 +97,7 @@ public class S3StorageModule implements StorageModule {
       S3StorageModuleConfig config = S3StorageModuleConfig.builder()
                                                           .name(name)
                                                           .cache(_cache)
-                                                          .blockSize(128_000_000)
+                                                          .blockSize(1_000_000)
                                                           .lengthInBytes(100_000_000_000L)
                                                           .s3Bucket(_s3Bucket)
                                                           .s3ObjectPrefix(_s3ObjectPrefix)
@@ -109,6 +111,10 @@ public class S3StorageModule implements StorageModule {
       return new File(volumeDir, Long.toString(key.getBlockId()));
     }
 
+    public Map<S3CacheKey, S3Block> getCacheAsMap() {
+      return _cache.asMap();
+    }
+
   }
 
   public static S3StorageModuleFactory createFactory(S3StorageModuleFactoryConfig config) {
@@ -116,7 +122,7 @@ public class S3StorageModule implements StorageModule {
   }
 
   private final int _blockSize;
-  private final LoadingCache<S3CacheKey, S3CacheValue> _cache;
+  private final LoadingCache<S3CacheKey, S3Block> _cache;
   private final String _name;
   private final long _lengthInBytes;
   private String _s3Bucket;
@@ -144,8 +150,9 @@ public class S3StorageModule implements StorageModule {
                                  .s3ObjectPrefix(_s3ObjectPrefix)
                                  .name(_name)
                                  .blockId(blockId)
+                                 .blockSize(_blockSize)
                                  .build();
-      S3CacheValue s3CacheValue = _cache.get(key);
+      S3Block s3CacheValue = _cache.get(key);
       int len = Math.min(remaining, length);
       s3CacheValue.readFully(blockOffset, bytes, offset, len);
       length -= len;
@@ -167,8 +174,9 @@ public class S3StorageModule implements StorageModule {
                                  .s3ObjectPrefix(_s3ObjectPrefix)
                                  .name(_name)
                                  .blockId(blockId)
+                                 .blockSize(_blockSize)
                                  .build();
-      S3CacheValue s3CacheValue = _cache.get(key);
+      S3Block s3CacheValue = _cache.get(key);
       int len = Math.min(remaining, length);
       s3CacheValue.writeFully(blockOffset, bytes, offset, len);
       length -= len;

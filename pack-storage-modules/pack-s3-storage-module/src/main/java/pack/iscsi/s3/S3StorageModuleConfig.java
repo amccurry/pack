@@ -11,7 +11,7 @@ public class S3StorageModuleConfig {
   String name;
   long lengthInBytes;
   int blockSize;
-  LoadingCache<S3CacheKey, S3CacheValue> cache;
+  LoadingCache<S3CacheKey, S3Block> cache;
   String s3Bucket;
   String s3ObjectPrefix;
 }
