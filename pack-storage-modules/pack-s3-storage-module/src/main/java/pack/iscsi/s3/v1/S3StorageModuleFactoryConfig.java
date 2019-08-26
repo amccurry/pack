@@ -1,4 +1,4 @@
-package pack.iscsi.s3;
+package pack.iscsi.s3.v1;
 
 import java.io.File;
 

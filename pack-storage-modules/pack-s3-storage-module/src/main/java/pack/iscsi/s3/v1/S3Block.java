@@ -1,10 +1,11 @@
-package pack.iscsi.s3;
+package pack.iscsi.s3.v1;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
@@ -26,6 +27,7 @@ public class S3Block implements Closeable {
   private final FileChannel _channel;
   private final long _blockId;
   private final AtomicReference<S3BlockState> _state = new AtomicReference<>();
+  private final AtomicLong _generation = new AtomicLong();
 
   public S3Block(FileChannel channel, long blockId, int blockSize) throws IOException {
     ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
@@ -34,7 +36,10 @@ public class S3Block implements Closeable {
     _channel = channel;
     _blockId = blockId;
     _blockSize = blockSize;
-    readMetaData();
+  }
+  
+  public void load() {
+    
   }
 
   /**
@@ -55,18 +60,6 @@ public class S3Block implements Closeable {
     }
   }
 
-  private long getAbsolutePosition(long blockPosition) {
-    return getAbsoluteStartPositionOfBlock() + blockPosition;
-  }
-
-  private long getAbsoluteStartPositionOfBlock() {
-    return (_blockSize + BLOCK_OVERHEAD) * _blockId;
-  }
-
-  private long getMetadataPosition() {
-    return getAbsoluteStartPositionOfBlock() + _blockSize;
-  }
-
   /**
    * Position is relative to the block.
    */
@@ -76,7 +69,7 @@ public class S3Block implements Closeable {
     checkIfState();
     try {
       if (!isDirty()) {
-        writeMetadata(S3BlockState.DIRTY);
+        writeMetadata(S3BlockState.DIRTY, _generation.incrementAndGet());
       }
       long pos = getAbsolutePosition(blockPosition);
       ByteBuffer src = ByteBuffer.wrap(bytes, offset, len);
@@ -95,17 +88,11 @@ public class S3Block implements Closeable {
     }
   }
 
-  public static interface S3BlockIOExecutor {
-
-    S3BlockState exec(FileChannel channel, long positionOfStartOfBlock, int blockSize) throws IOException;
-
-  }
-
   public void exec(S3BlockIOExecutor blockIO) throws IOException {
     _writeLock.lock();
     try {
       checkIfClosed();
-      writeMetadata(blockIO.exec(_channel, getAbsoluteStartPositionOfBlock(), _blockSize));
+      writeMetadata(blockIO.exec(_channel, getAbsoluteStartPositionOfBlock(), _blockSize) );
     } finally {
       _writeLock.unlock();
     }
@@ -148,9 +135,9 @@ public class S3Block implements Closeable {
     _state.set(S3BlockState.lookup(dst.get()));
   }
 
-  private void writeMetadata(S3BlockState state) throws IOException {
-    _state.set(state);
-    _channel.write(state.toByteBuffer(), getMetadataPosition());
+  private void writeMetadata(S3BlockMetadata metadata) throws IOException {
+    _state.set(metadata.getState());
+    _channel.write(metadata.toByteBuffer(), getMetadataPosition());
     LOGGER.info("write meta data blockId {} state {}", _blockId, _state);
   }
 
@@ -175,4 +162,15 @@ public class S3Block implements Closeable {
     return (blockSize + BLOCK_OVERHEAD) * blocks;
   }
 
+  private long getAbsolutePosition(long blockPosition) {
+    return getAbsoluteStartPositionOfBlock() + blockPosition;
+  }
+
+  private long getAbsoluteStartPositionOfBlock() {
+    return (_blockSize + BLOCK_OVERHEAD) * _blockId;
+  }
+
+  private long getMetadataPosition() {
+    return getAbsoluteStartPositionOfBlock() + _blockSize;
+  }
 }

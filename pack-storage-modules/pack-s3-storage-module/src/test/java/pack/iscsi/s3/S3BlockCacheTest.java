@@ -10,6 +10,9 @@ import java.util.Random;
 
 import org.junit.Test;
 
+import pack.iscsi.s3.v1.S3Block;
+import pack.iscsi.s3.v1.S3BlockState;
+
 public class S3BlockCacheTest {
 
   @Test

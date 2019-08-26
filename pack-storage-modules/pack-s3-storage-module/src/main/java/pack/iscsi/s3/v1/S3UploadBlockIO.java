@@ -1,4 +1,4 @@
-package pack.iscsi.s3;
+package pack.iscsi.s3.v1;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 
 import consistent.s3.ConsistentAmazonS3;
-import pack.iscsi.s3.S3Block.S3BlockIOExecutor;
 
 public class S3UploadBlockIO implements S3BlockIOExecutor {
 

@@ -1,4 +1,4 @@
-package pack.iscsi.s3;
+package pack.iscsi.s3.v1;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -24,7 +24,7 @@ import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.github.benmanes.caffeine.cache.Weigher;
 
 import consistent.s3.ConsistentAmazonS3;
-import pack.iscsi.s3.S3Block.S3BlockIOExecutor;
+import pack.iscsi.s3.v1.S3Block.S3BlockIOExecutor;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
 

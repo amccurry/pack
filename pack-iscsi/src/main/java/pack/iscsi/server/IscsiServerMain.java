@@ -23,9 +23,9 @@ import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
 import pack.iscsi.manager.BaseTargetManager;
 import pack.iscsi.manager.TargetManager;
-import pack.iscsi.s3.S3StorageModule;
-import pack.iscsi.s3.S3StorageModuleFactoryConfig;
 import pack.iscsi.s3.TestProperties;
+import pack.iscsi.s3.v1.S3StorageModule;
+import pack.iscsi.s3.v1.S3StorageModuleFactoryConfig;
 import pack.iscsi.spi.StorageModuleFactory;
 
 public class IscsiServerMain {
