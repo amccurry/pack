@@ -2,6 +2,9 @@ package pack.util;
 
 import java.io.Closeable;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.concurrent.Future;
 
@@ -59,6 +62,18 @@ public class IOUtils {
           if (logger != null) {
             LOGGER.error("Unknown error while trying to close " + closeable, e);
           }
+        }
+      }
+    }
+  }
+
+  public static void copy(File src, File dst) throws IOException {
+    try (FileInputStream input = new FileInputStream(src)) {
+      try (FileOutputStream output = new FileOutputStream(dst)) {
+        byte[] buffer = new byte[4096];
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+          output.write(buffer, 0, read);
         }
       }
     }

@@ -21,10 +21,10 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
+import pack.iscsi.TestProperties;
+import pack.iscsi.file.FileStorageModule;
 import pack.iscsi.manager.BaseTargetManager;
 import pack.iscsi.manager.TargetManager;
-import pack.iscsi.s3.TestProperties;
-import pack.iscsi.s3.v1.S3StorageModule;
 import pack.iscsi.s3.v1.S3StorageModuleFactoryConfig;
 import pack.iscsi.spi.StorageModuleFactory;
 
@@ -36,10 +36,10 @@ public class IscsiServerMain {
     Set<String> addresses = new HashSet<String>();
     addresses.add("127.0.0.3");
     List<StorageModuleFactory> factories = new ArrayList<>();
-    // factories.add(FileStorageModule.createFactory(new File("./volume")));
+    factories.add(FileStorageModule.createFactory(new File("./volume")));
 
-    S3StorageModuleFactoryConfig s3Config = getS3Config();
-    factories.add(S3StorageModule.createFactory(s3Config));
+    // S3StorageModuleFactoryConfig s3Config = getS3Config();
+    // factories.add(S3StorageModule.createFactory(s3Config));
 
     TargetManager targetManager = new BaseTargetManager(factories);
     IscsiServerConfig config = IscsiServerConfig.builder()

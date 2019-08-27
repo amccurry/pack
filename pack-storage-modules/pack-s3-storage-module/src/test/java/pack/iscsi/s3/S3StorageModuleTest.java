@@ -23,6 +23,7 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
+import pack.iscsi.TestProperties;
 import pack.iscsi.s3.v1.S3StorageModule;
 import pack.iscsi.s3.v1.S3StorageModuleFactoryConfig;
 import pack.iscsi.s3.v1.S3StorageModule.S3StorageModuleFactory;

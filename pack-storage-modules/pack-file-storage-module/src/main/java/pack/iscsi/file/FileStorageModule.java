@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +49,8 @@ public class FileStorageModule extends BaseStorageModule {
   private final RandomAccessFile _raf;
   private final FileChannel _channel;
   private final File _volumeFile;
+  private final AtomicLong _writes = new AtomicLong();
+  private final AtomicLong _writeEvents = new AtomicLong();
 
   public FileStorageModule(File volumeFile) throws IOException {
     super(volumeFile.length());
@@ -67,10 +70,17 @@ public class FileStorageModule extends BaseStorageModule {
 
   @Override
   public void write(byte[] bytes, long position) throws IOException {
+    _writes.addAndGet(bytes.length);
     ByteBuffer buffer = ByteBuffer.wrap(bytes);
     while (buffer.remaining() > 0) {
       position += _channel.write(buffer, position);
     }
+  }
+
+  @Override
+  public void flushWrites() throws IOException {
+    _writeEvents.incrementAndGet();
+    LOGGER.info("{} buffered writes {}", _writeEvents.get(), _writes.getAndSet(0));
   }
 
   @Override

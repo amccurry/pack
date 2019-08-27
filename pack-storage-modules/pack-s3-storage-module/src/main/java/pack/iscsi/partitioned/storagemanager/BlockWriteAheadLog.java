@@ -1,4 +1,4 @@
-package pack.iscsi.partitioned.block;
+package pack.iscsi.partitioned.storagemanager;
 
 import java.io.IOException;
 

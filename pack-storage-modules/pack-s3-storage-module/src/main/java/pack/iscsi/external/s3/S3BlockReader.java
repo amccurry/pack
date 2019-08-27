@@ -1,6 +1,5 @@
-package pack.iscsi.s3;
+package pack.iscsi.external.s3;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -13,7 +12,8 @@ import com.amazonaws.services.s3.model.S3ObjectInputStream;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.partitioned.block.BlockIOExecutor;
-import pack.iscsi.partitioned.block.BlockIOResult;
+import pack.iscsi.partitioned.block.BlockIORequest;
+import pack.iscsi.partitioned.block.BlockIOResponse;
 import pack.iscsi.partitioned.block.BlockState;
 
 public class S3BlockReader implements BlockIOExecutor {
@@ -22,19 +22,26 @@ public class S3BlockReader implements BlockIOExecutor {
 
   private final ConsistentAmazonS3 _consistentAmazonS3;
   private final String _bucket;
-  private final String _key;
+  private final String _objectPrefix;
 
-  public S3BlockReader(ConsistentAmazonS3 consistentAmazonS3, String bucket, String key) {
+  public S3BlockReader(ConsistentAmazonS3 consistentAmazonS3, String bucket, String objectPrefix) {
     _consistentAmazonS3 = consistentAmazonS3;
     _bucket = bucket;
-    _key = key;
+    _objectPrefix = objectPrefix;
   }
 
   @Override
-  public BlockIOResult exec(FileChannel channel, File file, int blockSize, long onDiskGeneration,
-      BlockState onDiskState, long lastStoredGeneration) throws IOException {
+  public BlockIOResponse exec(BlockIORequest request) throws IOException {
+
+    // @TODO partial reads may cause corruption, needs work
+
+    long lastStoredGeneration = request.getLastStoredGeneration();
+    FileChannel channel = request.getChannel();
+    long onDiskGeneration = request.getOnDiskGeneration();
+    BlockState onDiskState = request.getOnDiskState();
     try {
-      S3Object s3Object = _consistentAmazonS3.getObject(_bucket, getKey(lastStoredGeneration));
+      String key = S3Utils.getKey(_objectPrefix, request);
+      S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
       try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
         byte[] buffer = new byte[4096];
         int read;
@@ -43,15 +50,11 @@ public class S3BlockReader implements BlockIOExecutor {
           pos += channel.write(ByteBuffer.wrap(buffer, 0, read), pos);
         }
       }
-      return BlockIOResult.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
+      return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
-      return BlockIOResult.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
+      return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
     }
-  }
-
-  private String getKey(long generation) {
-    return _key + "/" + generation;
   }
 
 }

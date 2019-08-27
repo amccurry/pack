@@ -3,7 +3,7 @@ package pack.iscsi.partitioned.block;
 import java.nio.ByteBuffer;
 
 public enum BlockState {
-  MISSING((byte) 0), CLEAN((byte) 1), DIRTY((byte) 2);
+  UNKNOWN((byte) 0), CLEAN((byte) 1), DIRTY((byte) 2);
 
   private final byte[] _type;
 
@@ -18,7 +18,7 @@ public enum BlockState {
   public static BlockState lookup(byte type) {
     switch (type) {
     case 0:
-      return MISSING;
+      return UNKNOWN;
     case 1:
       return CLEAN;
     case 2:

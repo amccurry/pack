@@ -1,4 +1,4 @@
-package pack.iscsi.s3;
+package pack.iscsi;
 
 import java.io.File;
 import java.io.FileInputStream;
