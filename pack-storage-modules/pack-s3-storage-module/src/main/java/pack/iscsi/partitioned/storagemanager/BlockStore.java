@@ -1,13 +1,8 @@
 package pack.iscsi.partitioned.storagemanager;
 
-import java.io.IOException;
 import java.util.List;
 
 public interface BlockStore {
-
-  void updateGeneration(long volumeId, long blockId, long generation) throws IOException;
-
-  long getGeneration(long volumeId, long blockId) throws IOException;
 
   long getVolumeId(String name);
 
@@ -16,5 +11,9 @@ public interface BlockStore {
   long getLengthInBytes(long volumeId);
 
   List<String> getVolumeNames();
+
+  long getLastStoreGeneration(long volumeId, long blockId);
+
+  void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration);
 
 }

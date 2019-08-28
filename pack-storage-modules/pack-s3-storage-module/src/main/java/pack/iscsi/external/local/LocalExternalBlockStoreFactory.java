@@ -2,6 +2,7 @@ package pack.iscsi.external.local;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -11,15 +12,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.iscsi.external.ExternalBlockIOFactory;
+import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.block.BlockIOExecutor;
 import pack.iscsi.partitioned.block.BlockIORequest;
 import pack.iscsi.partitioned.block.BlockIOResponse;
 import pack.iscsi.partitioned.block.BlockState;
-import pack.iscsi.partitioned.storagemanager.BlockStorageModuleFactoryTest;
 
 public class LocalExternalBlockStoreFactory implements ExternalBlockIOFactory {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModuleFactoryTest.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(LocalExternalBlockStoreFactory.class);
 
   private final File _storeDir;
 
@@ -68,6 +69,13 @@ public class LocalExternalBlockStoreFactory implements ExternalBlockIOFactory {
       @Override
       public BlockIOResponse exec(BlockIORequest request) throws IOException {
         long generation = request.getLastStoredGeneration();
+        if (generation == Block.MISSING_BLOCK_GENERATION) {
+          return BlockIOResponse.builder()
+                                .lastStoredGeneration(generation)
+                                .onDiskGeneration(generation)
+                                .onDiskBlockState(BlockState.CLEAN)
+                                .build();
+        }
         LOGGER.info("read request {} {}", request.getBlockId(), generation);
         File srcVolDir = new File(_storeDir, Long.toString(request.getVolumeId()));
         File srcBlockDir = new File(srcVolDir, Long.toString(request.getBlockId()));
@@ -89,6 +97,8 @@ public class LocalExternalBlockStoreFactory implements ExternalBlockIOFactory {
               }
             }
           }
+        } else {
+          throw new FileNotFoundException(src.toString());
         }
         return BlockIOResponse.builder()
                               .lastStoredGeneration(generation)

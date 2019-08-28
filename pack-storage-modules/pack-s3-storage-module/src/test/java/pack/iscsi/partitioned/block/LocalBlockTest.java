@@ -29,12 +29,12 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore blockGenerationStore = getBlockGenerationStore();
+    BlockStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     long seed = new Random().nextLong();
 
     int passes = 1000;
-    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, blockGenerationStore, wal)) {
+    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, store, wal)) {
 
       block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
 
@@ -80,9 +80,9 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore blockGenerationStore = getBlockGenerationStore();
+    BlockStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
-    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, blockGenerationStore, wal)) {
+    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, store, wal)) {
       block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
       byte[] buffer = new byte[1000];
       try {
@@ -104,9 +104,9 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore blockGenerationStore = getBlockGenerationStore();
+    BlockStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
-    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, blockGenerationStore, wal)) {
+    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, store, wal)) {
       block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
       byte[] buffer = new byte[1000];
       block.writeFully(0, buffer, 0, 1);
@@ -134,9 +134,9 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore blockGenerationStore = getBlockGenerationStore();
+    BlockStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
-    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, blockGenerationStore, wal)) {
+    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, store, wal)) {
       block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
       byte[] buffer = new byte[1000];
       block.writeFully(0, buffer, 0, 1);
@@ -161,50 +161,58 @@ public class LocalBlockTest {
 
   private BlockWriteAheadLog getBlockWriteAheadLog() {
     return new BlockWriteAheadLog() {
+
       @Override
-      public void write(long volumeId, long blockId, long generation, byte[] bytes, int offset, int len)
+      public void write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset, int len)
           throws IOException {
 
+      }
+
+      @Override
+      public BlockIOExecutor getWriteAheadLogReader() {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void release(long volumeId, long blockId, long generation) throws IOException {
       }
     };
   }
 
-  private BlockStore getBlockGenerationStore() {
+  private BlockStore getBlockStore() {
     return new BlockStore() {
 
-      private long _generation;
+      private long _lastStoredGeneration;
 
       @Override
-      public void updateGeneration(long volumeId, long blockId, long generation) throws IOException {
-        _generation = generation;
+      public long getLastStoreGeneration(long volumeId, long blockId) {
+        return _lastStoredGeneration;
       }
 
       @Override
-      public long getGeneration(long volumeId, long blockId) throws IOException {
-        return _generation;
-      }
-
-      @Override
-      public long getVolumeId(String name) {
-        return 0;
-      }
-
-      @Override
-      public int getBlockSize(long volumeId) {
-        return 0;
-      }
-
-      @Override
-      public long getLengthInBytes(long volumeId) {
-        return 0;
+      public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) {
+        _lastStoredGeneration = lastStoredGeneration;
       }
 
       @Override
       public List<String> getVolumeNames() {
-        return null;
+        throw new RuntimeException("not impl");
       }
 
+      @Override
+      public long getVolumeId(String name) {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public long getLengthInBytes(long volumeId) {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public int getBlockSize(long volumeId) {
+        throw new RuntimeException("not impl");
+      }
     };
   }
-
 }

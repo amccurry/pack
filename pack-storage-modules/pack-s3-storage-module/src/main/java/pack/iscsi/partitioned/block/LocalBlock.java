@@ -40,15 +40,15 @@ public class LocalBlock implements Closeable, Block {
   private final AtomicLong _onDiskGeneration = new AtomicLong();
   private final AtomicLong _lastStoredGeneration = new AtomicLong();
   private final AtomicBoolean _closed = new AtomicBoolean();
-  private final BlockStore _blockStore;
   private final BlockWriteAheadLog _wal;
+  private final BlockStore _blockStore;
 
   public LocalBlock(File blockDataDir, long volumeId, long blockId, int blockSize, BlockStore blockStore,
       BlockWriteAheadLog wal) throws IOException {
+    _blockStore = blockStore;
     ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
     _writeLock = reentrantReadWriteLock.writeLock();
     _readLock = reentrantReadWriteLock.readLock();
-    _blockStore = blockStore;
     _wal = wal;
     _blockSize = blockSize;
     _volumeId = volumeId;
@@ -76,8 +76,7 @@ public class LocalBlock implements Closeable, Block {
       _channel = _raf.getChannel();
     }
     readMetadata();
-    long generation = blockStore.getGeneration(_volumeId, _blockId);
-    _lastStoredGeneration.set(generation);
+    _lastStoredGeneration.set(_blockStore.getLastStoreGeneration(_volumeId, _blockId));
   }
 
   @Override
@@ -107,9 +106,8 @@ public class LocalBlock implements Closeable, Block {
     try {
       markDirty();
       long generation = _onDiskGeneration.incrementAndGet();
-      _wal.write(_volumeId, _blockId, generation, bytes, offset, len);
+      _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
       writeMetadata();
-      _blockStore.updateGeneration(_volumeId, _blockId, generation);
       ByteBuffer src = ByteBuffer.wrap(bytes, offset, len);
       while (src.remaining() > 0) {
         blockPosition += _channel.write(src, blockPosition);
@@ -145,6 +143,8 @@ public class LocalBlock implements Closeable, Block {
       _onDiskState.set(response.getOnDiskBlockState());
       _onDiskGeneration.set(response.getOnDiskGeneration());
       _lastStoredGeneration.set(response.getLastStoredGeneration());
+      _blockStore.setLastStoreGeneration(_volumeId, _blockId, response.getLastStoredGeneration());
+      _wal.release(_volumeId, _blockId, response.getLastStoredGeneration());
       writeMetadata();
     } finally {
       _writeLock.unlock();

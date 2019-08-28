@@ -14,19 +14,23 @@ import org.junit.Before;
 import org.junit.Test;
 
 import pack.iscsi.external.ExternalBlockIOFactory;
+import pack.iscsi.external.local.LocalBlockWriteAheadLog;
 import pack.iscsi.external.local.LocalExternalBlockStoreFactory;
+import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.spi.StorageModule;
 import pack.util.IOUtils;
 
 public class BlockStorageModuleFactoryTest {
 
   private static final File BLOCK_DATA_DIR = new File("./target/tmp/BlockStorageModuleFactoryTest/blocks");
+  private static final File WAL_DATA_DIR = new File("./target/tmp/BlockStorageModuleFactoryTest/wal");
   private static final File EXTERNAL_BLOCK_DATA_DIR = new File("./target/tmp/BlockStorageModuleFactoryTest/external");
 
   @Before
   public void setup() {
     IOUtils.rmr(BLOCK_DATA_DIR);
     IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
+    IOUtils.rmr(WAL_DATA_DIR);
   }
 
   @Test
@@ -48,51 +52,84 @@ public class BlockStorageModuleFactoryTest {
     BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
     StorageModule storageModule = factory.getStorageModule("test");
     assertEquals(195311, storageModule.getSizeInBlocks());
-
-    long seed = 1;// new Random().nextLong();
-
+    long seed = new Random().nextLong();
     long length = 51_000_000;
-    {
-      byte[] buffer1 = new byte[9876];
-      byte[] buffer2 = new byte[9876];
-      Random random = new Random(seed);
-      for (long pos = 0; pos < length; pos += buffer1.length) {
-        random.nextBytes(buffer1);
-        storageModule.write(buffer1, pos);
-        storageModule.read(buffer2, pos);
-        assertTrue(Arrays.equals(buffer1, buffer2));
-      }
-    }
-    {
-      byte[] buffer1 = new byte[9876];
-      byte[] buffer2 = new byte[9876];
-      Random random = new Random(seed);
-      for (long pos = 0; pos < length; pos += buffer1.length) {
-        random.nextBytes(buffer1);
-        storageModule.read(buffer2, pos);
-        assertTrue("pos " + pos, Arrays.equals(buffer1, buffer2));
-      }
+    readsAndWritesTest(storageModule, seed, length);
+    readsOnlyTest(storageModule, seed, length);
+  }
+
+  @Test
+  public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws IOException {
+    BlockStore blockStore = getBlockStore();
+    ExternalBlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
+    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
+
+    long maxCacheSizeInBytes = 50_000_000;
+    BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .blockDataDir(BLOCK_DATA_DIR)
+                                                                            .blockStore(blockStore)
+                                                                            .externalBlockStoreFactory(
+                                                                                externalBlockStoreFactory)
+                                                                            .writeAheadLog(writeAheadLog)
+                                                                            .maxCacheSizeInBytes(maxCacheSizeInBytes)
+                                                                            .build();
+
+    long seed = new Random().nextLong();
+    long length = 51_000_000;
+
+    BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
+    try (StorageModule storageModule = factory.getStorageModule("test")) {
+      assertEquals(195311, storageModule.getSizeInBlocks());
+      readsAndWritesTest(storageModule, seed, length);
     }
 
+    try (StorageModule storageModule = factory.getStorageModule("test")) {
+      assertEquals(195311, storageModule.getSizeInBlocks());
+      readsOnlyTest(storageModule, seed, length);
+    }
+  }
+
+  @Test
+  public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws IOException {
+    BlockStore blockStore = getBlockStore();
+    ExternalBlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
+    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
+
+    long maxCacheSizeInBytes = 50_000_000;
+    BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .blockDataDir(BLOCK_DATA_DIR)
+                                                                            .blockStore(blockStore)
+                                                                            .externalBlockStoreFactory(
+                                                                                externalBlockStoreFactory)
+                                                                            .writeAheadLog(writeAheadLog)
+                                                                            .maxCacheSizeInBytes(maxCacheSizeInBytes)
+                                                                            .build();
+
+    long seed = new Random().nextLong();
+    long length = 51_000_000;
+
+    {
+      BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
+      try (StorageModule storageModule = factory.getStorageModule("test")) {
+        assertEquals(195311, storageModule.getSizeInBlocks());
+        readsAndWritesTest(storageModule, seed, length);
+      }
+    }
+    IOUtils.rmr(BLOCK_DATA_DIR);
+    {
+      BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
+      try (StorageModule storageModule = factory.getStorageModule("test")) {
+        assertEquals(195311, storageModule.getSizeInBlocks());
+        readsOnlyTest(storageModule, seed, length);
+      }
+    }
   }
 
   private BlockStore getBlockStore() {
+
     ConcurrentHashMap<Long, Long> gens = new ConcurrentHashMap<>();
+
     return new BlockStore() {
-
-      @Override
-      public void updateGeneration(long volumeId, long blockId, long generation) throws IOException {
-        gens.put(blockId, generation);
-      }
-
-      @Override
-      public long getGeneration(long volumeId, long blockId) throws IOException {
-        Long gen = gens.get(blockId);
-        if (gen == null) {
-          return 0;
-        }
-        return gen;
-      }
 
       @Override
       public List<String> getVolumeNames() {
@@ -113,17 +150,47 @@ public class BlockStorageModuleFactoryTest {
       public int getBlockSize(long volumeId) {
         return 100_000;
       }
-    };
-  }
 
-  private BlockWriteAheadLog getBlockWriteAheadLog() {
-    return new BlockWriteAheadLog() {
       @Override
-      public void write(long volumeId, long blockId, long generation, byte[] bytes, int offset, int len)
-          throws IOException {
+      public long getLastStoreGeneration(long volumeId, long blockId) {
+        Long gen = gens.get(blockId);
+        if (gen == null) {
+          return Block.MISSING_BLOCK_GENERATION;
+        }
+        return gen;
+      }
 
+      @Override
+      public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) {
+        gens.put(blockId, lastStoredGeneration);
       }
     };
   }
 
+  private BlockWriteAheadLog getBlockWriteAheadLog() throws IOException {
+    return new LocalBlockWriteAheadLog(WAL_DATA_DIR);
+  }
+
+  private void readsAndWritesTest(StorageModule storageModule, long seed, long length) throws IOException {
+    byte[] buffer1 = new byte[9876];
+    byte[] buffer2 = new byte[9876];
+    Random random = new Random(seed);
+    for (long pos = 0; pos < length; pos += buffer1.length) {
+      random.nextBytes(buffer1);
+      storageModule.write(buffer1, pos);
+      storageModule.read(buffer2, pos);
+      assertTrue(Arrays.equals(buffer1, buffer2));
+    }
+  }
+
+  private void readsOnlyTest(StorageModule storageModule, long seed, long length) throws IOException {
+    byte[] buffer1 = new byte[9876];
+    byte[] buffer2 = new byte[9876];
+    Random random = new Random(seed);
+    for (long pos = 0; pos < length; pos += buffer1.length) {
+      random.nextBytes(buffer1);
+      storageModule.read(buffer2, pos);
+      assertTrue("pos " + pos, Arrays.equals(buffer1, buffer2));
+    }
+  }
 }

@@ -5,6 +5,8 @@ import java.io.IOException;
 
 public interface Block extends Closeable {
 
+  public static long MISSING_BLOCK_GENERATION = 0;
+
   /**
    * Position is relative to the block.
    */
