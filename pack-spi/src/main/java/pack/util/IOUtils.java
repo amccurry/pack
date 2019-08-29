@@ -6,7 +6,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,6 +92,24 @@ public class IOUtils {
         } catch (IOException e) {
           if (logger != null) {
             LOGGER.error("Unknown error while trying to close " + closeable, e);
+          }
+        }
+      }
+    }
+  }
+
+  public static void close(Logger logger, ExecutorService... services) {
+    if (services == null) {
+      return;
+    }
+    for (ExecutorService service : services) {
+      if (service != null) {
+        try {
+          service.shutdown();
+          service.awaitTermination(1, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+          if (logger != null) {
+            LOGGER.error("Unknown error while trying to close " + service, e);
           }
         }
       }

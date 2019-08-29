@@ -1,6 +1,7 @@
 package pack.iscsi.partitioned.block;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -10,6 +11,7 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
@@ -34,7 +36,15 @@ public class LocalBlockTest {
     long seed = new Random().nextLong();
 
     int passes = 1000;
-    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, store, wal)) {
+    LocalBlockConfig config = LocalBlockConfig.builder()
+                                              .blockDataDir(file)
+                                              .volumeId(volumeId)
+                                              .blockId(blockId)
+                                              .blockSize(blockSize)
+                                              .blockStore(store)
+                                              .wal(wal)
+                                              .build();
+    try (Block block = new LocalBlock(config)) {
 
       block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
 
@@ -82,7 +92,15 @@ public class LocalBlockTest {
     int blockSize = 20_000_000;
     BlockStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
-    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, store, wal)) {
+    LocalBlockConfig config = LocalBlockConfig.builder()
+                                              .blockDataDir(file)
+                                              .volumeId(volumeId)
+                                              .blockId(blockId)
+                                              .blockSize(blockSize)
+                                              .blockStore(store)
+                                              .wal(wal)
+                                              .build();
+    try (Block block = new LocalBlock(config)) {
       block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
       byte[] buffer = new byte[1000];
       try {
@@ -106,7 +124,15 @@ public class LocalBlockTest {
     int blockSize = 20_000_000;
     BlockStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
-    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, store, wal)) {
+    LocalBlockConfig config = LocalBlockConfig.builder()
+                                              .blockDataDir(file)
+                                              .volumeId(volumeId)
+                                              .blockId(blockId)
+                                              .blockSize(blockSize)
+                                              .blockStore(store)
+                                              .wal(wal)
+                                              .build();
+    try (Block block = new LocalBlock(config)) {
       block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
       byte[] buffer = new byte[1000];
       block.writeFully(0, buffer, 0, 1);
@@ -136,7 +162,15 @@ public class LocalBlockTest {
     int blockSize = 20_000_000;
     BlockStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
-    try (Block block = new LocalBlock(file, volumeId, blockId, blockSize, store, wal)) {
+    LocalBlockConfig config = LocalBlockConfig.builder()
+                                              .blockDataDir(file)
+                                              .volumeId(volumeId)
+                                              .blockId(blockId)
+                                              .blockSize(blockSize)
+                                              .blockStore(store)
+                                              .wal(wal)
+                                              .build();
+    try (Block block = new LocalBlock(config)) {
       block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
       byte[] buffer = new byte[1000];
       block.writeFully(0, buffer, 0, 1);
@@ -156,6 +190,39 @@ public class LocalBlockTest {
       assertEquals(1, block.getOnDiskGeneration());
       assertEquals(BlockState.DIRTY, block.getOnDiskState());
       assertEquals(0, block.getLastStoredGeneration());
+    }
+  }
+
+  @Test
+  public void testBlockWriteWithStoreIdleWriteCheck() throws IOException, InterruptedException {
+    File file = new File("./target/tmp/LocalBlockTest");
+    IOUtils.rmr(file);
+    file.getParentFile()
+        .mkdirs();
+
+    long volumeId = 0;
+    long blockId = 0;
+    int blockSize = 20_000_000;
+    BlockStore store = getBlockStore();
+    BlockWriteAheadLog wal = getBlockWriteAheadLog();
+    LocalBlockConfig config = LocalBlockConfig.builder()
+                                              .blockDataDir(file)
+                                              .volumeId(volumeId)
+                                              .blockId(blockId)
+                                              .blockSize(blockSize)
+                                              .blockStore(store)
+                                              .wal(wal)
+                                              .syncTimeAfterIdle(1)
+                                              .syncTimeAfterIdleTimeUnit(TimeUnit.SECONDS)
+                                              .build();
+    try (Block block = new LocalBlock(config)) {
+      assertTrue(block.idleWrites());
+      block.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
+      byte[] buffer = new byte[1000];
+      block.writeFully(0, buffer, 0, 1);
+      assertFalse(block.idleWrites());
+      Thread.sleep(TimeUnit.SECONDS.toMillis(2));
+      assertTrue(block.idleWrites());
     }
   }
 

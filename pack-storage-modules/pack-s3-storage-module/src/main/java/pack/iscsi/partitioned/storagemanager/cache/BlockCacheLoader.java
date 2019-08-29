@@ -1,6 +1,7 @@
 package pack.iscsi.partitioned.storagemanager.cache;
 
 import java.io.File;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,7 @@ import com.github.benmanes.caffeine.cache.CacheLoader;
 import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.block.LocalBlock;
+import pack.iscsi.partitioned.block.LocalBlockConfig;
 import pack.iscsi.partitioned.storagemanager.BlockKey;
 import pack.iscsi.partitioned.storagemanager.BlockStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
@@ -23,21 +25,35 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private final BlockWriteAheadLog _writeAheadLog;
   private final File _blockDataDir;
   private final ExternalBlockIOFactory _externalBlockStoreFactory;
+  private final long _syncTimeAfterIdle;
+  private final TimeUnit _syncTimeAfterIdleTimeUnit;
 
-  public BlockCacheLoader(BlockStore blockStore, BlockWriteAheadLog writeAheadLog, File blockDataDir,
-      ExternalBlockIOFactory externalBlockStoreFactory) {
-    _blockDataDir = blockDataDir;
-    _blockStore = blockStore;
-    _writeAheadLog = writeAheadLog;
-    _externalBlockStoreFactory = externalBlockStoreFactory;
+  public BlockCacheLoader(BlockCacheLoaderConfig config) {
+    _blockDataDir = config.getBlockDataDir();
+    _blockStore = config.getBlockStore();
+    _writeAheadLog = config.getWriteAheadLog();
+    _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
+    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
+    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
   }
 
   @Override
   public Block load(BlockKey key) throws Exception {
     long volumeId = key.getVolumeId();
     int blockSize = _blockStore.getBlockSize(volumeId);
-    LocalBlock block = new LocalBlock(_blockDataDir, volumeId, key.getBlockId(), blockSize, _blockStore,
-        _writeAheadLog);
+
+    LocalBlockConfig config = LocalBlockConfig.builder()
+                                              .blockDataDir(_blockDataDir)
+                                              .volumeId(volumeId)
+                                              .blockId(key.getBlockId())
+                                              .blockSize(blockSize)
+                                              .blockStore(_blockStore)
+                                              .wal(_writeAheadLog)
+                                              .syncTimeAfterIdle(_syncTimeAfterIdle)
+                                              .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
+                                              .build();
+
+    LocalBlock block = new LocalBlock(config);
     Utils.runUntilSuccess(LOGGER, () -> {
       block.execIO(_externalBlockStoreFactory.getBlockReader());
       return null;

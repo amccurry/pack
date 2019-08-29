@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -39,27 +40,33 @@ public class LocalBlock implements Closeable, Block {
   private final AtomicReference<BlockState> _onDiskState = new AtomicReference<>();
   private final AtomicLong _onDiskGeneration = new AtomicLong();
   private final AtomicLong _lastStoredGeneration = new AtomicLong();
+  private final AtomicLong _lastWrite = new AtomicLong();
   private final AtomicBoolean _closed = new AtomicBoolean();
   private final BlockWriteAheadLog _wal;
   private final BlockStore _blockStore;
+  private final long _syncTimeAfterIdle;
+  private final TimeUnit _syncTimeAfterIdleTimeUnit;
 
-  public LocalBlock(File blockDataDir, long volumeId, long blockId, int blockSize, BlockStore blockStore,
-      BlockWriteAheadLog wal) throws IOException {
-    _blockStore = blockStore;
+  public LocalBlock(LocalBlockConfig config) throws IOException {
     ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
     _writeLock = reentrantReadWriteLock.writeLock();
     _readLock = reentrantReadWriteLock.readLock();
-    _wal = wal;
-    _blockSize = blockSize;
-    _volumeId = volumeId;
-    _blockId = blockId;
+    _blockStore = config.getBlockStore();
 
+    _wal = config.getWal();
+    _blockSize = config.getBlockSize();
+    _volumeId = config.getVolumeId();
+    _blockId = config.getBlockId();
+    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
+    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
+
+    File blockDataDir = config.getBlockDataDir();
     createAndCheckExistence(blockDataDir);
 
-    File volumeDir = new File(blockDataDir, Long.toString(volumeId));
+    File volumeDir = new File(blockDataDir, Long.toString(_volumeId));
     createAndCheckExistence(volumeDir);
 
-    _blockDataFile = new File(volumeDir, Long.toString(blockId));
+    _blockDataFile = new File(volumeDir, Long.toString(_blockId));
 
     if (_blockDataFile.exists() && isLengthValid()) {
       // recovery will need to occur, may be out of date
@@ -104,6 +111,7 @@ public class LocalBlock implements Closeable, Block {
     checkPositionAndLength(blockPosition, len);
     checkGenerations();
     try {
+      _lastWrite.set(System.nanoTime());
       markDirty();
       long generation = _onDiskGeneration.incrementAndGet();
       _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
@@ -133,7 +141,6 @@ public class LocalBlock implements Closeable, Block {
                                              .blockId(_blockId)
                                              .blockSize(_blockSize)
                                              .channel(_channel)
-                                             .fileForReadingOnly(_blockDataFile)
                                              .lastStoredGeneration(_lastStoredGeneration.get())
                                              .onDiskGeneration(_onDiskGeneration.get())
                                              .onDiskState(_onDiskState.get())
@@ -215,7 +222,7 @@ public class LocalBlock implements Closeable, Block {
 
   private void checkIfClosed() throws IOException {
     if (_closed.get()) {
-      throw new IOException("volumeId " + _volumeId + " blockId " + _blockId + " already closed");
+      throw new AlreadyClosedException("volumeId " + _volumeId + " blockId " + _blockId + " already closed");
     }
   }
 
@@ -273,6 +280,17 @@ public class LocalBlock implements Closeable, Block {
   @Override
   public int getSize() {
     return (int) getValidLength();
+  }
+
+  @Override
+  public boolean isClosed() {
+    return _closed.get();
+  }
+
+  @Override
+  public boolean idleWrites() throws IOException {
+    long syncTimeAfterIdle = _syncTimeAfterIdleTimeUnit.toNanos(_syncTimeAfterIdle);
+    return _lastWrite.get() + syncTimeAfterIdle < System.nanoTime();
   }
 
 }

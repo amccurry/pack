@@ -4,13 +4,13 @@ import java.util.List;
 
 public interface BlockStore {
 
+  List<String> getVolumeNames();
+
   long getVolumeId(String name);
 
   int getBlockSize(long volumeId);
 
   long getLengthInBytes(long volumeId);
-
-  List<String> getVolumeNames();
 
   long getLastStoreGeneration(long volumeId, long blockId);
 

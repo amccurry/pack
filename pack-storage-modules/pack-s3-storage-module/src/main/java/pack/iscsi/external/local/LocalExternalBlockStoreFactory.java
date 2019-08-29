@@ -33,11 +33,19 @@ public class LocalExternalBlockStoreFactory implements ExternalBlockIOFactory {
     return new BlockIOExecutor() {
       @Override
       public BlockIOResponse exec(BlockIORequest request) throws IOException {
-        LOGGER.info("write request {} {}", request.getBlockId(), request.getOnDiskGeneration());
+        long onDiskGeneration = request.getOnDiskGeneration();
+        BlockState onDiskState = request.getOnDiskState();
+        long lastStoredGeneration = request.getLastStoredGeneration();
+        if (onDiskState == BlockState.CLEAN) {
+          return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
+        }
+        long volumeId = request.getVolumeId();
+        long blockId = request.getBlockId();
+        LOGGER.info("write request {} {}", blockId, onDiskGeneration);
 
-        File dstVolDir = new File(_storeDir, Long.toString(request.getVolumeId()));
-        File dstBlockDir = new File(dstVolDir, Long.toString(request.getBlockId()));
-        File dst = new File(dstBlockDir, Long.toString(request.getOnDiskGeneration()));
+        File dstVolDir = new File(_storeDir, Long.toString(volumeId));
+        File dstBlockDir = new File(dstVolDir, Long.toString(blockId));
+        File dst = new File(dstBlockDir, Long.toString(onDiskGeneration));
         dst.getParentFile()
            .mkdirs();
 

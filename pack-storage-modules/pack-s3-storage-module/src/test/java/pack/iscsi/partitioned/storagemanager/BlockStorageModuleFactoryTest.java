@@ -49,13 +49,14 @@ public class BlockStorageModuleFactoryTest {
                                                                             .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                                                             .build();
 
-    BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
-    StorageModule storageModule = factory.getStorageModule("test");
-    assertEquals(195311, storageModule.getSizeInBlocks());
-    long seed = new Random().nextLong();
-    long length = 51_000_000;
-    readsAndWritesTest(storageModule, seed, length);
-    readsOnlyTest(storageModule, seed, length);
+    try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
+      StorageModule storageModule = factory.getStorageModule("test");
+      assertEquals(195311, storageModule.getSizeInBlocks());
+      long seed = new Random().nextLong();
+      long length = 51_000_000;
+      readsAndWritesTest(storageModule, seed, length);
+      readsOnlyTest(storageModule, seed, length);
+    }
   }
 
   @Test
@@ -77,15 +78,16 @@ public class BlockStorageModuleFactoryTest {
     long seed = new Random().nextLong();
     long length = 51_000_000;
 
-    BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
-    try (StorageModule storageModule = factory.getStorageModule("test")) {
-      assertEquals(195311, storageModule.getSizeInBlocks());
-      readsAndWritesTest(storageModule, seed, length);
-    }
+    try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
+      try (StorageModule storageModule = factory.getStorageModule("test")) {
+        assertEquals(195311, storageModule.getSizeInBlocks());
+        readsAndWritesTest(storageModule, seed, length);
+      }
 
-    try (StorageModule storageModule = factory.getStorageModule("test")) {
-      assertEquals(195311, storageModule.getSizeInBlocks());
-      readsOnlyTest(storageModule, seed, length);
+      try (StorageModule storageModule = factory.getStorageModule("test")) {
+        assertEquals(195311, storageModule.getSizeInBlocks());
+        readsOnlyTest(storageModule, seed, length);
+      }
     }
   }
 
@@ -108,16 +110,15 @@ public class BlockStorageModuleFactoryTest {
     long seed = new Random().nextLong();
     long length = 51_000_000;
 
-    {
-      BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
+    try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
       }
     }
     IOUtils.rmr(BLOCK_DATA_DIR);
-    {
-      BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
+
+    try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);

@@ -1,11 +1,19 @@
 package pack.iscsi.partitioned.util;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.slf4j.Logger;
 
 public class Utils {
+
+  public static ExecutorService executor(String name, int threads) {
+    return Executors.newFixedThreadPool(threads, new PackThreadFactory(name));
+  }
 
   public static void sleep(TimeUnit unit, long sleep) {
     try {
@@ -39,5 +47,26 @@ public class Utils {
       throw (RuntimeException) lastError;
     }
     throw new RuntimeException(lastError);
+  }
+
+  private static class PackThreadFactory implements ThreadFactory {
+    private final ThreadGroup _group;
+    private final AtomicInteger _threadNumber = new AtomicInteger(1);
+    private final String _namePrefix;
+
+    PackThreadFactory(String name) {
+      _group = Thread.currentThread()
+                     .getThreadGroup();
+      _namePrefix = name + "-";
+    }
+
+    public Thread newThread(Runnable r) {
+      Thread t = new Thread(_group, r, _namePrefix + _threadNumber.getAndIncrement(), 0);
+      if (t.isDaemon())
+        t.setDaemon(false);
+      if (t.getPriority() != Thread.NORM_PRIORITY)
+        t.setPriority(Thread.NORM_PRIORITY);
+      return t;
+    }
   }
 }

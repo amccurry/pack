@@ -34,23 +34,27 @@ public class IscsiServerMain {
     Set<String> addresses = new HashSet<String>();
     addresses.add("127.0.0.3");
     List<StorageModuleFactory> factories = new ArrayList<>();
-    // factories.add(FileStorageModule.createFactory(new File("./volume")));
-    BlockStorageModuleFactory factory = new BlockStorageModuleFactory(getConfig());
-    factories.add(factory);
 
-    TargetManager targetManager = new BaseTargetManager(factories);
-    IscsiServerConfig config = IscsiServerConfig.builder()
-                                                .addresses(addresses)
-                                                .port(3260)
-                                                .iscsiTargetManager(targetManager)
-                                                .build();
-    runServer(config);
+    // factories.add(FileStorageModule.createFactory(new File("./volume")));
+
+    try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(getConfig())) {
+      factories.add(factory);
+
+      TargetManager targetManager = new BaseTargetManager(factories);
+      IscsiServerConfig config = IscsiServerConfig.builder()
+                                                  .addresses(addresses)
+                                                  .port(3260)
+                                                  .iscsiTargetManager(targetManager)
+                                                  .build();
+      runServer(config);
+    }
   }
 
   private static BlockStorageModuleFactoryConfig getConfig() throws IOException {
     File blockDataDir = new File("./iscsi-test/block-cache");
     BlockStore blockStore = getBlockStore();
-    ExternalBlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(new File("./iscsi-test/external-block"));
+    ExternalBlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(
+        new File("./iscsi-test/external-block"));
     long maxCacheSizeInBytes = 1_000_000_000L;
     BlockWriteAheadLog writeAheadLog = new LocalBlockWriteAheadLog(new File("./iscsi-test/wal"));
     return BlockStorageModuleFactoryConfig.builder()
