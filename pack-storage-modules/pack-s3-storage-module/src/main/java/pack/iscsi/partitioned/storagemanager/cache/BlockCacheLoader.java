@@ -27,6 +27,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private final ExternalBlockIOFactory _externalBlockStoreFactory;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
+  private final BlockRemovalListener _removalListener;
 
   public BlockCacheLoader(BlockCacheLoaderConfig config) {
     _blockDataDir = config.getBlockDataDir();
@@ -35,10 +36,15 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
+    _removalListener = config.getRemovalListener();
   }
 
   @Override
   public Block load(BlockKey key) throws Exception {
+    Block stolenBlock = _removalListener.stealBlock(key);
+    if (stolenBlock != null) {
+      return stolenBlock;
+    }
     long volumeId = key.getVolumeId();
     int blockSize = _blockStore.getBlockSize(volumeId);
 
@@ -53,17 +59,17 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
                                               .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
                                               .build();
 
-    LocalBlock block = new LocalBlock(config);
+    LocalBlock localBlock = new LocalBlock(config);
     Utils.runUntilSuccess(LOGGER, () -> {
-      block.execIO(_externalBlockStoreFactory.getBlockReader());
+      localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
       return null;
     });
     Utils.runUntilSuccess(LOGGER, () -> {
       // recover if needed
-      block.execIO(_writeAheadLog.getWriteAheadLogReader());
+      localBlock.execIO(_writeAheadLog.getWriteAheadLogReader());
       return null;
     });
-    return block;
+    return localBlock;
   }
 
 }

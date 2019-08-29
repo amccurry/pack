@@ -18,4 +18,5 @@ public class BlockCacheLoaderConfig {
   ExternalBlockIOFactory externalBlockStoreFactory;
   long syncTimeAfterIdle;
   TimeUnit syncTimeAfterIdleTimeUnit;
+  BlockRemovalListener removalListener;
 }

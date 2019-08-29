@@ -10,10 +10,8 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
-import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.github.benmanes.caffeine.cache.Weigher;
 
 import pack.iscsi.external.ExternalBlockIOFactory;
@@ -21,6 +19,7 @@ import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.storagemanager.cache.BlockCacheLoader;
 import pack.iscsi.partitioned.storagemanager.cache.BlockCacheLoaderConfig;
 import pack.iscsi.partitioned.storagemanager.cache.BlockRemovalListener;
+import pack.iscsi.partitioned.storagemanager.cache.BlockRemovalListenerConfig;
 import pack.iscsi.partitioned.util.Utils;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
@@ -50,18 +49,9 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _syncExecutor = Utils.executor(SYNC, config.getSyncThreads());
 
-    BlockCacheLoaderConfig loaderConfig = BlockCacheLoaderConfig.builder()
-                                                                .blockDataDir(_blockDataDir)
-                                                                .blockStore(_blockStore)
-                                                                .externalBlockStoreFactory(_externalBlockStoreFactory)
-                                                                .syncTimeAfterIdle(_syncTimeAfterIdle)
-                                                                .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
-                                                                .writeAheadLog(_writeAheadLog)
-                                                                .build();
+    BlockRemovalListener removalListener = getRemovalListener();
 
-    CacheLoader<BlockKey, Block> loader = new BlockCacheLoader(loaderConfig);
-
-    RemovalListener<BlockKey, Block> removalListener = new BlockRemovalListener(_externalBlockStoreFactory);
+    BlockCacheLoader loader = getCacheLoader(removalListener);
 
     Weigher<BlockKey, Block> weigher = (key, value) -> value.getSize();
 
@@ -101,4 +91,21 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     IOUtils.close(LOGGER, _syncExecutor);
   }
 
+  private BlockRemovalListener getRemovalListener() {
+    return new BlockRemovalListener(BlockRemovalListenerConfig.builder()
+                                                              .externalBlockStoreFactory(_externalBlockStoreFactory)
+                                                              .build());
+  }
+
+  private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
+    return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
+                                                      .blockDataDir(_blockDataDir)
+                                                      .blockStore(_blockStore)
+                                                      .externalBlockStoreFactory(_externalBlockStoreFactory)
+                                                      .syncTimeAfterIdle(_syncTimeAfterIdle)
+                                                      .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
+                                                      .writeAheadLog(_writeAheadLog)
+                                                      .removalListener(removalListener)
+                                                      .build());
+  }
 }

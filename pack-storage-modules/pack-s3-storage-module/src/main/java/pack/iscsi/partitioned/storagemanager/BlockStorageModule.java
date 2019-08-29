@@ -102,7 +102,7 @@ public class BlockStorageModule implements StorageModule {
 
   @Override
   public void close() throws IOException {
-    LOGGER.info("close storage module for {}", _volumeId);
+    LOGGER.info("starting close of storage module for {}", _volumeId);
     checkClosed();
     _syncTimer.cancel();
     _syncTimer.purge();
@@ -113,6 +113,7 @@ public class BlockStorageModule implements StorageModule {
     } catch (InterruptedException e) {
       throw new IOException(e);
     }
+    LOGGER.info("finished close of storage module for {}", _volumeId);
   }
 
   private void waitForSyncs(List<Future<Void>> syncs) {
