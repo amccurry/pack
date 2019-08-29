@@ -37,6 +37,20 @@ public class IOUtils {
     file.delete();
   }
 
+  public static void ls(Logger logger, File file) {
+    if (!file.exists()) {
+      return;
+    }
+    if (file.isDirectory()) {
+      logger.info("dir {}", file.getAbsolutePath());
+      for (File f : file.listFiles()) {
+        ls(logger, f);
+      }
+    } else {
+      logger.info("file {}", file.getAbsolutePath());
+    }
+  }
+
   public static void closeQuietly(Future<?>... futures) {
     if (futures == null) {
       return;

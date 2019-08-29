@@ -117,7 +117,6 @@ public class BlockStorageModuleFactoryTest {
       }
     }
     IOUtils.rmr(BLOCK_DATA_DIR);
-
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());

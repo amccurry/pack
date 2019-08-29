@@ -19,9 +19,9 @@ import pack.iscsi.external.local.LocalLogFileReaderWriter.LocalLogReader;
 import pack.iscsi.external.local.LocalLogFileReaderWriter.LocalLogWriter;
 import pack.util.IOUtils;
 
-public class LocalLog implements Log {
+public class LocalWriteAheadLogger implements WriteAheadLogger {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(LocalLog.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(LocalWriteAheadLogger.class);
 
   private final AtomicReference<LocalLogWriter> _writer = new AtomicReference<>();
   private final File _blockLogDir;
@@ -31,7 +31,7 @@ public class LocalLog implements Log {
   private final long _volumeId;
   private final long _blockId;
 
-  public LocalLog(File blockLogDir, long volumeId, long blockId) {
+  public LocalWriteAheadLogger(File blockLogDir, long volumeId, long blockId) {
     _blockLogDir = blockLogDir;
     _volumeId = volumeId;
     _blockId = blockId;

@@ -4,7 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 
-public interface Log extends Closeable {
+public interface WriteAheadLogger extends Closeable {
 
   void append(long generation, long position, byte[] bytes, int offset, int len) throws IOException;
 

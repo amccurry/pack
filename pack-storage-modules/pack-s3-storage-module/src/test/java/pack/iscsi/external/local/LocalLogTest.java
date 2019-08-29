@@ -49,7 +49,7 @@ public class LocalLogTest {
       Random random = new Random(seed);
       FileChannel channel = raf.getChannel();
       byte[] buffer = new byte[bufferSize];
-      try (LocalLog log = new LocalLog(DIR, 0, 0)) {
+      try (LocalWriteAheadLogger log = new LocalWriteAheadLogger(DIR, 0, 0)) {
         long generation = 1;
         for (int i = 0; i < passes; i++) {
           int position = random.nextInt(length - bufferSize);
@@ -66,7 +66,7 @@ public class LocalLogTest {
     try (RandomAccessFile raf = new RandomAccessFile(recover, "rw")) {
       raf.setLength(length);
       FileChannel channel = raf.getChannel();
-      try (LocalLog log = new LocalLog(DIR, 0, 0)) {
+      try (LocalWriteAheadLogger log = new LocalWriteAheadLogger(DIR, 0, 0)) {
         long generation = 0;
         long recoveredGeneration = log.recover(channel, generation);
         assertEquals(passes, recoveredGeneration);

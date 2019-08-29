@@ -41,7 +41,7 @@ public class LocalExternalBlockStoreFactory implements ExternalBlockIOFactory {
         }
         long volumeId = request.getVolumeId();
         long blockId = request.getBlockId();
-        LOGGER.info("write request {} {}", blockId, onDiskGeneration);
+        LOGGER.info("write request {} onDiskGeneration {}", blockId, onDiskGeneration);
 
         File dstVolDir = new File(_storeDir, Long.toString(volumeId));
         File dstBlockDir = new File(dstVolDir, Long.toString(blockId));
@@ -84,7 +84,7 @@ public class LocalExternalBlockStoreFactory implements ExternalBlockIOFactory {
                                 .onDiskBlockState(BlockState.CLEAN)
                                 .build();
         }
-        LOGGER.info("read request {} {}", request.getBlockId(), generation);
+        LOGGER.info("read request {} generation {}", request.getBlockId(), generation);
         File srcVolDir = new File(_storeDir, Long.toString(request.getVolumeId()));
         File srcBlockDir = new File(srcVolDir, Long.toString(request.getBlockId()));
         File src = new File(srcBlockDir, Long.toString(generation));

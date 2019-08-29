@@ -11,6 +11,7 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 
 import consistent.s3.ConsistentAmazonS3;
+import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.block.BlockIOExecutor;
 import pack.iscsi.partitioned.block.BlockIORequest;
 import pack.iscsi.partitioned.block.BlockIOResponse;
@@ -34,13 +35,16 @@ public class S3BlockReader implements BlockIOExecutor {
   public BlockIOResponse exec(BlockIORequest request) throws IOException {
 
     // @TODO partial reads may cause corruption, needs work
-
     long lastStoredGeneration = request.getLastStoredGeneration();
+    if (lastStoredGeneration == Block.MISSING_BLOCK_GENERATION) {
+      return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
+    }
+
     FileChannel channel = request.getChannel();
     long onDiskGeneration = request.getOnDiskGeneration();
     BlockState onDiskState = request.getOnDiskState();
     try {
-      String key = S3Utils.getKey(_objectPrefix, request);
+      String key = S3Utils.getKey(_objectPrefix, request.getVolumeId(), request.getBlockId(), lastStoredGeneration);
       S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
       try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
         byte[] buffer = new byte[4096];

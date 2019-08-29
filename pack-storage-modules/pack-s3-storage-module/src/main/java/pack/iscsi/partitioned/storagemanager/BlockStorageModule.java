@@ -136,16 +136,19 @@ public class BlockStorageModule implements StorageModule {
   private List<Callable<Void>> createSyncs(List<Block> blocks, boolean onlyIfIdleWrites) {
     List<Callable<Void>> callables = new ArrayList<>();
     for (Block block : blocks) {
-      callables.add(() -> {
-        if (onlyIfIdleWrites) {
-          if (block.idleWrites()) {
+      if (onlyIfIdleWrites) {
+        if (block.idleWrites()) {
+          callables.add(() -> {
             sync(block);
-          }
-        } else {
-          sync(block);
+            return null;
+          });
         }
-        return null;
-      });
+      } else {
+        callables.add(() -> {
+          sync(block);
+          return null;
+        });
+      }
     }
     return callables;
   }
@@ -171,6 +174,7 @@ public class BlockStorageModule implements StorageModule {
       return;
     }
     Utils.runUntilSuccess(LOGGER, () -> {
+      LOGGER.info("volume sync volumeId {} blockId {}", _volumeId, block.getBlockId());
       try {
         block.execIO(_externalBlockStoreFactory.getBlockWriter());
       } catch (AlreadyClosedException e) {
@@ -218,6 +222,7 @@ public class BlockStorageModule implements StorageModule {
     return new TimerTask() {
       @Override
       public void run() {
+        LOGGER.info("incremental sync for volumeId {}", _volumeId);
         try {
           sync(true);
         } catch (Exception e) {

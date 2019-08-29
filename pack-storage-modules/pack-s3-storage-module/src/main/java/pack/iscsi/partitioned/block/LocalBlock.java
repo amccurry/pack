@@ -288,7 +288,7 @@ public class LocalBlock implements Closeable, Block {
   }
 
   @Override
-  public boolean idleWrites() throws IOException {
+  public boolean idleWrites() {
     long syncTimeAfterIdle = _syncTimeAfterIdleTimeUnit.toNanos(_syncTimeAfterIdle);
     return _lastWrite.get() + syncTimeAfterIdle < System.nanoTime();
   }

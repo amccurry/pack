@@ -34,7 +34,7 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalBlockWriteAheadLog.class);
 
-  private final LoadingCache<LogKey, Log> _cache;
+  private final LoadingCache<LogKey, WriteAheadLogger> _cache;
   private final File _walLogDir;
 
   public LocalBlockWriteAheadLog(File walLogDir) throws IOException {
@@ -43,14 +43,14 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
     if (!walLogDir.exists()) {
       throw new IOException("dir " + walLogDir + " does not exist");
     }
-    CacheLoader<LogKey, Log> loader = key -> {
+    CacheLoader<LogKey, WriteAheadLogger> loader = key -> {
       File blockLogDir = getBlockLogDir(key);
       blockLogDir.mkdirs();
       long volumeId = key.getVolumeId();
       long blockId = key.getBlockId();
-      return new LocalLog(blockLogDir, volumeId, blockId);
+      return new LocalWriteAheadLogger(blockLogDir, volumeId, blockId);
     };
-    RemovalListener<LogKey, Log> removalListener = (key, log, cause) -> IOUtils.close(LOGGER, log);
+    RemovalListener<LogKey, WriteAheadLogger> removalListener = (key, log, cause) -> IOUtils.close(LOGGER, log);
     _cache = Caffeine.newBuilder()
                      .expireAfterWrite(10, TimeUnit.SECONDS)
                      .removalListener(removalListener)
@@ -60,13 +60,13 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
   @Override
   public void write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset, int len)
       throws IOException {
-    Log log = getLog(volumeId, blockId);
+    WriteAheadLogger log = getLog(volumeId, blockId);
     log.append(generation, position, bytes, offset, len);
   }
 
   @Override
   public void release(long volumeId, long blockId, long generation) throws IOException {
-    Log log = getLog(volumeId, blockId);
+    WriteAheadLogger log = getLog(volumeId, blockId);
     log.release(generation);
   }
 
@@ -83,7 +83,7 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
         }
         long volumeId = request.getVolumeId();
         long blockId = request.getBlockId();
-        Log log = getLog(volumeId, blockId);
+        WriteAheadLogger log = getLog(volumeId, blockId);
         long generation = log.recover(request.getChannel(), request.getOnDiskGeneration());
         return BlockIOResponse.builder()
                               .lastStoredGeneration(lastStoredGeneration)
@@ -94,7 +94,7 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
     };
   }
 
-  private Log getLog(long volumeId, long blockId) {
+  private WriteAheadLogger getLog(long volumeId, long blockId) {
     return _cache.get(LogKey.builder()
                             .blockId(blockId)
                             .volumeId(volumeId)
