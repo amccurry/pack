@@ -17,4 +17,12 @@ public interface BlockStore {
 
   void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException;
 
+  long createVolume(String name, int blockSize, long lengthInBytes) throws IOException;
+
+  void destroyVolume(long volumeId) throws IOException;
+
+  void renameVolume(long volumeId, String name) throws IOException;
+
+  void growVolume(long volumeId, long lengthInBytes) throws IOException;
+
 }

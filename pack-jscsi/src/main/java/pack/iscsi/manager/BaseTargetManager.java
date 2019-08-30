@@ -15,14 +15,23 @@ import pack.iscsi.spi.StorageModuleFactory;
 
 public class BaseTargetManager implements TargetManager {
 
+  private static final String IQN_2019_08 = "iqn.2019-08.";
   private static final Logger LOGGER = LoggerFactory.getLogger(BaseTargetManager.class);
   private static final String PACK = "pack";
-  private static final String TARGET_PREFIX = "iqn.2019-08." + PACK + ":";
-
+  private final String _targetPrefix;
   private final List<StorageModuleFactory> _factories;
 
   public BaseTargetManager(List<StorageModuleFactory> factories) {
+    this(factories, null);
+  }
+
+  public BaseTargetManager(List<StorageModuleFactory> factories, String domain) {
     _factories = factories;
+    if (domain == null) {
+      _targetPrefix = IQN_2019_08 + PACK + ":";
+    } else {
+      _targetPrefix = IQN_2019_08 + domain + ":";
+    }
   }
 
   @Override
@@ -49,8 +58,8 @@ public class BaseTargetManager implements TargetManager {
   }
 
   private String getModuleName(String targetName) {
-    if (targetName.startsWith(TARGET_PREFIX)) {
-      return targetName.substring(TARGET_PREFIX.length());
+    if (targetName.startsWith(_targetPrefix)) {
+      return targetName.substring(_targetPrefix.length());
     }
     return targetName;
   }
@@ -85,7 +94,7 @@ public class BaseTargetManager implements TargetManager {
 
   @Override
   public String getTargetName(String name) {
-    return TARGET_PREFIX + name;
+    return _targetPrefix + name;
   }
 
   @Override

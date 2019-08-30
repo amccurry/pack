@@ -164,6 +164,26 @@ public class BlockStorageModuleFactoryTest {
       public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) {
         gens.put(blockId, lastStoredGeneration);
       }
+
+      @Override
+      public long createVolume(String name, int blockSize, long lengthInBytes) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void destroyVolume(long volumeId) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void renameVolume(long volumeId, String name) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void growVolume(long volumeId, long lengthInBytes) throws IOException {
+        throw new RuntimeException("not impl");
+      }
     };
   }
 
