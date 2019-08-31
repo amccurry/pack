@@ -6,7 +6,6 @@ import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.iscsi.external.ExternalBlockIOFactory;
 
 @Value
 @Builder
@@ -16,7 +15,7 @@ public class BlockStorageModuleFactoryConfig {
 
   BlockWriteAheadLog writeAheadLog;
 
-  ExternalBlockIOFactory externalBlockStoreFactory;
+  BlockIOFactory externalBlockStoreFactory;
 
   File blockDataDir;
 

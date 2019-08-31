@@ -11,9 +11,9 @@ public class TestProperties {
   static {
     Properties properties = new Properties();
     try {
-      File file = new File("./test.properties");
+      File file = new File("test.properties");
       if (!file.exists()) {
-        throw new RuntimeException("File " + file + " not found");
+        throw new RuntimeException("File " + file.getCanonicalPath() + " not found");
       }
       try (FileInputStream input = new FileInputStream(file)) {
         properties.load(input);

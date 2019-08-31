@@ -18,7 +18,6 @@ import org.slf4j.LoggerFactory;
 
 import com.github.benmanes.caffeine.cache.LoadingCache;
 
-import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.partitioned.block.AlreadyClosedException;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.util.Utils;
@@ -33,7 +32,7 @@ public class BlockStorageModule implements StorageModule {
   private final long _lengthInBytes;
   private final LoadingCache<BlockKey, Block> _cache;
   private final AtomicBoolean _closed = new AtomicBoolean();
-  private final ExternalBlockIOFactory _externalBlockStoreFactory;
+  private final BlockIOFactory _externalBlockStoreFactory;
   private final Timer _syncTimer;
   private final ExecutorService _syncExecutor;
 

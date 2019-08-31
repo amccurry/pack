@@ -56,7 +56,8 @@ public class S3BlockWriterTest {
         assertEquals(1, response.getOnDiskGeneration());
         assertEquals(1, response.getLastStoredGeneration());
 
-        String key = "0/0/1";
+        String blockLocation = "0/0/1";
+        String key = objectPrefix == null ? blockLocation : objectPrefix + "/" + blockLocation;
         S3Object object = consistentAmazonS3.getObject(bucket, key);
         assertEquals(blockSize, object.getObjectMetadata()
                                       .getContentLength());

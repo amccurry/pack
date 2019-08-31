@@ -17,6 +17,10 @@
 			<artifactId>pack-spi</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>pack-external-storage-module</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.apache.zookeeper</groupId>
 			<artifactId>zookeeper</artifactId>
 			<version>3.4.5</version>

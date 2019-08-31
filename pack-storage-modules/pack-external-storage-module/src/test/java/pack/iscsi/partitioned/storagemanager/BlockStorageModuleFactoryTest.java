@@ -13,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.junit.Before;
 import org.junit.Test;
 
-import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.external.local.LocalBlockWriteAheadLog;
 import pack.iscsi.external.local.LocalExternalBlockStoreFactory;
 import pack.iscsi.partitioned.block.Block;
@@ -36,7 +35,7 @@ public class BlockStorageModuleFactoryTest {
   @Test
   public void testBlockStorageModuleFactory() throws IOException {
     BlockStore blockStore = getBlockStore();
-    ExternalBlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
+    BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
@@ -62,7 +61,7 @@ public class BlockStorageModuleFactoryTest {
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws IOException {
     BlockStore blockStore = getBlockStore();
-    ExternalBlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
+    BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
@@ -94,7 +93,7 @@ public class BlockStorageModuleFactoryTest {
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws IOException {
     BlockStore blockStore = getBlockStore();
-    ExternalBlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
+    BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;

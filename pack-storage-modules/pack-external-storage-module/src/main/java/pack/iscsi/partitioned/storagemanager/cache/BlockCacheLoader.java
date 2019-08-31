@@ -8,13 +8,13 @@ import org.slf4j.LoggerFactory;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 
-import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.block.LocalBlock;
 import pack.iscsi.partitioned.block.LocalBlockConfig;
 import pack.iscsi.partitioned.storagemanager.BlockKey;
 import pack.iscsi.partitioned.storagemanager.BlockStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
+import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 import pack.iscsi.partitioned.util.Utils;
 
 public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
@@ -24,7 +24,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private final BlockStore _blockStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final File _blockDataDir;
-  private final ExternalBlockIOFactory _externalBlockStoreFactory;
+  private final BlockIOFactory _externalBlockStoreFactory;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final BlockRemovalListener _removalListener;

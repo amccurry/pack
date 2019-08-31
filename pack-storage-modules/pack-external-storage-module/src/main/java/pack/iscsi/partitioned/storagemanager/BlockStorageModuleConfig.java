@@ -7,7 +7,6 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.partitioned.block.Block;
 
 @Value
@@ -22,7 +21,7 @@ public class BlockStorageModuleConfig {
 
   long lengthInBytes;
 
-  ExternalBlockIOFactory externalBlockStoreFactory;
+  BlockIOFactory externalBlockStoreFactory;
 
   @Builder.Default
   long syncTimeAfterIdle = 1;

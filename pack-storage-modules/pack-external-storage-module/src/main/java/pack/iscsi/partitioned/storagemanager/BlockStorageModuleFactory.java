@@ -14,7 +14,6 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Weigher;
 
-import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.storagemanager.cache.BlockCacheLoader;
 import pack.iscsi.partitioned.storagemanager.cache.BlockCacheLoaderConfig;
@@ -34,7 +33,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final LoadingCache<BlockKey, Block> _cache;
   private final BlockStore _blockStore;
   private final BlockWriteAheadLog _writeAheadLog;
-  private final ExternalBlockIOFactory _externalBlockStoreFactory;
+  private final BlockIOFactory _externalBlockStoreFactory;
   private final File _blockDataDir;
   private final ExecutorService _syncExecutor;
   private final long _syncTimeAfterIdle;

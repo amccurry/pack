@@ -11,14 +11,14 @@ import java.nio.channels.FileChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.block.BlockIOExecutor;
 import pack.iscsi.partitioned.block.BlockIORequest;
 import pack.iscsi.partitioned.block.BlockIOResponse;
 import pack.iscsi.partitioned.block.BlockState;
+import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 
-public class LocalExternalBlockStoreFactory implements ExternalBlockIOFactory {
+public class LocalExternalBlockStoreFactory implements BlockIOFactory {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalExternalBlockStoreFactory.class);
 

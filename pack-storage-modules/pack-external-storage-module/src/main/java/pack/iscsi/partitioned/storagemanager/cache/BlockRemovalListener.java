@@ -10,16 +10,16 @@ import org.slf4j.LoggerFactory;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 
-import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.storagemanager.BlockKey;
+import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 import pack.iscsi.partitioned.util.Utils;
 
 public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
 
   private static Logger LOGGER = LoggerFactory.getLogger(BlockRemovalListener.class);
 
-  private final ExternalBlockIOFactory _externalBlockStoreFactory;
+  private final BlockIOFactory _externalBlockStoreFactory;
   private final ConcurrentMap<BlockKey, Block> _blockMap;
   private final Object _lock = new Object();
 

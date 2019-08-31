@@ -16,3 +16,5 @@ target
 .settings
 test.properties
 etc/
+hadoop-conf/
+.DS_Store

@@ -3,10 +3,10 @@ package pack.iscsi.external.s3;
 import java.io.IOException;
 
 import consistent.s3.ConsistentAmazonS3;
-import pack.iscsi.external.ExternalBlockIOFactory;
 import pack.iscsi.partitioned.block.BlockIOExecutor;
+import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 
-public class S3ExternalBlockStoreFactory implements ExternalBlockIOFactory {
+public class S3ExternalBlockStoreFactory implements BlockIOFactory {
 
   private final ConsistentAmazonS3 _consistentAmazonS3;
   private final String _bucket;
