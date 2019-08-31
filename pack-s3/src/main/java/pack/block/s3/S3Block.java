@@ -1,12 +1,19 @@
 package pack.block.s3;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
@@ -52,9 +59,11 @@ public class S3Block implements Block {
   private final CrcBlockManager _crcBlockManager;
   private final long _blockId;
   private final long _consistencyWaitTime;
+  private final File _uploadDir;
 
   public S3Block(S3BlockConfig config) throws Exception {
     BlockConfig blockConfig = config.getBlockConfig();
+    _uploadDir = config.getUploadDir();
     _consistencyWaitTime = config.getConsistencyWaitTime();
     _bucketName = config.getBucketName();
     _client = config.getClient();
@@ -107,17 +116,20 @@ public class S3Block implements Block {
 
   @Override
   public void sync() {
-    _writeLock.lock();
-    try {
-      while (!doSync()) {
-        try {
-          Thread.sleep(TimeUnit.SECONDS.toMillis(5));
-        } catch (InterruptedException ex) {
+    while (true) {
+      _writeLock.lock();
+      try {
+        if (doSync()) {
           return;
         }
+      } finally {
+        _writeLock.unlock();
       }
-    } finally {
-      _writeLock.unlock();
+      try {
+        Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+      } catch (InterruptedException ex) {
+        return;
+      }
     }
   }
 
@@ -128,20 +140,39 @@ public class S3Block implements Block {
       }
       long crc = _currentCrc.get();
       String key = getS3Key(crc);
-      PutObjectRequest putObjectRequest = new PutObjectRequest(_bucketName, key, _localCacheFile);
-      LOGGER.info("sync s3://{}/{} from {}", _bucketName, key, _localCacheFile);
-      ObjectMetadata metadata = new ObjectMetadata();
-
-      Map<String, String> userMetadata = ImmutableMap.of(BLOCK_CRC, Long.toString(crc));
-      metadata.setUserMetadata(userMetadata);
-      putObjectRequest.setMetadata(metadata);
-      _client.putObject(putObjectRequest);
+      writeObject(crc, key);
       _crcBlockManager.putBlockCrc(_blockId, crc);
       _lastCrcSync.set(crc);
       return true;
     } catch (Exception e) {
       LOGGER.error("Unknown error trying to sync", e);
       return false;
+    }
+  }
+
+  private void writeObject(long crc, String key) throws IOException {
+    File file = new File(_uploadDir, UUID.randomUUID()
+                                         .toString());
+    try {
+      copyFileForUpload(file);
+      PutObjectRequest putObjectRequest = new PutObjectRequest(_bucketName, key, file);
+      LOGGER.info("sync s3://{}/{} from {}", _bucketName, key, file);
+      ObjectMetadata metadata = new ObjectMetadata();
+
+      Map<String, String> userMetadata = ImmutableMap.of(BLOCK_CRC, Long.toString(crc));
+      metadata.setUserMetadata(userMetadata);
+      putObjectRequest.setMetadata(metadata);
+      _client.putObject(putObjectRequest);
+    } finally {
+      file.delete();
+    }
+  }
+
+  private void copyFileForUpload(File file) throws IOException {
+    try (OutputStream output = new BufferedOutputStream(new FileOutputStream(file))) {
+      try (InputStream input = new BufferedInputStream(new FileInputStream(_localCacheFile))) {
+        IOUtils.copyLarge(input, output);
+      }
     }
   }
 

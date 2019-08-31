@@ -15,5 +15,6 @@ public class S3BlockFactoryConfig {
   AmazonS3 client;
   File cacheDir;
   String prefix;
+  File uploadDir;
 
 }

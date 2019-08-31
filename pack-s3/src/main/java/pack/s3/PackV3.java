@@ -3,16 +3,14 @@ package pack.s3;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReferenceArray;
 
-import org.apache.commons.io.IOUtils;
+import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,11 +23,11 @@ import jnr.ffi.types.size_t;
 import jnrfuse.ErrorCodes;
 import jnrfuse.FuseFillDir;
 import jnrfuse.FuseStubFS;
-import jnrfuse.flags.FallocFlags;
 import jnrfuse.struct.FileStat;
 import jnrfuse.struct.FuseFileInfo;
+import pack.s3.thrift.PackService;
 
-public class PackV2 extends FuseStubFS implements Closeable {
+public class PackV3 extends FuseStubFS implements Closeable {
 
   private static final String VOLUME = "volume";
   private static final String VOLUME_PREFIX = "/" + VOLUME + "/";
@@ -39,7 +37,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
   private static final String MOUNT_PREFIX = "/" + MOUNT + "/";
   private static final String BIG_WRITES = "big_writes";
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(PackV2.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackV3.class);
 
   private static final String NONEMPTY = "nonempty";
   private static final String SYNC = "sync";
@@ -51,23 +49,21 @@ public class PackV2 extends FuseStubFS implements Closeable {
   private static final int OK = 0;
 
   private final String _localPath;
-  private final AtomicReferenceArray<FileHandle> _handles = new AtomicReferenceArray<>(4 * 1024);
 
   private final boolean _sync = true;
   private final boolean _bigWrites = true;
-  private final FileHandleManger _fileHandleManger;
+  private final String _domain;
 
   public static void main(String[] args) throws Exception {
-    try (PackV2 pack = new PackV2(args[0], args[1], args[2], args[3], args[4])) {
+    try (PackV3 pack = new PackV3(args[0], args[1])) {
       pack.localMount();
     }
   }
 
-  public PackV2(String localPath, String cache, String sync, String zk, String bucketName) throws Exception {
+  public PackV3(String localPath, String domain) throws Exception {
     mkdir(localPath);
-    mkdir(cache);
     _localPath = localPath;
-    _fileHandleManger = new FileHandleManger(cache, sync, zk, bucketName);
+    _domain = domain;
   }
 
   @Override
@@ -116,6 +112,10 @@ public class PackV2 extends FuseStubFS implements Closeable {
     mount(Paths.get(_localPath), blocking, false, opts);
   }
 
+  public PackService.Iface getClient() {
+    return null;
+  }
+
   @Override
   public int getattr(String path, FileStat stat) {
     try {
@@ -126,7 +126,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
         stat.st_mtim.tv_nsec.set(0);
         return OK;
       } else if (isVolumeRoot(path)) {
-        List<String> volumes = _fileHandleManger.getVolumes();
+        List<String> volumes = getClient().volumes();
         stat.st_mode.set(FileStat.S_IFDIR | 0755);
         stat.st_size.set(volumes.size());
         stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
@@ -139,15 +139,15 @@ public class PackV2 extends FuseStubFS implements Closeable {
         stat.st_mtim.tv_nsec.set(0);
         return OK;
       } else if (isMountRoot(path)) {
-        Map<String, FileHandle> handles = _fileHandleManger.getCurrentHandles();
+        List<String> mounts = getCurrentMounts();
         stat.st_mode.set(FileStat.S_IFDIR | 0755);
-        stat.st_size.set(handles.size());
+        stat.st_size.set(mounts.size());
         stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
         stat.st_mtim.tv_nsec.set(0);
         return OK;
       } else if (isVolumePath(path)) {
         String volumeName = getVolumeName(path);
-        long length = _fileHandleManger.getVolumeSize(volumeName);
+        long length = getClient().sizeVolume(volumeName);
         stat.st_mode.set(FileStat.S_IFREG | 0700);
         stat.st_size.set(length);
         stat.st_mtim.tv_sec.set(System.currentTimeMillis() / 1000);
@@ -179,7 +179,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
         filter.apply(buf, VOLUME, null, 0);
         return OK;
       } else if (isVolumeRoot(path)) {
-        List<String> volumes = _fileHandleManger.getVolumes();
+        List<String> volumes = getVolumes();
         filter.apply(buf, CURRENT_DIR, null, 0);
         filter.apply(buf, PARENT_DIR, null, 0);
         for (String s : sort(volumes)) {
@@ -191,10 +191,10 @@ public class PackV2 extends FuseStubFS implements Closeable {
         filter.apply(buf, PARENT_DIR, null, 0);
         return OK;
       } else if (isMountRoot(path)) {
-        Map<String, FileHandle> handles = _fileHandleManger.getCurrentHandles();
+        List<String> mountedVolumes = getCurrentMounts();
         filter.apply(buf, CURRENT_DIR, null, 0);
         filter.apply(buf, PARENT_DIR, null, 0);
-        for (String s : sort(handles.keySet())) {
+        for (String s : sort(mountedVolumes)) {
           filter.apply(buf, s, null, 0);
         }
         return OK;
@@ -208,6 +208,10 @@ public class PackV2 extends FuseStubFS implements Closeable {
     }
   }
 
+  private List<String> getCurrentMounts() throws TException {
+    return getClient().mountedVolumes();
+  }
+
   @Override
   public int open(String path, FuseFileInfo fi) {
     try {
@@ -215,8 +219,7 @@ public class PackV2 extends FuseStubFS implements Closeable {
       if (isRoot(path) || isMountRoot(path) || isVolumeRoot(path) || isStatRoot(path)) {
         return -ErrorCodes.EISDIR();
       } else if (isVolumePath(path)) {
-        FileHandle fileHandle = _fileHandleManger.getHandle(getVolumeName(path));
-        int handle = registerHandle(fileHandle);
+        int handle = getClient().openVolume(getVolumeName(path));
         fi.fh.set(handle);
         return OK;
       } else if (isMountPath(path)) {
@@ -232,24 +235,11 @@ public class PackV2 extends FuseStubFS implements Closeable {
     }
   }
 
-  private int registerHandle(FileHandle fileHandle) throws IOException {
-    synchronized (_handles) {
-      for (int i = 0; i < _handles.length(); i++) {
-        FileHandle h = _handles.get(i);
-        if (h == null) {
-          _handles.set(i, fileHandle);
-          return i;
-        }
-      }
-      throw new IOException("Too many open handles.");
-    }
-  }
-
   @Override
   public int release(String path, FuseFileInfo fi) {
     try {
       LOGGER.info("release {} {}", path, fi.fh.get());
-      closeHandle(fi.fh.intValue());
+      getClient().releaseVolume(fi.fh.intValue());
       return OK;
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
@@ -261,11 +251,10 @@ public class PackV2 extends FuseStubFS implements Closeable {
   public int read(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
     try {
       int fh = fi.fh.intValue();
-      FileHandle handle = getHandle(fh);
-      if (handle == null) {
-        return -ErrorCodes.EIO();
-      }
-      return handle.read(buf, (int) size, offset);
+      ByteBuffer buffer = getClient().readData(fh, offset);
+      int len = buffer.remaining();
+      buf.put(0, buffer.array(), 0, len);
+      return len;
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
@@ -276,11 +265,11 @@ public class PackV2 extends FuseStubFS implements Closeable {
   public int write(String path, Pointer buf, @size_t long size, @off_t long offset, FuseFileInfo fi) {
     try {
       int fh = fi.fh.intValue();
-      FileHandle handle = getHandle(fh);
-      if (handle == null) {
-        return -ErrorCodes.EIO();
-      }
-      return handle.write(buf, (int) size, offset);
+      int intSize = (int) size;
+      byte[] buffer = new byte[intSize];
+      buf.get(0, buffer, 0, intSize);
+      getClient().writeData(fh, offset, ByteBuffer.wrap(buffer));
+      return intSize;
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
       return -ErrorCodes.EIO();
@@ -291,11 +280,10 @@ public class PackV2 extends FuseStubFS implements Closeable {
   public int mknod(String path, long mode, long rdev) {
     try {
       String volumeName = getVolumeName(path);
-      if (_fileHandleManger.getVolumes()
-                           .contains(volumeName)) {
+      if (getVolumes().contains(volumeName)) {
         return -ErrorCodes.EEXIST();
       }
-      _fileHandleManger.setVolumeSize(volumeName, 0);
+      getClient().createVolume(volumeName);
       return OK;
     } catch (Throwable t) {
       LOGGER.error(t.getMessage(), t);
@@ -303,35 +291,42 @@ public class PackV2 extends FuseStubFS implements Closeable {
     }
   }
 
+  private List<String> getVolumes() throws TException {
+    return getClient().volumes();
+  }
+
   @Override
   public int fallocate(String path, int mode, long off, long length, FuseFileInfo fi) {
-    try {
-      LOGGER.info("fallocate {} {} {} {} {}", path, mode, off, length, fi.fh.get());
-      int fh = fi.fh.intValue();
-      FileHandle handle = getHandle(fh);
-      if (handle == null) {
-        return -ErrorCodes.EIO();
-      }
-      Set<FallocFlags> lookup = FallocFlags.lookup(mode);
-      String volumeName = handle.getVolumeName();
-      if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) && lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
-        handle.delete(off, length);
-        return OK;
-      } else if (lookup.isEmpty()) {
-        // grow the file
-        long volumeSize = _fileHandleManger.getVolumeSize(volumeName);
-        if (volumeSize == off) {
-          _fileHandleManger.setVolumeSize(volumeName, off + length);
-          return OK;
-        }
-        return -ErrorCodes.EIO();
-      } else {
-        return -ErrorCodes.EIO();
-      }
-    } catch (Throwable t) {
-      LOGGER.error(t.getMessage(), t);
-      return -ErrorCodes.EIO();
-    }
+    // try {
+    // LOGGER.info("fallocate {} {} {} {} {}", path, mode, off, length,
+    // fi.fh.get());
+    // int fh = fi.fh.intValue();
+    // FileHandle handle = getHandle(fh);
+    // if (handle == null) {
+    // return -ErrorCodes.EIO();
+    // }
+    // Set<FallocFlags> lookup = FallocFlags.lookup(mode);
+    // String volumeName = handle.getVolumeName();
+    // if (lookup.contains(FallocFlags.FALLOC_FL_PUNCH_HOLE) &&
+    // lookup.contains(FallocFlags.FALLOC_FL_KEEP_SIZE)) {
+    // handle.delete(off, length);
+    // return OK;
+    // } else if (lookup.isEmpty()) {
+    // // grow the file
+    // long volumeSize = _fileHandleManger.getVolumeSize(volumeName);
+    // if (volumeSize == off) {
+    // _fileHandleManger.setVolumeSize(volumeName, off + length);
+    // return OK;
+    // }
+    // return -ErrorCodes.EIO();
+    // } else {
+    // return -ErrorCodes.EIO();
+    // }
+    // } catch (Throwable t) {
+    // LOGGER.error(t.getMessage(), t);
+    // return -ErrorCodes.EIO();
+    // }
+    return OK;
   }
 
   @Override
@@ -354,19 +349,12 @@ public class PackV2 extends FuseStubFS implements Closeable {
     return OK;
   }
 
-  private void closeHandle(int handle) throws IOException {
-    synchronized (_handles) {
-      IOUtils.closeQuietly(_handles.getAndSet(handle, null));
-    }
-  }
-
   private boolean isVolumePath(String path) throws Exception {
     String volumeName = getVolumeName(path);
     if (volumeName.contains("/")) {
       return false;
     }
-    return _fileHandleManger.getVolumes()
-                            .contains(volumeName);
+    return getVolumes().contains(volumeName);
   }
 
   private boolean isRoot(String path) {
@@ -378,10 +366,6 @@ public class PackV2 extends FuseStubFS implements Closeable {
       return path.substring(VOLUME_PREFIX.length());
     }
     return path;
-  }
-
-  private FileHandle getHandle(int fh) {
-    return _handles.get(fh);
   }
 
   private void mkdir(String p) {
@@ -413,24 +397,20 @@ public class PackV2 extends FuseStubFS implements Closeable {
     return path;
   }
 
-  private boolean isMountPath(String path) {
+  private boolean isMountPath(String path) throws TException {
     String volumeName = getMountName(path);
     if (volumeName.contains("/")) {
       return false;
     }
-    return _fileHandleManger.getCurrentHandles()
-                            .keySet()
-                            .contains(volumeName);
+    return getCurrentMounts().contains(volumeName);
   }
 
-  private boolean isStatPath(String path) {
+  private boolean isStatPath(String path) throws TException {
     String volumeName = getStatName(path);
     if (volumeName.contains("/")) {
       return false;
     }
-    return _fileHandleManger.getCurrentHandles()
-                            .keySet()
-                            .contains(volumeName);
+    return getCurrentMounts().contains(volumeName);
   }
 
   private String getStatName(String path) {
