@@ -11,10 +11,10 @@ import com.github.benmanes.caffeine.cache.CacheLoader;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.block.LocalBlock;
 import pack.iscsi.partitioned.block.LocalBlockConfig;
+import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 import pack.iscsi.partitioned.storagemanager.BlockKey;
 import pack.iscsi.partitioned.storagemanager.BlockStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
-import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 import pack.iscsi.partitioned.util.Utils;
 
 public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {

@@ -31,7 +31,6 @@ public class IscsiServerMain {
 
     try (Closer closer = Closer.create()) {
       List<StorageModuleFactory> factories = new ArrayList<>();
-
       List<BlockStorageModuleFactoryConfig> configs = IscsiConfigUtil.getConfigs(new File(configDir));
       for (BlockStorageModuleFactoryConfig config : configs) {
         factories.add(closer.register(new BlockStorageModuleFactory(config)));
