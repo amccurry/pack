@@ -9,7 +9,6 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
@@ -17,6 +16,7 @@ import org.junit.Test;
 
 import pack.iscsi.partitioned.storagemanager.BlockStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
+import pack.iscsi.partitioned.storagemanager.VolumeMetadata;
 import pack.util.IOUtils;
 
 public class LocalBlockTest {
@@ -38,9 +38,8 @@ public class LocalBlockTest {
     int passes = 1000;
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeId(volumeId)
+                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
                                               .blockId(blockId)
-                                              .blockSize(blockSize)
                                               .blockStore(store)
                                               .wal(wal)
                                               .build();
@@ -80,6 +79,13 @@ public class LocalBlockTest {
     }
   }
 
+  private VolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
+    return VolumeMetadata.builder()
+                         .blockSize(blockSize)
+                         .volumeId(volumeId)
+                         .build();
+  }
+
   @Test
   public void testBlockWritePastEndOfBlock() throws IOException {
     File file = new File("./target/tmp/LocalBlockTest");
@@ -94,9 +100,8 @@ public class LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeId(volumeId)
+                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
                                               .blockId(blockId)
-                                              .blockSize(blockSize)
                                               .blockStore(store)
                                               .wal(wal)
                                               .build();
@@ -126,9 +131,8 @@ public class LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeId(volumeId)
+                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
                                               .blockId(blockId)
-                                              .blockSize(blockSize)
                                               .blockStore(store)
                                               .wal(wal)
                                               .build();
@@ -164,9 +168,8 @@ public class LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeId(volumeId)
+                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
                                               .blockId(blockId)
-                                              .blockSize(blockSize)
                                               .blockStore(store)
                                               .wal(wal)
                                               .build();
@@ -207,9 +210,8 @@ public class LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeId(volumeId)
+                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
                                               .blockId(blockId)
-                                              .blockSize(blockSize)
                                               .blockStore(store)
                                               .wal(wal)
                                               .syncTimeAfterIdle(1)
@@ -259,46 +261,6 @@ public class LocalBlockTest {
       @Override
       public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) {
         _lastStoredGeneration = lastStoredGeneration;
-      }
-
-      @Override
-      public List<String> getVolumeNames() {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public long getVolumeId(String name) {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public long getLengthInBytes(long volumeId) {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public int getBlockSize(long volumeId) {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public long createVolume(String name, int blockSize, long lengthInBytes) throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public void destroyVolume(long volumeId) throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public void renameVolume(long volumeId, String name) throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public void growVolume(long volumeId, long lengthInBytes) throws IOException {
-        throw new RuntimeException("not impl");
       }
     };
   }

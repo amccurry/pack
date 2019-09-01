@@ -7,6 +7,7 @@ import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.partitioned.storagemanager.BlockStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
+import pack.iscsi.partitioned.storagemanager.VolumeMetadata;
 
 @Value
 @Builder
@@ -14,11 +15,9 @@ public class LocalBlockConfig {
 
   File blockDataDir;
 
-  long volumeId;
+  VolumeMetadata volumeMetadata;
 
   long blockId;
-
-  int blockSize;
 
   BlockStore blockStore;
 

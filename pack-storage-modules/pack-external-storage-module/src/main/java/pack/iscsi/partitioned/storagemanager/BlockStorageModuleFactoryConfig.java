@@ -11,6 +11,8 @@ import lombok.Value;
 @Builder
 public class BlockStorageModuleFactoryConfig {
 
+  VolumeStore volumeStore;
+  
   BlockStore blockStore;
 
   BlockWriteAheadLog writeAheadLog;

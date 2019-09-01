@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import pack.iscsi.partitioned.storagemanager.BlockStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
+import pack.iscsi.partitioned.storagemanager.VolumeMetadata;
 import pack.util.IOUtils;
 
 public class LocalBlock implements Closeable, Block {
@@ -48,18 +49,9 @@ public class LocalBlock implements Closeable, Block {
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
 
   public LocalBlock(LocalBlockConfig config) throws IOException {
-    ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
-    _writeLock = reentrantReadWriteLock.writeLock();
-    _readLock = reentrantReadWriteLock.readLock();
-    _blockStore = config.getBlockStore();
-
-    _wal = config.getWal();
-    _blockSize = config.getBlockSize();
-    _volumeId = config.getVolumeId();
+    VolumeMetadata volumeMetadata = config.getVolumeMetadata();
+    _volumeId = volumeMetadata.getVolumeId();
     _blockId = config.getBlockId();
-    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
-    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
-
     File blockDataDir = config.getBlockDataDir();
     createAndCheckExistence(blockDataDir);
 
@@ -67,6 +59,17 @@ public class LocalBlock implements Closeable, Block {
     createAndCheckExistence(volumeDir);
 
     _blockDataFile = new File(volumeDir, Long.toString(_blockId));
+
+    ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
+    _writeLock = reentrantReadWriteLock.writeLock();
+    _readLock = reentrantReadWriteLock.readLock();
+    _blockStore = config.getBlockStore();
+
+    _wal = config.getWal();
+    _blockSize = volumeMetadata.getBlockSize();
+
+    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
+    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
 
     if (_blockDataFile.exists() && isLengthValid()) {
       // recovery will need to occur, may be out of date

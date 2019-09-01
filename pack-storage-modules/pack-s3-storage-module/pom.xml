@@ -11,6 +11,13 @@
 	<artifactId>pack-s3-storage-module</artifactId>
 	<packaging>jar</packaging>
 
+	<repositories>
+		<repository>
+			<id>consistent-s3</id>
+			<url>https://raw.githubusercontent.com/amccurry/consistent-s3/repository</url>
+		</repository>
+	</repositories>
+
 	<dependencies>
 		<dependency>
 			<groupId>pack</groupId>

@@ -14,6 +14,8 @@ import pack.iscsi.partitioned.block.LocalBlockConfig;
 import pack.iscsi.partitioned.storagemanager.BlockKey;
 import pack.iscsi.partitioned.storagemanager.BlockStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
+import pack.iscsi.partitioned.storagemanager.VolumeMetadata;
+import pack.iscsi.partitioned.storagemanager.VolumeStore;
 import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 import pack.iscsi.partitioned.util.Utils;
 
@@ -21,6 +23,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 
   private static Logger LOGGER = LoggerFactory.getLogger(BlockCacheLoader.class);
 
+  private final VolumeStore _volumeStore;
   private final BlockStore _blockStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final File _blockDataDir;
@@ -30,6 +33,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private final BlockRemovalListener _removalListener;
 
   public BlockCacheLoader(BlockCacheLoaderConfig config) {
+    _volumeStore = config.getVolumeStore();
     _blockDataDir = config.getBlockDataDir();
     _blockStore = config.getBlockStore();
     _writeAheadLog = config.getWriteAheadLog();
@@ -45,14 +49,11 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     if (stolenBlock != null) {
       return stolenBlock;
     }
-    long volumeId = key.getVolumeId();
-    int blockSize = _blockStore.getBlockSize(volumeId);
-
+    VolumeMetadata volumeMetadata = _volumeStore.getVolumeMetadata(key.getVolumeId());
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(_blockDataDir)
-                                              .volumeId(volumeId)
+                                              .volumeMetadata(volumeMetadata)
                                               .blockId(key.getBlockId())
-                                              .blockSize(blockSize)
                                               .blockStore(_blockStore)
                                               .wal(_writeAheadLog)
                                               .syncTimeAfterIdle(_syncTimeAfterIdle)
