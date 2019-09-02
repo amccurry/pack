@@ -34,12 +34,14 @@ public class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactory() throws IOException {
+    VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
     BlockStore blockStore = getBlockStore();
     BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .volumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -60,12 +62,14 @@ public class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws IOException {
+    VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
     BlockStore blockStore = getBlockStore();
     BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .volumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -92,12 +96,14 @@ public class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws IOException {
+    VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
     BlockStore blockStore = getBlockStore();
     BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .volumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -131,26 +137,6 @@ public class BlockStorageModuleFactoryTest {
     return new BlockStore() {
 
       @Override
-      public List<String> getVolumeNames() {
-        return Arrays.asList("test");
-      }
-
-      @Override
-      public long getVolumeId(String name) {
-        return 12345;
-      }
-
-      @Override
-      public long getLengthInBytes(long volumeId) {
-        return 100_000_000L;
-      }
-
-      @Override
-      public int getBlockSize(long volumeId) {
-        return 100_000;
-      }
-
-      @Override
       public long getLastStoreGeneration(long volumeId, long blockId) {
         Long gen = gens.get(blockId);
         if (gen == null) {
@@ -164,25 +150,6 @@ public class BlockStorageModuleFactoryTest {
         gens.put(blockId, lastStoredGeneration);
       }
 
-      @Override
-      public long createVolume(String name, int blockSize, long lengthInBytes) throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public void destroyVolume(long volumeId) throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public void renameVolume(long volumeId, String name) throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public void growVolume(long volumeId, long lengthInBytes) throws IOException {
-        throw new RuntimeException("not impl");
-      }
     };
   }
 
@@ -211,5 +178,53 @@ public class BlockStorageModuleFactoryTest {
       storageModule.read(buffer2, pos);
       assertTrue("pos " + pos, Arrays.equals(buffer1, buffer2));
     }
+  }
+
+  private VolumeStore getVolumeStore(long volumeId, int blockSize, long lengthInBytes) {
+    return new VolumeStore() {
+
+      @Override
+      public void renameVolume(long volumeId, String name) throws IOException {
+        throw new RuntimeException("Not impl");
+      }
+
+      @Override
+      public void growVolume(long volumeId, long lengthInBytes) throws IOException {
+        throw new RuntimeException("Not impl");
+      }
+
+      @Override
+      public List<String> getVolumeNames() {
+        throw new RuntimeException("Not impl");
+      }
+
+      @Override
+      public VolumeMetadata getVolumeMetadata(long volumeId) throws IOException {
+        return VolumeMetadata.builder()
+                             .blockSize(blockSize)
+                             .lengthInBytes(lengthInBytes)
+                             .build();
+      }
+
+      @Override
+      public long getVolumeId(String name) throws IOException {
+        return volumeId;
+      }
+
+      @Override
+      public BlockStore getBlockStore(long volumeId) throws IOException {
+        throw new RuntimeException("Not impl");
+      }
+
+      @Override
+      public void destroyVolume(long volumeId) throws IOException {
+        throw new RuntimeException("Not impl");
+      }
+
+      @Override
+      public void createVolume(String name, int blockSize, long lengthInBytes) throws IOException {
+        throw new RuntimeException("Not impl");
+      }
+    };
   }
 }

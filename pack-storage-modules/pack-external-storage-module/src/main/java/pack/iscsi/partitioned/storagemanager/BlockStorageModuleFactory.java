@@ -32,6 +32,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   private final LoadingCache<BlockKey, Block> _cache;
   private final BlockStore _blockStore;
+  private final VolumeStore _volumeStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final BlockIOFactory _externalBlockStoreFactory;
   private final File _blockDataDir;
@@ -40,6 +41,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
+    _volumeStore = config.getVolumeStore();
     _blockDataDir = config.getBlockDataDir();
     _blockStore = config.getBlockStore();
     _writeAheadLog = config.getWriteAheadLog();
@@ -63,14 +65,15 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   @Override
   public List<String> getStorageModuleNames() throws IOException {
-    return _blockStore.getVolumeNames();
+    return _volumeStore.getVolumeNames();
   }
 
   @Override
   public StorageModule getStorageModule(String name) throws IOException {
-    long volumeId = _blockStore.getVolumeId(name);
-    int blockSize = _blockStore.getBlockSize(volumeId);
-    long lengthInBytes = _blockStore.getLengthInBytes(volumeId);
+    VolumeMetadata volumeMetadata = _volumeStore.getVolumeMetadata(name);
+    long volumeId = volumeMetadata.getVolumeId();
+    int blockSize = volumeMetadata.getBlockSize();
+    long lengthInBytes = volumeMetadata.getLengthInBytes();
     BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
                                                               .blockSize(blockSize)
                                                               .externalBlockStoreFactory(_externalBlockStoreFactory)
@@ -98,6 +101,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
     return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
+                                                      .volumeStore(_volumeStore)
                                                       .blockDataDir(_blockDataDir)
                                                       .blockStore(_blockStore)
                                                       .externalBlockStoreFactory(_externalBlockStoreFactory)
