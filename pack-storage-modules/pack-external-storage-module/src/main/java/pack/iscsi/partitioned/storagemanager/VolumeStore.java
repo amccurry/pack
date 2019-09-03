@@ -1,29 +1,27 @@
 package pack.iscsi.partitioned.storagemanager;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 
-public interface VolumeStore {
+public interface VolumeStore extends Closeable {
 
   List<String> getVolumeNames();
 
+  VolumeMetadata getVolumeMetadata(String name) throws IOException;
+
   VolumeMetadata getVolumeMetadata(long volumeId) throws IOException;
-
-  long getVolumeId(String name) throws IOException;
-
-  default VolumeMetadata getVolumeMetadata(String name) throws IOException {
-    long volumeId = getVolumeId(name);
-    return getVolumeMetadata(volumeId);
-  }
 
   void createVolume(String name, int blockSize, long lengthInBytes) throws IOException;
 
-  void destroyVolume(long volumeId) throws IOException;
+  void destroyVolume(String name) throws IOException;
 
-  void renameVolume(long volumeId, String name) throws IOException;
+  void renameVolume(String existingName, String newName) throws IOException;
 
-  void growVolume(long volumeId, long lengthInBytes) throws IOException;
+  void growVolume(String name, long lengthInBytes) throws IOException;
 
-  BlockStore getBlockStore(long volumeId) throws IOException;
+  default void close() throws IOException {
+
+  }
 
 }

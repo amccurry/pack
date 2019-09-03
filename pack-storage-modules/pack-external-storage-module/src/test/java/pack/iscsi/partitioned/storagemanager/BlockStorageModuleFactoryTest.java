@@ -184,16 +184,6 @@ public class BlockStorageModuleFactoryTest {
     return new VolumeStore() {
 
       @Override
-      public void renameVolume(long volumeId, String name) throws IOException {
-        throw new RuntimeException("Not impl");
-      }
-
-      @Override
-      public void growVolume(long volumeId, long lengthInBytes) throws IOException {
-        throw new RuntimeException("Not impl");
-      }
-
-      @Override
       public List<String> getVolumeNames() {
         throw new RuntimeException("Not impl");
       }
@@ -207,22 +197,31 @@ public class BlockStorageModuleFactoryTest {
       }
 
       @Override
-      public long getVolumeId(String name) throws IOException {
-        return volumeId;
-      }
-
-      @Override
-      public BlockStore getBlockStore(long volumeId) throws IOException {
-        throw new RuntimeException("Not impl");
-      }
-
-      @Override
-      public void destroyVolume(long volumeId) throws IOException {
-        throw new RuntimeException("Not impl");
-      }
-
-      @Override
       public void createVolume(String name, int blockSize, long lengthInBytes) throws IOException {
+        throw new RuntimeException("Not impl");
+      }
+
+      @Override
+      public VolumeMetadata getVolumeMetadata(String name) throws IOException {
+        return VolumeMetadata.builder()
+                             .blockSize(blockSize)
+                             .lengthInBytes(lengthInBytes)
+                             .volumeId(volumeId)
+                             .build();
+      }
+
+      @Override
+      public void destroyVolume(String name) throws IOException {
+        throw new RuntimeException("Not impl");
+      }
+
+      @Override
+      public void renameVolume(String existingName, String newName) throws IOException {
+        throw new RuntimeException("Not impl");
+      }
+
+      @Override
+      public void growVolume(String name, long lengthInBytes) throws IOException {
         throw new RuntimeException("Not impl");
       }
     };

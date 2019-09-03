@@ -11,7 +11,7 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
-public class IscsiServerCliUtil {
+public class IscsiServerArgsUtil {
   
   private static final String IP = "ip";
   private static final String PORT = "port";

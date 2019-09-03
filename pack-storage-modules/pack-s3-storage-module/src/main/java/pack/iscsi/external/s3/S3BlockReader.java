@@ -44,7 +44,7 @@ public class S3BlockReader implements BlockIOExecutor {
     long onDiskGeneration = request.getOnDiskGeneration();
     BlockState onDiskState = request.getOnDiskState();
     try {
-      String key = S3Utils.getKey(_objectPrefix, request.getVolumeId(), request.getBlockId(), lastStoredGeneration);
+      String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(), lastStoredGeneration);
       S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
       try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
         byte[] buffer = new byte[4096];

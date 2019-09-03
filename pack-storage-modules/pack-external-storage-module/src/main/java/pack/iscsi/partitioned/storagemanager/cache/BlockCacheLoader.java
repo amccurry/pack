@@ -17,7 +17,6 @@ import pack.iscsi.partitioned.storagemanager.BlockStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
 import pack.iscsi.partitioned.storagemanager.VolumeMetadata;
 import pack.iscsi.partitioned.storagemanager.VolumeStore;
-import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 import pack.iscsi.partitioned.util.Utils;
 
 public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {

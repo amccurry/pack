@@ -40,7 +40,7 @@ public class S3BlockWriter implements BlockIOExecutor {
       return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
     }
     try {
-      String key = S3Utils.getKey(_objectPrefix, request.getVolumeId(), request.getBlockId(), onDiskGeneration);
+      String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(), onDiskGeneration);
       InputStream input = getInputStream(request.getChannel(), request.getBlockSize());
       ObjectMetadata metadata = new ObjectMetadata();
       metadata.setContentLength(request.getBlockSize());

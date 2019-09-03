@@ -1,5 +1,6 @@
 package pack.iscsi;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -12,6 +13,8 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
@@ -67,6 +70,15 @@ public class S3TestSetup {
 
   private static boolean isSetup() {
     return SETUP.get();
+  }
+
+  public static void cleanS3(String bucket, String prefix) throws Exception {
+    AmazonS3 amazonS3 = getAmazonS3();
+    ObjectListing listObjects = amazonS3.listObjects(bucket, prefix);
+    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
+    for (S3ObjectSummary summary : objectSummaries) {
+      amazonS3.deleteObject(bucket, summary.getKey());
+    }
   }
 
 }

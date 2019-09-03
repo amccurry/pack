@@ -24,10 +24,10 @@ public class IscsiServerMain {
   private static final Logger LOGGER = LoggerFactory.getLogger(IscsiServerMain.class);
 
   public static void main(String[] args) throws Exception {
-    CommandLine cmd = IscsiServerCliUtil.parseArgs(args);
-    Set<String> addresses = IscsiServerCliUtil.getAddresses(cmd);
-    int port = IscsiServerCliUtil.getPort(cmd);
-    String configDir = IscsiServerCliUtil.getConfigDir(cmd);
+    CommandLine cmd = IscsiServerArgsUtil.parseArgs(args);
+    Set<String> addresses = IscsiServerArgsUtil.getAddresses(cmd);
+    int port = IscsiServerArgsUtil.getPort(cmd);
+    String configDir = IscsiServerArgsUtil.getConfigDir(cmd);
 
     try (Closer closer = Closer.create()) {
       List<StorageModuleFactory> factories = new ArrayList<>();
