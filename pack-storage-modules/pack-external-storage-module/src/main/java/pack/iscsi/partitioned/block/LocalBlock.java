@@ -86,7 +86,10 @@ public class LocalBlock implements Closeable, Block {
       _channel = _raf.getChannel();
     }
     readMetadata();
-    _lastStoredGeneration.set(_blockStore.getLastStoreGeneration(_volumeId, _blockId));
+    long lastStoreGeneration = _blockStore.getLastStoreGeneration(_volumeId, _blockId);
+    LOGGER.info("volumeId {} blockId {} last store generation {} on disk generation {}", _volumeId, _blockId,
+        lastStoreGeneration, _onDiskGeneration.get());
+    _lastStoredGeneration.set(lastStoreGeneration);
   }
 
   @Override

@@ -18,17 +18,17 @@ public class S3Utils {
   private static final Splitter SPLITTER = Splitter.on(SEPARATOR);
   private static final Joiner JOINER = Joiner.on(SEPARATOR);
 
-  public static String getBlockKey(String objectPrefix, long volumeId, long blockId) {
+  public static String getBlockKeyPrefix(String objectPrefix, long volumeId, long blockId) {
     if (objectPrefix == null || objectPrefix.trim()
                                             .isEmpty()) {
-      return JOINER.join(DATA, volumeId, blockId);
+      return JOINER.join(DATA, volumeId, blockId) + SEPARATOR;
     } else {
-      return JOINER.join(objectPrefix, DATA, volumeId, blockId);
+      return JOINER.join(objectPrefix, DATA, volumeId, blockId) + SEPARATOR;
     }
   }
 
   public static String getBlockGenerationKey(String objectPrefix, long volumeId, long blockId, long generation) {
-    return getBlockKey(objectPrefix, volumeId, blockId) + '/' + generation;
+    return getBlockKeyPrefix(objectPrefix, volumeId, blockId) + generation;
   }
 
   public static List<String> listObjects(AmazonS3 amazonS3, String bucketName, String prefix) {
@@ -62,18 +62,18 @@ public class S3Utils {
   public static String getVolumeNamePrefix(String objectPrefix) {
     if (objectPrefix == null || objectPrefix.trim()
                                             .isEmpty()) {
-      return VOLUME;
+      return VOLUME + SEPARATOR;
     } else {
-      return JOINER.join(objectPrefix, VOLUME);
+      return JOINER.join(objectPrefix, VOLUME) + SEPARATOR;
     }
   }
 
   public static String getVolumeBlocksPrefix(String objectPrefix, long volumeId) {
     if (objectPrefix == null || objectPrefix.trim()
                                             .isEmpty()) {
-      return JOINER.join(DATA, volumeId);
+      return JOINER.join(DATA, volumeId) + SEPARATOR;
     } else {
-      return JOINER.join(objectPrefix, DATA, volumeId);
+      return JOINER.join(objectPrefix, DATA, volumeId) + SEPARATOR;
     }
   }
 

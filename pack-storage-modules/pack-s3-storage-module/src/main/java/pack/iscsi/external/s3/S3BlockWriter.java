@@ -41,6 +41,7 @@ public class S3BlockWriter implements BlockIOExecutor {
     }
     try {
       String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(), onDiskGeneration);
+      LOGGER.info("writing bucket {} key {}", _bucket, key);
       InputStream input = getInputStream(request.getChannel(), request.getBlockSize());
       ObjectMetadata metadata = new ObjectMetadata();
       metadata.setContentLength(request.getBlockSize());

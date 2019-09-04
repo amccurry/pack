@@ -5,6 +5,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
@@ -16,6 +19,8 @@ import pack.iscsi.partitioned.storagemanager.BlockKey;
 import pack.iscsi.partitioned.storagemanager.BlockStore;
 
 public class S3BlockStore implements BlockStore {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(S3BlockStore.class);
 
   private static final Splitter KEY_SPLITTER = Splitter.on('/');
   private final ConsistentAmazonS3 _consistentAmazonS3;
@@ -29,12 +34,15 @@ public class S3BlockStore implements BlockStore {
     _objectPrefix = config.getObjectPrefix();
 
     CacheLoader<BlockKey, Long> loader = key -> {
-      String blockKey = S3Utils.getBlockKey(_objectPrefix, key.getVolumeId(), key.getBlockId());
+      String blockKey = S3Utils.getBlockKeyPrefix(_objectPrefix, key.getVolumeId(), key.getBlockId());
+      LOGGER.info("blockkey {} scan key from {}", key, blockKey);
       List<String> keys = S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blockKey);
+      LOGGER.info("keys {}", keys);
       if (keys.isEmpty()) {
         return Block.MISSING_BLOCK_GENERATION;
       }
       List<Long> generations = getGenerations(keys);
+      LOGGER.info("generations {}", generations);
       return Collections.max(generations);
     };
     _cache = Caffeine.newBuilder()
@@ -52,6 +60,8 @@ public class S3BlockStore implements BlockStore {
 
   @Override
   public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException {
+    LOGGER.info("storing generation volumeId {} blockId {} lastStoredGeneration {}", volumeId, blockId,
+        lastStoredGeneration);
     _cache.put(BlockKey.builder()
                        .volumeId(volumeId)
                        .blockId(blockId)

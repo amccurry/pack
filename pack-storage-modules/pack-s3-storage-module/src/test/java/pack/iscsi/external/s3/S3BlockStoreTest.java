@@ -63,4 +63,36 @@ public class S3BlockStoreTest {
     }
   }
 
+  @Test
+  public void testS3BlockStoreLoadExistingWithMultipleBlocks() throws Exception {
+    long volumeId = 0;
+    long blockId1 = 1;
+    long blockId2 = 12;
+    int generation1 = 12345;
+    int generation2 = 12346;
+    {
+      String key = S3Utils.getBlockGenerationKey(OBJECT_PREFIX, volumeId, blockId1, generation1);
+      CONSISTENT_AMAZON_S3.putObject(BUCKET, key, "test");
+    }
+    {
+      String key = S3Utils.getBlockGenerationKey(OBJECT_PREFIX, volumeId, blockId2, generation2);
+      CONSISTENT_AMAZON_S3.putObject(BUCKET, key, "test");
+    }
+    
+    // This may cause test to fail if s3 is too slow, need to update consistent
+    // s3 to handle list objects
+    Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+
+    S3BlockStoreConfig config = S3BlockStoreConfig.builder()
+                                                  .bucket(BUCKET)
+                                                  .objectPrefix(OBJECT_PREFIX)
+                                                  .consistentAmazonS3(CONSISTENT_AMAZON_S3)
+                                                  .build();
+
+    try (S3BlockStore store = new S3BlockStore(config)) {
+      assertEquals(generation1, store.getLastStoreGeneration(volumeId, blockId1));
+      assertEquals(generation2, store.getLastStoreGeneration(volumeId, blockId2));
+    }
+  }
+
 }
