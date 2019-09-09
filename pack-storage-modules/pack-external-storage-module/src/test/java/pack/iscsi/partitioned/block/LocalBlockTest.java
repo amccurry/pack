@@ -8,13 +8,14 @@ import static org.junit.Assert.fail;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
-import pack.iscsi.partitioned.storagemanager.BlockStore;
+import pack.iscsi.partitioned.storagemanager.BlockGenerationStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
 import pack.iscsi.partitioned.storagemanager.VolumeMetadata;
 import pack.util.IOUtils;
@@ -31,7 +32,7 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore store = getBlockStore();
+    BlockGenerationStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     long seed = new Random().nextLong();
 
@@ -96,7 +97,7 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore store = getBlockStore();
+    BlockGenerationStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
@@ -127,7 +128,7 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore store = getBlockStore();
+    BlockGenerationStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
@@ -164,7 +165,7 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore store = getBlockStore();
+    BlockGenerationStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
@@ -206,7 +207,7 @@ public class LocalBlockTest {
     long volumeId = 0;
     long blockId = 0;
     int blockSize = 20_000_000;
-    BlockStore store = getBlockStore();
+    BlockGenerationStore store = getBlockStore();
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
@@ -238,18 +239,19 @@ public class LocalBlockTest {
       }
 
       @Override
-      public BlockIOExecutor getWriteAheadLogReader() {
-        throw new RuntimeException("not impl");
+      public void release(long volumeId, long blockId, long generation) throws IOException {
+        
       }
 
       @Override
-      public void release(long volumeId, long blockId, long generation) throws IOException {
+      public long recover(FileChannel channel, long volumeId, long blockId, long onDiskGeneration) throws IOException {
+        throw new RuntimeException("not impl");
       }
     };
   }
 
-  private BlockStore getBlockStore() {
-    return new BlockStore() {
+  private BlockGenerationStore getBlockStore() {
+    return new BlockGenerationStore() {
 
       private long _lastStoredGeneration;
 

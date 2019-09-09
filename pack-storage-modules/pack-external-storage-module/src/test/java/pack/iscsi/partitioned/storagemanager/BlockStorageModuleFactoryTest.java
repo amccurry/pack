@@ -13,30 +13,28 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.junit.Before;
 import org.junit.Test;
 
-import pack.iscsi.external.local.LocalBlockWriteAheadLog;
-import pack.iscsi.external.local.LocalExternalBlockStoreFactory;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.spi.StorageModule;
 import pack.util.IOUtils;
 
-public class BlockStorageModuleFactoryTest {
+public abstract class BlockStorageModuleFactoryTest {
 
-  private static final File BLOCK_DATA_DIR = new File("./target/tmp/BlockStorageModuleFactoryTest/blocks");
-  private static final File WAL_DATA_DIR = new File("./target/tmp/BlockStorageModuleFactoryTest/wal");
-  private static final File EXTERNAL_BLOCK_DATA_DIR = new File("./target/tmp/BlockStorageModuleFactoryTest/external");
+  public static final File BLOCK_DATA_DIR = new File("./target/tmp/BlockStorageModuleFactoryTest/blocks");
 
   @Before
-  public void setup() {
+  public void setup() throws Exception {
     IOUtils.rmr(BLOCK_DATA_DIR);
-    IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
-    IOUtils.rmr(WAL_DATA_DIR);
   }
 
+  protected abstract BlockIOFactory getBlockIOFactory() throws Exception;
+
+  protected abstract BlockWriteAheadLog getBlockWriteAheadLog() throws Exception;
+
   @Test
-  public void testBlockStorageModuleFactory() throws IOException {
+  public void testBlockStorageModuleFactory() throws Exception {
     VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
-    BlockStore blockStore = getBlockStore();
-    BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
+    BlockGenerationStore blockStore = getBlockStore();
+    BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
@@ -61,10 +59,10 @@ public class BlockStorageModuleFactoryTest {
   }
 
   @Test
-  public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws IOException {
+  public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws Exception {
     VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
-    BlockStore blockStore = getBlockStore();
-    BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
+    BlockGenerationStore blockStore = getBlockStore();
+    BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
@@ -95,10 +93,10 @@ public class BlockStorageModuleFactoryTest {
   }
 
   @Test
-  public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws IOException {
+  public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws Exception {
     VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
-    BlockStore blockStore = getBlockStore();
-    BlockIOFactory externalBlockStoreFactory = new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
+    BlockGenerationStore blockStore = getBlockStore();
+    BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
@@ -130,11 +128,11 @@ public class BlockStorageModuleFactoryTest {
     }
   }
 
-  private BlockStore getBlockStore() {
+  private BlockGenerationStore getBlockStore() {
 
     ConcurrentHashMap<Long, Long> gens = new ConcurrentHashMap<>();
 
-    return new BlockStore() {
+    return new BlockGenerationStore() {
 
       @Override
       public long getLastStoreGeneration(long volumeId, long blockId) {
@@ -151,10 +149,6 @@ public class BlockStorageModuleFactoryTest {
       }
 
     };
-  }
-
-  private BlockWriteAheadLog getBlockWriteAheadLog() throws IOException {
-    return new LocalBlockWriteAheadLog(WAL_DATA_DIR);
   }
 
   private void readsAndWritesTest(StorageModule storageModule, long seed, long length) throws IOException {

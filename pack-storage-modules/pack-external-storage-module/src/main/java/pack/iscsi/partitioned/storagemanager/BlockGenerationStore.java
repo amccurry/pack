@@ -3,7 +3,7 @@ package pack.iscsi.partitioned.storagemanager;
 import java.io.Closeable;
 import java.io.IOException;
 
-public interface BlockStore extends Closeable {
+public interface BlockGenerationStore extends Closeable {
 
   long getLastStoreGeneration(long volumeId, long blockId) throws IOException;
 

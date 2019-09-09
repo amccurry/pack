@@ -13,7 +13,7 @@ import pack.iscsi.partitioned.block.LocalBlock;
 import pack.iscsi.partitioned.block.LocalBlockConfig;
 import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 import pack.iscsi.partitioned.storagemanager.BlockKey;
-import pack.iscsi.partitioned.storagemanager.BlockStore;
+import pack.iscsi.partitioned.storagemanager.BlockGenerationStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
 import pack.iscsi.partitioned.storagemanager.VolumeMetadata;
 import pack.iscsi.partitioned.storagemanager.VolumeStore;
@@ -24,7 +24,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private static Logger LOGGER = LoggerFactory.getLogger(BlockCacheLoader.class);
 
   private final VolumeStore _volumeStore;
-  private final BlockStore _blockStore;
+  private final BlockGenerationStore _blockStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final File _blockDataDir;
   private final BlockIOFactory _externalBlockStoreFactory;

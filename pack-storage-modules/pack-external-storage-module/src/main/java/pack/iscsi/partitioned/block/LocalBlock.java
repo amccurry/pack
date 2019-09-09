@@ -18,7 +18,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.iscsi.partitioned.storagemanager.BlockStore;
+import pack.iscsi.partitioned.storagemanager.BlockGenerationStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
 import pack.iscsi.partitioned.storagemanager.VolumeMetadata;
 import pack.util.IOUtils;
@@ -44,7 +44,7 @@ public class LocalBlock implements Closeable, Block {
   private final AtomicLong _lastWrite = new AtomicLong();
   private final AtomicBoolean _closed = new AtomicBoolean();
   private final BlockWriteAheadLog _wal;
-  private final BlockStore _blockStore;
+  private final BlockGenerationStore _blockStore;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
 

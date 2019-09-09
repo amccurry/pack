@@ -31,7 +31,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private static final String SYNC = "sync";
 
   private final LoadingCache<BlockKey, Block> _cache;
-  private final BlockStore _blockStore;
+  private final BlockGenerationStore _blockStore;
   private final VolumeStore _volumeStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final BlockIOFactory _externalBlockStoreFactory;

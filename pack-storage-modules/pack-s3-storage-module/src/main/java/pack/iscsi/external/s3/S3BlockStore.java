@@ -16,9 +16,9 @@ import com.google.common.base.Splitter;
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.partitioned.block.Block;
 import pack.iscsi.partitioned.storagemanager.BlockKey;
-import pack.iscsi.partitioned.storagemanager.BlockStore;
+import pack.iscsi.partitioned.storagemanager.BlockGenerationStore;
 
-public class S3BlockStore implements BlockStore {
+public class S3BlockStore implements BlockGenerationStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(S3BlockStore.class);
 

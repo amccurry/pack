@@ -13,7 +13,7 @@ public class BlockStorageModuleFactoryConfig {
 
   VolumeStore volumeStore;
   
-  BlockStore blockStore;
+  BlockGenerationStore blockStore;
 
   BlockWriteAheadLog writeAheadLog;
 

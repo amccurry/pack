@@ -9,10 +9,10 @@ import java.nio.channels.FileChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.iscsi.partitioned.storagemanager.BlockStore;
+import pack.iscsi.partitioned.storagemanager.BlockGenerationStore;
 import pack.util.IOUtils;
 
-public class LocalBlockStore implements BlockStore {
+public class LocalBlockStore implements BlockGenerationStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalBlockStore.class);
 

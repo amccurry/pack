@@ -2,6 +2,7 @@ package pack.iscsi.external.local;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -15,10 +16,6 @@ import com.github.benmanes.caffeine.cache.RemovalListener;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
-import pack.iscsi.partitioned.block.BlockIOExecutor;
-import pack.iscsi.partitioned.block.BlockIORequest;
-import pack.iscsi.partitioned.block.BlockIOResponse;
-import pack.iscsi.partitioned.block.BlockState;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
 import pack.util.IOUtils;
 
@@ -71,27 +68,9 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
   }
 
   @Override
-  public BlockIOExecutor getWriteAheadLogReader() {
-    return new BlockIOExecutor() {
-      @Override
-      public BlockIOResponse exec(BlockIORequest request) throws IOException {
-        long onDiskGeneration = request.getOnDiskGeneration();
-        long lastStoredGeneration = request.getLastStoredGeneration();
-        if (onDiskGeneration < lastStoredGeneration) {
-          throw new IOException("On disk generation " + onDiskGeneration + " less than last store generation "
-              + lastStoredGeneration + " something is wrong");
-        }
-        long volumeId = request.getVolumeId();
-        long blockId = request.getBlockId();
-        WriteAheadLogger log = getLog(volumeId, blockId);
-        long generation = log.recover(request.getChannel(), request.getOnDiskGeneration());
-        return BlockIOResponse.builder()
-                              .lastStoredGeneration(lastStoredGeneration)
-                              .onDiskBlockState(BlockState.DIRTY)
-                              .onDiskGeneration(generation)
-                              .build();
-      }
-    };
+  public long recover(FileChannel channel, long volumeId, long blockId, long onDiskGeneration) throws IOException {
+    WriteAheadLogger log = getLog(volumeId, blockId);
+    return log.recover(channel, onDiskGeneration);
   }
 
   private WriteAheadLogger getLog(long volumeId, long blockId) {

@@ -29,7 +29,7 @@ import pack.iscsi.external.s3.S3VolumeStore;
 import pack.iscsi.external.s3.S3VolumeStoreConfig;
 import pack.iscsi.partitioned.storagemanager.BlockIOFactory;
 import pack.iscsi.partitioned.storagemanager.BlockStorageModuleFactoryConfig;
-import pack.iscsi.partitioned.storagemanager.BlockStore;
+import pack.iscsi.partitioned.storagemanager.BlockGenerationStore;
 import pack.iscsi.partitioned.storagemanager.BlockWriteAheadLog;
 import pack.iscsi.partitioned.storagemanager.VolumeStore;
 
@@ -76,7 +76,7 @@ public class IscsiConfigUtil {
     long maxCacheSizeInBytes = Long.parseLong(getPropertyNotNull(properties, BLOCK_CACHE_SIZE_IN_BYTES, configFile));
 
     VolumeStore volumeStore = getVolumeStore(properties, configFile, consistentAmazonS3);
-    BlockStore blockStore = getBlockStore(properties, configFile, consistentAmazonS3);
+    BlockGenerationStore blockStore = getBlockStore(properties, configFile, consistentAmazonS3);
     BlockWriteAheadLog writeAheadLog = new LocalBlockWriteAheadLog(walLogDir);
     BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3);
     return BlockStorageModuleFactoryConfig.builder()
@@ -106,7 +106,7 @@ public class IscsiConfigUtil {
     return new S3VolumeStore(config);
   }
 
-  private static BlockStore getBlockStore(Properties properties, File configFile,
+  private static BlockGenerationStore getBlockStore(Properties properties, File configFile,
       ConsistentAmazonS3 consistentAmazonS3) {
     return getS3BlockStore(properties, configFile, consistentAmazonS3);
   }
@@ -146,7 +146,7 @@ public class IscsiConfigUtil {
     return curatorFramework;
   }
 
-  private static BlockStore getS3BlockStore(Properties properties, File configFile,
+  private static BlockGenerationStore getS3BlockStore(Properties properties, File configFile,
       ConsistentAmazonS3 consistentAmazonS3) {
     String bucket = getPropertyNotNull(properties, S3_BUCKET, configFile);
     String objectPrefix = getPropertyNotNull(properties, S3_OBJECTPREFIX, configFile);
