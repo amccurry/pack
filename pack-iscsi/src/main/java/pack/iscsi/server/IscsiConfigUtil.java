@@ -25,7 +25,7 @@ import consistent.s3.ConsistentAmazonS3Config;
 import pack.iscsi.bk.wal.BookKeeperWriteAheadLog;
 import pack.iscsi.bk.wal.BookKeeperWriteAheadLogConfig;
 import pack.iscsi.external.LocalExternalBlockStoreFactory;
-import pack.iscsi.s3.block.S3BlockStore;
+import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3BlockStoreConfig;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactoryConfig;
@@ -185,7 +185,7 @@ public class IscsiConfigUtil {
                                                   .consistentAmazonS3(consistentAmazonS3)
                                                   .objectPrefix(objectPrefix)
                                                   .build();
-    return new S3BlockStore(config);
+    return new S3GenerationBlockStore(config);
   }
 
   private static BlockIOFactory getExternalBlockIOFactory(Properties properties, File configFile,

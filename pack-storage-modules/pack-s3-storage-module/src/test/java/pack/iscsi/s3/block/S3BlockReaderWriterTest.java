@@ -3,28 +3,24 @@ package pack.iscsi.s3.block;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import java.io.DataInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Random;
+import java.util.UUID;
 
 import org.junit.Test;
-
-import com.amazonaws.services.s3.model.S3Object;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
-import pack.iscsi.s3.block.S3BlockWriter;
-import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 
-public class S3BlockWriterTest {
+public class S3BlockReaderWriterTest {
 
   @Test
   public void testS3BlockWriter() throws Exception {
@@ -32,18 +28,23 @@ public class S3BlockWriterTest {
     String bucket = TestProperties.getBucket();
     String objectPrefix = TestProperties.getObjectPrefix();
     S3BlockWriter writer = new S3BlockWriter(consistentAmazonS3, bucket, objectPrefix);
-    File file = new File("./target/tmp/S3BlockWriterTest/test");
-    file.getParentFile()
-        .mkdirs();
+    S3BlockReader reader = new S3BlockReader(consistentAmazonS3, bucket, objectPrefix);
+    File file1 = new File("./target/tmp/S3BlockWriterTest/test-" + UUID.randomUUID()
+                                                                       .toString());
+    file1.getParentFile()
+         .mkdirs();
+
+    File file2 = new File("./target/tmp/S3BlockWriterTest/test-" + UUID.randomUUID()
+                                                                       .toString());
     byte[] buffer = new byte[10_000];
     Random random = new Random();
     random.nextBytes(buffer);
-    try (FileOutputStream output = new FileOutputStream(file)) {
+    try (FileOutputStream output = new FileOutputStream(file1)) {
       output.write(buffer);
     }
-    try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+    int blockSize = 9_000;
+    try (RandomAccessFile raf = new RandomAccessFile(file1, "r")) {
       try (FileChannel channel = raf.getChannel()) {
-        int blockSize = 9_000;
         BlockIORequest request = BlockIORequest.builder()
                                                .blockSize(blockSize)
                                                .onDiskGeneration(1)
@@ -56,21 +57,28 @@ public class S3BlockWriterTest {
         assertEquals(BlockState.CLEAN, response.getOnDiskBlockState());
         assertEquals(1, response.getOnDiskGeneration());
         assertEquals(1, response.getLastStoredGeneration());
-
-        String key = S3Utils.getBlockGenerationKey(objectPrefix, request.getVolumeId(), request.getBlockId(),
-            response.getLastStoredGeneration());
-        S3Object object = consistentAmazonS3.getObject(bucket, key);
-        assertEquals(blockSize, object.getObjectMetadata()
-                                      .getContentLength());
-        byte[] buffer2 = new byte[blockSize];
-        try (DataInputStream dataInput = new DataInputStream(object.getObjectContent())) {
-          dataInput.readFully(buffer2);
-        }
-
-        assertTrue(Arrays.equals(getPartial(buffer, blockSize), buffer2));
-
       }
     }
+    try (RandomAccessFile raf = new RandomAccessFile(file2, "rw")) {
+      try (FileChannel channel = raf.getChannel()) {
+        BlockIORequest request = BlockIORequest.builder()
+                                               .blockSize(blockSize)
+                                               .onDiskGeneration(0)
+                                               .lastStoredGeneration(1)
+                                               .onDiskState(BlockState.CLEAN)
+                                               .channel(channel)
+                                               .build();
+        BlockIOResponse response = reader.exec(request);
+        assertEquals(BlockState.CLEAN, response.getOnDiskBlockState());
+        assertEquals(1, response.getOnDiskGeneration());
+        assertEquals(1, response.getLastStoredGeneration());
+
+        byte[] buffer2 = new byte[blockSize];
+        raf.readFully(buffer2);
+        assertTrue(Arrays.equals(getPartial(buffer, blockSize), buffer2));
+      }
+    }
+    assertEquals(blockSize, file2.length());
   }
 
   private byte[] getPartial(byte[] buffer, int blockSize) {

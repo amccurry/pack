@@ -19,9 +19,9 @@ import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.volume.BlockGenerationStore;
 import pack.iscsi.volume.BlockKey;
 
-public class S3BlockStore implements BlockGenerationStore {
+public class S3GenerationBlockStore implements BlockGenerationStore {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(S3BlockStore.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(S3GenerationBlockStore.class);
 
   private static final Splitter KEY_SPLITTER = Splitter.on('/');
   private final ConsistentAmazonS3 _consistentAmazonS3;
@@ -29,7 +29,7 @@ public class S3BlockStore implements BlockGenerationStore {
   private final String _objectPrefix;
   private final LoadingCache<BlockKey, Long> _cache;
 
-  public S3BlockStore(S3BlockStoreConfig config) {
+  public S3GenerationBlockStore(S3BlockStoreConfig config) {
     _consistentAmazonS3 = config.getConsistentAmazonS3();
     _bucket = config.getBucket();
     _objectPrefix = config.getObjectPrefix();

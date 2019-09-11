@@ -85,7 +85,7 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
   public BlockWriteAheadLogResult write(long volumeId, long blockId, long generation, long position, byte[] bytes,
       int offset, int len) throws IOException {
     LedgerHandle ledgerHandle = getCurrentLedgerHandle(volumeId, blockId);
-    LOGGER.info("write ledger id {} volume id {} block id {} generation {} position {} len {}", ledgerHandle.getId(),
+    LOGGER.debug("write ledger id {} volume id {} block id {} generation {} position {} len {}", ledgerHandle.getId(),
         volumeId, blockId, generation, position, len);
     CompletableFuture<Long> completableFuture = ledgerHandle.appendAsync(
         createEntry(generation, position, bytes, offset, len));

@@ -83,13 +83,6 @@ public class LocalBlockTest {
     }
   }
 
-  private VolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
-    return VolumeMetadata.builder()
-                         .blockSize(blockSize)
-                         .volumeId(volumeId)
-                         .build();
-  }
-
   @Test
   public void testBlockWritePastEndOfBlock() throws IOException {
     File file = new File("./target/tmp/LocalBlockTest");
@@ -270,5 +263,12 @@ public class LocalBlockTest {
         _lastStoredGeneration = lastStoredGeneration;
       }
     };
+  }
+
+  private VolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
+    return VolumeMetadata.builder()
+                         .blockSize(blockSize)
+                         .volumeId(volumeId)
+                         .build();
   }
 }

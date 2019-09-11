@@ -10,7 +10,7 @@ import org.junit.Test;
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
-import pack.iscsi.s3.block.S3BlockStore;
+import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3BlockStoreConfig;
 import pack.iscsi.s3.util.S3Utils;
 
@@ -38,7 +38,7 @@ public class S3BlockStoreTest {
                                                   .consistentAmazonS3(CONSISTENT_AMAZON_S3)
                                                   .build();
 
-    try (S3BlockStore store = new S3BlockStore(config)) {
+    try (S3GenerationBlockStore store = new S3GenerationBlockStore(config)) {
       store.setLastStoreGeneration(volumeId, blockId, 1);
       assertEquals(1, store.getLastStoreGeneration(volumeId, blockId));
     }
@@ -61,7 +61,7 @@ public class S3BlockStoreTest {
                                                   .consistentAmazonS3(CONSISTENT_AMAZON_S3)
                                                   .build();
 
-    try (S3BlockStore store = new S3BlockStore(config)) {
+    try (S3GenerationBlockStore store = new S3GenerationBlockStore(config)) {
       assertEquals(12345, store.getLastStoreGeneration(volumeId, blockId));
     }
   }
@@ -92,7 +92,7 @@ public class S3BlockStoreTest {
                                                   .consistentAmazonS3(CONSISTENT_AMAZON_S3)
                                                   .build();
 
-    try (S3BlockStore store = new S3BlockStore(config)) {
+    try (S3GenerationBlockStore store = new S3GenerationBlockStore(config)) {
       assertEquals(generation1, store.getLastStoreGeneration(volumeId, blockId1));
       assertEquals(generation2, store.getLastStoreGeneration(volumeId, blockId2));
     }

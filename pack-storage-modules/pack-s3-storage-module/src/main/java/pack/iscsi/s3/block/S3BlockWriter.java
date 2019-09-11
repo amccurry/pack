@@ -41,7 +41,8 @@ public class S3BlockWriter implements BlockIOExecutor {
       return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
     }
     try {
-      String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(), onDiskGeneration);
+      String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
+          onDiskGeneration);
       LOGGER.info("writing bucket {} key {}", _bucket, key);
       InputStream input = getInputStream(request.getChannel(), request.getBlockSize());
       ObjectMetadata metadata = new ObjectMetadata();
@@ -57,32 +58,31 @@ public class S3BlockWriter implements BlockIOExecutor {
   private InputStream getInputStream(FileChannel channel, int blockSize) {
     InputStream input = new InputStream() {
 
-      private long position = 0;
+      private long _position = 0;
 
       @Override
       public int read() throws IOException {
-        if (position >= blockSize) {
+        if (_position >= blockSize) {
           return -1;
         }
         ByteBuffer dst = ByteBuffer.allocate(1);
         while (dst.remaining() > 0) {
-          position += channel.read(dst, position);
+          _position += channel.read(dst, _position);
         }
         return dst.get();
       }
 
       @Override
       public int read(byte[] b, int off, int len) throws IOException {
-        if (position >= blockSize) {
+        if (_position >= blockSize) {
           return -1;
         }
-        int length = (int) Math.min(len, blockSize - position);
+        int length = (int) Math.min(len, blockSize - _position);
         ByteBuffer buffer = ByteBuffer.wrap(b, off, length);
-        int read = channel.read(buffer, position);
-        read += position;
+        int read = channel.read(buffer, _position);
+        _position += read;
         return read;
       }
-
     };
     return new BufferedInputStream(input, com.amazonaws.RequestClientOptions.DEFAULT_STREAM_BUFFER_SIZE);
   }
