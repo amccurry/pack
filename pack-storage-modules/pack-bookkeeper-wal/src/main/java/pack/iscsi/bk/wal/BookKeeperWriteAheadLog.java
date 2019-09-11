@@ -87,7 +87,11 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
   public BlockWriteAheadLogResult write(long volumeId, long blockId, long generation, long position, byte[] bytes,
       int offset, int len) throws IOException {
     try (Scope walWrite = TracerUtil.trace("wal write")) {
-      LedgerHandle ledgerHandle = getCurrentLedgerHandle(volumeId, blockId);
+      LedgerHandleKey ledgerHandleKey = LedgerHandleKey.builder()
+                                                       .volumeId(volumeId)
+                                                       .blockId(blockId)
+                                                       .build();
+      LedgerHandle ledgerHandle = getCurrentLedgerHandle(ledgerHandleKey);
       LOGGER.debug("write ledger id {} volume id {} block id {} generation {} position {} len {}", ledgerHandle.getId(),
           volumeId, blockId, generation, position, len);
       try (Scope performWrite = TracerUtil.trace("perform write async")) {
@@ -312,13 +316,19 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
     return buffer;
   }
 
-  private LedgerHandle getCurrentLedgerHandle(long volumeId, long blockId) {
+  private LedgerHandle getCurrentLedgerHandle(LedgerHandleKey ledgerHandleKey) {
     try (Scope getLedger = TracerUtil.trace("get ledger")) {
-      return _cache.get(LedgerHandleKey.builder()
-                                       .volumeId(volumeId)
-                                       .blockId(blockId)
-                                       .build());
+      LedgerHandle ledgerHandle = _cache.get(ledgerHandleKey);
+      if (ledgerHandle.isClosed()) {
+        closeCurrentLedgerHandle(ledgerHandleKey);
+        ledgerHandle = _cache.get(ledgerHandleKey);
+      }
+      return ledgerHandle;
     }
+  }
+
+  private void closeCurrentLedgerHandle(LedgerHandleKey ledgerHandleKey) {
+    _cache.invalidate(ledgerHandleKey);
   }
 
   private Closeable toCloseable(@Nullable LedgerHandle value) {
