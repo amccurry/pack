@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 
+import io.opencensus.common.Scope;
 import pack.iscsi.block.Block;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
@@ -18,6 +19,7 @@ import pack.iscsi.volume.BlockIOFactory;
 import pack.iscsi.volume.BlockKey;
 import pack.iscsi.volume.VolumeMetadata;
 import pack.iscsi.volume.VolumeStore;
+import pack.util.TracerUtil;
 
 public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 
@@ -45,32 +47,38 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 
   @Override
   public Block load(BlockKey key) throws Exception {
-    Block stolenBlock = _removalListener.stealBlock(key);
-    if (stolenBlock != null) {
-      return stolenBlock;
-    }
-    VolumeMetadata volumeMetadata = _volumeStore.getVolumeMetadata(key.getVolumeId());
-    LocalBlockConfig config = LocalBlockConfig.builder()
-                                              .blockDataDir(_blockDataDir)
-                                              .volumeMetadata(volumeMetadata)
-                                              .blockId(key.getBlockId())
-                                              .blockStore(_blockStore)
-                                              .wal(_writeAheadLog)
-                                              .syncTimeAfterIdle(_syncTimeAfterIdle)
-                                              .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
-                                              .build();
+    try (Scope blockLoader = TracerUtil.trace("block loader")) {
+      Block stolenBlock = _removalListener.stealBlock(key);
+      if (stolenBlock != null) {
+        return stolenBlock;
+      }
+      VolumeMetadata volumeMetadata = _volumeStore.getVolumeMetadata(key.getVolumeId());
+      LocalBlockConfig config = LocalBlockConfig.builder()
+                                                .blockDataDir(_blockDataDir)
+                                                .volumeMetadata(volumeMetadata)
+                                                .blockId(key.getBlockId())
+                                                .blockStore(_blockStore)
+                                                .wal(_writeAheadLog)
+                                                .syncTimeAfterIdle(_syncTimeAfterIdle)
+                                                .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
+                                                .build();
 
-    LocalBlock localBlock = new LocalBlock(config);
-    Utils.runUntilSuccess(LOGGER, () -> {
-      localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
-      return null;
-    });
-    Utils.runUntilSuccess(LOGGER, () -> {
-      // recover if needed
-      localBlock.execIO(_writeAheadLog.getWriteAheadLogReader());
-      return null;
-    });
-    return localBlock;
+      LocalBlock localBlock = new LocalBlock(config);
+      try (Scope externalRead = TracerUtil.trace("block external read")) {
+        Utils.runUntilSuccess(LOGGER, () -> {
+          localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
+          return null;
+        });
+      }
+      try (Scope externalRead = TracerUtil.trace("block recover")) {
+        Utils.runUntilSuccess(LOGGER, () -> {
+          // recover if needed
+          localBlock.execIO(_writeAheadLog.getWriteAheadLogReader());
+          return null;
+        });
+      }
+      return localBlock;
+    }
   }
 
 }

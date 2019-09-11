@@ -12,11 +12,13 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
 public class IscsiServerArgsUtil {
-  
+
+  private static final String JAEGER = "jaeger";
   private static final String IP = "ip";
   private static final String PORT = "port";
   private static final String CONFIG = "config";
 
+  private static final String SHORT_JAEGER_OPTION = "j";
   private static final String SHORT_IP_OPTION = "I";
   private static final String SHORT_PORT_OPTION = "p";
   private static final String SHORT_CONFIG_OPTION = "C";
@@ -69,8 +71,19 @@ public class IscsiServerArgsUtil {
       Option option = new Option(SHORT_PORT_OPTION, PORT, true, "Listening port (default " + DEFAULT_PORT + ")");
       options.addOption(option);
     }
+    {
+      Option option = new Option(SHORT_JAEGER_OPTION, JAEGER, true, "Jaeger thrift endpoint (default none)");
+      options.addOption(option);
+    }
     CommandLineParser parser = new DefaultParser();
     return parser.parse(options, args);
+  }
+
+  public static String getJaegerEndpoint(CommandLine cmd) {
+    if (cmd.hasOption(JAEGER)) {
+      return cmd.getOptionValue(JAEGER);
+    }
+    return null;
   }
 
 }

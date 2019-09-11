@@ -28,6 +28,7 @@ public class IscsiServerMain {
     Set<String> addresses = IscsiServerArgsUtil.getAddresses(cmd);
     int port = IscsiServerArgsUtil.getPort(cmd);
     String configDir = IscsiServerArgsUtil.getConfigDir(cmd);
+    IscsiTracerConfig.setupTracer(IscsiServerArgsUtil.getJaegerEndpoint(cmd));
 
     try (Closer closer = Closer.create()) {
       List<StorageModuleFactory> factories = new ArrayList<>();

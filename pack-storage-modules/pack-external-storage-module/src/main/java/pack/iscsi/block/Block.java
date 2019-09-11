@@ -5,6 +5,7 @@ import java.io.IOException;
 
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockState;
+import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 
 public interface Block extends Closeable {
 
@@ -18,7 +19,7 @@ public interface Block extends Closeable {
   /**
    * Position is relative to the block.
    */
-  void writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException;
+  BlockWriteAheadLogResult writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException;
 
   void execIO(BlockIOExecutor executor) throws IOException;
 

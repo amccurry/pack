@@ -115,7 +115,7 @@ public class LocalBlock implements Closeable, Block {
   }
 
   @Override
-  public void writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
+  public BlockWriteAheadLogResult writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
     _writeLock.lock();
     checkIfClosed();
     checkState();
@@ -131,7 +131,7 @@ public class LocalBlock implements Closeable, Block {
       while (src.remaining() > 0) {
         blockPosition += _channel.write(src, blockPosition);
       }
-      result.get();
+      return result;
     } finally {
       _writeLock.unlock();
     }

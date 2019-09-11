@@ -29,12 +29,14 @@ import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.google.common.collect.ImmutableMap;
 
+import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 import pack.util.IOUtils;
+import pack.util.TracerUtil;
 
 public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
 
@@ -84,23 +86,27 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
   @Override
   public BlockWriteAheadLogResult write(long volumeId, long blockId, long generation, long position, byte[] bytes,
       int offset, int len) throws IOException {
-    LedgerHandle ledgerHandle = getCurrentLedgerHandle(volumeId, blockId);
-    LOGGER.debug("write ledger id {} volume id {} block id {} generation {} position {} len {}", ledgerHandle.getId(),
-        volumeId, blockId, generation, position, len);
-    CompletableFuture<Long> completableFuture = ledgerHandle.appendAsync(
-        createEntry(generation, position, bytes, offset, len));
-    return () -> {
-      try {
-        completableFuture.get();
-      } catch (InterruptedException e1) {
-        LOGGER.error("Unknown error", e1);
-        throw new IOException(e1);
-      } catch (ExecutionException e2) {
-        Throwable cause = e2.getCause();
-        LOGGER.error("Unknown error", cause);
-        throw new IOException(cause);
+    try (Scope walWrite = TracerUtil.trace("wal write")) {
+      LedgerHandle ledgerHandle = getCurrentLedgerHandle(volumeId, blockId);
+      LOGGER.debug("write ledger id {} volume id {} block id {} generation {} position {} len {}", ledgerHandle.getId(),
+          volumeId, blockId, generation, position, len);
+      try (Scope performWrite = TracerUtil.trace("perform write async")) {
+        CompletableFuture<Long> completableFuture = ledgerHandle.appendAsync(
+            createEntry(generation, position, bytes, offset, len));
+        return () -> {
+          try {
+            completableFuture.get();
+          } catch (InterruptedException e1) {
+            LOGGER.error("Unknown error", e1);
+            throw new IOException(e1);
+          } catch (ExecutionException e2) {
+            Throwable cause = e2.getCause();
+            LOGGER.error("Unknown error", cause);
+            throw new IOException(cause);
+          }
+        };
       }
-    };
+    }
   }
 
   @Override
@@ -307,10 +313,12 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
   }
 
   private LedgerHandle getCurrentLedgerHandle(long volumeId, long blockId) {
-    return _cache.get(LedgerHandleKey.builder()
-                                     .volumeId(volumeId)
-                                     .blockId(blockId)
-                                     .build());
+    try (Scope getLedger = TracerUtil.trace("get ledger")) {
+      return _cache.get(LedgerHandleKey.builder()
+                                       .volumeId(volumeId)
+                                       .blockId(blockId)
+                                       .build());
+    }
   }
 
   private Closeable toCloseable(@Nullable LedgerHandle value) {

@@ -18,10 +18,12 @@ import org.slf4j.LoggerFactory;
 
 import com.github.benmanes.caffeine.cache.LoadingCache;
 
+import io.opencensus.common.Scope;
 import pack.iscsi.block.AlreadyClosedException;
 import pack.iscsi.block.Block;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.util.Utils;
+import pack.util.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
 
@@ -55,20 +57,25 @@ public class BlockStorageModule implements StorageModule {
     checkClosed();
     int length = bytes.length;
     int offset = 0;
-    while (length > 0) {
-      long blockId = getBlockId(position);
-      int blockOffset = getBlockOffset(position);
-      int remaining = _blockSize - blockOffset;
-      BlockKey blockKey = BlockKey.builder()
-                                  .volumeId(_volumeId)
-                                  .blockId(blockId)
-                                  .build();
-      Block block = _cache.get(blockKey);
-      int len = Math.min(remaining, length);
-      block.readFully(blockOffset, bytes, offset, len);
-      length -= len;
-      position += len;
-      offset += len;
+    try (Scope readScope = TracerUtil.trace("read")) {
+      while (length > 0) {
+        long blockId = getBlockId(position);
+        int blockOffset = getBlockOffset(position);
+        int remaining = _blockSize - blockOffset;
+        int len = Math.min(remaining, length);
+        BlockKey blockKey = BlockKey.builder()
+                                    .volumeId(_volumeId)
+                                    .blockId(blockId)
+                                    .build();
+        Block block = getBlockId(blockKey);
+
+        try (Scope blockWriterScope = TracerUtil.trace("block read")) {
+          block.readFully(blockOffset, bytes, offset, len);
+        }
+        length -= len;
+        position += len;
+        offset += len;
+      }
     }
   }
 
@@ -77,20 +84,32 @@ public class BlockStorageModule implements StorageModule {
     checkClosed();
     int length = bytes.length;
     int offset = 0;
-    while (length > 0) {
-      long blockId = getBlockId(position);
-      int blockOffset = getBlockOffset(position);
-      int remaining = _blockSize - blockOffset;
-      BlockKey blockKey = BlockKey.builder()
-                                  .volumeId(_volumeId)
-                                  .blockId(blockId)
-                                  .build();
-      Block block = _cache.get(blockKey);
-      int len = Math.min(remaining, length);
-      block.writeFully(blockOffset, bytes, offset, len);
-      length -= len;
-      position += len;
-      offset += len;
+    try (Scope writeScope = TracerUtil.trace("write")) {
+      while (length > 0) {
+        long blockId = getBlockId(position);
+        int blockOffset = getBlockOffset(position);
+        int remaining = _blockSize - blockOffset;
+        int len = Math.min(remaining, length);
+        BlockKey blockKey = BlockKey.builder()
+                                    .volumeId(_volumeId)
+                                    .blockId(blockId)
+                                    .build();
+        Block block = getBlockId(blockKey);
+
+        // @TODO perhaps we should do something with the result
+        try (Scope blockWriterScope = TracerUtil.trace("block write")) {
+          block.writeFully(blockOffset, bytes, offset, len);
+        }
+        length -= len;
+        position += len;
+        offset += len;
+      }
+    }
+  }
+
+  private Block getBlockId(BlockKey blockKey) {
+    try (Scope scope = TracerUtil.trace("get block")) {
+      return _cache.get(blockKey);
     }
   }
 
