@@ -35,6 +35,8 @@
 		<module>pack-storage-modules/pack-file-storage-module</module>
 		<module>pack-storage-modules/pack-s3-storage-module</module>
 		<module>pack-storage-modules/pack-external-storage-module</module>
+		<module>pack-storage-modules/pack-external-storage-spi</module>
+		<module>pack-storage-modules/pack-bookkeeper-wal</module>
 	</modules>
 
 	<dependencyManagement>
@@ -66,6 +68,11 @@
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
+				<artifactId>pack-external-storage-spi</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
 				<artifactId>pack-external-storage-module</artifactId>
 				<version>${project.version}</version>
 			</dependency>
@@ -75,6 +82,33 @@
 				<version>${project.version}</version>
 				<classifier>tests</classifier>
 				<type>test-jar</type>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-bookkeeper-wal</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-bookkeeper-wal</artifactId>
+				<version>${project.version}</version>
+				<classifier>tests</classifier>
+				<type>test-jar</type>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.bookkeeper</groupId>
+				<artifactId>bookkeeper-server</artifactId>
+				<version>4.9.0</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.curator</groupId>
+				<artifactId>curator-recipes</artifactId>
+				<version>4.2.0</version>
+			</dependency>
+			<dependency>
+				<groupId>com.github.ben-manes.caffeine</groupId>
+				<artifactId>caffeine</artifactId>
+				<version>2.8.0</version>
 			</dependency>
 			<dependency>
 				<groupId>org.jscsi</groupId>
@@ -117,6 +151,42 @@
 				<version>19.0</version>
 			</dependency>
 			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-core</artifactId>
+				<version>2.9.9</version>
+			</dependency>
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-databind</artifactId>
+				<version>2.9.9.3</version>
+			</dependency>
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-annotations</artifactId>
+				<version>2.9.9</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.zookeeper</groupId>
+				<artifactId>zookeeper</artifactId>
+				<version>3.4.13</version>
+				<exclusions>
+					<exclusion>
+						<groupId>log4j</groupId>
+						<artifactId>log4j</artifactId>
+					</exclusion>
+				</exclusions>
+			</dependency>
+			<dependency>
+				<groupId>com.amazonaws</groupId>
+				<artifactId>aws-java-sdk-bundle</artifactId>
+				<version>1.11.271</version>
+			</dependency>
+			<dependency>
+				<groupId>consistent-s3</groupId>
+				<artifactId>consistent-s3</artifactId>
+				<version>1.1.1</version>
+			</dependency>
+			<dependency>
 				<groupId>junit</groupId>
 				<artifactId>junit</artifactId>
 				<version>4.12</version>
@@ -132,17 +202,34 @@
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
-	<groupId>org.slf4j</groupId>
-	<artifactId>slf4j-api</artifactId>
-</dependency>
-<dependency>
-	<groupId>org.slf4j</groupId>
-	<artifactId>slf4j-log4j12</artifactId>
-</dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-log4j12</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 	<build>
+
 		<pluginManagement>
 			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-jar-plugin</artifactId>
+					<executions>
+						<execution>
+							<goals>
+								<goal>test-jar</goal>
+							</goals>
+						</execution>
+					</executions>
+				</plugin>
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-compiler-plugin</artifactId>

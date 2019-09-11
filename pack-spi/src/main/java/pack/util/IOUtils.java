@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 public class IOUtils {
 
+  private static final String BUFFER_PREFIX = "000000000000";
   private static final Logger LOGGER = LoggerFactory.getLogger(IOUtils.class);
 
   public static int getBlockOffset(long position, int blockSize) {
@@ -128,6 +129,13 @@ public class IOUtils {
         }
       }
     }
+  }
+
+  public static String toStringWithLeadingZeros(long l) {
+    String str = Long.toString(l);
+    return new StringBuilder().append(BUFFER_PREFIX, 0, BUFFER_PREFIX.length() - str.length())
+                              .append(str)
+                              .toString();
   }
 
 }

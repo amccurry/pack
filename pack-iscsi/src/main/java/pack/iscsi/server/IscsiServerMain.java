@@ -15,9 +15,9 @@ import com.google.common.io.Closer;
 
 import pack.iscsi.manager.BaseTargetManager;
 import pack.iscsi.manager.TargetManager;
-import pack.iscsi.partitioned.storagemanager.BlockStorageModuleFactory;
-import pack.iscsi.partitioned.storagemanager.BlockStorageModuleFactoryConfig;
 import pack.iscsi.spi.StorageModuleFactory;
+import pack.iscsi.volume.BlockStorageModuleFactory;
+import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 
 public class IscsiServerMain {
 
