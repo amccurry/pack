@@ -321,7 +321,7 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
       LedgerHandle ledgerHandle = _cache.get(ledgerHandleKey);
       if (ledgerHandle.isClosed()) {
         closeCurrentLedgerHandle(ledgerHandleKey);
-        ledgerHandle = _cache.get(ledgerHandleKey);
+        return _cache.get(ledgerHandleKey);
       }
       return ledgerHandle;
     }
