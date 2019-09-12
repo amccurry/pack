@@ -1,6 +1,6 @@
 package pack.iscsi.s3.block;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import java.util.concurrent.TimeUnit;
 
@@ -10,8 +10,7 @@ import org.junit.Test;
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
-import pack.iscsi.s3.block.S3GenerationBlockStore;
-import pack.iscsi.s3.block.S3BlockStoreConfig;
+import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.s3.util.S3Utils;
 
 public class S3BlockStoreTest {
@@ -32,7 +31,7 @@ public class S3BlockStoreTest {
   public void testS3BlockStore() throws Exception {
     long volumeId = 0;
     long blockId = 0;
-    S3BlockStoreConfig config = S3BlockStoreConfig.builder()
+    S3GenerationBlockStoreConfig config = S3GenerationBlockStoreConfig.builder()
                                                   .bucket(BUCKET)
                                                   .objectPrefix(OBJECT_PREFIX)
                                                   .consistentAmazonS3(CONSISTENT_AMAZON_S3)
@@ -55,7 +54,7 @@ public class S3BlockStoreTest {
     // s3 to handle list objects
     Thread.sleep(TimeUnit.SECONDS.toMillis(3));
 
-    S3BlockStoreConfig config = S3BlockStoreConfig.builder()
+    S3GenerationBlockStoreConfig config = S3GenerationBlockStoreConfig.builder()
                                                   .bucket(BUCKET)
                                                   .objectPrefix(OBJECT_PREFIX)
                                                   .consistentAmazonS3(CONSISTENT_AMAZON_S3)
@@ -86,7 +85,7 @@ public class S3BlockStoreTest {
     // s3 to handle list objects
     Thread.sleep(TimeUnit.SECONDS.toMillis(3));
 
-    S3BlockStoreConfig config = S3BlockStoreConfig.builder()
+    S3GenerationBlockStoreConfig config = S3GenerationBlockStoreConfig.builder()
                                                   .bucket(BUCKET)
                                                   .objectPrefix(OBJECT_PREFIX)
                                                   .consistentAmazonS3(CONSISTENT_AMAZON_S3)

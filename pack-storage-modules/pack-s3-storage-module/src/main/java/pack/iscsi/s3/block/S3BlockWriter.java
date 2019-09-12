@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 
 import consistent.s3.ConsistentAmazonS3;
+import lombok.Builder;
+import lombok.Value;
 import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
@@ -20,16 +22,24 @@ import pack.iscsi.spi.block.BlockState;
 
 public class S3BlockWriter implements BlockIOExecutor {
 
+  @Value
+  @Builder(toBuilder = true)
+  public static class S3BlockWriterConfig {
+    ConsistentAmazonS3 consistentAmazonS3;
+    String bucket;
+    String objectPrefix;
+  }
+
   private static final Logger LOGGER = LoggerFactory.getLogger(S3BlockWriter.class);
 
   private final ConsistentAmazonS3 _consistentAmazonS3;
   private final String _bucket;
   private final String _objectPrefix;
 
-  public S3BlockWriter(ConsistentAmazonS3 consistentAmazonS3, String bucket, String objectPrefix) {
-    _consistentAmazonS3 = consistentAmazonS3;
-    _bucket = bucket;
-    _objectPrefix = objectPrefix;
+  public S3BlockWriter(S3BlockWriterConfig config) {
+    _consistentAmazonS3 = config.getConsistentAmazonS3();
+    _bucket = config.getBucket();
+    _objectPrefix = config.getObjectPrefix();
   }
 
   @Override

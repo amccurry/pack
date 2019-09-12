@@ -17,6 +17,8 @@ import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
+import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
+import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
@@ -51,8 +53,16 @@ public class S3LocalBlockTest {
     String bucket = TestProperties.getBucket();
     String objectPrefix = TestProperties.getObjectPrefix();
 
-    S3BlockWriter writer = new S3BlockWriter(consistentAmazonS3, bucket, objectPrefix);
-    S3BlockReader reader = new S3BlockReader(consistentAmazonS3, bucket, objectPrefix);
+    S3BlockWriter writer = new S3BlockWriter(S3BlockWriterConfig.builder()
+                                                                .bucket(bucket)
+                                                                .consistentAmazonS3(consistentAmazonS3)
+                                                                .objectPrefix(objectPrefix)
+                                                                .build());
+    S3BlockReader reader = new S3BlockReader(S3BlockReaderConfig.builder()
+                                                                .bucket(bucket)
+                                                                .consistentAmazonS3(consistentAmazonS3)
+                                                                .objectPrefix(objectPrefix)
+                                                                .build());
 
     Random random = new Random();
     byte[] blockData = new byte[blockSize];

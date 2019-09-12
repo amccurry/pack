@@ -13,7 +13,7 @@ import pack.iscsi.bk.wal.BookKeeperWriteAheadLogConfig;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
-import pack.iscsi.s3.block.S3ExternalBlockStoreFactoryConfig;
+import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockIOFactory;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;

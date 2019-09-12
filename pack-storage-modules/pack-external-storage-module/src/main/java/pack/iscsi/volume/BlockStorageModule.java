@@ -22,6 +22,7 @@ import io.opencensus.common.Scope;
 import pack.iscsi.block.AlreadyClosedException;
 import pack.iscsi.block.Block;
 import pack.iscsi.spi.StorageModule;
+import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 import pack.iscsi.util.Utils;
 import pack.util.TracerUtil;
 
@@ -79,6 +80,8 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
+  private List<BlockWriteAheadLogResult> _results = new ArrayList<>();
+
   @Override
   public void write(byte[] bytes, long position) throws IOException {
     checkClosed();
@@ -98,7 +101,7 @@ public class BlockStorageModule implements StorageModule {
 
         // @TODO perhaps we should do something with the result
         try (Scope blockWriterScope = TracerUtil.trace("block write")) {
-          block.writeFully(blockOffset, bytes, offset, len);
+          trackResult(block.writeFully(blockOffset, bytes, offset, len));
         }
         length -= len;
         position += len;
@@ -107,15 +110,25 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
+  @Override
+  public void flushWrites() throws IOException {
+    LOGGER.info("flushWrites {}", _results.size());
+    try (Scope writeScope = TracerUtil.trace("flushWrites")) {
+      for (BlockWriteAheadLogResult result : _results) {
+        result.get();
+      }
+      _results.clear();
+    }
+  }
+
+  private void trackResult(BlockWriteAheadLogResult result) {
+    _results.add(result);
+  }
+
   private Block getBlockId(BlockKey blockKey) {
     try (Scope scope = TracerUtil.trace("get block")) {
       return _cache.get(blockKey);
     }
-  }
-
-  @Override
-  public void flushWrites() throws IOException {
-
   }
 
   @Override

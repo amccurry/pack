@@ -266,19 +266,12 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
     return buffer.array();
   }
 
-  public static long getMaxGenerationFromLedger(LedgerHandle ledgerHandle) throws IOException {
+  private static long getMaxGenerationFromLedger(LedgerHandle ledgerHandle) throws IOException {
     try {
       long id = ledgerHandle.readLastAddConfirmed();
-      return getGeneration(getEntry(ledgerHandle, id));
-    } catch (Exception e) {
-      LOGGER.error("Unknown error", e);
-      throw new IOException(e);
-    }
-  }
-
-  public static long getMinGenerationFromLedger(LedgerHandle ledgerHandle) throws IOException {
-    try {
-      long id = 0;
+      if (id < 0) {
+        return id;
+      }
       return getGeneration(getEntry(ledgerHandle, id));
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);

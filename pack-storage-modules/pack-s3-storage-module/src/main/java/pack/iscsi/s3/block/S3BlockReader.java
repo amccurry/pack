@@ -11,6 +11,8 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 
 import consistent.s3.ConsistentAmazonS3;
+import lombok.Builder;
+import lombok.Value;
 import pack.iscsi.block.Block;
 import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.spi.block.BlockIOExecutor;
@@ -20,16 +22,24 @@ import pack.iscsi.spi.block.BlockState;
 
 public class S3BlockReader implements BlockIOExecutor {
 
+  @Value
+  @Builder(toBuilder = true)
+  public static class S3BlockReaderConfig {
+    ConsistentAmazonS3 consistentAmazonS3;
+    String bucket;
+    String objectPrefix;
+  }
+
   private static final Logger LOGGER = LoggerFactory.getLogger(S3BlockReader.class);
 
   private final ConsistentAmazonS3 _consistentAmazonS3;
   private final String _bucket;
   private final String _objectPrefix;
 
-  public S3BlockReader(ConsistentAmazonS3 consistentAmazonS3, String bucket, String objectPrefix) {
-    _consistentAmazonS3 = consistentAmazonS3;
-    _bucket = bucket;
-    _objectPrefix = objectPrefix;
+  public S3BlockReader(S3BlockReaderConfig config) {
+    _consistentAmazonS3 = config.getConsistentAmazonS3();
+    _bucket = config.getBucket();
+    _objectPrefix = config.getObjectPrefix();
   }
 
   @Override

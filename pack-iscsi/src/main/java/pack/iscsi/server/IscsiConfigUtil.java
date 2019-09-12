@@ -25,10 +25,10 @@ import consistent.s3.ConsistentAmazonS3Config;
 import pack.iscsi.bk.wal.BookKeeperWriteAheadLog;
 import pack.iscsi.bk.wal.BookKeeperWriteAheadLogConfig;
 import pack.iscsi.external.LocalExternalBlockStoreFactory;
-import pack.iscsi.s3.block.S3GenerationBlockStore;
-import pack.iscsi.s3.block.S3BlockStoreConfig;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
-import pack.iscsi.s3.block.S3ExternalBlockStoreFactoryConfig;
+import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
+import pack.iscsi.s3.block.S3GenerationBlockStore;
+import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
@@ -180,7 +180,7 @@ public class IscsiConfigUtil {
       ConsistentAmazonS3 consistentAmazonS3) {
     String bucket = getPropertyNotNull(properties, S3_BUCKET, configFile);
     String objectPrefix = getPropertyNotNull(properties, S3_OBJECTPREFIX, configFile);
-    S3BlockStoreConfig config = S3BlockStoreConfig.builder()
+    S3GenerationBlockStoreConfig config = S3GenerationBlockStoreConfig.builder()
                                                   .bucket(bucket)
                                                   .consistentAmazonS3(consistentAmazonS3)
                                                   .objectPrefix(objectPrefix)

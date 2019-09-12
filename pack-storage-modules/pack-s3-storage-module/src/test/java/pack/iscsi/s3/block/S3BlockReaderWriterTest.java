@@ -16,6 +16,8 @@ import org.junit.Test;
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
+import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
+import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
@@ -27,8 +29,16 @@ public class S3BlockReaderWriterTest {
     ConsistentAmazonS3 consistentAmazonS3 = S3TestSetup.getConsistentAmazonS3();
     String bucket = TestProperties.getBucket();
     String objectPrefix = TestProperties.getObjectPrefix();
-    S3BlockWriter writer = new S3BlockWriter(consistentAmazonS3, bucket, objectPrefix);
-    S3BlockReader reader = new S3BlockReader(consistentAmazonS3, bucket, objectPrefix);
+    S3BlockWriter writer = new S3BlockWriter(S3BlockWriterConfig.builder()
+                                                                .bucket(bucket)
+                                                                .consistentAmazonS3(consistentAmazonS3)
+                                                                .objectPrefix(objectPrefix)
+                                                                .build());
+    S3BlockReader reader = new S3BlockReader(S3BlockReaderConfig.builder()
+                                                                .bucket(bucket)
+                                                                .consistentAmazonS3(consistentAmazonS3)
+                                                                .objectPrefix(objectPrefix)
+                                                                .build());
     File file1 = new File("./target/tmp/S3BlockWriterTest/test-" + UUID.randomUUID()
                                                                        .toString());
     file1.getParentFile()

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,12 +15,30 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.google.common.base.Splitter;
 
 import consistent.s3.ConsistentAmazonS3;
+import lombok.Builder;
+import lombok.Value;
 import pack.iscsi.block.Block;
 import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.volume.BlockGenerationStore;
 import pack.iscsi.volume.BlockKey;
 
 public class S3GenerationBlockStore implements BlockGenerationStore {
+  
+  @Value
+  @Builder
+  public static class S3GenerationBlockStoreConfig {
+    
+    ConsistentAmazonS3 consistentAmazonS3;
+    String bucket;
+    String objectPrefix;
+
+    @Builder.Default
+    long expireTimeAfterWrite = 10;
+
+    @Builder.Default
+    TimeUnit expireTimeAfterWriteTimeUnit = TimeUnit.MINUTES;
+
+  }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(S3GenerationBlockStore.class);
 
@@ -29,7 +48,7 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
   private final String _objectPrefix;
   private final LoadingCache<BlockKey, Long> _cache;
 
-  public S3GenerationBlockStore(S3BlockStoreConfig config) {
+  public S3GenerationBlockStore(S3GenerationBlockStoreConfig config) {
     _consistentAmazonS3 = config.getConsistentAmazonS3();
     _bucket = config.getBucket();
     _objectPrefix = config.getObjectPrefix();
