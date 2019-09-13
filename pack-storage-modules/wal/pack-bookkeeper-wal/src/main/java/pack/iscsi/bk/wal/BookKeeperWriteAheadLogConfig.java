@@ -18,10 +18,10 @@ public class BookKeeperWriteAheadLogConfig {
   CuratorFramework curatorFramework;
 
   @Builder.Default
-  long expireAfterAccess = 1;
+  long expireAfterAccess = 10;
 
   @Builder.Default
-  TimeUnit expireAfterAccessTimeUnit = TimeUnit.MINUTES;
+  TimeUnit expireAfterAccessTimeUnit = TimeUnit.SECONDS;
 
   @Builder.Default
   final DigestType digestType = DigestType.MAC;

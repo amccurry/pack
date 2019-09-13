@@ -18,12 +18,16 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.codahale.metrics.ConsoleReporter;
+import com.codahale.metrics.MetricRegistry;
 import com.google.common.collect.ImmutableList;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
 import pack.iscsi.bk.wal.BookKeeperWriteAheadLog;
 import pack.iscsi.bk.wal.BookKeeperWriteAheadLogConfig;
+import pack.iscsi.bk.wal.status.BookKeeperStatus;
+import pack.iscsi.bk.wal.status.BookKeeperStatus.BookKeeperStatusConfig;
 import pack.iscsi.external.LocalExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
@@ -36,6 +40,7 @@ import pack.iscsi.volume.BlockGenerationStore;
 import pack.iscsi.volume.BlockIOFactory;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 import pack.iscsi.volume.VolumeStore;
+import spark.Service;
 
 public class IscsiConfigUtil {
 
@@ -77,13 +82,15 @@ public class IscsiConfigUtil {
 
   private static BlockStorageModuleFactoryConfig getConfig(Properties properties, File configFile) throws Exception {
     ConsistentAmazonS3 consistentAmazonS3 = getConsistentAmazonS3IfNeeded(properties, configFile);
+    Service service = getSparkServiceIfNeeded(properties, configFile);
+    MetricRegistry metrics = getMetricRegistryIfNeeded();
 
     File blockDataDir = new File(getPropertyNotNull(properties, BLOCK_CACHE_DIR, configFile));
     long maxCacheSizeInBytes = Long.parseLong(getPropertyNotNull(properties, BLOCK_CACHE_SIZE_IN_BYTES, configFile));
 
     VolumeStore volumeStore = getVolumeStore(properties, configFile, consistentAmazonS3);
     BlockGenerationStore blockStore = getBlockStore(properties, configFile, consistentAmazonS3);
-    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile, consistentAmazonS3);
+    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile, consistentAmazonS3, service);
     BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3);
     return BlockStorageModuleFactoryConfig.builder()
                                           .volumeStore(volumeStore)
@@ -92,16 +99,31 @@ public class IscsiConfigUtil {
                                           .externalBlockStoreFactory(externalBlockStoreFactory)
                                           .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                           .writeAheadLog(writeAheadLog)
+                                          .metrics(metrics)
                                           .build();
   }
 
+  private static MetricRegistry getMetricRegistryIfNeeded() {
+    MetricRegistry metricRegistry = new MetricRegistry();
+    ConsoleReporter reporter = ConsoleReporter.forRegistry(metricRegistry)
+                                              .convertRatesTo(TimeUnit.SECONDS)
+                                              .convertDurationsTo(TimeUnit.MILLISECONDS)
+                                              .build();
+    reporter.start(10, TimeUnit.SECONDS);
+    return metricRegistry;
+  }
+
+  private static Service getSparkServiceIfNeeded(Properties properties, File configFile) {
+    return Service.ignite();
+  }
+
   private static BlockWriteAheadLog getBlockWriteAheadLog(Properties properties, File configFile,
-      ConsistentAmazonS3 consistentAmazonS3) throws Exception {
-    return getBKBlockWriteAheadLog(properties, configFile, consistentAmazonS3);
+      ConsistentAmazonS3 consistentAmazonS3, Service service) throws Exception {
+    return getBKBlockWriteAheadLog(properties, configFile, consistentAmazonS3, service);
   }
 
   private static BlockWriteAheadLog getBKBlockWriteAheadLog(Properties properties, File configFile,
-      ConsistentAmazonS3 consistentAmazonS3) throws Exception {
+      ConsistentAmazonS3 consistentAmazonS3, Service service) throws Exception {
     int ensSize = getPropertyWithDefault(properties, BK_ENS_SIZE, configFile, 3);
     int ackQuorumSize = getPropertyWithDefault(properties, BK_ACK_QUORUM_SIZE, configFile, 2);
     int writeQuorumSize = getPropertyWithDefault(properties, BK_WRITE_QUORUM_SIZE, configFile, 2);
@@ -116,7 +138,17 @@ public class IscsiConfigUtil {
                                                                         .ensSize(ensSize)
                                                                         .writeQuorumSize(writeQuorumSize)
                                                                         .build();
-    return new BookKeeperWriteAheadLog(config);
+    BookKeeperWriteAheadLog bookKeeperWriteAheadLog = new BookKeeperWriteAheadLog(config);
+    if (service != null) {
+      BookKeeperStatus status = new BookKeeperStatus(BookKeeperStatusConfig.builder()
+                                                                           .bookKeeperWriteAheadLog(
+                                                                               bookKeeperWriteAheadLog)
+                                                                           .service(service)
+                                                                           .build());
+      status.setup();
+    }
+
+    return bookKeeperWriteAheadLog;
   }
 
   private static VolumeStore getVolumeStore(Properties properties, File configFile,
@@ -181,10 +213,10 @@ public class IscsiConfigUtil {
     String bucket = getPropertyNotNull(properties, S3_BUCKET, configFile);
     String objectPrefix = getPropertyNotNull(properties, S3_OBJECTPREFIX, configFile);
     S3GenerationBlockStoreConfig config = S3GenerationBlockStoreConfig.builder()
-                                                  .bucket(bucket)
-                                                  .consistentAmazonS3(consistentAmazonS3)
-                                                  .objectPrefix(objectPrefix)
-                                                  .build();
+                                                                      .bucket(bucket)
+                                                                      .consistentAmazonS3(consistentAmazonS3)
+                                                                      .objectPrefix(objectPrefix)
+                                                                      .build();
     return new S3GenerationBlockStore(config);
   }
 

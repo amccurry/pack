@@ -3,6 +3,7 @@ package pack.iscsi.volume;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import lombok.Builder;
@@ -14,6 +15,8 @@ import pack.iscsi.block.Block;
 public class BlockStorageModuleConfig {
 
   LoadingCache<BlockKey, Block> globalCache;
+  
+  String volumeName;
 
   long volumeId;
 
@@ -30,4 +33,6 @@ public class BlockStorageModuleConfig {
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.MINUTES;
 
   ExecutorService syncExecutor;
+  
+  MetricRegistry metrics;
 }

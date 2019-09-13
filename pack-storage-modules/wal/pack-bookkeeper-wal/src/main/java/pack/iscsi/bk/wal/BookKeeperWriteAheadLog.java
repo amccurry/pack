@@ -359,4 +359,32 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
                          .getBytes();
     return ImmutableMap.of(VOLUME_ID, volumeId, BLOCK_ID, blockId);
   }
+
+  public BookKeeper getBookKeeper() {
+    return _bookKeeper;
+  }
+
+  public LoadingCache<LedgerHandleKey, LedgerHandle> getCache() {
+    return _cache;
+  }
+
+  public CuratorFramework getCuratorFramework() {
+    return _curatorFramework;
+  }
+
+  public DigestType getDigestType() {
+    return _digestType;
+  }
+
+  public int getEnsSize() {
+    return _ensSize;
+  }
+
+  public int getWriteQuorumSize() {
+    return _writeQuorumSize;
+  }
+
+  public int getAckQuorumSize() {
+    return _ackQuorumSize;
+  }
 }

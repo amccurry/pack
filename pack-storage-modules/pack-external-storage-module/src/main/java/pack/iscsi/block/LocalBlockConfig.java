@@ -24,8 +24,8 @@ public class LocalBlockConfig {
   BlockWriteAheadLog wal;
 
   @Builder.Default
-  long syncTimeAfterIdle = 1;
+  long syncTimeAfterIdle = 30;
 
   @Builder.Default
-  TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.MINUTES;
+  TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
 }

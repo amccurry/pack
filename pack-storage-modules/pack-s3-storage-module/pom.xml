@@ -78,6 +78,10 @@
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
+			<artifactId>pack-bookkeeper-status</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
 			<artifactId>pack-bookkeeper-wal</artifactId>
 			<classifier>tests</classifier>
 			<type>test-jar</type>

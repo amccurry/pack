@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Weigher;
@@ -40,6 +41,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final ExecutorService _syncExecutor;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
+  private final MetricRegistry _metrics;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
     _volumeStore = config.getVolumeStore();
@@ -50,6 +52,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _syncExecutor = Utils.executor(SYNC, config.getSyncThreads());
+    _metrics = config.getMetrics();
 
     BlockRemovalListener removalListener = getRemovalListener();
 
@@ -80,10 +83,12 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
                                                               .externalBlockStoreFactory(_externalBlockStoreFactory)
                                                               .globalCache(_cache)
                                                               .lengthInBytes(lengthInBytes)
+                                                              .volumeName(name)
                                                               .volumeId(volumeId)
                                                               .syncTimeAfterIdle(_syncTimeAfterIdle)
                                                               .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
                                                               .syncExecutor(_syncExecutor)
+                                                              .metrics(_metrics)
                                                               .build();
     LOGGER.info("open storage module for {}({})", name, volumeId);
     return new BlockStorageModule(config);

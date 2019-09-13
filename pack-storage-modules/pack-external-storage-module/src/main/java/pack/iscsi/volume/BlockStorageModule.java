@@ -12,10 +12,13 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import io.opencensus.common.Scope;
@@ -28,6 +31,10 @@ import pack.util.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
 
+  private static final String WRITE = "write";
+
+  private static final String READ = "read";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModule.class);
 
   private final long _volumeId;
@@ -38,9 +45,18 @@ public class BlockStorageModule implements StorageModule {
   private final BlockIOFactory _externalBlockStoreFactory;
   private final Timer _syncTimer;
   private final ExecutorService _syncExecutor;
+  private final MetricRegistry _metrics;
+  private final Meter _readMeter;
+  private final Meter _writeMeter;
 
   public BlockStorageModule(BlockStorageModuleConfig config) {
+    _metrics = config.getMetrics();
+    String volumeName = config.getVolumeName();
+    _readMeter = _metrics.meter(MetricRegistry.name(BlockStorageModule.class, volumeName, READ));
+    _writeMeter = _metrics.meter(MetricRegistry.name(BlockStorageModule.class, volumeName, WRITE));
+
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
+
     _volumeId = config.getVolumeId();
     _blockSize = config.getBlockSize();
     _lengthInBytes = config.getLengthInBytes();
@@ -57,8 +73,9 @@ public class BlockStorageModule implements StorageModule {
   public void read(byte[] bytes, long position) throws IOException {
     checkClosed();
     int length = bytes.length;
+    _readMeter.mark(length);
     int offset = 0;
-    try (Scope readScope = TracerUtil.trace("read")) {
+    try (Scope readScope = TracerUtil.trace(READ)) {
       while (length > 0) {
         long blockId = getBlockId(position);
         int blockOffset = getBlockOffset(position);
@@ -81,13 +98,16 @@ public class BlockStorageModule implements StorageModule {
   }
 
   private List<BlockWriteAheadLogResult> _results = new ArrayList<>();
+  private final AtomicLong _writesCount = new AtomicLong();
 
   @Override
   public void write(byte[] bytes, long position) throws IOException {
     checkClosed();
+    _writesCount.addAndGet(bytes.length);
     int length = bytes.length;
+    _writeMeter.mark(length);
     int offset = 0;
-    try (Scope writeScope = TracerUtil.trace("write")) {
+    try (Scope writeScope = TracerUtil.trace(WRITE)) {
       while (length > 0) {
         long blockId = getBlockId(position);
         int blockOffset = getBlockOffset(position);
@@ -112,13 +132,17 @@ public class BlockStorageModule implements StorageModule {
 
   @Override
   public void flushWrites() throws IOException {
-    LOGGER.info("flushWrites {}", _results.size());
+    int size = _results.size();
+    long writeCount = _writesCount.getAndSet(0);
+    long start = System.nanoTime();
     try (Scope writeScope = TracerUtil.trace("flushWrites")) {
       for (BlockWriteAheadLogResult result : _results) {
         result.get();
       }
       _results.clear();
     }
+    long end = System.nanoTime();
+    LOGGER.info("flushWrites {} {} in {} ms", size, writeCount, (end - start) / 1_000_000.0);
   }
 
   private void trackResult(BlockWriteAheadLogResult result) {
