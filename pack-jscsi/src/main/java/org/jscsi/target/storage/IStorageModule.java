@@ -22,11 +22,6 @@ import org.jscsi.target.scsi.cdb.CommandDescriptorBlock;
 public interface IStorageModule extends Closeable {
 
   /**
-   * A fictitious block size.
-   */
-  public static final int VIRTUAL_BLOCK_SIZE = 512;
-
-  /**
    * This method can be used for checking if a (series of) I/O operations will
    * result in an {@link IOException} due to trying to access blocks outside the
    * medium's boundaries.
@@ -128,5 +123,7 @@ public interface IStorageModule extends Closeable {
   default void flushWrites() throws IOException {
 
   }
+
+  int getBlockSize();
 
 }

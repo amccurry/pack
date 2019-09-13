@@ -109,4 +109,8 @@ public interface StorageModule extends Closeable {
   default void flushWrites() throws IOException {
 
   }
+
+  default int getBlockSize() {
+    return VIRTUAL_BLOCK_SIZE;
+  }
 }

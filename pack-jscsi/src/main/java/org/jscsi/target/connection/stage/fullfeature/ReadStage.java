@@ -1,7 +1,5 @@
 package org.jscsi.target.connection.stage.fullfeature;
 
-import static org.jscsi.target.storage.IStorageModule.VIRTUAL_BLOCK_SIZE;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
@@ -89,13 +87,15 @@ public class ReadStage extends ReadOrWriteStage {
       connection.sendPdu(responsePdu);
       return;
     }
+    
+    int blockSize = session.getStorageModule().getBlockSize();
 
-    final int totalTransferLength = VIRTUAL_BLOCK_SIZE * cdb.getTransferLength();
-    final long storageOffset = VIRTUAL_BLOCK_SIZE * cdb.getLogicalBlockAddress();
+    final int totalTransferLength = blockSize * cdb.getTransferLength();
+    final long storageOffset = blockSize * cdb.getLogicalBlockAddress();
 
     if (LOGGER.isDebugEnabled()) {
       LOGGER.debug("cdb.getLogicalBlockAddress() = " + cdb.getLogicalBlockAddress());
-      LOGGER.debug("blockSize = " + VIRTUAL_BLOCK_SIZE);
+      LOGGER.debug("blockSize = " + blockSize);
       LOGGER.debug("totalTransferLength = " + totalTransferLength);
       LOGGER.debug("expectedDataSegmentLength = " + parser.getExpectedDataTransferLength());
     }

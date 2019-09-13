@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.io.Closer;
 
+import pack.iscsi.file.simple.FileStorageModule;
 import pack.iscsi.manager.BaseTargetManager;
 import pack.iscsi.manager.TargetManager;
 import pack.iscsi.spi.StorageModuleFactory;
@@ -32,10 +33,11 @@ public class IscsiServerMain {
 
     try (Closer closer = Closer.create()) {
       List<StorageModuleFactory> factories = new ArrayList<>();
-      List<BlockStorageModuleFactoryConfig> configs = IscsiConfigUtil.getConfigs(new File(configDir));
-      for (BlockStorageModuleFactoryConfig config : configs) {
-        factories.add(closer.register(new BlockStorageModuleFactory(config)));
-      }
+//      List<BlockStorageModuleFactoryConfig> configs = IscsiConfigUtil.getConfigs(new File(configDir));
+//      for (BlockStorageModuleFactoryConfig config : configs) {
+//        factories.add(closer.register(new BlockStorageModuleFactory(config)));
+//      }
+      factories.add(FileStorageModule.createFactory(new File("./iscsi-volume")));
       TargetManager targetManager = new BaseTargetManager(factories);
       IscsiServerConfig config = IscsiServerConfig.builder()
                                                   .addresses(addresses)

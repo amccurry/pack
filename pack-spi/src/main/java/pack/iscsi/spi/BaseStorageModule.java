@@ -9,14 +9,15 @@ public abstract class BaseStorageModule implements StorageModule {
   }
 
   private long getBlocks(long sizeInBytes) {
-    return sizeInBytes / VIRTUAL_BLOCK_SIZE;
+    return sizeInBytes / getBlockSize();
   }
 
   @Override
   public final int checkBounds(final long logicalBlockAddress, final int transferLengthInBlocks) {
-    if (logicalBlockAddress < 0 || logicalBlockAddress > getBlocks(_sizeInBytes)) {
+    long blocks = getBlocks(_sizeInBytes);
+    if (logicalBlockAddress < 0 || logicalBlockAddress > blocks) {
       return 1;
-    } else if (transferLengthInBlocks < 0 || logicalBlockAddress + transferLengthInBlocks > getBlocks(_sizeInBytes)) {
+    } else if (transferLengthInBlocks < 0 || logicalBlockAddress + transferLengthInBlocks > blocks) {
       return 2;
     } else {
       return 0;

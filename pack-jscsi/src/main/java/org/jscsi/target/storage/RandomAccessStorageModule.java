@@ -35,6 +35,8 @@ public class RandomAccessStorageModule implements IStorageModule {
    */
   private static final String MODE = "rwd";
 
+  private static final int VIRTUAL_BLOCK_SIZE = 512;
+
   /**
    * The size of the medium in blocks.
    * 
@@ -99,11 +101,8 @@ public class RandomAccessStorageModule implements IStorageModule {
   @Override
   public final int checkBounds(final long logicalBlockAddress, final int transferLengthInBlocks) {
     if (logicalBlockAddress < 0 || logicalBlockAddress > sizeInBlocks) {
-      System.out.println(logicalBlockAddress + " " + sizeInBlocks);
       return 1;
     } else if (transferLengthInBlocks < 0 || logicalBlockAddress + transferLengthInBlocks > sizeInBlocks) {
-      System.out.println(transferLengthInBlocks + " < 0 || " + logicalBlockAddress + " + " + transferLengthInBlocks
-          + " > " + sizeInBlocks);
       return 2;
     } else {
       return 0;
@@ -221,6 +220,11 @@ public class RandomAccessStorageModule implements IStorageModule {
       }
     }
     return pFile.delete();
+  }
+
+  @Override
+  public int getBlockSize() {
+    return VIRTUAL_BLOCK_SIZE;
   }
 
 }

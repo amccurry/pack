@@ -58,6 +58,11 @@ public class WrapperIStorageModule implements IStorageModule {
     _storageModule.flushWrites();
   }
 
+  @Override
+  public int getBlockSize() {
+    return _storageModule.getBlockSize();
+  }
+
   public static IStorageModule create(StorageModule storageModule) {
     return new WrapperIStorageModule(storageModule);
   }

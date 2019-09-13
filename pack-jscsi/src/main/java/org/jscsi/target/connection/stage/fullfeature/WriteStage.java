@@ -1,7 +1,5 @@
 package org.jscsi.target.connection.stage.fullfeature;
 
-import static org.jscsi.target.storage.IStorageModule.VIRTUAL_BLOCK_SIZE;
-
 import java.io.IOException;
 import java.net.InetAddress;
 import java.security.DigestException;
@@ -25,6 +23,7 @@ import org.jscsi.target.scsi.cdb.Write10Cdb;
 import org.jscsi.target.scsi.cdb.Write6Cdb;
 import org.jscsi.target.scsi.cdb.WriteCdb;
 import org.jscsi.target.settings.SettingsException;
+import org.jscsi.target.storage.IStorageModule;
 import org.jscsi.target.util.Debug;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -125,9 +124,12 @@ public final class WriteStage extends ReadOrWriteStage {
     final int transferLength = cdb.getTransferLength();
     final long logicalBlockAddress = cdb.getLogicalBlockAddress();
 
+    IStorageModule storageModule = session.getStorageModule();
+    int blockSize = storageModule.getBlockSize();
+
     // transform to from block units to byte units
-    final int transferLengthInBytes = transferLength * VIRTUAL_BLOCK_SIZE;
-    long storageIndex = logicalBlockAddress * VIRTUAL_BLOCK_SIZE;
+    final int transferLengthInBytes = transferLength * blockSize;
+    long storageIndex = logicalBlockAddress * blockSize;
 
     // check if requested blocks are out of bounds
     // (might add FPSKSD to the CDB's list to be detected in the next step)
@@ -163,9 +165,8 @@ public final class WriteStage extends ReadOrWriteStage {
       final byte[] immediateDataArray = pdu.getDataSegment()
                                            .array();
       int commandSequenceNumber = parser.getCommandSequenceNumber();
-      session.getStorageModule()
-             .write(immediateDataArray, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber, null,
-                 null);
+      storageModule.write(immediateDataArray, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber,
+          null, null);
       needsFlush.set(true);
       bytesReceived = immediateDataArray.length;
 
@@ -192,11 +193,10 @@ public final class WriteStage extends ReadOrWriteStage {
         int dataSequenceNumber = dataOutParser.getDataSequenceNumber();
         int targetTransferTag = dataOutParser.getTargetTransferTag();
         int commandSequenceNumber = dataOutParser.getCommandSequenceNumber();
-        session.getStorageModule()
-               .write(pdu.getDataSegment()
-                         .array(),
-                   storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag,
-                   commandSequenceNumber, dataSequenceNumber, targetTransferTag);
+        storageModule.write(pdu.getDataSegment()
+                               .array(),
+            storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag, commandSequenceNumber,
+            dataSequenceNumber, targetTransferTag);
         needsFlush.set(true);
         bytesReceived += bhs.getDataSegmentLength();
 
@@ -222,7 +222,6 @@ public final class WriteStage extends ReadOrWriteStage {
             initiatorTaskTag, TargetServer.getNextTargetTransferTag(), // targetTransferTag
             readyToTransferSequenceNumber++, bytesReceived, // bufferOffset
             desiredDataTransferLength);
-        flushIfNeeded(needsFlush);
         connection.sendPdu(pdu);
 
         // receive DataOut PDUs
@@ -238,7 +237,6 @@ public final class WriteStage extends ReadOrWriteStage {
           checkDataOutParser(bhs.getParser());
 
           if (bhs.getParser() instanceof NOPOutParser) {
-
             /* send SCSI Response PDU */
             pdu = TargetPduFactory.createSCSIResponsePdu(false, // bidirectionalReadResidualOverflow
                 false, // bidirectionalReadResidualUnderflow
@@ -259,11 +257,10 @@ public final class WriteStage extends ReadOrWriteStage {
             int dataSequenceNumber = dataOutParser.getDataSequenceNumber();
             int targetTransferTag = dataOutParser.getTargetTransferTag();
             int commandSequenceNumber = dataOutParser.getCommandSequenceNumber();
-            session.getStorageModule()
-                   .write(pdu.getDataSegment()
-                             .array(),
-                       storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag,
-                       commandSequenceNumber, dataSequenceNumber, targetTransferTag);
+            storageModule.write(pdu.getDataSegment()
+                                   .array(),
+                storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag, commandSequenceNumber,
+                dataSequenceNumber, targetTransferTag);
             needsFlush.set(true);
             bytesReceivedThisCycle += bhs.getDataSegmentLength();
 

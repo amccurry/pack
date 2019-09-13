@@ -209,7 +209,7 @@ public interface Connection extends Callable<Void> {
      * @throws IOException
      * @throws InternetSCSIException
      */
-    public void sendPdu(ProtocolDataUnit pdu) throws InterruptedException, IOException, InternetSCSIException {
+    public synchronized void sendPdu(ProtocolDataUnit pdu) throws InterruptedException, IOException, InternetSCSIException {
       // System.out.println("******************************\nSending\nSystem
       // Time: " + new
       // java.sql.Timestamp(System.currentTimeMillis()).toString() + "\n" + pdu

@@ -89,4 +89,9 @@ public class FileStorageModule extends BaseStorageModule {
     LOGGER.info("Closing {}", _volumeFile);
   }
 
+  @Override
+  public int getBlockSize() {
+    return 4096;
+  }
+
 }
