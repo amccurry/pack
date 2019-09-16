@@ -1,4 +1,4 @@
-package pack.util;
+package pack.iscsi.io;
 
 import java.io.Closeable;
 import java.io.File;

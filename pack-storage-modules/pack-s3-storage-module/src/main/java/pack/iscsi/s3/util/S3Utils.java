@@ -9,7 +9,7 @@ import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 
-import pack.util.IOUtils;
+import pack.iscsi.io.IOUtils;
 
 public class S3Utils {
 

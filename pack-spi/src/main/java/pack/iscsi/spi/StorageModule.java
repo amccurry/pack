@@ -53,7 +53,16 @@ public interface StorageModule extends Closeable {
    *          the total number of consecutive blocks about to be read or written
    * @return see table in description
    */
-  int checkBounds(final long logicalBlockAddress, final int transferLengthInBlocks);
+  default int checkBounds(final long logicalBlockAddress, final int transferLengthInBlocks) {
+    long blocks = getBlocks(getSizeInBytes());
+    if (logicalBlockAddress < 0 || logicalBlockAddress > blocks) {
+      return 1;
+    } else if (transferLengthInBlocks < 0 || logicalBlockAddress + transferLengthInBlocks > blocks) {
+      return 2;
+    } else {
+      return 0;
+    }
+  }
 
   /**
    * Returns the storage space size in bytes divided by the block size in bytes
@@ -61,7 +70,9 @@ public interface StorageModule extends Closeable {
    * 
    * @return the virtual amount of storage blocks available
    */
-  long getSizeInBlocks();
+  default long getSizeInBlocks() {
+    return getBlocks(getSizeInBytes()) - 1;
+  }
 
   /**
    * Copies bytes from storage to the passed byte array.
@@ -113,4 +124,11 @@ public interface StorageModule extends Closeable {
   default int getBlockSize() {
     return VIRTUAL_BLOCK_SIZE;
   }
+
+  default long getBlocks(long sizeInBytes) {
+    return sizeInBytes / getBlockSize();
+  }
+
+  long getSizeInBytes();
+
 }

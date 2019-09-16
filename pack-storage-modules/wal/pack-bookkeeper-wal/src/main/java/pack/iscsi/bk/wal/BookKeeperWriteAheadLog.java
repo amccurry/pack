@@ -3,7 +3,6 @@ package pack.iscsi.bk.wal;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -33,9 +32,10 @@ import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
+import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
-import pack.util.IOUtils;
 import pack.util.TracerUtil;
 
 public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
@@ -147,7 +147,8 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
   }
 
   @Override
-  public long recover(FileChannel channel, long volumeId, long blockId, long onDiskGeneration) throws IOException {
+  public long recover(RandomAccessIO randomAccessIO, long volumeId, long blockId, long onDiskGeneration)
+      throws IOException {
     long lastGeneration = onDiskGeneration;
     List<Long> ledgerIds = getLedgerIdsForBlock(volumeId, blockId);
     for (Long ledgerId : ledgerIds) {
@@ -161,7 +162,7 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
         long last = ledgerHandle.readLastAddConfirmed();
         LedgerEntries entries = ledgerHandle.read(0, last);
         for (LedgerEntry entry : entries) {
-          lastGeneration = write(entry, channel, onDiskGeneration);
+          lastGeneration = write(entry, randomAccessIO, onDiskGeneration);
         }
       } catch (org.apache.bookkeeper.client.api.BKException e) {
         if (e.getCode() == Code.NoSuchLedgerExistsException) {
@@ -183,16 +184,14 @@ public class BookKeeperWriteAheadLog implements BlockWriteAheadLog {
     return _bookKeeper.openLedger(ledgerId, _digestType, getPasswd(volumeId, blockId));
   }
 
-  private long write(LedgerEntry entry, FileChannel channel, long onDiskGeneration) throws IOException {
+  private long write(LedgerEntry entry, RandomAccessIO randomAccessIO, long onDiskGeneration) throws IOException {
     ByteBuffer bb = entry.getEntryNioBuffer();
     long generation = bb.getLong();
     if (generation <= onDiskGeneration) {
       return onDiskGeneration;
     }
     long position = bb.getLong();
-    while (bb.remaining() > 0) {
-      position += channel.write(bb, position);
-    }
+    randomAccessIO.writeFully(position, bb.array(), bb.position(), bb.limit());
     return generation;
   }
 

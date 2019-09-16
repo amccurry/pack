@@ -9,8 +9,8 @@ import java.nio.channels.FileChannel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.iscsi.io.IOUtils;
 import pack.iscsi.volume.BlockGenerationStore;
-import pack.util.IOUtils;
 
 public class LocalBlockStore implements BlockGenerationStore {
 

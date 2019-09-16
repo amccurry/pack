@@ -4,9 +4,6 @@ import java.io.Closeable;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -18,6 +15,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.iscsi.io.FileIO;
+import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -26,13 +25,11 @@ import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 import pack.iscsi.volume.BlockGenerationStore;
 import pack.iscsi.volume.VolumeMetadata;
-import pack.util.IOUtils;
 
 public class LocalBlock implements Closeable, Block {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalBlock.class);
 
-  private static final String RW = "rw";
   private static final int BLOCK_OVERHEAD = 9;
 
   private final long _blockId;
@@ -41,8 +38,7 @@ public class LocalBlock implements Closeable, Block {
   private final WriteLock _writeLock;
   private final ReadLock _readLock;
   private final File _blockDataFile;
-  private final RandomAccessFile _raf;
-  private final FileChannel _channel;
+  private final FileIO _fileIO;
   private final AtomicReference<BlockState> _onDiskState = new AtomicReference<>();
   private final AtomicLong _onDiskGeneration = new AtomicLong();
   private final AtomicLong _lastStoredGeneration = new AtomicLong();
@@ -78,17 +74,14 @@ public class LocalBlock implements Closeable, Block {
 
     if (_blockDataFile.exists() && isLengthValid()) {
       // recovery will need to occur, may be out of date
-      _raf = new RandomAccessFile(_blockDataFile, RW);
-      _channel = _raf.getChannel();
+      _fileIO = FileIO.open(_blockDataFile, config.getBufferSize(), _blockSize + BLOCK_OVERHEAD);
     } else {
       if (_blockDataFile.exists()) {
         LOGGER.info("Block file {} length incorrect actual {} expecting {}, remove and recover.", _blockDataFile,
             _blockDataFile.length(), getValidLength());
         _blockDataFile.delete();
       }
-      _raf = new RandomAccessFile(_blockDataFile, RW);
-      _raf.setLength(_blockSize + BLOCK_OVERHEAD);
-      _channel = _raf.getChannel();
+      _fileIO = FileIO.open(_blockDataFile, config.getBufferSize(), _blockSize + BLOCK_OVERHEAD);
     }
     readMetadata();
     long lastStoreGeneration = _blockStore.getLastStoreGeneration(_volumeId, _blockId);
@@ -105,10 +98,7 @@ public class LocalBlock implements Closeable, Block {
     checkPositionAndLength(blockPosition, len);
     checkGenerations();
     try {
-      ByteBuffer dst = ByteBuffer.wrap(bytes, offset, len);
-      while (dst.remaining() > 0) {
-        blockPosition += _channel.read(dst, blockPosition);
-      }
+      _fileIO.readFully(blockPosition, bytes, offset, len);
     } finally {
       _readLock.unlock();
     }
@@ -127,10 +117,7 @@ public class LocalBlock implements Closeable, Block {
       long generation = _onDiskGeneration.incrementAndGet();
       BlockWriteAheadLogResult result = _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
       writeMetadata();
-      ByteBuffer src = ByteBuffer.wrap(bytes, offset, len);
-      while (src.remaining() > 0) {
-        blockPosition += _channel.write(src, blockPosition);
-      }
+      _fileIO.writeFully(blockPosition, bytes, offset, len);
       return result;
     } finally {
       _writeLock.unlock();
@@ -152,7 +139,7 @@ public class LocalBlock implements Closeable, Block {
       BlockIORequest request = BlockIORequest.builder()
                                              .blockId(_blockId)
                                              .blockSize(_blockSize)
-                                             .channel(_channel)
+                                             .randomAccessIO(_fileIO)
                                              .lastStoredGeneration(_lastStoredGeneration.get())
                                              .onDiskGeneration(_onDiskGeneration.get())
                                              .onDiskState(_onDiskState.get())
@@ -177,7 +164,7 @@ public class LocalBlock implements Closeable, Block {
       if (!_closed.get()) {
         _closed.set(true);
       }
-      IOUtils.closeQuietly(_channel, _raf);
+      IOUtils.closeQuietly(_fileIO);
     } finally {
       _writeLock.unlock();
     }
@@ -209,26 +196,24 @@ public class LocalBlock implements Closeable, Block {
   }
 
   private void writeMetadata() throws IOException {
-    ByteBuffer buffer = getMetadataBuffer();
-    _channel.write(buffer, getMetadataPosition());
+    byte[] buffer = getMetadataBuffer();
+    _fileIO.writeFully(getMetadataPosition(), buffer);
     LOGGER.debug("write meta data volumeId {} blockId {} state {} on disk generation {} last stored generation {}",
         _volumeId, _blockId, _onDiskState, _onDiskGeneration, _lastStoredGeneration);
   }
 
   private void readMetadata() throws IOException {
-    ByteBuffer buffer = ByteBuffer.allocate(BLOCK_OVERHEAD);
-    _channel.read(buffer, getMetadataPosition());
-    buffer.flip();
-    _onDiskState.set(BlockState.lookup(buffer.get()));
-    _onDiskGeneration.set(buffer.getLong());
+    byte[] buffer = new byte[BLOCK_OVERHEAD];
+    _fileIO.readFully(getMetadataPosition(), buffer);
+    _onDiskState.set(BlockState.lookup(buffer[0]));
+    _onDiskGeneration.set(getLong(buffer, 1));
   }
 
-  private ByteBuffer getMetadataBuffer() {
-    ByteBuffer buffer = ByteBuffer.allocate(BLOCK_OVERHEAD);
+  private byte[] getMetadataBuffer() {
+    byte[] buffer = new byte[BLOCK_OVERHEAD];
     BlockState blockState = _onDiskState.get();
-    buffer.put(blockState.getType());
-    buffer.putLong(_onDiskGeneration.get());
-    buffer.flip();
+    buffer[0] = blockState.getType();
+    putLong(buffer, 1, _onDiskGeneration.get());
     return buffer;
   }
 
@@ -305,4 +290,20 @@ public class LocalBlock implements Closeable, Block {
     return _lastWrite.get() + syncTimeAfterIdle < System.nanoTime();
   }
 
+  static long getLong(byte[] b, int off) {
+    return ((b[off + 7] & 0xFFL)) + ((b[off + 6] & 0xFFL) << 8) + ((b[off + 5] & 0xFFL) << 16)
+        + ((b[off + 4] & 0xFFL) << 24) + ((b[off + 3] & 0xFFL) << 32) + ((b[off + 2] & 0xFFL) << 40)
+        + ((b[off + 1] & 0xFFL) << 48) + (((long) b[off]) << 56);
+  }
+
+  static void putLong(byte[] b, int off, long val) {
+    b[off + 7] = (byte) (val);
+    b[off + 6] = (byte) (val >>> 8);
+    b[off + 5] = (byte) (val >>> 16);
+    b[off + 4] = (byte) (val >>> 24);
+    b[off + 3] = (byte) (val >>> 32);
+    b[off + 2] = (byte) (val >>> 40);
+    b[off + 1] = (byte) (val >>> 48);
+    b[off] = (byte) (val >>> 56);
+  }
 }

@@ -17,13 +17,13 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import io.opencensus.common.Scope;
 import pack.iscsi.block.AlreadyClosedException;
 import pack.iscsi.block.Block;
+import pack.iscsi.spi.Meter;
+import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 import pack.iscsi.util.Utils;
@@ -45,15 +45,15 @@ public class BlockStorageModule implements StorageModule {
   private final BlockIOFactory _externalBlockStoreFactory;
   private final Timer _syncTimer;
   private final ExecutorService _syncExecutor;
-  private final MetricRegistry _metrics;
+  private final MetricsFactory _metricsFactory;
   private final Meter _readMeter;
   private final Meter _writeMeter;
 
   public BlockStorageModule(BlockStorageModuleConfig config) {
-    _metrics = config.getMetrics();
+    _metricsFactory = config.getMetricsFactory();
     String volumeName = config.getVolumeName();
-    _readMeter = _metrics.meter(MetricRegistry.name(BlockStorageModule.class, volumeName, READ));
-    _writeMeter = _metrics.meter(MetricRegistry.name(BlockStorageModule.class, volumeName, WRITE));
+    _readMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, READ);
+    _writeMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE);
 
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
 
@@ -255,6 +255,11 @@ public class BlockStorageModule implements StorageModule {
   public long getSizeInBlocks() {
     return getBlockCount() - 1;
   }
+  
+  @Override
+  public long getSizeInBytes() {
+    return _lengthInBytes;
+  }
 
   private long getBlockCount() {
     return _lengthInBytes / VIRTUAL_BLOCK_SIZE;
@@ -287,4 +292,6 @@ public class BlockStorageModule implements StorageModule {
       }
     };
   }
+
+
 }

@@ -14,6 +14,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import pack.iscsi.block.Block;
+import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockGenerationStore;
@@ -22,7 +23,6 @@ import pack.iscsi.volume.BlockStorageModuleFactory;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 import pack.iscsi.volume.VolumeMetadata;
 import pack.iscsi.volume.VolumeStore;
-import pack.util.IOUtils;
 
 public abstract class BlockStorageModuleFactoryTest {
 
@@ -166,7 +166,7 @@ public abstract class BlockStorageModuleFactoryTest {
       random.nextBytes(buffer1);
       storageModule.write(buffer1, pos);
       storageModule.read(buffer2, pos);
-      assertTrue(Arrays.equals(buffer1, buffer2));
+      assertTrue("pos " + pos, Arrays.equals(buffer1, buffer2));
     }
   }
 

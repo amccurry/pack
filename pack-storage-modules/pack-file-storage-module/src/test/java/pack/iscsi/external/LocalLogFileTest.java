@@ -18,7 +18,7 @@ import org.junit.Test;
 import pack.iscsi.external.LocalLogFileReaderWriter;
 import pack.iscsi.external.LocalLogFileReaderWriter.LocalLogReader;
 import pack.iscsi.external.LocalLogFileReaderWriter.LocalLogWriter;
-import pack.util.IOUtils;
+import pack.iscsi.io.IOUtils;
 
 public class LocalLogFileTest {
 

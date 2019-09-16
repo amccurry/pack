@@ -2,7 +2,8 @@ package pack.iscsi.external;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
+
+import pack.iscsi.spi.RandomAccessIO;
 
 public interface WriteAheadLogger extends Closeable {
 
@@ -10,13 +11,8 @@ public interface WriteAheadLogger extends Closeable {
 
   /**
    * Recover the block from the given generation.
-   * 
-   * @param channel
-   * @param onDiskGeneration
-   * @return
-   * @throws IOException
    */
-  long recover(FileChannel channel, long onDiskGeneration) throws IOException;
+  long recover(RandomAccessIO randomAccessIO, long onDiskGeneration) throws IOException;
 
   /**
    * Release entries after given generation.

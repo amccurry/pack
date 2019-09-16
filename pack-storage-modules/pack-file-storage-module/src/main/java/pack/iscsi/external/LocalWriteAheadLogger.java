@@ -2,8 +2,6 @@ package pack.iscsi.external;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -17,7 +15,8 @@ import org.slf4j.LoggerFactory;
 
 import pack.iscsi.external.LocalLogFileReaderWriter.LocalLogReader;
 import pack.iscsi.external.LocalLogFileReaderWriter.LocalLogWriter;
-import pack.util.IOUtils;
+import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.RandomAccessIO;
 
 public class LocalWriteAheadLogger implements WriteAheadLogger {
 
@@ -74,7 +73,7 @@ public class LocalWriteAheadLogger implements WriteAheadLogger {
   }
 
   @Override
-  public long recover(FileChannel channel, long onDiskGeneration) throws IOException {
+  public long recover(RandomAccessIO randomAccessIO, long onDiskGeneration) throws IOException {
     _writeLock.lock();
     LOGGER.info("recover volumeId {} blockId {}", _volumeId, _blockId);
     try {
@@ -84,7 +83,7 @@ public class LocalWriteAheadLogger implements WriteAheadLogger {
       List<LocalLogReader> readers = getLocalLogReaders();
       try {
         for (LocalLogReader reader : readers) {
-          currentGeneration = recover(channel, reader, currentGeneration);
+          currentGeneration = recover(randomAccessIO, reader, currentGeneration);
         }
         return currentGeneration;
       } finally {
@@ -101,17 +100,15 @@ public class LocalWriteAheadLogger implements WriteAheadLogger {
     IOUtils.close(LOGGER, _writer.get());
   }
 
-  private long recover(FileChannel channel, LocalLogReader reader, long currentGeneration) throws IOException {
+  private long recover(RandomAccessIO randomAccessIO, LocalLogReader reader, long currentGeneration)
+      throws IOException {
     if (reader.getMaxGeneration() > currentGeneration) {
       reader.reset();
       while (reader.next()) {
         long generation = reader.getGeneration();
         if (generation > currentGeneration) {
-          ByteBuffer buffer = ByteBuffer.wrap(reader.getBytes(), 0, reader.getLength());
           long position = reader.getPosition();
-          while (buffer.remaining() > 0) {
-            position += channel.write(buffer, position);
-          }
+          randomAccessIO.writeFully(position, reader.getBytes(), 0, reader.getLength());
           currentGeneration = generation;
         }
       }

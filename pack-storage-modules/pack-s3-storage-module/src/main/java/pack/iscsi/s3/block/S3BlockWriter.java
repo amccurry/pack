@@ -3,8 +3,6 @@ package pack.iscsi.s3.block;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +13,7 @@ import consistent.s3.ConsistentAmazonS3;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.s3.util.S3Utils;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -54,7 +53,7 @@ public class S3BlockWriter implements BlockIOExecutor {
       String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
           onDiskGeneration);
       LOGGER.info("writing bucket {} key {}", _bucket, key);
-      InputStream input = getInputStream(request.getChannel(), request.getBlockSize());
+      InputStream input = getInputStream(request.getRandomAccessIO(), request.getBlockSize());
       ObjectMetadata metadata = new ObjectMetadata();
       metadata.setContentLength(request.getBlockSize());
       _consistentAmazonS3.putObject(_bucket, key, input, metadata);
@@ -65,7 +64,7 @@ public class S3BlockWriter implements BlockIOExecutor {
     return BlockIOResponse.newBlockIOResult(onDiskGeneration, BlockState.CLEAN, onDiskGeneration);
   }
 
-  private InputStream getInputStream(FileChannel channel, int blockSize) {
+  private InputStream getInputStream(RandomAccessIO randomAccessIO, int blockSize) {
     InputStream input = new InputStream() {
 
       private long _position = 0;
@@ -75,11 +74,10 @@ public class S3BlockWriter implements BlockIOExecutor {
         if (_position >= blockSize) {
           return -1;
         }
-        ByteBuffer dst = ByteBuffer.allocate(1);
-        while (dst.remaining() > 0) {
-          _position += channel.read(dst, _position);
-        }
-        return dst.get();
+        byte[] buffer = new byte[1];
+        randomAccessIO.readFully(_position, buffer);
+        _position++;
+        return buffer[0];
       }
 
       @Override
@@ -87,11 +85,9 @@ public class S3BlockWriter implements BlockIOExecutor {
         if (_position >= blockSize) {
           return -1;
         }
-        int length = (int) Math.min(len, blockSize - _position);
-        ByteBuffer buffer = ByteBuffer.wrap(b, off, length);
-        int read = channel.read(buffer, _position);
-        _position += read;
-        return read;
+        randomAccessIO.readFully(_position, b, off, len);
+        _position += len;
+        return len;
       }
     };
     return new BufferedInputStream(input, com.amazonaws.RequestClientOptions.DEFAULT_STREAM_BUFFER_SIZE);

@@ -6,9 +6,9 @@
 		<groupId>pack</groupId>
 		<artifactId>pack</artifactId>
 		<version>1.0-SNAPSHOT</version>
-		<relativePath>../../pom.xml</relativePath>
+		<relativePath>../pom.xml</relativePath>
 	</parent>
-	<artifactId>pack-external-storage-module</artifactId>
+	<artifactId>pack-util</artifactId>
 	<packaging>jar</packaging>
 
 	<dependencies>
@@ -17,16 +17,9 @@
 			<artifactId>pack-spi</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>pack</groupId>
-			<artifactId>pack-external-storage-spi</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pack</groupId>
-			<artifactId>pack-util</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>com.github.ben-manes.caffeine</groupId>
-			<artifactId>caffeine</artifactId>
+			<groupId>net.smacke</groupId>
+			<artifactId>jaydio</artifactId>
+			<version>0.1</version>
 		</dependency>
 	</dependencies>
 </project>

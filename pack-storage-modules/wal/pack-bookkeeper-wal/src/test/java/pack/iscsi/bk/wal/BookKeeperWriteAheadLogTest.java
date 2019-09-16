@@ -3,14 +3,13 @@ package pack.iscsi.bk.wal;
 import static org.junit.Assert.assertEquals;
 
 import java.io.File;
-import java.io.RandomAccessFile;
-import java.nio.channels.FileChannel;
 
 import org.apache.bookkeeper.client.BookKeeper;
 import org.apache.curator.framework.CuratorFramework;
 import org.junit.Test;
 
 import pack.iscsi.bk.BKTestSetup;
+import pack.iscsi.io.FileIO;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 
 public class BookKeeperWriteAheadLogTest {
@@ -38,19 +37,17 @@ public class BookKeeperWriteAheadLogTest {
 
     try (BookKeeperWriteAheadLog wal = new BookKeeperWriteAheadLog(config)) {
       File file = File.createTempFile("bk.", ".test");
-      try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
-        raf.setLength(100_000);
-        try (FileChannel channel = raf.getChannel()) {
-          wal.recover(channel, volumeId, blockId, 0);
-        }
-      }
-      try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-        raf.seek(position);
-        assertEquals(1, raf.read());
-      }
-      wal.release(volumeId, blockId, generation);
-    }
 
+      try (FileIO fileIO = FileIO.open(file, 4096, 100_000)) {
+        wal.recover(fileIO, volumeId, blockId, 0);
+      }
+      try (FileIO fileIO = FileIO.open(file, 4096, file.length())) {
+        byte[] buffer = new byte[1];
+        fileIO.readFully(position, buffer);
+        assertEquals(1, buffer[1] & 0xff);
+        wal.release(volumeId, blockId, generation);
+      }
+    }
   }
 
 }

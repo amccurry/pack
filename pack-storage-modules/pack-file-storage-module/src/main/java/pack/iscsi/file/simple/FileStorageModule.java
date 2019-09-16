@@ -12,12 +12,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.iscsi.spi.BaseStorageModule;
+import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
-import pack.util.IOUtils;
 
-public class FileStorageModule extends BaseStorageModule {
+public class FileStorageModule implements StorageModule {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FileStorageModule.class);
 
@@ -53,7 +52,6 @@ public class FileStorageModule extends BaseStorageModule {
   private final AtomicLong _writeEvents = new AtomicLong();
 
   public FileStorageModule(File volumeFile) throws IOException {
-    super(volumeFile.length());
     _volumeFile = volumeFile;
     LOGGER.info("Creating {}", volumeFile);
     _raf = new RandomAccessFile(volumeFile, "rw");
@@ -92,6 +90,11 @@ public class FileStorageModule extends BaseStorageModule {
   @Override
   public int getBlockSize() {
     return 4096;
+  }
+
+  @Override
+  public long getSizeInBytes() {
+    return _volumeFile.length();
   }
 
 }

@@ -3,12 +3,12 @@ package pack.iscsi.volume;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.block.Block;
+import pack.iscsi.spi.MetricsFactory;
 
 @Value
 @Builder
@@ -34,5 +34,5 @@ public class BlockStorageModuleConfig {
 
   ExecutorService syncExecutor;
   
-  MetricRegistry metrics;
+  MetricsFactory metricsFactory;
 }

@@ -2,8 +2,8 @@ package pack.iscsi.spi.wal;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -28,7 +28,7 @@ public interface BlockWriteAheadLog extends Closeable {
         }
         long volumeId = request.getVolumeId();
         long blockId = request.getBlockId();
-        long generation = recover(request.getChannel(), volumeId, blockId, request.getOnDiskGeneration());
+        long generation = recover(request.getRandomAccessIO(), volumeId, blockId, request.getOnDiskGeneration());
         return BlockIOResponse.builder()
                               .lastStoredGeneration(lastStoredGeneration)
                               .onDiskBlockState(BlockState.DIRTY)
@@ -54,6 +54,6 @@ public interface BlockWriteAheadLog extends Closeable {
    * Recover all changes from on disk generation and return the most generation
    * from the log.
    */
-  long recover(FileChannel channel, long volumeId, long blockId, long onDiskGeneration) throws IOException;
+  long recover(RandomAccessIO randomAccessIO, long volumeId, long blockId, long onDiskGeneration) throws IOException;
 
 }

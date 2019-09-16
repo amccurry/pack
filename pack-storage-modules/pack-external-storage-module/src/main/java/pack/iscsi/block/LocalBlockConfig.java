@@ -28,4 +28,7 @@ public class LocalBlockConfig {
 
   @Builder.Default
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
+
+  @Builder.Default
+  int bufferSize = 64 * 1024;
 }

@@ -4,18 +4,17 @@ import java.io.File;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
-import com.codahale.metrics.MetricRegistry;
-
 import lombok.Builder;
 import lombok.Value;
+import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 @Value
-@Builder
+@Builder(toBuilder = true)
 public class BlockStorageModuleFactoryConfig {
 
   VolumeStore volumeStore;
-  
+
   BlockGenerationStore blockStore;
 
   BlockWriteAheadLog writeAheadLog;
@@ -34,6 +33,7 @@ public class BlockStorageModuleFactoryConfig {
 
   @Builder.Default
   int syncThreads = ForkJoinPool.getCommonPoolParallelism();
-  
-  MetricRegistry metrics;
+
+  @Builder.Default
+  MetricsFactory metricsFactory = MetricsFactory.NO_OP;
 }

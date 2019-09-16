@@ -10,12 +10,13 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Weigher;
 
 import pack.iscsi.block.Block;
+import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
@@ -24,7 +25,6 @@ import pack.iscsi.volume.cache.BlockCacheLoader;
 import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
 import pack.iscsi.volume.cache.BlockRemovalListener;
 import pack.iscsi.volume.cache.BlockRemovalListenerConfig;
-import pack.util.IOUtils;
 
 public class BlockStorageModuleFactory implements StorageModuleFactory, Closeable {
 
@@ -41,7 +41,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final ExecutorService _syncExecutor;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
-  private final MetricRegistry _metrics;
+  private final MetricsFactory _metricsFactory;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
     _volumeStore = config.getVolumeStore();
@@ -52,7 +52,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _syncExecutor = Utils.executor(SYNC, config.getSyncThreads());
-    _metrics = config.getMetrics();
+    _metricsFactory = config.getMetricsFactory();
 
     BlockRemovalListener removalListener = getRemovalListener();
 
@@ -88,7 +88,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
                                                               .syncTimeAfterIdle(_syncTimeAfterIdle)
                                                               .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
                                                               .syncExecutor(_syncExecutor)
-                                                              .metrics(_metrics)
+                                                              .metricsFactory(_metricsFactory)
                                                               .build();
     LOGGER.info("open storage module for {}({})", name, volumeId);
     return new BlockStorageModule(config);

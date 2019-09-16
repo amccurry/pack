@@ -1,8 +1,6 @@
 package pack.iscsi.s3.block;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +13,7 @@ import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.block.Block;
 import pack.iscsi.s3.util.S3Utils;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -51,7 +50,7 @@ public class S3BlockReader implements BlockIOExecutor {
       return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
     }
 
-    FileChannel channel = request.getChannel();
+    RandomAccessIO randomAccessIO = request.getRandomAccessIO();
     long onDiskGeneration = request.getOnDiskGeneration();
     BlockState onDiskState = request.getOnDiskState();
     try {
@@ -64,7 +63,8 @@ public class S3BlockReader implements BlockIOExecutor {
         int read;
         long pos = 0;
         while ((read = inputStream.read(buffer)) != -1) {
-          pos += channel.write(ByteBuffer.wrap(buffer, 0, read), pos);
+          randomAccessIO.writeFully(pos, buffer, 0, read);
+          pos += read;
         }
       }
       return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);

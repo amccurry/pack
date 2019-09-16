@@ -5,8 +5,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.RandomAccessFile;
-import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.UUID;
@@ -14,6 +12,7 @@ import java.util.UUID;
 import org.junit.Test;
 
 import consistent.s3.ConsistentAmazonS3;
+import pack.iscsi.io.FileIO;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
@@ -53,40 +52,37 @@ public class S3BlockReaderWriterTest {
       output.write(buffer);
     }
     int blockSize = 9_000;
-    try (RandomAccessFile raf = new RandomAccessFile(file1, "r")) {
-      try (FileChannel channel = raf.getChannel()) {
-        BlockIORequest request = BlockIORequest.builder()
-                                               .blockSize(blockSize)
-                                               .onDiskGeneration(1)
-                                               .lastStoredGeneration(0)
-                                               .onDiskState(BlockState.DIRTY)
-                                               .channel(channel)
-                                               .build();
+    try (FileIO fileIO = FileIO.open(file1, 4096, file1.length())) {
+      BlockIORequest request = BlockIORequest.builder()
+                                             .blockSize(blockSize)
+                                             .onDiskGeneration(1)
+                                             .lastStoredGeneration(0)
+                                             .onDiskState(BlockState.DIRTY)
+                                             .randomAccessIO(fileIO)
+                                             .build();
 
-        BlockIOResponse response = writer.exec(request);
-        assertEquals(BlockState.CLEAN, response.getOnDiskBlockState());
-        assertEquals(1, response.getOnDiskGeneration());
-        assertEquals(1, response.getLastStoredGeneration());
-      }
+      BlockIOResponse response = writer.exec(request);
+      assertEquals(BlockState.CLEAN, response.getOnDiskBlockState());
+      assertEquals(1, response.getOnDiskGeneration());
+      assertEquals(1, response.getLastStoredGeneration());
     }
-    try (RandomAccessFile raf = new RandomAccessFile(file2, "rw")) {
-      try (FileChannel channel = raf.getChannel()) {
-        BlockIORequest request = BlockIORequest.builder()
-                                               .blockSize(blockSize)
-                                               .onDiskGeneration(0)
-                                               .lastStoredGeneration(1)
-                                               .onDiskState(BlockState.CLEAN)
-                                               .channel(channel)
-                                               .build();
-        BlockIOResponse response = reader.exec(request);
-        assertEquals(BlockState.CLEAN, response.getOnDiskBlockState());
-        assertEquals(1, response.getOnDiskGeneration());
-        assertEquals(1, response.getLastStoredGeneration());
 
-        byte[] buffer2 = new byte[blockSize];
-        raf.readFully(buffer2);
-        assertTrue(Arrays.equals(getPartial(buffer, blockSize), buffer2));
-      }
+    try (FileIO fileIO = FileIO.open(file2, 4096, file2.length())) {
+      BlockIORequest request = BlockIORequest.builder()
+                                             .blockSize(blockSize)
+                                             .onDiskGeneration(0)
+                                             .lastStoredGeneration(1)
+                                             .onDiskState(BlockState.CLEAN)
+                                             .randomAccessIO(fileIO)
+                                             .build();
+      BlockIOResponse response = reader.exec(request);
+      assertEquals(BlockState.CLEAN, response.getOnDiskBlockState());
+      assertEquals(1, response.getOnDiskGeneration());
+      assertEquals(1, response.getLastStoredGeneration());
+
+      byte[] buffer2 = new byte[blockSize];
+      fileIO.readFully(0, buffer2);
+      assertTrue(Arrays.equals(getPartial(buffer, blockSize), buffer2));
     }
     assertEquals(blockSize, file2.length());
   }

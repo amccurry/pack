@@ -5,7 +5,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Random;
 
@@ -15,17 +14,18 @@ import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.block.Block;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
+import pack.iscsi.io.IOUtils;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 import pack.iscsi.volume.BlockGenerationStore;
 import pack.iscsi.volume.VolumeMetadata;
-import pack.util.IOUtils;
 
 public class S3LocalBlockTest {
 
@@ -113,9 +113,11 @@ public class S3LocalBlockTest {
       }
 
       @Override
-      public long recover(FileChannel channel, long volumeId, long blockId, long onDiskGeneration) throws IOException {
+      public long recover(RandomAccessIO randomAccessIO, long volumeId, long blockId, long onDiskGeneration)
+          throws IOException {
         throw new RuntimeException("not impl");
       }
+
     };
   }
 

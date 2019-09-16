@@ -35,6 +35,8 @@ import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
+import pack.iscsi.spi.Meter;
+import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockGenerationStore;
 import pack.iscsi.volume.BlockIOFactory;
@@ -83,7 +85,7 @@ public class IscsiConfigUtil {
   private static BlockStorageModuleFactoryConfig getConfig(Properties properties, File configFile) throws Exception {
     ConsistentAmazonS3 consistentAmazonS3 = getConsistentAmazonS3IfNeeded(properties, configFile);
     Service service = getSparkServiceIfNeeded(properties, configFile);
-    MetricRegistry metrics = getMetricRegistryIfNeeded();
+    MetricsFactory metricsFactory = getMetricsFactoryIfNeeded();
 
     File blockDataDir = new File(getPropertyNotNull(properties, BLOCK_CACHE_DIR, configFile));
     long maxCacheSizeInBytes = Long.parseLong(getPropertyNotNull(properties, BLOCK_CACHE_SIZE_IN_BYTES, configFile));
@@ -99,18 +101,24 @@ public class IscsiConfigUtil {
                                           .externalBlockStoreFactory(externalBlockStoreFactory)
                                           .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                           .writeAheadLog(writeAheadLog)
-                                          .metrics(metrics)
+                                          .metricsFactory(metricsFactory)
                                           .build();
   }
 
-  private static MetricRegistry getMetricRegistryIfNeeded() {
+  private static MetricsFactory getMetricsFactoryIfNeeded() {
     MetricRegistry metricRegistry = new MetricRegistry();
     ConsoleReporter reporter = ConsoleReporter.forRegistry(metricRegistry)
                                               .convertRatesTo(TimeUnit.SECONDS)
                                               .convertDurationsTo(TimeUnit.MILLISECONDS)
                                               .build();
     reporter.start(10, TimeUnit.SECONDS);
-    return metricRegistry;
+    return new MetricsFactory() {
+      @Override
+      public Meter meter(Class<?> clazz, String... name) {
+        com.codahale.metrics.Meter meter = metricRegistry.meter(MetricRegistry.name(clazz, name));
+        return count -> meter.mark(count);
+      }
+    };
   }
 
   private static Service getSparkServiceIfNeeded(Properties properties, File configFile) {

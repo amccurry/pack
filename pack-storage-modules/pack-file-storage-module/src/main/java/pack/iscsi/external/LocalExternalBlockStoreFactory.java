@@ -5,13 +5,12 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.iscsi.block.Block;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -51,14 +50,14 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
 
         try (FileOutputStream output = new FileOutputStream(dst)) {
           int len = request.getBlockSize();
-          FileChannel channel = request.getChannel();
+          RandomAccessIO randomAccessIO = request.getRandomAccessIO();
           byte[] buffer = new byte[4096];
           long position = 0;
           while (len > 0) {
-            int read = channel.read(ByteBuffer.wrap(buffer), position);
-            len -= read;
-            position += read;
-            output.write(buffer, 0, read);
+            randomAccessIO.readFully(position, buffer);
+            len -= buffer.length;
+            position += buffer.length;
+            output.write(buffer, 0, buffer.length);
           }
         }
         return BlockIOResponse.builder()
@@ -90,7 +89,7 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
         File src = new File(srcBlockDir, Long.toString(generation));
         if (src.exists()) {
           try (FileInputStream input = new FileInputStream(src)) {
-            FileChannel channel = request.getChannel();
+            RandomAccessIO randomAccessIO = request.getRandomAccessIO();
             byte[] buffer = new byte[4096];
             int read;
             long position = 0;
@@ -98,10 +97,10 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
               int len = read;
               int offset = 0;
               while (len > 0) {
-                int write = channel.write(ByteBuffer.wrap(buffer, offset, len), position);
-                position += write;
-                len -= write;
-                offset += write;
+                randomAccessIO.writeFully(position, buffer, offset, len);
+                position += buffer.length;
+                len -= buffer.length;
+                offset += buffer.length;
               }
             }
           }

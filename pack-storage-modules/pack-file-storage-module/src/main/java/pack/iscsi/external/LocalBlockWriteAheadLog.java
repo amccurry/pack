@@ -2,7 +2,6 @@ package pack.iscsi.external;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -16,9 +15,10 @@ import com.github.benmanes.caffeine.cache.RemovalListener;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
+import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
-import pack.util.IOUtils;
 
 public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
 
@@ -69,9 +69,10 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
   }
 
   @Override
-  public long recover(FileChannel channel, long volumeId, long blockId, long onDiskGeneration) throws IOException {
+  public long recover(RandomAccessIO randomAccessIO, long volumeId, long blockId, long onDiskGeneration)
+      throws IOException {
     WriteAheadLogger log = getLog(volumeId, blockId);
-    return log.recover(channel, onDiskGeneration);
+    return log.recover(randomAccessIO, onDiskGeneration);
   }
 
   private WriteAheadLogger getLog(long volumeId, long blockId) {

@@ -15,8 +15,8 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 
-import pack.iscsi.external.LocalWriteAheadLogger;
-import pack.util.IOUtils;
+import pack.iscsi.io.FileIO;
+import pack.iscsi.io.IOUtils;
 
 public class LocalLogTest {
 
@@ -64,12 +64,10 @@ public class LocalLogTest {
       }
     }
 
-    try (RandomAccessFile raf = new RandomAccessFile(recover, "rw")) {
-      raf.setLength(length);
-      FileChannel channel = raf.getChannel();
+    try (FileIO fileIO = FileIO.open(recover, 4096, length)) {
       try (LocalWriteAheadLogger log = new LocalWriteAheadLogger(DIR, 0, 0)) {
         long generation = 0;
-        long recoveredGeneration = log.recover(channel, generation);
+        long recoveredGeneration = log.recover(fileIO, generation);
         assertEquals(passes, recoveredGeneration);
       }
     }

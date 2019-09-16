@@ -6,10 +6,10 @@ import org.junit.Before;
 
 import pack.iscsi.external.LocalBlockWriteAheadLog;
 import pack.iscsi.external.LocalExternalBlockStoreFactory;
+import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockIOFactory;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;
-import pack.util.IOUtils;
 
 public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTest {
 

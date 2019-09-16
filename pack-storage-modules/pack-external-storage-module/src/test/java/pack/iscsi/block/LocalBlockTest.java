@@ -8,20 +8,20 @@ import static org.junit.Assert.fail;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
+import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 import pack.iscsi.volume.BlockGenerationStore;
 import pack.iscsi.volume.VolumeMetadata;
-import pack.util.IOUtils;
 
 public class LocalBlockTest {
 
@@ -242,9 +242,11 @@ public class LocalBlockTest {
       }
 
       @Override
-      public long recover(FileChannel channel, long volumeId, long blockId, long onDiskGeneration) throws IOException {
+      public long recover(RandomAccessIO randomAccessIO, long volumeId, long blockId, long onDiskGeneration)
+          throws IOException {
         throw new RuntimeException("not impl");
       }
+
     };
   }
 

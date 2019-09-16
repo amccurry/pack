@@ -32,6 +32,7 @@
 		<module>pack-spi</module>
 		<module>pack-iscsi</module>
 		<module>pack-jscsi</module>
+		<module>pack-util</module>
 		<module>pack-storage-modules/pack-file-storage-module</module>
 		<module>pack-storage-modules/pack-s3-storage-module</module>
 		<module>pack-storage-modules/pack-external-storage-module</module>
@@ -55,6 +56,11 @@
 			<dependency>
 				<groupId>pack</groupId>
 				<artifactId>pack-spi</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-util</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
