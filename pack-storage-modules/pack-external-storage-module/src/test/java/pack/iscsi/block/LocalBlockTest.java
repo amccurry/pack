@@ -16,12 +16,13 @@ import org.junit.Test;
 
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
+import pack.iscsi.spi.volume.VolumeMetadata;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
-import pack.iscsi.volume.BlockGenerationStore;
-import pack.iscsi.volume.VolumeMetadata;
 
 public class LocalBlockTest {
 

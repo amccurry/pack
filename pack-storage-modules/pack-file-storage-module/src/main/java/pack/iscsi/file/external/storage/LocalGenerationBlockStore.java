@@ -1,4 +1,4 @@
-package pack.iscsi.external;
+package pack.iscsi.file.external.storage;
 
 import java.io.File;
 import java.io.IOException;
@@ -10,16 +10,16 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.volume.BlockGenerationStore;
+import pack.iscsi.spi.block.BlockGenerationStore;
 
-public class LocalBlockStore implements BlockGenerationStore {
+public class LocalGenerationBlockStore implements BlockGenerationStore {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(LocalBlockStore.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(LocalGenerationBlockStore.class);
 
   private final RandomAccessFile _randomAccessFile;
   private final FileChannel _channel;
 
-  public LocalBlockStore(File blockStoreFile, int blockSize, long lengthInBytes) throws IOException {
+  public LocalGenerationBlockStore(File blockStoreFile, int blockSize, long lengthInBytes) throws IOException {
     _randomAccessFile = new RandomAccessFile(blockStoreFile, "rw");
     long length = ((lengthInBytes / blockSize) + 1) * 8;
     _randomAccessFile.setLength(length);

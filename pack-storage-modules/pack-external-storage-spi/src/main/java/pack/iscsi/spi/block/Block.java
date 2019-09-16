@@ -1,10 +1,8 @@
-package pack.iscsi.block;
+package pack.iscsi.spi.block;
 
 import java.io.Closeable;
 import java.io.IOException;
 
-import pack.iscsi.spi.block.BlockIOExecutor;
-import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 
 public interface Block extends Closeable {

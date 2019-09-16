@@ -1,8 +1,6 @@
-package pack.iscsi.volume;
+package pack.iscsi.spi.block;
 
 import java.io.IOException;
-
-import pack.iscsi.spi.block.BlockIOExecutor;
 
 public interface BlockIOFactory {
 

@@ -10,10 +10,10 @@ import org.slf4j.LoggerFactory;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 
-import pack.iscsi.block.Block;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockKey;
 import pack.iscsi.util.Utils;
-import pack.iscsi.volume.BlockIOFactory;
-import pack.iscsi.volume.BlockKey;
 
 public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
 

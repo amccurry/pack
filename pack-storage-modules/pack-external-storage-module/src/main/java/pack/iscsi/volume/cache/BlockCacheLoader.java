@@ -9,16 +9,16 @@ import org.slf4j.LoggerFactory;
 import com.github.benmanes.caffeine.cache.CacheLoader;
 
 import io.opencensus.common.Scope;
-import pack.iscsi.block.Block;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
+import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockKey;
+import pack.iscsi.spi.volume.VolumeMetadata;
+import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
-import pack.iscsi.volume.BlockGenerationStore;
-import pack.iscsi.volume.BlockIOFactory;
-import pack.iscsi.volume.BlockKey;
-import pack.iscsi.volume.VolumeMetadata;
-import pack.iscsi.volume.VolumeStore;
 import pack.util.TracerUtil;
 
 public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {

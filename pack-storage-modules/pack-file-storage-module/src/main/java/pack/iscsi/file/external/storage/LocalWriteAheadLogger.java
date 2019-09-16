@@ -1,4 +1,4 @@
-package pack.iscsi.external;
+package pack.iscsi.file.external.storage;
 
 import java.io.File;
 import java.io.IOException;
@@ -13,8 +13,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.iscsi.external.LocalLogFileReaderWriter.LocalLogReader;
-import pack.iscsi.external.LocalLogFileReaderWriter.LocalLogWriter;
+import pack.iscsi.file.external.storage.LocalLogFileReaderWriter.LocalLogReader;
+import pack.iscsi.file.external.storage.LocalLogFileReaderWriter.LocalLogWriter;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 

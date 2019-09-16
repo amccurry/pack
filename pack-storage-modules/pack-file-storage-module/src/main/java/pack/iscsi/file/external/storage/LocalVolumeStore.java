@@ -1,10 +1,10 @@
-package pack.iscsi.external;
+package pack.iscsi.file.external.storage;
 
 import java.io.IOException;
 import java.util.List;
 
-import pack.iscsi.volume.VolumeMetadata;
-import pack.iscsi.volume.VolumeStore;
+import pack.iscsi.spi.volume.VolumeMetadata;
+import pack.iscsi.spi.volume.VolumeStore;
 
 public class LocalVolumeStore implements VolumeStore {
 

@@ -15,9 +15,9 @@ import java.util.List;
 import org.junit.Before;
 import org.junit.Test;
 
-import pack.iscsi.external.LocalLogFileReaderWriter;
-import pack.iscsi.external.LocalLogFileReaderWriter.LocalLogReader;
-import pack.iscsi.external.LocalLogFileReaderWriter.LocalLogWriter;
+import pack.iscsi.file.external.storage.LocalLogFileReaderWriter;
+import pack.iscsi.file.external.storage.LocalLogFileReaderWriter.LocalLogReader;
+import pack.iscsi.file.external.storage.LocalLogFileReaderWriter.LocalLogWriter;
 import pack.iscsi.io.IOUtils;
 
 public class LocalLogFileTest {

@@ -2,7 +2,7 @@ package pack.iscsi.volume.cache;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.iscsi.volume.BlockIOFactory;
+import pack.iscsi.spi.block.BlockIOFactory;
 
 @Value
 @Builder

@@ -4,11 +4,11 @@ import java.io.File;
 
 import org.junit.Before;
 
-import pack.iscsi.external.LocalBlockWriteAheadLog;
-import pack.iscsi.external.LocalExternalBlockStoreFactory;
+import pack.iscsi.file.external.storage.LocalBlockWriteAheadLog;
+import pack.iscsi.file.external.storage.LocalExternalBlockStoreFactory;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.volume.BlockIOFactory;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;
 
 public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTest {

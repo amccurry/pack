@@ -7,8 +7,10 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.iscsi.block.Block;
 import pack.iscsi.spi.MetricsFactory;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockKey;
 
 @Value
 @Builder

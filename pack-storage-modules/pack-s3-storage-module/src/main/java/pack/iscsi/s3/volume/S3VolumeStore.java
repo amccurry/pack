@@ -13,8 +13,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.util.S3Utils;
-import pack.iscsi.volume.VolumeMetadata;
-import pack.iscsi.volume.VolumeStore;
+import pack.iscsi.spi.volume.VolumeMetadata;
+import pack.iscsi.spi.volume.VolumeStore;
 
 public class S3VolumeStore implements VolumeStore {
 

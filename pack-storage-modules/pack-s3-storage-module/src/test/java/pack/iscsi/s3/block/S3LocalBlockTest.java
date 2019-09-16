@@ -11,7 +11,6 @@ import java.util.Random;
 import org.junit.Test;
 
 import consistent.s3.ConsistentAmazonS3;
-import pack.iscsi.block.Block;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
 import pack.iscsi.io.IOUtils;
@@ -20,12 +19,13 @@ import pack.iscsi.s3.TestProperties;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
+import pack.iscsi.spi.volume.VolumeMetadata;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
-import pack.iscsi.volume.BlockGenerationStore;
-import pack.iscsi.volume.VolumeMetadata;
 
 public class S3LocalBlockTest {
 

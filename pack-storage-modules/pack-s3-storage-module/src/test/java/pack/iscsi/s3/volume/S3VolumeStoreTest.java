@@ -13,9 +13,7 @@ import org.junit.Test;
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
-import pack.iscsi.s3.volume.S3VolumeStore;
-import pack.iscsi.s3.volume.S3VolumeStoreConfig;
-import pack.iscsi.volume.VolumeMetadata;
+import pack.iscsi.spi.volume.VolumeMetadata;
 
 public class S3VolumeStoreTest {
 

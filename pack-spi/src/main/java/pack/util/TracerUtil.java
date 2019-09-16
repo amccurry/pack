@@ -26,7 +26,6 @@ import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
 
-@SuppressWarnings("restriction")
 public class TracerUtil {
 
   private static final String GC_EVENT = "gc event";

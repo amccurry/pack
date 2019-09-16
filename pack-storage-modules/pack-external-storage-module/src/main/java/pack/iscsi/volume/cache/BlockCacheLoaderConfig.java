@@ -5,10 +5,10 @@ import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
 import lombok.Value;
+import pack.iscsi.spi.block.BlockGenerationStore;
+import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.volume.BlockGenerationStore;
-import pack.iscsi.volume.BlockIOFactory;
-import pack.iscsi.volume.VolumeStore;
 
 @Value
 @Builder

@@ -28,7 +28,7 @@ import pack.iscsi.bk.wal.BookKeeperWriteAheadLog;
 import pack.iscsi.bk.wal.BookKeeperWriteAheadLogConfig;
 import pack.iscsi.bk.wal.status.BookKeeperStatus;
 import pack.iscsi.bk.wal.status.BookKeeperStatus.BookKeeperStatusConfig;
-import pack.iscsi.external.LocalExternalBlockStoreFactory;
+import pack.iscsi.file.external.storage.LocalExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
 import pack.iscsi.s3.block.S3GenerationBlockStore;
@@ -37,11 +37,11 @@ import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
 import pack.iscsi.spi.Meter;
 import pack.iscsi.spi.MetricsFactory;
+import pack.iscsi.spi.block.BlockGenerationStore;
+import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.volume.BlockGenerationStore;
-import pack.iscsi.volume.BlockIOFactory;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
-import pack.iscsi.volume.VolumeStore;
 import spark.Service;
 
 public class IscsiConfigUtil {

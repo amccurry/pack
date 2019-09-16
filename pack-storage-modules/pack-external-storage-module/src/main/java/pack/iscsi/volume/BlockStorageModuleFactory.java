@@ -14,11 +14,16 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Weigher;
 
-import pack.iscsi.block.Block;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
+import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockKey;
+import pack.iscsi.spi.volume.VolumeMetadata;
+import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.BlockCacheLoader;

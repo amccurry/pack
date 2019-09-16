@@ -1,4 +1,4 @@
-package pack.iscsi.volume;
+package pack.iscsi.spi.block;
 
 import lombok.Builder;
 import lombok.EqualsAndHashCode;

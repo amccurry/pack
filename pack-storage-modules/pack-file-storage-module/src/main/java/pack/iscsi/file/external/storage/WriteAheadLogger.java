@@ -1,4 +1,4 @@
-package pack.iscsi.external;
+package pack.iscsi.file.external.storage;
 
 import java.io.Closeable;
 import java.io.IOException;

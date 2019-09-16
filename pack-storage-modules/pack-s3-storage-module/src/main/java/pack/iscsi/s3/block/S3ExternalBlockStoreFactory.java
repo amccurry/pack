@@ -8,7 +8,7 @@ import lombok.Value;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
 import pack.iscsi.spi.block.BlockIOExecutor;
-import pack.iscsi.volume.BlockIOFactory;
+import pack.iscsi.spi.block.BlockIOFactory;
 
 public class S3ExternalBlockStoreFactory implements BlockIOFactory {
 

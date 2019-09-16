@@ -1,6 +1,7 @@
 package org.jscsi.target.connection.phase;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.security.DigestException;
 
 import javax.naming.OperationNotSupportedException;
@@ -144,6 +145,10 @@ public final class TargetFullFeaturePhase extends TargetPhase {
             case REPORT_LUNS:
               stage = new ReportLunsStage(this);
               break;
+            case MAINT_PROTOCOL_IN:
+              stage = new MaintProtocolStage(this);
+              
+              break;
             default:
               scsiOpCode = null;
 
@@ -154,6 +159,13 @@ public final class TargetFullFeaturePhase extends TargetPhase {
                                .get(0)
                 & 255;
             if (opcode == 0xa3) {
+              ByteBuffer buffer = parser.getCDB();
+              // MPI_REPORT_SUPPORTED_OPCODES 0x0c
+              LOGGER.info("byte 1 {}", Integer.toHexString(buffer.get(1)));
+              LOGGER.info("byte 2 {}", Integer.toHexString(buffer.get(2)));
+              LOGGER.info("byte 3 {}", Integer.toHexString(buffer.get(3)));
+              LOGGER.info("byte 4 {}", Integer.toHexString(buffer.get(4)));
+
               LOGGER.debug("Unsupported SCSI OpCode 0x" + Integer.toHexString(opcode) + " in SCSI Command PDU.");
             } else {
               LOGGER.error("Unsupported SCSI OpCode 0x" + Integer.toHexString(opcode) + " in SCSI Command PDU.");

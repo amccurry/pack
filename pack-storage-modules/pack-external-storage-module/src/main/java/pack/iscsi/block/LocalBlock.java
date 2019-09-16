@@ -17,14 +17,15 @@ import org.slf4j.LoggerFactory;
 
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
+import pack.iscsi.spi.volume.VolumeMetadata;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
-import pack.iscsi.volume.BlockGenerationStore;
-import pack.iscsi.volume.VolumeMetadata;
 
 public class LocalBlock implements Closeable, Block {
 

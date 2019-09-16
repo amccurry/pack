@@ -21,10 +21,12 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import io.opencensus.common.Scope;
 import pack.iscsi.block.AlreadyClosedException;
-import pack.iscsi.block.Block;
 import pack.iscsi.spi.Meter;
 import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.StorageModule;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockKey;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 import pack.iscsi.util.Utils;
 import pack.util.TracerUtil;

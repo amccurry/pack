@@ -1,4 +1,4 @@
-package pack.iscsi.file.simple;
+package pack.iscsi.file.singlefile;
 
 import java.io.File;
 import java.io.IOException;

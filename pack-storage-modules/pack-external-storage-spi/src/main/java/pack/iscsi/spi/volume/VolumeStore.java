@@ -1,4 +1,4 @@
-package pack.iscsi.volume;
+package pack.iscsi.spi.volume;
 
 import java.io.Closeable;
 import java.io.IOException;

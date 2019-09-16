@@ -1,4 +1,4 @@
-package pack.iscsi.external;
+package pack.iscsi.file.external.storage;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -9,13 +9,13 @@ import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import pack.iscsi.block.Block;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockIOExecutor;
+import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
-import pack.iscsi.volume.BlockIOFactory;
 
 public class LocalExternalBlockStoreFactory implements BlockIOFactory {
 

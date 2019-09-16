@@ -13,16 +13,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.junit.Before;
 import org.junit.Test;
 
-import pack.iscsi.block.Block;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.StorageModule;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
+import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.volume.VolumeMetadata;
+import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.volume.BlockGenerationStore;
-import pack.iscsi.volume.BlockIOFactory;
 import pack.iscsi.volume.BlockStorageModuleFactory;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
-import pack.iscsi.volume.VolumeMetadata;
-import pack.iscsi.volume.VolumeStore;
 
 public abstract class BlockStorageModuleFactoryTest {
 

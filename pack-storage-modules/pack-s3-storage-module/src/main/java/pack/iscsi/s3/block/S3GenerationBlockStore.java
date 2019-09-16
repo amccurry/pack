@@ -17,10 +17,10 @@ import com.google.common.base.Splitter;
 import consistent.s3.ConsistentAmazonS3;
 import lombok.Builder;
 import lombok.Value;
-import pack.iscsi.block.Block;
 import pack.iscsi.s3.util.S3Utils;
-import pack.iscsi.volume.BlockGenerationStore;
-import pack.iscsi.volume.BlockKey;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
+import pack.iscsi.spi.block.BlockKey;
 
 public class S3GenerationBlockStore implements BlockGenerationStore {
   

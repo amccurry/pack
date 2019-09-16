@@ -15,6 +15,7 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 
+import pack.iscsi.file.external.storage.LocalWriteAheadLogger;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 
