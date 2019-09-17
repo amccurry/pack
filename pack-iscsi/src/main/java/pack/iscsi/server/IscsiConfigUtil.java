@@ -7,8 +7,6 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.bookkeeper.client.BookKeeper;
-import org.apache.bookkeeper.conf.ClientConfiguration;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
@@ -24,11 +22,7 @@ import com.google.common.collect.ImmutableList;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
-import pack.iscsi.bk.wal.BookKeeperWriteAheadLog;
-import pack.iscsi.bk.wal.BookKeeperWriteAheadLogConfig;
-import pack.iscsi.bk.wal.status.BookKeeperStatus;
-import pack.iscsi.bk.wal.status.BookKeeperStatus.BookKeeperStatusConfig;
-import pack.iscsi.file.external.storage.LocalExternalBlockStoreFactory;
+import pack.iscsi.file.block.storage.LocalExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
 import pack.iscsi.s3.block.S3GenerationBlockStore;
@@ -42,7 +36,6 @@ import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
-import spark.Service;
 
 public class IscsiConfigUtil {
 
@@ -84,7 +77,7 @@ public class IscsiConfigUtil {
 
   private static BlockStorageModuleFactoryConfig getConfig(Properties properties, File configFile) throws Exception {
     ConsistentAmazonS3 consistentAmazonS3 = getConsistentAmazonS3IfNeeded(properties, configFile);
-    Service service = getSparkServiceIfNeeded(properties, configFile);
+    // Service service = getSparkServiceIfNeeded(properties, configFile);
     MetricsFactory metricsFactory = getMetricsFactoryIfNeeded();
 
     File blockDataDir = new File(getPropertyNotNull(properties, BLOCK_CACHE_DIR, configFile));
@@ -92,7 +85,7 @@ public class IscsiConfigUtil {
 
     VolumeStore volumeStore = getVolumeStore(properties, configFile, consistentAmazonS3);
     BlockGenerationStore blockStore = getBlockStore(properties, configFile, consistentAmazonS3);
-    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile, consistentAmazonS3, service);
+    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile, consistentAmazonS3);
     BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3);
     return BlockStorageModuleFactoryConfig.builder()
                                           .volumeStore(volumeStore)
@@ -121,42 +114,52 @@ public class IscsiConfigUtil {
     };
   }
 
-  private static Service getSparkServiceIfNeeded(Properties properties, File configFile) {
-    return Service.ignite();
-  }
+  // private static Service getSparkServiceIfNeeded(Properties properties, File
+  // configFile) {
+  // return Service.ignite();
+  // }
 
   private static BlockWriteAheadLog getBlockWriteAheadLog(Properties properties, File configFile,
-      ConsistentAmazonS3 consistentAmazonS3, Service service) throws Exception {
-    return getBKBlockWriteAheadLog(properties, configFile, consistentAmazonS3, service);
+      ConsistentAmazonS3 consistentAmazonS3) throws Exception {
+    return getBKBlockWriteAheadLog(properties, configFile, consistentAmazonS3);
   }
 
   private static BlockWriteAheadLog getBKBlockWriteAheadLog(Properties properties, File configFile,
-      ConsistentAmazonS3 consistentAmazonS3, Service service) throws Exception {
-    int ensSize = getPropertyWithDefault(properties, BK_ENS_SIZE, configFile, 3);
-    int ackQuorumSize = getPropertyWithDefault(properties, BK_ACK_QUORUM_SIZE, configFile, 2);
-    int writeQuorumSize = getPropertyWithDefault(properties, BK_WRITE_QUORUM_SIZE, configFile, 2);
-    String metadataServiceUri = getPropertyNotNull(properties, BK_METADATA_SERVICE_URI, configFile);
-    ClientConfiguration conf = new ClientConfiguration().setMetadataServiceUri(metadataServiceUri);
-    BookKeeper bookKeeper = new BookKeeper(conf);
-    CuratorFramework curatorFramework = consistentAmazonS3.getCuratorFramework();
-    BookKeeperWriteAheadLogConfig config = BookKeeperWriteAheadLogConfig.builder()
-                                                                        .ackQuorumSize(ackQuorumSize)
-                                                                        .bookKeeper(bookKeeper)
-                                                                        .curatorFramework(curatorFramework)
-                                                                        .ensSize(ensSize)
-                                                                        .writeQuorumSize(writeQuorumSize)
-                                                                        .build();
-    BookKeeperWriteAheadLog bookKeeperWriteAheadLog = new BookKeeperWriteAheadLog(config);
-    if (service != null) {
-      BookKeeperStatus status = new BookKeeperStatus(BookKeeperStatusConfig.builder()
-                                                                           .bookKeeperWriteAheadLog(
-                                                                               bookKeeperWriteAheadLog)
-                                                                           .service(service)
-                                                                           .build());
-      status.setup();
-    }
+      ConsistentAmazonS3 consistentAmazonS3) throws Exception {
+    // int ensSize = getPropertyWithDefault(properties, BK_ENS_SIZE, configFile,
+    // 3);
+    // int ackQuorumSize = getPropertyWithDefault(properties,
+    // BK_ACK_QUORUM_SIZE, configFile, 2);
+    // int writeQuorumSize = getPropertyWithDefault(properties,
+    // BK_WRITE_QUORUM_SIZE, configFile, 2);
+    // String metadataServiceUri = getPropertyNotNull(properties,
+    // BK_METADATA_SERVICE_URI, configFile);
+    // ClientConfiguration conf = new
+    // ClientConfiguration().setMetadataServiceUri(metadataServiceUri);
+    // BookKeeper bookKeeper = new BookKeeper(conf);
+    // CuratorFramework curatorFramework =
+    // consistentAmazonS3.getCuratorFramework();
+    // BookKeeperWriteAheadLogConfig config =
+    // BookKeeperWriteAheadLogConfig.builder()
+    // .ackQuorumSize(ackQuorumSize)
+    // .bookKeeper(bookKeeper)
+    // .curatorFramework(curatorFramework)
+    // .ensSize(ensSize)
+    // .writeQuorumSize(writeQuorumSize)
+    // .build();
+    // BookKeeperWriteAheadLog bookKeeperWriteAheadLog = new
+    // BookKeeperWriteAheadLog(config);
+    // if (service != null) {
+    // BookKeeperStatus status = new
+    // BookKeeperStatus(BookKeeperStatusConfig.builder()
+    // .bookKeeperWriteAheadLog(
+    // bookKeeperWriteAheadLog)
+    // .service(service)
+    // .build());
+    // status.setup();
+    // }
 
-    return bookKeeperWriteAheadLog;
+    return null;
   }
 
   private static VolumeStore getVolumeStore(Properties properties, File configFile,

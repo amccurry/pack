@@ -10,6 +10,7 @@ import org.junit.Test;
 
 import pack.iscsi.bk.BKTestSetup;
 import pack.iscsi.io.FileIO;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 
 public class BookKeeperWriteAheadLogTest {
@@ -38,12 +39,14 @@ public class BookKeeperWriteAheadLogTest {
     try (BookKeeperWriteAheadLog wal = new BookKeeperWriteAheadLog(config)) {
       File file = File.createTempFile("bk.", ".test");
 
-      try (FileIO fileIO = FileIO.open(file, 4096, 100_000)) {
-        wal.recover(fileIO, volumeId, blockId, 0);
+      try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, 4096, "rw")) {
+        randomAccessIO.setLength(100_000);
+        wal.recover(randomAccessIO, volumeId, blockId, 0);
       }
-      try (FileIO fileIO = FileIO.open(file, 4096, file.length())) {
+      try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, 4096, "rw")) {
+        randomAccessIO.setLength(file.length());
         byte[] buffer = new byte[1];
-        fileIO.readFully(position, buffer);
+        randomAccessIO.readFully(position, buffer);
         assertEquals(1, buffer[1] & 0xff);
         wal.release(volumeId, blockId, generation);
       }

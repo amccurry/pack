@@ -33,12 +33,16 @@
 		<module>pack-iscsi</module>
 		<module>pack-jscsi</module>
 		<module>pack-util</module>
+		<module>pack-storage-modules/pack-block-storage-spi</module>
+		<module>pack-storage-modules/pack-block-storage-module</module>
+		<module>pack-storage-modules/pack-block-storage-test-suite</module>
 		<module>pack-storage-modules/pack-file-storage-module</module>
-		<module>pack-storage-modules/pack-s3-storage-module</module>
-		<module>pack-storage-modules/pack-external-storage-module</module>
-		<module>pack-storage-modules/pack-external-storage-spi</module>
+		<module>pack-storage-modules/pack-file-block-storage-module</module>
+		<module>pack-storage-modules/pack-s3-block-storage-module</module>
 		<module>pack-storage-modules/wal/pack-bookkeeper-wal</module>
 		<module>pack-storage-modules/wal/pack-bookkeeper-status</module>
+		<module>pack-storage-modules/wal/pack-local-wal</module>
+		<module>pack-storage-modules/wal/pack-remote-wal</module>
 	</modules>
 
 	<dependencyManagement>
@@ -70,22 +74,32 @@
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>pack-s3-storage-module</artifactId>
+				<artifactId>pack-file-block-storage-module</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>pack-external-storage-spi</artifactId>
+				<artifactId>pack-s3-block-storage-module</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>pack-external-storage-module</artifactId>
+				<artifactId>pack-block-storage-spi</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>pack-external-storage-module</artifactId>
+				<artifactId>pack-block-storage-module</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-block-storage-test-suite</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-block-storage-test-suite</artifactId>
 				<version>${project.version}</version>
 				<classifier>tests</classifier>
 				<type>test-jar</type>
@@ -106,6 +120,21 @@
 				<version>${project.version}</version>
 				<classifier>tests</classifier>
 				<type>test-jar</type>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-local-wal</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-remote-wal</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>org.apache.thrift</groupId>
+				<artifactId>libthrift</artifactId>
+				<version>0.12.0</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.bookkeeper</groupId>

@@ -8,24 +8,13 @@
 		<version>1.0-SNAPSHOT</version>
 		<relativePath>../../pom.xml</relativePath>
 	</parent>
-	<artifactId>pack-file-storage-module</artifactId>
+	<artifactId>pack-block-storage-test-suite</artifactId>
 	<packaging>jar</packaging>
 
 	<dependencies>
 		<dependency>
 			<groupId>pack</groupId>
-			<artifactId>pack-spi</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pack</groupId>
 			<artifactId>pack-block-storage-module</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pack</groupId>
-			<artifactId>pack-block-storage-test-suite</artifactId>
-			<classifier>tests</classifier>
-			<type>test-jar</type>
-			<scope>test</scope>
 		</dependency>
 	</dependencies>
 </project>
