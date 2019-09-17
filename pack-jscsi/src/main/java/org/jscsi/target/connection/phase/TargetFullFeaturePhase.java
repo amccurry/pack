@@ -145,10 +145,10 @@ public final class TargetFullFeaturePhase extends TargetPhase {
             case REPORT_LUNS:
               stage = new ReportLunsStage(this);
               break;
-            case MAINT_PROTOCOL_IN:
-              stage = new MaintProtocolStage(this);
-              
-              break;
+//            case MAINT_PROTOCOL_IN:
+//              stage = new MaintProtocolStage(this);
+//              
+//              break;
             default:
               scsiOpCode = null;
 
