@@ -3,6 +3,7 @@ package pack.iscsi.external;
 import java.io.File;
 
 import org.junit.Before;
+import org.junit.Test;
 
 import pack.iscsi.file.external.storage.LocalBlockWriteAheadLog;
 import pack.iscsi.file.external.storage.LocalExternalBlockStoreFactory;
@@ -34,4 +35,8 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
     return new LocalBlockWriteAheadLog(WAL_DATA_DIR);
   }
 
+  @Test
+  public void testBlockStorageModuleFactory() throws Exception {
+    super.testBlockStorageModuleFactory();
+  }
 }

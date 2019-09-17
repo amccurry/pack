@@ -82,7 +82,7 @@ public abstract class FileIO implements RandomAccessIO, Closeable {
       _readLock.lock();
       try {
         seekIfNeeded(position);
-        _draf.read(buffer, 0, length);
+        _draf.read(buffer, offset, length);
         _position.addAndGet(length);
       } finally {
         _readLock.unlock();
@@ -91,6 +91,7 @@ public abstract class FileIO implements RandomAccessIO, Closeable {
 
     private void seekIfNeeded(long position) throws IOException {
       if (_position.get() != position) {
+        _position.set(position);
         _draf.seek(position);
       }
     }

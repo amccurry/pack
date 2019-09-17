@@ -163,10 +163,23 @@ public abstract class BlockStorageModuleFactoryTest {
     byte[] buffer2 = new byte[9876];
     Random random = new Random(seed);
     for (long pos = 0; pos < length; pos += buffer1.length) {
+      
       random.nextBytes(buffer1);
+      
+
+      if (pos == 98760) {
+        System.out.println();
+      }
+      
       storageModule.write(buffer1, pos);
       storageModule.read(buffer2, pos);
-      assertTrue("pos " + pos, Arrays.equals(buffer1, buffer2));
+      
+
+      for (int i = 0; i < buffer1.length; i++) {
+        assertEquals("pos=" + pos + " i=" + i, buffer1[i], buffer2[i]);
+      }
+
+      assertTrue("pos=" + pos, Arrays.equals(buffer1, buffer2));
     }
   }
 
