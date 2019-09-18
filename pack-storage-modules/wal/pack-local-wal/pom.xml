@@ -6,7 +6,7 @@
 		<groupId>pack</groupId>
 		<artifactId>pack</artifactId>
 		<version>1.0-SNAPSHOT</version>
-		<relativePath>../../pom.xml</relativePath>
+		<relativePath>../../../pom.xml</relativePath>
 	</parent>
 	<artifactId>pack-local-wal</artifactId>
 	<packaging>jar</packaging>
