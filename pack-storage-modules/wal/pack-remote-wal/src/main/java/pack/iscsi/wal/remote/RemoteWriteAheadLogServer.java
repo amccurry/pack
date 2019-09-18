@@ -3,37 +3,52 @@ package pack.iscsi.wal.remote;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.curator.RetryPolicy;
+import org.apache.curator.framework.CuratorFramework;
+import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.RetryForever;
 import org.apache.thrift.TException;
+import org.apache.thrift.TProcessor;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.server.TServer;
 import org.apache.thrift.server.TThreadPoolServer;
 import org.apache.thrift.server.TThreadPoolServer.Args;
 import org.apache.thrift.transport.TServerSocket;
-import org.apache.thrift.transport.TServerTransport;
+import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
+import pack.iscsi.spi.wal.BlockJournalRange;
+import pack.iscsi.spi.wal.BlockJournalResult;
+import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.wal.local.LocalBlockWriteAheadLog;
 import pack.iscsi.wal.local.LocalBlockWriteAheadLog.LocalBlockWriteAheadLogConfig;
-import pack.iscsi.wal.remote.generated.MaxGenerationRequest;
-import pack.iscsi.wal.remote.generated.MaxGenerationResponse;
+import pack.iscsi.wal.remote.curator.CuratorUtil;
+import pack.iscsi.wal.remote.generated.FetchJournalEntriesRequest;
+import pack.iscsi.wal.remote.generated.FetchJournalEntriesResponse;
+import pack.iscsi.wal.remote.generated.JournalEntry;
+import pack.iscsi.wal.remote.generated.JournalRange;
+import pack.iscsi.wal.remote.generated.JournalRangeRequest;
+import pack.iscsi.wal.remote.generated.JournalRangeResponse;
 import pack.iscsi.wal.remote.generated.PackException;
 import pack.iscsi.wal.remote.generated.PackWalService;
 import pack.iscsi.wal.remote.generated.PackWalService.Processor;
-import pack.iscsi.wal.remote.generated.RecoverRequest;
-import pack.iscsi.wal.remote.generated.RecoverResponse;
 import pack.iscsi.wal.remote.generated.ReleaseRequest;
 import pack.iscsi.wal.remote.generated.WriteRequest;
 
 public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Iface {
 
+  private static final String SERVER = "server";
   private static final Logger LOGGER = LoggerFactory.getLogger(RemoteWriteAheadLogServer.class);
 
   @Value
@@ -49,31 +64,60 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
     @Builder.Default
     int clientTimeout = (int) TimeUnit.SECONDS.toMillis(10);
 
+    @Builder.Default
+    int maxEntryPayload = 1024 * 1024;
+
     File walLogDir;
+
+    CuratorFramework curatorFramework;
+
+    String zkPrefix;
 
   }
 
   public static void main(String[] args) throws Exception {
-    File walLogDir = new File("./wal");
-    IOUtils.rmr(walLogDir);
+    String zkConnection = args[0];
+    String zkPrefix = args[1];
+    File walLogDir = new File(args[2]);
+    RetryPolicy retryPolicy = new RetryForever((int) TimeUnit.SECONDS.toMillis(10));
+    CuratorFramework curatorFramework = CuratorFrameworkFactory.newClient(zkConnection, retryPolicy);
+    curatorFramework.getUnhandledErrorListenable()
+                    .addListener((message, e) -> {
+                      LOGGER.error("Unknown error " + message, e);
+                    });
+    curatorFramework.getConnectionStateListenable()
+                    .addListener((c, newState) -> {
+                      LOGGER.info("Connection state {}", newState);
+                    });
+    curatorFramework.start();
     RemoteWriteAheadLogServerConfig config = RemoteWriteAheadLogServerConfig.builder()
                                                                             .walLogDir(walLogDir)
+                                                                            .curatorFramework(curatorFramework)
+                                                                            .zkPrefix(zkPrefix)
+                                                                            .port(0)
                                                                             .build();
     try (RemoteWriteAheadLogServer server = new RemoteWriteAheadLogServer(config)) {
       LOGGER.info("Starting server");
-      server.start();
+      server.start(true);
     }
   }
 
   private final TServer _server;
   private final LocalBlockWriteAheadLog _log;
+  private final int _maxEntryPayload;
+  private final CuratorFramework _curatorFramework;
+  private final TServerSocket _serverTransport;
+  private final String _zkPrefix;
 
   public RemoteWriteAheadLogServer(RemoteWriteAheadLogServerConfig config) throws Exception {
+    _zkPrefix = config.getZkPrefix();
+    _maxEntryPayload = config.getMaxEntryPayload();
+    _curatorFramework = config.getCuratorFramework();
     InetSocketAddress bindAddr = new InetSocketAddress(config.getAddress(), config.getPort());
-    TServerTransport serverTransport = new TServerSocket(bindAddr, config.getClientTimeout());
+    _serverTransport = new TServerSocket(bindAddr, config.getClientTimeout());
     Processor<RemoteWriteAheadLogServer> processor = new PackWalService.Processor<>(this);
-    Args args = new TThreadPoolServer.Args(serverTransport).processor(processor)
-                                                           .protocolFactory(new TBinaryProtocol.Factory());
+    Args args = new TThreadPoolServer.Args(_serverTransport).processor(handleClosedConnections(processor))
+                                                            .protocolFactory(new TBinaryProtocol.Factory());
     _server = new TThreadPoolServer(args);
     _log = new LocalBlockWriteAheadLog(LocalBlockWriteAheadLogConfig.builder()
                                                                     .walLogDir(config.getWalLogDir())
@@ -85,8 +129,40 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
     IOUtils.close(LOGGER, () -> _server.stop());
   }
 
-  public void start() {
-    _server.serve();
+  public void start(boolean blocking) throws Exception {
+    Thread thread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        _server.serve();
+      }
+    });
+    thread.setName(SERVER);
+    thread.setDaemon(true);
+    thread.start();
+
+    while (!_server.isServing()) {
+      Thread.sleep(TimeUnit.SECONDS.toMillis(1));
+    }
+    LOGGER.info("Listening on {} port {}", getBindInetAddress(), getBindPort());
+    CuratorUtil.registerServer(_curatorFramework, _zkPrefix, getBindInetAddress(), getBindPort());
+    if (blocking) {
+      thread.join();
+    }
+  }
+
+  public InetAddress getBindInetAddress() {
+    return _serverTransport.getServerSocket()
+                           .getInetAddress();
+  }
+
+  public int getBindPort() {
+    return _serverTransport.getServerSocket()
+                           .getLocalPort();
+  }
+
+  public void stop() throws Exception {
+    CuratorUtil.removeRegistration(_curatorFramework, _zkPrefix, getBindInetAddress(), getBindPort());
+    _server.stop();
   }
 
   @Override
@@ -97,7 +173,7 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
     long position = writeRequest.getPosition();
     byte[] data = writeRequest.getData();
     try {
-      BlockWriteAheadLogResult result = _log.write(volumeId, blockId, generation, position, data);
+      BlockJournalResult result = _log.write(volumeId, blockId, generation, position, data);
       result.get();
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
@@ -106,13 +182,13 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
   }
 
   @Override
-  public void release(ReleaseRequest releaseRequest) throws PackException, TException {
+  public void releaseJournals(ReleaseRequest releaseRequest) throws PackException, TException {
     long volumeId = releaseRequest.getVolumeId();
     long blockId = releaseRequest.getBlockId();
     long generation = releaseRequest.getGeneration();
     try {
-      LOGGER.info("release volumeId {} blockId {} generation {}", volumeId, blockId, generation);
-      _log.release(volumeId, blockId, generation);
+      LOGGER.info("releaseJournals volumeId {} blockId {} generation {}", volumeId, blockId, generation);
+      _log.releaseJournals(volumeId, blockId, generation);
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
       throw new PackException(e.getMessage());
@@ -120,13 +196,21 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
   }
 
   @Override
-  public MaxGenerationResponse maxGeneration(MaxGenerationRequest maxGenerationRequest)
-      throws PackException, TException {
-    long volumeId = maxGenerationRequest.getVolumeId();
-    long blockId = maxGenerationRequest.getBlockId();
+  public JournalRangeResponse journalRanges(JournalRangeRequest journalRangeRequest) throws PackException, TException {
+    long volumeId = journalRangeRequest.getVolumeId();
+    long blockId = journalRangeRequest.getBlockId();
+    long onDiskGeneration = journalRangeRequest.getOnDiskGeneration();
+    boolean closeExistingWriter = journalRangeRequest.isCloseExistingWriter();
     try {
-      long generation = _log.getMaxGeneration(volumeId, blockId);
-      return new MaxGenerationResponse(generation);
+      LOGGER.info("journalRanges volumeId {} blockId {} onDiskGeneration {} closeExistingWriter{}", volumeId, blockId,
+          onDiskGeneration, closeExistingWriter);
+      List<BlockJournalRange> journalRanges = _log.getJournalRanges(volumeId, blockId, onDiskGeneration,
+          closeExistingWriter);
+      List<JournalRange> journalRangeList = new ArrayList<>();
+      for (BlockJournalRange blockJournalRange : journalRanges) {
+        journalRangeList.add(toJournalRange(blockJournalRange));
+      }
+      return new JournalRangeResponse(journalRangeList);
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
       throw new PackException(e.getMessage());
@@ -134,7 +218,93 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
   }
 
   @Override
-  public RecoverResponse recover(RecoverRequest recoverRequest) throws PackException, TException {
-    throw new RuntimeException("not impl");
+  public FetchJournalEntriesResponse fetchJournalEntries(FetchJournalEntriesRequest fetchJournalEntriesRequest)
+      throws PackException, TException {
+    long volumeId = fetchJournalEntriesRequest.getVolumeId();
+    long blockId = fetchJournalEntriesRequest.getBlockId();
+    String uuid = fetchJournalEntriesRequest.getUuid();
+    long maxGeneration = fetchJournalEntriesRequest.getMaxGeneration();
+    long minGeneration = fetchJournalEntriesRequest.getMinGeneration();
+    long onDiskGeneration = fetchJournalEntriesRequest.getOnDiskGeneration();
+    BlockJournalRange range = BlockJournalRange.builder()
+                                               .blockId(blockId)
+                                               .maxGeneration(maxGeneration)
+                                               .minGeneration(minGeneration)
+                                               .uuid(uuid)
+                                               .volumeId(volumeId)
+                                               .build();
+
+    PartialBlockRecoveryWriter writer = new PartialBlockRecoveryWriter(_maxEntryPayload);
+    try {
+      _log.recoverFromJournal(writer, range, onDiskGeneration);
+      return new FetchJournalEntriesResponse(volumeId, blockId, writer.isJournalExhausted(), writer.getEntries());
+    } catch (Exception e) {
+      LOGGER.error("Unknown error", e);
+      throw new PackException(e.getMessage());
+    }
+  }
+
+  private JournalRange toJournalRange(BlockJournalRange blockJournalRange) {
+    return new JournalRange(blockJournalRange.getVolumeId(), blockJournalRange.getBlockId(),
+        blockJournalRange.getUuid(), blockJournalRange.getMinGeneration(), blockJournalRange.getMaxGeneration());
+  }
+
+  static class PartialBlockRecoveryWriter implements BlockRecoveryWriter {
+    private int _size;
+    private boolean _journalExhausted = true;
+    private List<JournalEntry> _entries = new ArrayList<>();
+    private final int _maxEntryPayload;
+
+    PartialBlockRecoveryWriter(int maxEntryPayload) {
+      _maxEntryPayload = maxEntryPayload;
+    }
+
+    @Override
+    public boolean writeEntry(long generation, long position, byte[] buffer, int offset, int length)
+        throws IOException {
+      _size += length;
+      if (isTooLarge(_size)) {
+        _journalExhausted = false;
+        return false;
+      }
+      _entries.add(new JournalEntry(generation, position, ByteBuffer.wrap(buffer, offset, length)));
+      return true;
+    }
+
+    private boolean isTooLarge(int entryPayload) {
+      return entryPayload >= _maxEntryPayload;
+    }
+
+    boolean isJournalExhausted() {
+      return _journalExhausted;
+    }
+
+    List<JournalEntry> getEntries() {
+      return _entries;
+    }
+  }
+
+  private TProcessor handleClosedConnections(Processor<RemoteWriteAheadLogServer> processor) {
+    return (in, out) -> {
+      try {
+        return processor.process(in, out);
+      } catch (TTransportException e) {
+        switch (e.getType()) {
+        case TTransportException.END_OF_FILE:
+          LOGGER.info("Client closed connection");
+          return false;
+        case TTransportException.UNKNOWN:
+          LOGGER.info("Client connection terminated, possible timeout");
+          return false;
+        default:
+          throw e;
+        }
+      }
+    };
+  }
+
+  @Override
+  public void ping() throws PackException, TException {
+
   }
 }

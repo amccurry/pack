@@ -19,6 +19,8 @@ import pack.iscsi.spi.volume.VolumeMetadata;
 import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
+import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery;
+import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery.BlockWriteAheadLogRecoveryConfig;
 import pack.util.TracerUtil;
 
 public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
@@ -73,7 +75,11 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
       try (Scope externalRead = TracerUtil.trace("block recover")) {
         Utils.runUntilSuccess(LOGGER, () -> {
           // recover if needed
-          localBlock.execIO(_writeAheadLog.getWriteAheadLogReader());
+          BlockWriteAheadLogRecovery recovery = new BlockWriteAheadLogRecovery(
+              BlockWriteAheadLogRecoveryConfig.builder()
+                                              .blockWriteAheadLog(_writeAheadLog)
+                                              .build());
+          localBlock.execIO(recovery);
           return null;
         });
       }

@@ -26,7 +26,7 @@ import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.volume.VolumeMetadata;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
+import pack.iscsi.spi.wal.BlockJournalResult;
 
 public class LocalBlock implements Closeable, Block {
 
@@ -109,7 +109,7 @@ public class LocalBlock implements Closeable, Block {
   }
 
   @Override
-  public BlockWriteAheadLogResult writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
+  public BlockJournalResult writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
     _writeLock.lock();
     checkIfClosed();
     checkState();
@@ -119,7 +119,7 @@ public class LocalBlock implements Closeable, Block {
       _lastWrite.set(System.nanoTime());
       markDirty();
       long generation = _onDiskGeneration.incrementAndGet();
-      BlockWriteAheadLogResult result = _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
+      BlockJournalResult result = _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
       writeMetadata();
       _randomAccessIO.writeFully(blockPosition, bytes, offset, len);
       return result;
@@ -154,7 +154,7 @@ public class LocalBlock implements Closeable, Block {
       _onDiskGeneration.set(response.getOnDiskGeneration());
       _lastStoredGeneration.set(response.getLastStoredGeneration());
       _blockStore.setLastStoreGeneration(_volumeId, _blockId, response.getLastStoredGeneration());
-      _wal.release(_volumeId, _blockId, response.getLastStoredGeneration());
+      _wal.releaseJournals(_volumeId, _blockId, response.getLastStoredGeneration());
       writeMetadata();
     } finally {
       _writeLock.unlock();

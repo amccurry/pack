@@ -36,15 +36,15 @@ import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
+import pack.iscsi.wal.remote.RemoteWriteAheadLogClient;
+import pack.iscsi.wal.remote.RemoteWriteAheadLogClient.RemoteWriteAheadLogClientConfig;
 
 public class IscsiConfigUtil {
 
+  private static final String WAL_ZK_PREFIX = "wal.zk.prefix";
+
   private static final Logger LOGGER = LoggerFactory.getLogger(IscsiConfigUtil.class);
 
-  private static final String BK_ENS_SIZE = "bk.ens.size";
-  private static final String BK_ACK_QUORUM_SIZE = "bk.ack.quorum.size";
-  private static final String BK_WRITE_QUORUM_SIZE = "bk.write.quorum.size";
-  private static final String BK_METADATA_SERVICE_URI = "bk.metadata.service.uri";
   private static final String EXTERNAL_BLOCK_LOCAL_DIR = "external.block.local.dir";
   private static final String EXTERNAL_BLOCK_TYPE = "external.block.type";
   private static final String BLOCK_CACHE_SIZE_IN_BYTES = "block.cache.size.in.bytes";
@@ -85,7 +85,8 @@ public class IscsiConfigUtil {
 
     VolumeStore volumeStore = getVolumeStore(properties, configFile, consistentAmazonS3);
     BlockGenerationStore blockStore = getBlockStore(properties, configFile, consistentAmazonS3);
-    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile, consistentAmazonS3);
+    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile,
+        consistentAmazonS3.getCuratorFramework());
     BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3);
     return BlockStorageModuleFactoryConfig.builder()
                                           .volumeStore(volumeStore)
@@ -120,46 +121,19 @@ public class IscsiConfigUtil {
   // }
 
   private static BlockWriteAheadLog getBlockWriteAheadLog(Properties properties, File configFile,
-      ConsistentAmazonS3 consistentAmazonS3) throws Exception {
-    return getBKBlockWriteAheadLog(properties, configFile, consistentAmazonS3);
+      CuratorFramework curatorFramework) throws Exception {
+    return getRemoteBlockWriteAheadLog(properties, configFile, curatorFramework);
   }
 
-  private static BlockWriteAheadLog getBKBlockWriteAheadLog(Properties properties, File configFile,
-      ConsistentAmazonS3 consistentAmazonS3) throws Exception {
-    // int ensSize = getPropertyWithDefault(properties, BK_ENS_SIZE, configFile,
-    // 3);
-    // int ackQuorumSize = getPropertyWithDefault(properties,
-    // BK_ACK_QUORUM_SIZE, configFile, 2);
-    // int writeQuorumSize = getPropertyWithDefault(properties,
-    // BK_WRITE_QUORUM_SIZE, configFile, 2);
-    // String metadataServiceUri = getPropertyNotNull(properties,
-    // BK_METADATA_SERVICE_URI, configFile);
-    // ClientConfiguration conf = new
-    // ClientConfiguration().setMetadataServiceUri(metadataServiceUri);
-    // BookKeeper bookKeeper = new BookKeeper(conf);
-    // CuratorFramework curatorFramework =
-    // consistentAmazonS3.getCuratorFramework();
-    // BookKeeperWriteAheadLogConfig config =
-    // BookKeeperWriteAheadLogConfig.builder()
-    // .ackQuorumSize(ackQuorumSize)
-    // .bookKeeper(bookKeeper)
-    // .curatorFramework(curatorFramework)
-    // .ensSize(ensSize)
-    // .writeQuorumSize(writeQuorumSize)
-    // .build();
-    // BookKeeperWriteAheadLog bookKeeperWriteAheadLog = new
-    // BookKeeperWriteAheadLog(config);
-    // if (service != null) {
-    // BookKeeperStatus status = new
-    // BookKeeperStatus(BookKeeperStatusConfig.builder()
-    // .bookKeeperWriteAheadLog(
-    // bookKeeperWriteAheadLog)
-    // .service(service)
-    // .build());
-    // status.setup();
-    // }
-
-    return null;
+  private static BlockWriteAheadLog getRemoteBlockWriteAheadLog(Properties properties, File configFile,
+      CuratorFramework curatorFramework) throws Exception {
+    String zkPrefix = getPropertyNotNull(properties, WAL_ZK_PREFIX, configFile);
+    RemoteWriteAheadLogClientConfig config = RemoteWriteAheadLogClientConfig.builder()
+                                                                            .curatorFramework(curatorFramework)
+                                                                            .zkPrefix(zkPrefix)
+                                                                            .timeout(TimeUnit.MINUTES.toMillis(10))
+                                                                            .build();
+    return new RemoteWriteAheadLogClient(config);
   }
 
   private static VolumeStore getVolumeStore(Properties properties, File configFile,
@@ -204,7 +178,6 @@ public class IscsiConfigUtil {
     if (zkConnection == null) {
       return null;
     }
-
     RetryPolicy retryPolicy = new RetryForever((int) TimeUnit.SECONDS.toMillis(10));
     CuratorFramework curatorFramework = CuratorFrameworkFactory.newClient(zkConnection, retryPolicy);
     curatorFramework.getUnhandledErrorListenable()

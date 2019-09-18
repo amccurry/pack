@@ -7,7 +7,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
+import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.wal.local.LocalBlockWriteAheadLog.LocalBlockWriteAheadLogConfig;
 
 public class LocalBlockWriteAheadLogTest {
@@ -26,9 +26,9 @@ public class LocalBlockWriteAheadLogTest {
                                                                         .walLogDir(DIR)
                                                                         .build();
     try (LocalBlockWriteAheadLog log = new LocalBlockWriteAheadLog(config)) {
-      BlockWriteAheadLogResult result = log.write(0, 0, 1, 0, new byte[1000]);
+      BlockJournalResult result = log.write(0, 0, 1, 0, new byte[1000]);
       result.get();
-      log.release(0, 0, 1);
+      log.releaseJournals(0, 0, 1);
     }
   }
 

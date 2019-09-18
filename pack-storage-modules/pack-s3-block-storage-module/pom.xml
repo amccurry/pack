@@ -25,6 +25,10 @@
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
+			<artifactId>pack-util</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
 			<artifactId>pack-block-storage-spi</artifactId>
 		</dependency>
 		<dependency>

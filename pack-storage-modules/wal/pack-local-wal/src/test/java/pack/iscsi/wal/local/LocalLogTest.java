@@ -9,6 +9,7 @@ import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 import java.util.UUID;
 
@@ -18,7 +19,8 @@ import org.junit.Test;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
-import pack.iscsi.wal.local.LocalWriteAheadLogger;
+import pack.iscsi.spi.wal.BlockJournalRange;
+import pack.iscsi.wal.local.LocalJournal;
 
 public class LocalLogTest {
 
@@ -52,7 +54,7 @@ public class LocalLogTest {
       Random random = new Random(seed);
       FileChannel channel = raf.getChannel();
       byte[] buffer = new byte[bufferSize];
-      try (LocalWriteAheadLogger log = new LocalWriteAheadLogger(DIR, 0, 0)) {
+      try (LocalJournal log = new LocalJournal(DIR, 0, 0)) {
         long generation = 1;
         for (int i = 0; i < passes; i++) {
           int position = random.nextInt(length - bufferSize);
@@ -68,9 +70,13 @@ public class LocalLogTest {
 
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(recover, 4096, "rw")) {
       randomAccessIO.setLength(length);
-      try (LocalWriteAheadLogger log = new LocalWriteAheadLogger(DIR, 0, 0)) {
+      try (LocalJournal log = new LocalJournal(DIR, 0, 0)) {
         long generation = 0;
-        long recoveredGeneration = log.recover(randomAccessIO, generation);
+        List<BlockJournalRange> journalRanges = log.getJournalRanges(generation, true);
+        assertEquals(1, journalRanges.size());
+        long recoveredGeneration = log.recover(journalRanges.get(0)
+                                                            .getUuid(),
+            randomAccessIO, generation);
         assertEquals(passes, recoveredGeneration);
       }
     }

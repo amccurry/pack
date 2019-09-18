@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Random;
 
 import org.junit.Test;
@@ -18,14 +19,15 @@ import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.TestProperties;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
-import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.volume.VolumeMetadata;
+import pack.iscsi.spi.wal.BlockJournalRange;
+import pack.iscsi.spi.wal.BlockJournalResult;
+import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
 
 public class S3LocalBlockTest {
 
@@ -100,7 +102,7 @@ public class S3LocalBlockTest {
     return new BlockWriteAheadLog() {
 
       @Override
-      public BlockWriteAheadLogResult write(long volumeId, long blockId, long generation, long position, byte[] bytes,
+      public BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes,
           int offset, int len) throws IOException {
         return () -> {
 
@@ -108,12 +110,18 @@ public class S3LocalBlockTest {
       }
 
       @Override
-      public void release(long volumeId, long blockId, long generation) throws IOException {
+      public void releaseJournals(long volumeId, long blockId, long generation) throws IOException {
 
       }
 
       @Override
-      public long recover(RandomAccessIO randomAccessIO, long volumeId, long blockId, long onDiskGeneration)
+      public List<BlockJournalRange> getJournalRanges(long volumeId, long blockId, long onDiskGeneration,
+          boolean closeExistingWriter) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public long recoverFromJournal(BlockRecoveryWriter writer, BlockJournalRange range, long onDiskGeneration)
           throws IOException {
         throw new RuntimeException("not impl");
       }

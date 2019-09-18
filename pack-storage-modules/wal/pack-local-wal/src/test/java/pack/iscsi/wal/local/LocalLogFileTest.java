@@ -16,10 +16,10 @@ import org.junit.Before;
 import org.junit.Test;
 
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.wal.local.LocalLogReader;
-import pack.iscsi.wal.local.LocalLogReader.LocalLogReaderConfig;
-import pack.iscsi.wal.local.LocalLogWriter;
-import pack.iscsi.wal.local.LocalLogWriter.LocalLogWriterConfig;
+import pack.iscsi.wal.local.LocalJournalReader;
+import pack.iscsi.wal.local.LocalJournalReader.LocalLogReaderConfig;
+import pack.iscsi.wal.local.LocalJournalWriter;
+import pack.iscsi.wal.local.LocalJournalWriter.LocalLogWriterConfig;
 
 public class LocalLogFileTest {
 
@@ -34,7 +34,7 @@ public class LocalLogFileTest {
   @Test
   public void testLocalLogFileSingleEntry() throws IOException {
     byte[] bytes = new byte[] { 1, 2, 3 };
-    try (LocalLogWriter writer = new LocalLogWriter(LocalLogWriterConfig.builder()
+    try (LocalJournalWriter writer = new LocalJournalWriter(LocalLogWriterConfig.builder()
                                                                         .blockLogDir(DIR)
                                                                         .build())) {
       assertEquals(-1L, writer.getLastGeneration());
@@ -44,7 +44,7 @@ public class LocalLogFileTest {
 
     File[] files = DIR.listFiles();
     for (File file : files) {
-      try (LocalLogReader reader = new LocalLogReader(LocalLogReaderConfig.builder()
+      try (LocalJournalReader reader = new LocalJournalReader(LocalLogReaderConfig.builder()
                                                                           .blockLogFile(file)
                                                                           .build())) {
         assertEquals(1234, reader.getMinGeneration());
@@ -67,7 +67,7 @@ public class LocalLogFileTest {
   @Test
   public void testLocalLogFileMultipleEntry() throws IOException {
     byte[] bytes = new byte[] { 1, 2, 3 };
-    try (LocalLogWriter writer = new LocalLogWriter(LocalLogWriterConfig.builder()
+    try (LocalJournalWriter writer = new LocalJournalWriter(LocalLogWriterConfig.builder()
                                                                         .blockLogDir(DIR)
                                                                         .build())) {
       assertEquals(-1L, writer.getLastGeneration());
@@ -79,7 +79,7 @@ public class LocalLogFileTest {
 
     File[] files = DIR.listFiles();
     for (File file : files) {
-      try (LocalLogReader reader = new LocalLogReader(LocalLogReaderConfig.builder()
+      try (LocalJournalReader reader = new LocalJournalReader(LocalLogReaderConfig.builder()
                                                                           .blockLogFile(file)
                                                                           .build())) {
         assertEquals(1234, reader.getMinGeneration());
@@ -114,7 +114,7 @@ public class LocalLogFileTest {
     long gen = 0;
     int passes = 50;
     for (int i = 0; i < passes; i++) {
-      try (LocalLogWriter writer = new LocalLogWriter(LocalLogWriterConfig.builder()
+      try (LocalJournalWriter writer = new LocalJournalWriter(LocalLogWriterConfig.builder()
                                                                           .blockLogDir(DIR)
                                                                           .build())) {
         writer.append(gen++, 12345, bytes, 0, bytes.length);
@@ -122,9 +122,9 @@ public class LocalLogFileTest {
     }
 
     File[] files = DIR.listFiles();
-    List<LocalLogReader> readers = new ArrayList<>();
+    List<LocalJournalReader> readers = new ArrayList<>();
     for (File file : files) {
-      readers.add(new LocalLogReader(LocalLogReaderConfig.builder()
+      readers.add(new LocalJournalReader(LocalLogReaderConfig.builder()
                                                          .blockLogFile(file)
                                                          .build()));
     }
@@ -132,7 +132,7 @@ public class LocalLogFileTest {
     Collections.sort(readers);
 
     for (int i = 0; i < passes; i++) {
-      LocalLogReader reader = readers.get(i);
+      LocalJournalReader reader = readers.get(i);
       assertEquals(i, reader.getMinGeneration());
     }
   }

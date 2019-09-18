@@ -27,7 +27,7 @@ import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockKey;
-import pack.iscsi.spi.wal.BlockWriteAheadLogResult;
+import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.util.Utils;
 import pack.util.TracerUtil;
 
@@ -99,7 +99,7 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
-  private List<BlockWriteAheadLogResult> _results = new ArrayList<>();
+  private List<BlockJournalResult> _results = new ArrayList<>();
   private final AtomicLong _writesCount = new AtomicLong();
 
   @Override
@@ -138,7 +138,7 @@ public class BlockStorageModule implements StorageModule {
     long writeCount = _writesCount.getAndSet(0);
     long start = System.nanoTime();
     try (Scope writeScope = TracerUtil.trace("flushWrites")) {
-      for (BlockWriteAheadLogResult result : _results) {
+      for (BlockJournalResult result : _results) {
         result.get();
       }
       _results.clear();
@@ -147,7 +147,7 @@ public class BlockStorageModule implements StorageModule {
     LOGGER.info("flushWrites {} {} in {} ms", size, writeCount, (end - start) / 1_000_000.0);
   }
 
-  private void trackResult(BlockWriteAheadLogResult result) {
+  private void trackResult(BlockJournalResult result) {
     _results.add(result);
   }
 

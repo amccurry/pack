@@ -39,8 +39,6 @@
 		<module>pack-storage-modules/pack-file-storage-module</module>
 		<module>pack-storage-modules/pack-file-block-storage-module</module>
 		<module>pack-storage-modules/pack-s3-block-storage-module</module>
-		<module>pack-storage-modules/wal/pack-bookkeeper-wal</module>
-		<module>pack-storage-modules/wal/pack-bookkeeper-status</module>
 		<module>pack-storage-modules/wal/pack-local-wal</module>
 		<module>pack-storage-modules/wal/pack-remote-wal</module>
 	</modules>
@@ -106,23 +104,6 @@
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
-				<artifactId>pack-bookkeeper-wal</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>pack</groupId>
-				<artifactId>pack-bookkeeper-status</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>pack</groupId>
-				<artifactId>pack-bookkeeper-wal</artifactId>
-				<version>${project.version}</version>
-				<classifier>tests</classifier>
-				<type>test-jar</type>
-			</dependency>
-			<dependency>
-				<groupId>pack</groupId>
 				<artifactId>pack-local-wal</artifactId>
 				<version>${project.version}</version>
 			</dependency>
@@ -135,11 +116,6 @@
 				<groupId>org.apache.thrift</groupId>
 				<artifactId>libthrift</artifactId>
 				<version>0.12.0</version>
-			</dependency>
-			<dependency>
-				<groupId>org.apache.bookkeeper</groupId>
-				<artifactId>bookkeeper-server</artifactId>
-				<version>4.9.0</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.curator</groupId>
