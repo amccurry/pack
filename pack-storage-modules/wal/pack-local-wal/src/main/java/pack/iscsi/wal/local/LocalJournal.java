@@ -79,8 +79,10 @@ public class LocalJournal implements Closeable {
     _writeLock.lock();
     LOGGER.info("getJournalRanges volumeId {} blockId {}", _volumeId, _blockId);
     try {
-      IOUtils.close(LOGGER, _writer.get());
-      _writer.set(null);
+      if (closeExistingWriter) {
+        IOUtils.close(LOGGER, _writer.get());
+        _writer.set(null);
+      }
       List<LocalJournalReader> readers = getLocalLogReaders();
       try {
         List<BlockJournalRange> result = new ArrayList<>();

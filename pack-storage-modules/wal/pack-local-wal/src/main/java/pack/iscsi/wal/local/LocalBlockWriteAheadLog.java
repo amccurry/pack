@@ -67,30 +67,38 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
   public BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset,
       int len) throws IOException {
     LocalJournal journal = getJournal(volumeId, blockId);
-    return () -> journal.append(generation, position, bytes, offset, len);
+    synchronized (journal) {
+      return () -> journal.append(generation, position, bytes, offset, len);
+    }
   }
 
   @Override
   public void releaseJournals(long volumeId, long blockId, long generation) throws IOException {
     LocalJournal journal = getJournal(volumeId, blockId);
-    journal.release(generation);
+    synchronized (journal) {
+      journal.release(generation);
+    }
   }
 
   @Override
   public List<BlockJournalRange> getJournalRanges(long volumeId, long blockId, long onDiskGeneration,
       boolean closeExistingWriter) throws IOException {
-    LocalJournal log = getJournal(volumeId, blockId);
-    return log.getJournalRanges(onDiskGeneration, closeExistingWriter);
+    LocalJournal journal = getJournal(volumeId, blockId);
+    synchronized (journal) {
+      return journal.getJournalRanges(onDiskGeneration, closeExistingWriter);
+    }
   }
 
   @Override
   public long recoverFromJournal(BlockRecoveryWriter writer, BlockJournalRange range, long onDiskGeneration)
       throws IOException {
     LocalJournal journal = getJournal(range.getVolumeId(), range.getBlockId());
-    return journal.recover(range.getUuid(), writer, onDiskGeneration);
+    synchronized (journal) {
+      return journal.recover(range.getUuid(), writer, onDiskGeneration);
+    }
   }
 
-  private LocalJournal getJournal(long volumeId, long blockId) {
+  private synchronized LocalJournal getJournal(long volumeId, long blockId) {
     return _cache.get(JournalKey.builder()
                                 .blockId(blockId)
                                 .volumeId(volumeId)

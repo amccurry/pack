@@ -59,7 +59,8 @@ struct JournalEntry {
 }
 
 exception PackException {
-  1: string message
+  1: string message,
+  2: string stackTraceStr
 }
 
 service PackWalService

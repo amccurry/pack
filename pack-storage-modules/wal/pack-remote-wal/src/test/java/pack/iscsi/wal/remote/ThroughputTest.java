@@ -10,7 +10,7 @@ public class ThroughputTest {
 
     RemoteWriteAheadLogClientConfig config = RemoteWriteAheadLogClientConfig.builder()
                                                                             .hostname("localhost")
-                                                                            .port(35687)
+                                                                            .port(43897)
                                                                             .build();
 
     try (RemoteWriteAheadLogClient client = new RemoteWriteAheadLogClient(config)) {

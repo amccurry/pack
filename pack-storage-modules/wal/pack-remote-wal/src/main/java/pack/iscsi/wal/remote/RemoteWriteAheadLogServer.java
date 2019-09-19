@@ -3,6 +3,8 @@ package pack.iscsi.wal.remote;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -117,7 +119,9 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
     _serverTransport = new TServerSocket(bindAddr, config.getClientTimeout());
     Processor<RemoteWriteAheadLogServer> processor = new PackWalService.Processor<>(this);
     Args args = new TThreadPoolServer.Args(_serverTransport).processor(handleClosedConnections(processor))
-                                                            .protocolFactory(new TBinaryProtocol.Factory());
+                                                            .protocolFactory(new TBinaryProtocol.Factory())
+                                                            .minWorkerThreads(10)
+                                                            .maxWorkerThreads(10);
     _server = new TThreadPoolServer(args);
     _log = new LocalBlockWriteAheadLog(LocalBlockWriteAheadLogConfig.builder()
                                                                     .walLogDir(config.getWalLogDir())
@@ -177,8 +181,16 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
       result.get();
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
-      throw new PackException(e.getMessage());
+      throw newPackException(e);
     }
+  }
+
+  private PackException newPackException(Exception e) {
+    StringWriter writer = new StringWriter();
+    try (PrintWriter pw = new PrintWriter(writer)) {
+      e.printStackTrace(pw);
+    }
+    return new PackException(e.getMessage(), writer.toString());
   }
 
   @Override
@@ -191,7 +203,7 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
       _log.releaseJournals(volumeId, blockId, generation);
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
-      throw new PackException(e.getMessage());
+      throw newPackException(e);
     }
   }
 
@@ -213,7 +225,7 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
       return new JournalRangeResponse(journalRangeList);
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
-      throw new PackException(e.getMessage());
+      throw newPackException(e);
     }
   }
 
@@ -240,7 +252,7 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
       return new FetchJournalEntriesResponse(volumeId, blockId, writer.isJournalExhausted(), writer.getEntries());
     } catch (Exception e) {
       LOGGER.error("Unknown error", e);
-      throw new PackException(e.getMessage());
+      throw newPackException(e);
     }
   }
 
@@ -291,10 +303,10 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
       } catch (TTransportException e) {
         switch (e.getType()) {
         case TTransportException.END_OF_FILE:
-          LOGGER.info("Client closed connection");
+          LOGGER.debug("Client closed connection");
           return false;
         case TTransportException.UNKNOWN:
-          LOGGER.info("Client connection terminated, possible timeout");
+          LOGGER.debug("Client connection terminated, possible timeout");
           return false;
         default:
           throw e;

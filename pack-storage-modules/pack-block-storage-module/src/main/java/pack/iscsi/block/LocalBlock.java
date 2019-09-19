@@ -76,16 +76,16 @@ public class LocalBlock implements Closeable, Block {
 
     if (_blockDataFile.exists() && isLengthValid()) {
       // recovery will need to occur, may be out of date
+      FileIO.setLengthFile(_blockDataFile, _blockSize + BLOCK_OVERHEAD);
       _randomAccessIO = FileIO.openRandomAccess(_blockDataFile, config.getBufferSize(), "rw");
-      _randomAccessIO.setLength(_blockSize + BLOCK_OVERHEAD);
     } else {
       if (_blockDataFile.exists()) {
         LOGGER.info("Block file {} length incorrect actual {} expecting {}, remove and recover.", _blockDataFile,
             _blockDataFile.length(), getValidLength());
         _blockDataFile.delete();
       }
+      FileIO.setLengthFile(_blockDataFile, _blockSize + BLOCK_OVERHEAD);
       _randomAccessIO = FileIO.openRandomAccess(_blockDataFile, config.getBufferSize(), "rw");
-      _randomAccessIO.setLength(_blockSize + BLOCK_OVERHEAD);
     }
     readMetadata();
     long lastStoreGeneration = _blockStore.getLastStoreGeneration(_volumeId, _blockId);

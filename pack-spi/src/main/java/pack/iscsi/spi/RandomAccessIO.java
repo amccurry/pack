@@ -1,11 +1,9 @@
 package pack.iscsi.spi;
 
 import java.io.Closeable;
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.io.IOException;
 
-public interface RandomAccessIO extends DataInput, DataOutput, Closeable {
+public interface RandomAccessIO extends /* DataInput, DataOutput, */Closeable {
 
   default void readFully(long position, byte[] buffer) throws IOException {
     readFully(position, buffer, 0, buffer.length);
@@ -23,9 +21,13 @@ public interface RandomAccessIO extends DataInput, DataOutput, Closeable {
 
   long getFilePointer() throws IOException;
 
-  public long length() throws IOException;
+  long length() throws IOException;
 
-  void setLength(long newLength) throws IOException;
+  default void write(byte[] b) throws IOException {
+    write(b, 0, b.length);
+  }
+
+  void write(byte[] b, int off, int len) throws IOException;
 
   int read() throws IOException;
 
@@ -34,5 +36,15 @@ public interface RandomAccessIO extends DataInput, DataOutput, Closeable {
   default int read(byte[] b) throws IOException {
     return read(b, 0, b.length);
   }
+
+  long readLong() throws IOException;
+
+  int readInt() throws IOException;
+
+  default void readFully(byte[] b) throws IOException {
+    readFully(b, 0, b.length);
+  }
+
+  void readFully(byte[] b, int off, int len) throws IOException;
 
 }
