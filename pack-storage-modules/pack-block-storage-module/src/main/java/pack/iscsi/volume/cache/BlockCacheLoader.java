@@ -11,12 +11,12 @@ import com.github.benmanes.caffeine.cache.CacheLoader;
 import io.opencensus.common.Scope;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
+import pack.iscsi.spi.PackVolumeStore;
+import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockKey;
-import pack.iscsi.spi.volume.VolumeMetadata;
-import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery;
@@ -27,7 +27,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 
   private static Logger LOGGER = LoggerFactory.getLogger(BlockCacheLoader.class);
 
-  private final VolumeStore _volumeStore;
   private final BlockGenerationStore _blockStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final File _blockDataDir;
@@ -35,9 +34,10 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final BlockRemovalListener _removalListener;
+  private final PackVolumeStore _packVolumeStore;
 
   public BlockCacheLoader(BlockCacheLoaderConfig config) {
-    _volumeStore = config.getVolumeStore();
+    _packVolumeStore = config.getPackVolumeStore();
     _blockDataDir = config.getBlockDataDir();
     _blockStore = config.getBlockStore();
     _writeAheadLog = config.getWriteAheadLog();
@@ -54,7 +54,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
       if (stolenBlock != null) {
         return stolenBlock;
       }
-      VolumeMetadata volumeMetadata = _volumeStore.getVolumeMetadata(key.getVolumeId());
+      PackVolumeMetadata volumeMetadata = _packVolumeStore.getVolumeMetadata(key.getVolumeId());
       LocalBlockConfig config = LocalBlockConfig.builder()
                                                 .blockDataDir(_blockDataDir)
                                                 .volumeMetadata(volumeMetadata)

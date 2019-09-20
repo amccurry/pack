@@ -9,7 +9,7 @@ import org.junit.Test;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.S3TestSetup;
-import pack.iscsi.s3.TestProperties;
+import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.s3.util.S3Utils;
 
@@ -22,8 +22,8 @@ public class S3BlockStoreTest {
   @BeforeClass
   public static void setup() throws Exception {
     CONSISTENT_AMAZON_S3 = S3TestSetup.getConsistentAmazonS3();
-    BUCKET = TestProperties.getBucket();
-    OBJECT_PREFIX = TestProperties.getObjectPrefix();
+    BUCKET = S3TestProperties.getBucket();
+    OBJECT_PREFIX = S3TestProperties.getObjectPrefix();
     S3TestSetup.cleanS3(BUCKET, OBJECT_PREFIX);
   }
 

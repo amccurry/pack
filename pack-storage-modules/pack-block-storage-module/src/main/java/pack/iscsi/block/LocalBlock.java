@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
@@ -24,9 +25,8 @@ import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
-import pack.iscsi.spi.volume.VolumeMetadata;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.spi.wal.BlockJournalResult;
+import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 public class LocalBlock implements Closeable, Block {
 
@@ -52,7 +52,7 @@ public class LocalBlock implements Closeable, Block {
   private final RandomAccessIO _randomAccessIO;
 
   public LocalBlock(LocalBlockConfig config) throws IOException {
-    VolumeMetadata volumeMetadata = config.getVolumeMetadata();
+    PackVolumeMetadata volumeMetadata = config.getVolumeMetadata();
     _volumeId = volumeMetadata.getVolumeId();
     _blockId = config.getBlockId();
     File blockDataDir = config.getBlockDataDir();
@@ -69,7 +69,7 @@ public class LocalBlock implements Closeable, Block {
     _blockStore = config.getBlockStore();
 
     _wal = config.getWal();
-    _blockSize = volumeMetadata.getBlockSize();
+    _blockSize = volumeMetadata.getBlockSizeInBytes();
 
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();

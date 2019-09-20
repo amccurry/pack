@@ -33,6 +33,7 @@
 		<module>pack-iscsi</module>
 		<module>pack-jscsi</module>
 		<module>pack-util</module>
+		<module>pack-admin</module>
 		<module>pack-storage-modules/pack-block-storage-spi</module>
 		<module>pack-storage-modules/pack-block-storage-module</module>
 		<module>pack-storage-modules/pack-block-storage-test-suite</module>
@@ -63,6 +64,11 @@
 			<dependency>
 				<groupId>pack</groupId>
 				<artifactId>pack-util</artifactId>
+				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-admin</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>

@@ -1,4 +1,4 @@
-package pack.iscsi.spi.volume;
+package pack.iscsi.spi;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -10,10 +10,12 @@ import lombok.Value;
 @NoArgsConstructor(force = true, access = AccessLevel.PRIVATE)
 @AllArgsConstructor
 @Builder(toBuilder = true)
-public class VolumeMetadata {
+public class PackVolumeMetadata {
 
+  String name;
   long volumeId;
-  int blockSize;
+  int blockSizeInBytes;
   long lengthInBytes;
+  String assignedHostname;
 
 }

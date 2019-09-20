@@ -7,16 +7,18 @@ import java.util.Random;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.DeleteObjectsRequest;
+import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.util.S3Utils;
-import pack.iscsi.spi.volume.VolumeMetadata;
-import pack.iscsi.spi.volume.VolumeStore;
+import pack.iscsi.spi.PackVolumeMetadata;
+import pack.iscsi.spi.PackVolumeStore;
 
-public class S3VolumeStore implements VolumeStore {
+public class S3VolumeStore implements PackVolumeStore {
 
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -32,20 +34,7 @@ public class S3VolumeStore implements VolumeStore {
   }
 
   @Override
-  public List<String> getVolumeNames() {
-    List<String> result = new ArrayList<>();
-    AmazonS3 client = _consistentAmazonS3.getClient();
-    String prefix = S3Utils.getVolumeNamePrefix(_objectPrefix);
-    ObjectListing listObjects = client.listObjects(_bucket, prefix);
-    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
-    for (S3ObjectSummary summary : objectSummaries) {
-      result.add(S3Utils.getVolumeName(_objectPrefix, summary.getKey()));
-    }
-    return result;
-  }
-
-  @Override
-  public VolumeMetadata getVolumeMetadata(String name) throws IOException {
+  public PackVolumeMetadata getVolumeMetadata(String name) throws IOException {
     long volumeId = getVolumeIdInternal(name);
     if (volumeId < 0) {
       return null;
@@ -54,11 +43,11 @@ public class S3VolumeStore implements VolumeStore {
   }
 
   @Override
-  public VolumeMetadata getVolumeMetadata(long volumeId) throws IOException {
+  public PackVolumeMetadata getVolumeMetadata(long volumeId) throws IOException {
     String key = getVolumeMetadataKey(volumeId);
     try {
       String json = _consistentAmazonS3.getObjectAsString(_bucket, key);
-      return OBJECT_MAPPER.readValue(json, VolumeMetadata.class);
+      return OBJECT_MAPPER.readValue(json, PackVolumeMetadata.class);
     } catch (AmazonServiceException e) {
       if (e.getStatusCode() == 404) {
         return null;
@@ -68,54 +57,14 @@ public class S3VolumeStore implements VolumeStore {
   }
 
   @Override
-  public void createVolume(String name, int blockSize, long lengthInBytes) throws IOException {
-    checkForNonExistence(name);
-    long volumeId = createVolumeId(name);
-    VolumeMetadata metadata = VolumeMetadata.builder()
-                                            .blockSize(blockSize)
-                                            .lengthInBytes(lengthInBytes)
-                                            .volumeId(volumeId)
-                                            .build();
-    String json = OBJECT_MAPPER.writeValueAsString(metadata);
-    _consistentAmazonS3.putObject(_bucket, getVolumeMetadataKey(volumeId), json);
-    createVolumeNamePointer(name, volumeId);
-  }
-
-  @Override
-  public void destroyVolume(String name) throws IOException {
-    checkForExistence(name);
-    // VolumeMetadata metadata = getVolumeMetadata(name);
-    String key = S3Utils.getVolumeNameKey(_objectPrefix, name);
-    _consistentAmazonS3.deleteObject(_bucket, key);
-    // String blockPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix,
-    // metadata.getVolumeId());
-    // TODO delete block objects
-  }
-
-  @Override
   public void renameVolume(String existingName, String newName) throws IOException {
-    checkForExistence(existingName);
-    checkForNonExistence(newName);
-    VolumeMetadata metadata = getVolumeMetadata(existingName);
+    checkExistence(existingName);
+    checkNonExistence(newName);
+    checkNotAssigned(existingName);
+    PackVolumeMetadata metadata = getVolumeMetadata(existingName);
     long volumeId = metadata.getVolumeId();
     createVolumeNamePointer(newName, volumeId);
     deleteVolumeNamePointer(existingName);
-  }
-
-  @Override
-  public void growVolume(String name, long lengthInBytes) throws IOException {
-    checkForExistence(name);
-    VolumeMetadata metadata = getVolumeMetadata(name);
-    String key = getVolumeMetadataKey(metadata.getVolumeId());
-    if (lengthInBytes < metadata.getLengthInBytes()) {
-      throw new IOException(
-          "Provided length " + lengthInBytes + " is smaller than existing length " + metadata.getLengthInBytes());
-    }
-    VolumeMetadata newMetadata = metadata.toBuilder()
-                                         .lengthInBytes(lengthInBytes)
-                                         .build();
-    String json = OBJECT_MAPPER.writeValueAsString(newMetadata);
-    _consistentAmazonS3.putObject(_bucket, key, json);
   }
 
   private String getVolumeMetadataKey(long volumeId) {
@@ -129,7 +78,7 @@ public class S3VolumeStore implements VolumeStore {
   private long createVolumeId(String name) throws IOException {
     while (true) {
       long volumeId = createNewRandomId();
-      VolumeMetadata volumeMetadata = getVolumeMetadata(volumeId);
+      PackVolumeMetadata volumeMetadata = getVolumeMetadata(volumeId);
       if (volumeMetadata == null) {
         return volumeId;
       }
@@ -142,17 +91,17 @@ public class S3VolumeStore implements VolumeStore {
     }
   }
 
-  private void checkForExistence(String name) throws IOException {
-    if (getVolumeMetadata(name) == null) {
-      throw new IOException("Volume " + name + " does not exist");
-    }
-  }
-
-  private void checkForNonExistence(String name) throws IOException {
-    if (getVolumeMetadata(name) != null) {
-      throw new IOException("Volume " + name + " already exists");
-    }
-  }
+  // private void checkForExistence(String name) throws IOException {
+  // if (getVolumeMetadata(name) == null) {
+  // throw new IOException("Volume " + name + " does not exist");
+  // }
+  // }
+  //
+  // private void checkForNonExistence(String name) throws IOException {
+  // if (getVolumeMetadata(name) != null) {
+  // throw new IOException("Volume " + name + " already exists");
+  // }
+  // }
 
   private void createVolumeNamePointer(String name, long volumeId) {
     _consistentAmazonS3.putObject(_bucket, getVolumeNameKey(name), Long.toString(volumeId));
@@ -173,6 +122,80 @@ public class S3VolumeStore implements VolumeStore {
       }
       throw e;
     }
+  }
+
+  @Override
+  public List<String> getAllVolumes() throws IOException {
+    List<String> result = new ArrayList<>();
+    AmazonS3 client = _consistentAmazonS3.getClient();
+    String prefix = S3Utils.getVolumeNamePrefix(_objectPrefix);
+    ObjectListing listObjects = client.listObjects(_bucket, prefix);
+    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
+    for (S3ObjectSummary summary : objectSummaries) {
+      result.add(S3Utils.getVolumeName(_objectPrefix, summary.getKey()));
+    }
+    return result;
+  }
+
+  @Override
+  public void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException {
+    long volumeId = createVolumeId(name);
+    PackVolumeMetadata metadata = PackVolumeMetadata.builder()
+                                                    .blockSizeInBytes(blockSizeInBytes)
+                                                    .lengthInBytes(lengthInBytes)
+                                                    .volumeId(volumeId)
+                                                    .build();
+    String json = OBJECT_MAPPER.writeValueAsString(metadata);
+    _consistentAmazonS3.putObject(_bucket, getVolumeMetadataKey(volumeId), json);
+    createVolumeNamePointer(name, volumeId);
+  }
+
+  @Override
+  public void deleteVolume(String name) throws IOException {
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    String key = S3Utils.getVolumeNameKey(_objectPrefix, name);
+    _consistentAmazonS3.deleteObject(_bucket, key);
+    String blockPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix, metadata.getVolumeId());
+    AmazonS3 client = _consistentAmazonS3.getClient();
+    ObjectListing listObjects = client.listObjects(_bucket, blockPrefix);
+    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
+    List<KeyVersion> keys = new ArrayList<>();
+    for (S3ObjectSummary summary : objectSummaries) {
+      keys.add(new KeyVersion(summary.getKey()));
+    }
+    DeleteObjectsRequest deleteObjectsRequest = new DeleteObjectsRequest(_bucket);
+    deleteObjectsRequest.withKeys(keys);
+    client.deleteObjects(deleteObjectsRequest);
+  }
+
+  @Override
+  public List<String> getAssignedVolumes() throws IOException {
+    return getAllVolumes();
+  }
+
+  @Override
+  public void assignVolume(String name) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public void unassignVolume(String name) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public void growVolume(String name, long newLengthInBytes) throws IOException {
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    String key = getVolumeMetadataKey(metadata.getVolumeId());
+    if (newLengthInBytes < metadata.getLengthInBytes()) {
+      throw new IOException(
+          "Provided length " + newLengthInBytes + " is smaller than existing length " + metadata.getLengthInBytes());
+    }
+    PackVolumeMetadata newMetadata = metadata.toBuilder()
+                                             .lengthInBytes(newLengthInBytes)
+                                             .build();
+    String json = OBJECT_MAPPER.writeValueAsString(newMetadata);
+    _consistentAmazonS3.putObject(_bucket, key, json);
   }
 
 }

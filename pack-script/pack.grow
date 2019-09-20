@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+VOLUME_NAME="${1}"
+SIZE="${2}"
+curl -d "{\"sizeInBytes\":${SIZE}}" -X POST localhost:4567/grow/${VOLUME_NAME} 2>/dev/null \
+ | jq -r '.'

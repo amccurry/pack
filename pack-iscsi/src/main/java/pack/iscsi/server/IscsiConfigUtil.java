@@ -22,6 +22,7 @@ import com.google.common.collect.ImmutableList;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
+import pack.admin.PackVolumeAdminServer;
 import pack.iscsi.file.block.storage.LocalExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
@@ -31,13 +32,14 @@ import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
 import pack.iscsi.spi.Meter;
 import pack.iscsi.spi.MetricsFactory;
+import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
-import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 import pack.iscsi.wal.remote.RemoteWriteAheadLogClient;
 import pack.iscsi.wal.remote.RemoteWriteAheadLogClient.RemoteWriteAheadLogClientConfig;
+import spark.Service;
 
 public class IscsiConfigUtil {
 
@@ -77,19 +79,26 @@ public class IscsiConfigUtil {
 
   private static BlockStorageModuleFactoryConfig getConfig(Properties properties, File configFile) throws Exception {
     ConsistentAmazonS3 consistentAmazonS3 = getConsistentAmazonS3IfNeeded(properties, configFile);
-    // Service service = getSparkServiceIfNeeded(properties, configFile);
+
     MetricsFactory metricsFactory = getMetricsFactoryIfNeeded();
 
     File blockDataDir = new File(getPropertyNotNull(properties, BLOCK_CACHE_DIR, configFile));
     long maxCacheSizeInBytes = Long.parseLong(getPropertyNotNull(properties, BLOCK_CACHE_SIZE_IN_BYTES, configFile));
 
-    VolumeStore volumeStore = getVolumeStore(properties, configFile, consistentAmazonS3);
+    PackVolumeStore volumeStore = getVolumeStore(properties, configFile, consistentAmazonS3);
+
+    Service service = getSparkServiceIfNeeded(properties, configFile);
+    if (service != null) {
+      PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore);
+      adminServer.setup();
+    }
+
     BlockGenerationStore blockStore = getBlockStore(properties, configFile, consistentAmazonS3);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile,
         consistentAmazonS3.getCuratorFramework());
     BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3);
     return BlockStorageModuleFactoryConfig.builder()
-                                          .volumeStore(volumeStore)
+                                          .packVolumeStore(volumeStore)
                                           .blockDataDir(blockDataDir)
                                           .blockStore(blockStore)
                                           .externalBlockStoreFactory(externalBlockStoreFactory)
@@ -115,10 +124,9 @@ public class IscsiConfigUtil {
     };
   }
 
-  // private static Service getSparkServiceIfNeeded(Properties properties, File
-  // configFile) {
-  // return Service.ignite();
-  // }
+  private static Service getSparkServiceIfNeeded(Properties properties, File configFile) {
+    return Service.ignite();
+  }
 
   private static BlockWriteAheadLog getBlockWriteAheadLog(Properties properties, File configFile,
       CuratorFramework curatorFramework) throws Exception {
@@ -136,12 +144,12 @@ public class IscsiConfigUtil {
     return new RemoteWriteAheadLogClient(config);
   }
 
-  private static VolumeStore getVolumeStore(Properties properties, File configFile,
+  private static PackVolumeStore getVolumeStore(Properties properties, File configFile,
       ConsistentAmazonS3 consistentAmazonS3) {
     return getS3VolumeStore(properties, configFile, consistentAmazonS3);
   }
 
-  private static VolumeStore getS3VolumeStore(Properties properties, File configFile,
+  private static PackVolumeStore getS3VolumeStore(Properties properties, File configFile,
       ConsistentAmazonS3 consistentAmazonS3) {
     String bucket = getPropertyNotNull(properties, S3_BUCKET, configFile);
     String objectPrefix = getPropertyNotNull(properties, S3_OBJECTPREFIX, configFile);

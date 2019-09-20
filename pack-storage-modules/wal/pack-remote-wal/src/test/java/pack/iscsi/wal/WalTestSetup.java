@@ -21,7 +21,7 @@ public class WalTestSetup {
     if (!isSetup()) {
 
       RetryPolicy retryPolicy = new RetryForever((int) TimeUnit.SECONDS.toMillis(10));
-      CURATOR_FRAMEWORK = CuratorFrameworkFactory.newClient(TestProperties.getZooKeeperConnection(), retryPolicy);
+      CURATOR_FRAMEWORK = CuratorFrameworkFactory.newClient(WalTestProperties.getZooKeeperConnection(), retryPolicy);
       CURATOR_FRAMEWORK.getUnhandledErrorListenable()
                        .addListener((message, e) -> {
                          LOGGER.error("Unknown error " + message, e);

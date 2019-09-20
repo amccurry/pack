@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+curl -s localhost:4567/assigned-volumes \
+ | jq -r '.'

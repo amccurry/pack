@@ -15,15 +15,15 @@ import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.S3TestSetup;
-import pack.iscsi.s3.TestProperties;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
+import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
-import pack.iscsi.spi.volume.VolumeMetadata;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
@@ -52,8 +52,8 @@ public class S3LocalBlockTest {
                                               .build();
 
     ConsistentAmazonS3 consistentAmazonS3 = S3TestSetup.getConsistentAmazonS3();
-    String bucket = TestProperties.getBucket();
-    String objectPrefix = TestProperties.getObjectPrefix();
+    String bucket = S3TestProperties.getBucket();
+    String objectPrefix = S3TestProperties.getObjectPrefix();
 
     S3BlockWriter writer = new S3BlockWriter(S3BlockWriterConfig.builder()
                                                                 .bucket(bucket)
@@ -146,10 +146,10 @@ public class S3LocalBlockTest {
     };
   }
 
-  private VolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
-    return VolumeMetadata.builder()
-                         .blockSize(blockSize)
-                         .volumeId(volumeId)
-                         .build();
+  private PackVolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
+    return PackVolumeMetadata.builder()
+                             .blockSizeInBytes(blockSize)
+                             .volumeId(volumeId)
+                             .build();
   }
 }

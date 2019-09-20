@@ -33,7 +33,7 @@ public class S3TestSetup {
       S3_CLIENT = AmazonS3ClientBuilder.defaultClient();
 
       RetryPolicy retryPolicy = new RetryForever((int) TimeUnit.SECONDS.toMillis(10));
-      CURATOR_FRAMEWORK = CuratorFrameworkFactory.newClient(TestProperties.getZooKeeperConnection(), retryPolicy);
+      CURATOR_FRAMEWORK = CuratorFrameworkFactory.newClient(S3TestProperties.getZooKeeperConnection(), retryPolicy);
       CURATOR_FRAMEWORK.getUnhandledErrorListenable()
                        .addListener((message, e) -> {
                          LOGGER.error("Unknown error " + message, e);
@@ -44,8 +44,10 @@ public class S3TestSetup {
                        });
       CURATOR_FRAMEWORK.start();
 
+      String zkPrefix = S3TestProperties.getZooKeeperPrefix();
+
       ConsistentAmazonS3Config config = ConsistentAmazonS3Config.builder()
-                                                                .zkPrefix("/s3/consistent/test")
+                                                                .zkPrefix(zkPrefix)
                                                                 .build();
 
       CONSISTENT_AMAZON_S3 = ConsistentAmazonS3.create(S3_CLIENT, CURATOR_FRAMEWORK, config);

@@ -1,10 +1,10 @@
-package pack.iscsi.s3;
+package pack.iscsi.wal;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.Properties;
 
-public class TestProperties {
+public class WalTestProperties {
 
   private static final Properties PROPERTIES;
 
@@ -25,12 +25,8 @@ public class TestProperties {
     PROPERTIES = properties;
   }
 
-  public static String getBucket() {
-    return PROPERTIES.getProperty("bucket");
-  }
-
-  public static String getObjectPrefix() {
-    return PROPERTIES.getProperty("objectprefix");
+  public static String getPrefix() {
+    return PROPERTIES.getProperty("zk.prefix.wal");
   }
 
   public static String getZooKeeperConnection() {

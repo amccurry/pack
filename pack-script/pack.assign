@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+VOLUME_NAME="${1}"
+curl -X POST localhost:4567/assign/${VOLUME_NAME} 2>/dev/null \
+ | jq -r '.'

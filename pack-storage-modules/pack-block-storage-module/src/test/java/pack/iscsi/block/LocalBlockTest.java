@@ -16,11 +16,11 @@ import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
-import pack.iscsi.spi.volume.VolumeMetadata;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
@@ -275,10 +275,10 @@ public class LocalBlockTest {
     };
   }
 
-  private VolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
-    return VolumeMetadata.builder()
-                         .blockSize(blockSize)
-                         .volumeId(volumeId)
-                         .build();
+  private PackVolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
+    return PackVolumeMetadata.builder()
+                             .blockSizeInBytes(blockSize)
+                             .volumeId(volumeId)
+                             .build();
   }
 }

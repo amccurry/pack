@@ -14,7 +14,7 @@ import org.junit.Test;
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.s3.S3TestSetup;
-import pack.iscsi.s3.TestProperties;
+import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
 import pack.iscsi.spi.RandomAccessIO;
@@ -27,8 +27,8 @@ public class S3BlockReaderWriterTest {
   @Test
   public void testS3BlockWriter() throws Exception {
     ConsistentAmazonS3 consistentAmazonS3 = S3TestSetup.getConsistentAmazonS3();
-    String bucket = TestProperties.getBucket();
-    String objectPrefix = TestProperties.getObjectPrefix();
+    String bucket = S3TestProperties.getBucket();
+    String objectPrefix = S3TestProperties.getObjectPrefix();
     S3BlockWriter writer = new S3BlockWriter(S3BlockWriterConfig.builder()
                                                                 .bucket(bucket)
                                                                 .consistentAmazonS3(consistentAmazonS3)

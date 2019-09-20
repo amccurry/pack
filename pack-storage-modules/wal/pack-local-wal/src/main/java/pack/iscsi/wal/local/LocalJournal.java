@@ -55,6 +55,9 @@ public class LocalJournal implements Closeable {
 
   public void release(long generation) throws IOException {
     _writeLock.lock();
+    if (!_blockLogDir.exists()) {
+      return;
+    }
     LOGGER.info("release volumeId {} blockId {} generation {}", _volumeId, _blockId, generation);
     try {
       List<LocalJournalReader> readers = getLocalLogReaders();
@@ -69,14 +72,29 @@ public class LocalJournal implements Closeable {
       } finally {
         IOUtils.close(LOGGER, readers);
       }
+      cleanupDirIfNeeded();
     } finally {
       _writeLock.unlock();
+    }
+  }
+
+  private void cleanupDirIfNeeded() {
+    if (!_blockLogDir.exists()) {
+      return;
+    }
+    File[] listFiles = _blockLogDir.listFiles();
+    if (listFiles == null || listFiles.length == 0) {
+      _blockLogDir.delete();
     }
   }
 
   public List<BlockJournalRange> getJournalRanges(long onDiskGeneration, boolean closeExistingWriter)
       throws IOException {
     _writeLock.lock();
+    List<BlockJournalRange> result = new ArrayList<>();
+    if (!_blockLogDir.exists()) {
+      return result;
+    }
     LOGGER.info("getJournalRanges volumeId {} blockId {}", _volumeId, _blockId);
     try {
       if (closeExistingWriter) {
@@ -85,7 +103,6 @@ public class LocalJournal implements Closeable {
       }
       List<LocalJournalReader> readers = getLocalLogReaders();
       try {
-        List<BlockJournalRange> result = new ArrayList<>();
         for (LocalJournalReader reader : readers) {
           long maxGeneration = reader.getMaxGeneration();
           if (onDiskGeneration < maxGeneration) {
@@ -153,8 +170,11 @@ public class LocalJournal implements Closeable {
   }
 
   private List<LocalJournalReader> getLocalLogReaders() throws IOException {
-    File[] files = _blockLogDir.listFiles();
     List<LocalJournalReader> result = new ArrayList<>();
+    if (!_blockLogDir.exists()) {
+      return result;
+    }
+    File[] files = _blockLogDir.listFiles();
     for (File file : files) {
       if (!isWriting(file)) {
         result.add(new LocalJournalReader(LocalLogReaderConfig.builder()

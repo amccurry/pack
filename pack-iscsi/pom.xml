@@ -34,7 +34,18 @@
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
+			<artifactId>pack-block-storage-test-suite</artifactId>
+			<classifier>tests</classifier>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
 			<artifactId>pack-remote-wal</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>pack-admin</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>commons-cli</groupId>

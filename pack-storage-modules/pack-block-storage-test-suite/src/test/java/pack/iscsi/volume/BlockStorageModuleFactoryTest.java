@@ -14,15 +14,13 @@ import org.junit.Before;
 import org.junit.Test;
 
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.PackVolumeStore;
+import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
-import pack.iscsi.spi.volume.VolumeMetadata;
-import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.volume.BlockStorageModuleFactory;
-import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 
 public abstract class BlockStorageModuleFactoryTest {
 
@@ -39,14 +37,14 @@ public abstract class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactory() throws Exception {
-    VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
+    PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
     BlockGenerationStore blockStore = getBlockStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
-                                                                            .volumeStore(volumeStore)
+                                                                            .packVolumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -67,14 +65,14 @@ public abstract class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws Exception {
-    VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
+    PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
     BlockGenerationStore blockStore = getBlockStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
-                                                                            .volumeStore(volumeStore)
+                                                                            .packVolumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -101,14 +99,14 @@ public abstract class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws Exception {
-    VolumeStore volumeStore = getVolumeStore(12345, 100_000, 100_000_000L);
+    PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
     BlockGenerationStore blockStore = getBlockStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
-                                                                            .volumeStore(volumeStore)
+                                                                            .packVolumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -163,17 +161,15 @@ public abstract class BlockStorageModuleFactoryTest {
     byte[] buffer2 = new byte[9876];
     Random random = new Random(seed);
     for (long pos = 0; pos < length; pos += buffer1.length) {
-      
+
       random.nextBytes(buffer1);
-      
 
       if (pos == 98760) {
         System.out.println();
       }
-      
+
       storageModule.write(buffer1, pos);
       storageModule.read(buffer2, pos);
-      
 
       for (int i = 0; i < buffer1.length; i++) {
         assertEquals("pos=" + pos + " i=" + i, buffer1[i], buffer2[i]);
@@ -194,50 +190,66 @@ public abstract class BlockStorageModuleFactoryTest {
     }
   }
 
-  private VolumeStore getVolumeStore(long volumeId, int blockSize, long lengthInBytes) {
-    return new VolumeStore() {
+  private PackVolumeStore getPackVolumeStore(long volumeId, int blockSize, long lengthInBytes) {
+    return new PackVolumeStore() {
 
       @Override
-      public List<String> getVolumeNames() {
-        throw new RuntimeException("Not impl");
+      public PackVolumeMetadata getVolumeMetadata(long volumeId) throws IOException {
+        return PackVolumeMetadata.builder()
+                                 .blockSizeInBytes(blockSize)
+                                 .lengthInBytes(lengthInBytes)
+                                 .build();
       }
 
       @Override
-      public VolumeMetadata getVolumeMetadata(long volumeId) throws IOException {
-        return VolumeMetadata.builder()
-                             .blockSize(blockSize)
-                             .lengthInBytes(lengthInBytes)
-                             .build();
+      public PackVolumeMetadata getVolumeMetadata(String name) throws IOException {
+        return PackVolumeMetadata.builder()
+                                 .blockSizeInBytes(blockSize)
+                                 .lengthInBytes(lengthInBytes)
+                                 .volumeId(volumeId)
+                                 .build();
       }
 
       @Override
-      public void createVolume(String name, int blockSize, long lengthInBytes) throws IOException {
-        throw new RuntimeException("Not impl");
+      public List<String> getAllVolumes() throws IOException {
+        throw new RuntimeException("not impl");
       }
 
       @Override
-      public VolumeMetadata getVolumeMetadata(String name) throws IOException {
-        return VolumeMetadata.builder()
-                             .blockSize(blockSize)
-                             .lengthInBytes(lengthInBytes)
-                             .volumeId(volumeId)
-                             .build();
+      public List<String> getAssignedVolumes() throws IOException {
+        throw new RuntimeException("not impl");
       }
 
       @Override
-      public void destroyVolume(String name) throws IOException {
-        throw new RuntimeException("Not impl");
+      public void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException {
+        throw new RuntimeException("not impl");
       }
 
       @Override
-      public void renameVolume(String existingName, String newName) throws IOException {
-        throw new RuntimeException("Not impl");
+      public void deleteVolume(String name) throws IOException {
+        throw new RuntimeException("not impl");
       }
 
       @Override
-      public void growVolume(String name, long lengthInBytes) throws IOException {
-        throw new RuntimeException("Not impl");
+      public void growVolume(String name, long newLengthInBytes) throws IOException {
+        throw new RuntimeException("not impl");
       }
+
+      @Override
+      public void assignVolume(String name) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void unassignVolume(String name) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void renameVolume(String name, String newName) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
     };
   }
 }

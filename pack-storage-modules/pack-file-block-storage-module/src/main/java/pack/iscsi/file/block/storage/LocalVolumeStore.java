@@ -3,44 +3,58 @@ package pack.iscsi.file.block.storage;
 import java.io.IOException;
 import java.util.List;
 
-import pack.iscsi.spi.volume.VolumeMetadata;
-import pack.iscsi.spi.volume.VolumeStore;
+import pack.iscsi.spi.PackVolumeMetadata;
+import pack.iscsi.spi.PackVolumeStore;
 
-public class LocalVolumeStore implements VolumeStore {
+public class LocalVolumeStore implements PackVolumeStore {
 
   @Override
-  public List<String> getVolumeNames() {
-    throw new RuntimeException("Not impl");
+  public List<String> getAllVolumes() throws IOException {
+    throw new RuntimeException("not impl");
   }
 
   @Override
-  public VolumeMetadata getVolumeMetadata(long volumeId) {
-    throw new RuntimeException("Not impl");
+  public List<String> getAssignedVolumes() throws IOException {
+    throw new RuntimeException("not impl");
   }
 
   @Override
-  public void createVolume(String name, int blockSize, long lengthInBytes) throws IOException {
-    throw new RuntimeException("Not impl");
+  public void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException {
+    throw new RuntimeException("not impl");
   }
 
   @Override
-  public VolumeMetadata getVolumeMetadata(String name) throws IOException {
-    throw new RuntimeException("Not impl");
+  public void deleteVolume(String name) throws IOException {
+    throw new RuntimeException("not impl");
   }
 
   @Override
-  public void destroyVolume(String name) throws IOException {
-    throw new RuntimeException("Not impl");
+  public void growVolume(String name, long newLengthInBytes) throws IOException {
+    throw new RuntimeException("not impl");
   }
 
   @Override
-  public void renameVolume(String existingName, String newName) throws IOException {
-    throw new RuntimeException("Not impl");
+  public void assignVolume(String name) throws IOException {
+    throw new RuntimeException("not impl");
   }
 
   @Override
-  public void growVolume(String name, long lengthInBytes) throws IOException {
-    throw new RuntimeException("Not impl");
+  public void unassignVolume(String name) throws IOException {
+    throw new RuntimeException("not impl");
   }
 
+  @Override
+  public PackVolumeMetadata getVolumeMetadata(String name) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public PackVolumeMetadata getVolumeMetadata(long volumeId) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public void renameVolume(String name, String newName) throws IOException {
+    throw new RuntimeException("not impl");
+  }
 }

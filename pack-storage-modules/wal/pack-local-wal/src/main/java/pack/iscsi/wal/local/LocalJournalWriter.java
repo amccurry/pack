@@ -35,6 +35,8 @@ public class LocalJournalWriter implements Closeable {
     String uuid = UUID.randomUUID()
                       .toString();
     _file = new File(config.getBlockLogDir(), uuid);
+    _file.getParentFile()
+         .mkdirs();
     _randomAccessIO = FileIO.openRandomAccess(_file, config.getBufferSize(), RW);
   }
 

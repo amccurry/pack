@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+VOLUME_NAME="${1}"
+curl localhost:4567/volume/${VOLUME_NAME} 2>/dev/null \
+ | jq -r '.'

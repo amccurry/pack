@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+VOLUME_NAME="${1}"
+curl -d '{}' -X POST localhost:4567/create/${VOLUME_NAME} 2>/dev/null \
+ | jq -r '.'

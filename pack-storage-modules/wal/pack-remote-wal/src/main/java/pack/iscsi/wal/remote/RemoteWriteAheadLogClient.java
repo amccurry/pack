@@ -1,10 +1,6 @@
 package pack.iscsi.wal.remote;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,7 +40,6 @@ import pack.iscsi.wal.remote.thrift.PackWalServiceClientImpl;
 
 public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
 
-  private static final String CLOSE = "close";
   private static final Logger LOGGER = LoggerFactory.getLogger(RemoteWriteAheadLogClient.class);
 
   @Value
@@ -70,6 +65,7 @@ public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
   private final CuratorFramework _curatorFramework;
   private final String _zkPrefix;
   private final BlockingQueue<PackWalServiceClientImpl> _clients = new ArrayBlockingQueue<>(10);
+  private final int _retries = 10;
 
   public RemoteWriteAheadLogClient(RemoteWriteAheadLogClientConfig config) {
     _zkPrefix = config.getZkPrefix();
@@ -82,33 +78,29 @@ public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
   @Override
   public BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset,
       int len) throws IOException {
-    try (PackWalServiceClient client = getClient()) {
-      WriteRequest writeRequest = new WriteRequest(volumeId, blockId, generation, position,
-          ByteBuffer.wrap(bytes, offset, len));
+    return execute(client -> {
+      ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, offset, len);
+      WriteRequest writeRequest = new WriteRequest(volumeId, blockId, generation, position, byteBuffer);
       client.write(writeRequest);
       return () -> {
       };
-    } catch (Exception e) {
-      handleError(e);
-      throw new IOException(e);
-    }
+    });
+
   }
 
   @Override
   public void releaseJournals(long volumeId, long blockId, long generation) throws IOException {
-    try (PackWalServiceClient client = getClient()) {
+    execute(client -> {
       ReleaseRequest releaseRequest = new ReleaseRequest(volumeId, blockId, generation);
       client.releaseJournals(releaseRequest);
-    } catch (Exception e) {
-      handleError(e);
-      throw new IOException(e);
-    }
+      return null;
+    });
   }
 
   @Override
   public List<BlockJournalRange> getJournalRanges(long volumeId, long blockId, long onDiskGeneration,
       boolean closeExistingWriter) throws IOException {
-    try (PackWalServiceClient client = getClient()) {
+    return execute(client -> {
       JournalRangeRequest journalRangeRequest = new JournalRangeRequest(volumeId, blockId, onDiskGeneration,
           closeExistingWriter);
       List<BlockJournalRange> results = new ArrayList<>();
@@ -117,10 +109,7 @@ public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
         results.add(toBlockJournalRange(journalRange));
       }
       return results;
-    } catch (Exception e) {
-      handleError(e);
-      throw new IOException(e);
-    }
+    });
   }
 
   @Override
@@ -129,21 +118,19 @@ public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
     long volumeId = range.getVolumeId();
     long blockId = range.getBlockId();
     String uuid = range.getUuid();
-    try (PackWalServiceClient client = getClient()) {
+    return execute(client -> {
+      long onDiskGen = onDiskGeneration;
       while (true) {
         FetchJournalEntriesRequest fetchJournalEntriesRequest = new FetchJournalEntriesRequest(volumeId, blockId, uuid,
-            range.getMaxGeneration(), range.getMinGeneration(), onDiskGeneration);
+            range.getMaxGeneration(), range.getMinGeneration(), onDiskGen);
         FetchJournalEntriesResponse fetchJournalEntriesResponse = client.fetchJournalEntries(
             fetchJournalEntriesRequest);
-        onDiskGeneration = applyJournalEntries(writer, onDiskGeneration, fetchJournalEntriesResponse);
+        onDiskGen = applyJournalEntries(writer, onDiskGen, fetchJournalEntriesResponse);
         if (fetchJournalEntriesResponse.isJournalExhausted()) {
-          return onDiskGeneration;
+          return onDiskGen;
         }
       }
-    } catch (Exception e) {
-      handleError(e);
-      throw new IOException(e);
-    }
+    });
   }
 
   @Override
@@ -162,44 +149,45 @@ public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
     return onDiskGeneration;
   }
 
-  private void handleError(Exception e) {
-    if (e instanceof PackException) {
+  private IOException handleError(Exception e) {
+    if (e instanceof IOException) {
+      LOGGER.error("Unknown error", e);
+      return (IOException) e;
+    } else if (e instanceof PackException) {
       PackException pe = (PackException) e;
       LOGGER.error("Unknown pack error message {} stack {}", pe.getMessage(), pe.getStackTraceStr());
+      return new IOException(pe);
     } else {
       LOGGER.error("Unknown error", e);
+      return new IOException(e);
     }
   }
 
-  private PackWalServiceClient getClient() throws IOException {
+  private PackWalServiceClientImpl getClient() throws IOException {
     PackWalServiceClientImpl client = _clients.poll();
     if (client != null) {
-      return proxy(client);
+      if (testClient(client)) {
+        return client;
+      } else {
+        IOUtils.close(LOGGER, client);
+      }
     }
-    return proxy(newClient());
+    return newClient();
   }
 
-  private PackWalServiceClient proxy(PackWalServiceClientImpl client) {
-    InvocationHandler handler = new InvocationHandler() {
-      @Override
-      public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        try {
-          if (method.getName()
-                    .equals(CLOSE)) {
-            releaseClient(client);
-            return null;
-          }
-          return method.invoke(client, args);
-        } catch (InvocationTargetException e) {
-          throw e.getCause();
-        }
-      }
-    };
-    return (PackWalServiceClient) Proxy.newProxyInstance(PackWalServiceClient.class.getClassLoader(),
-        new Class<?>[] { PackWalServiceClient.class }, handler);
+  private boolean testClient(PackWalServiceClientImpl client) {
+    try {
+      client.ping();
+      return true;
+    } catch (Exception e) {
+      return false;
+    }
   }
 
   private void releaseClient(PackWalServiceClientImpl client) {
+    if (client == null) {
+      return;
+    }
     if (!_clients.offer(client)) {
       LOGGER.info("Closing client {}", client);
       IOUtils.close(LOGGER, client);
@@ -257,4 +245,34 @@ public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
       return entries.get(random.nextInt(entries.size()));
     }
   }
+
+  static interface Exec<T> {
+    T exec(PackWalServiceClient client) throws Exception;
+  }
+
+  private <T> T execute(Exec<T> exec) throws IOException {
+    Exception lastException = null;
+    for (int i = 0; i < _retries; i++) {
+      PackWalServiceClientImpl client = null;
+      try {
+        client = getClient();
+        return exec.exec(client);
+      } catch (Exception e) {
+        LOGGER.error("Unknown error", e);
+        IOUtils.close(LOGGER, client);
+        client = null;
+        lastException = e;
+        try {
+          Thread.sleep(TimeUnit.SECONDS.toMillis(3));
+        } catch (InterruptedException ex) {
+          LOGGER.error("Unknown error", ex);
+          throw handleError(lastException);
+        }
+      } finally {
+        releaseClient(client);
+      }
+    }
+    throw handleError(lastException);
+  }
+
 }

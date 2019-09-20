@@ -7,7 +7,7 @@ import org.junit.Before;
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.s3.S3TestSetup;
-import pack.iscsi.s3.TestProperties;
+import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
 import pack.iscsi.spi.block.BlockIOFactory;
@@ -31,8 +31,8 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
     IOUtils.rmr(WAL_DATA_DIR);
 
     _consistentAmazonS3 = S3TestSetup.getConsistentAmazonS3();
-    _bucket = TestProperties.getBucket();
-    _objectPrefix = TestProperties.getObjectPrefix();
+    _bucket = S3TestProperties.getBucket();
+    _objectPrefix = S3TestProperties.getObjectPrefix();
     S3TestSetup.cleanS3(_bucket, _objectPrefix);
   }
 

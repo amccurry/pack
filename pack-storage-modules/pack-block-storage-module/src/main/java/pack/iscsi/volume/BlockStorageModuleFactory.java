@@ -16,14 +16,14 @@ import com.github.benmanes.caffeine.cache.Weigher;
 
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.MetricsFactory;
+import pack.iscsi.spi.PackVolumeStore;
+import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockKey;
-import pack.iscsi.spi.volume.VolumeMetadata;
-import pack.iscsi.spi.volume.VolumeStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.BlockCacheLoader;
@@ -39,7 +39,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   private final LoadingCache<BlockKey, Block> _cache;
   private final BlockGenerationStore _blockStore;
-  private final VolumeStore _volumeStore;
+  private final PackVolumeStore _packVolumeStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final BlockIOFactory _externalBlockStoreFactory;
   private final File _blockDataDir;
@@ -49,7 +49,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final MetricsFactory _metricsFactory;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
-    _volumeStore = config.getVolumeStore();
+    _packVolumeStore = config.getPackVolumeStore();
     _blockDataDir = config.getBlockDataDir();
     _blockStore = config.getBlockStore();
     _writeAheadLog = config.getWriteAheadLog();
@@ -74,14 +74,15 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   @Override
   public List<String> getStorageModuleNames() throws IOException {
-    return _volumeStore.getVolumeNames();
+    return _packVolumeStore.getAssignedVolumes();
   }
 
   @Override
   public StorageModule getStorageModule(String name) throws IOException {
-    VolumeMetadata volumeMetadata = _volumeStore.getVolumeMetadata(name);
+    PackVolumeMetadata volumeMetadata = _packVolumeStore.getVolumeMetadata(name);
+
     long volumeId = volumeMetadata.getVolumeId();
-    int blockSize = volumeMetadata.getBlockSize();
+    int blockSize = volumeMetadata.getBlockSizeInBytes();
     long lengthInBytes = volumeMetadata.getLengthInBytes();
     BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
                                                               .blockSize(blockSize)
@@ -112,7 +113,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
     return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
-                                                      .volumeStore(_volumeStore)
+                                                      .packVolumeStore(_packVolumeStore)
                                                       .blockDataDir(_blockDataDir)
                                                       .blockStore(_blockStore)
                                                       .externalBlockStoreFactory(_externalBlockStoreFactory)

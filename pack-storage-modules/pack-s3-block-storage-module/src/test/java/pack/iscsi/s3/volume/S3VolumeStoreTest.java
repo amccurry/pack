@@ -11,9 +11,9 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import consistent.s3.ConsistentAmazonS3;
+import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.S3TestSetup;
-import pack.iscsi.s3.TestProperties;
-import pack.iscsi.spi.volume.VolumeMetadata;
+import pack.iscsi.spi.PackVolumeMetadata;
 
 public class S3VolumeStoreTest {
 
@@ -24,8 +24,8 @@ public class S3VolumeStoreTest {
   @BeforeClass
   public static void setup() throws Exception {
     CONSISTENT_AMAZON_S3 = S3TestSetup.getConsistentAmazonS3();
-    BUCKET = TestProperties.getBucket();
-    OBJECT_PREFIX = TestProperties.getObjectPrefix();
+    BUCKET = S3TestProperties.getBucket();
+    OBJECT_PREFIX = S3TestProperties.getObjectPrefix();
     S3TestSetup.cleanS3(BUCKET, OBJECT_PREFIX);
   }
 
@@ -39,8 +39,8 @@ public class S3VolumeStoreTest {
 
     try (S3VolumeStore store = new S3VolumeStore(config)) {
       store.createVolume("test", 10_000, 100_000_000);
-      VolumeMetadata volumeMetadata = store.getVolumeMetadata("test");
-      assertEquals(10_000, volumeMetadata.getBlockSize());
+      PackVolumeMetadata volumeMetadata = store.getVolumeMetadata("test");
+      assertEquals(10_000, volumeMetadata.getBlockSizeInBytes());
       assertEquals(100_000_000, volumeMetadata.getLengthInBytes());
     }
   }
@@ -57,7 +57,7 @@ public class S3VolumeStoreTest {
       store.createVolume("test1", 10_000, 100_000_000);
       store.createVolume("test2", 20_000, 200_000_000);
 
-      List<String> list = new ArrayList<>(store.getVolumeNames());
+      List<String> list = new ArrayList<>(store.getAllVolumes());
       Collections.sort(list);
       assertEquals(Arrays.asList("test1", "test2"), list);
     }
@@ -75,16 +75,15 @@ public class S3VolumeStoreTest {
       store.createVolume("test3", 10_000, 100_000_000);
       long volumeId;
       {
-        VolumeMetadata volumeMetadata = store.getVolumeMetadata("test3");
-        assertEquals(10_000, volumeMetadata.getBlockSize());
+        PackVolumeMetadata volumeMetadata = store.getVolumeMetadata("test3");
+        assertEquals(10_000, volumeMetadata.getBlockSizeInBytes());
         assertEquals(100_000_000, volumeMetadata.getLengthInBytes());
         volumeId = volumeMetadata.getVolumeId();
       }
-
       store.renameVolume("test3", "test4");
       {
-        VolumeMetadata volumeMetadata = store.getVolumeMetadata("test4");
-        assertEquals(10_000, volumeMetadata.getBlockSize());
+        PackVolumeMetadata volumeMetadata = store.getVolumeMetadata("test4");
+        assertEquals(10_000, volumeMetadata.getBlockSizeInBytes());
         assertEquals(100_000_000, volumeMetadata.getLengthInBytes());
         assertEquals(volumeId, volumeMetadata.getVolumeId());
       }
