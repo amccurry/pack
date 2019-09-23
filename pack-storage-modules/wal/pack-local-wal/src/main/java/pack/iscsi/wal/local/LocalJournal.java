@@ -21,6 +21,7 @@ import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.wal.local.LocalJournalReader.LocalLogReaderConfig;
 import pack.iscsi.wal.local.LocalJournalWriter.LocalLogWriterConfig;
+import pack.util.LockUtil;
 
 public class LocalJournal implements Closeable {
 
@@ -44,22 +45,18 @@ public class LocalJournal implements Closeable {
   }
 
   public void append(long generation, long position, byte[] bytes, int offset, int len) throws IOException {
-    _readLock.lock();
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_readLock)) {
       LocalJournalWriter writer = getLocalLogWriter(generation);
       writer.append(generation, position, bytes, offset, len);
-    } finally {
-      _readLock.unlock();
     }
   }
 
   public void release(long generation) throws IOException {
-    _writeLock.lock();
     if (!_blockLogDir.exists()) {
       return;
     }
     LOGGER.info("release volumeId {} blockId {} generation {}", _volumeId, _blockId, generation);
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
       List<LocalJournalReader> readers = getLocalLogReaders();
       try {
         for (LocalJournalReader reader : readers) {
@@ -73,8 +70,6 @@ public class LocalJournal implements Closeable {
         IOUtils.close(LOGGER, readers);
       }
       cleanupDirIfNeeded();
-    } finally {
-      _writeLock.unlock();
     }
   }
 
@@ -90,13 +85,12 @@ public class LocalJournal implements Closeable {
 
   public List<BlockJournalRange> getJournalRanges(long onDiskGeneration, boolean closeExistingWriter)
       throws IOException {
-    _writeLock.lock();
     List<BlockJournalRange> result = new ArrayList<>();
     if (!_blockLogDir.exists()) {
       return result;
     }
     LOGGER.info("getJournalRanges volumeId {} blockId {}", _volumeId, _blockId);
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
       if (closeExistingWriter) {
         IOUtils.close(LOGGER, _writer.get());
         _writer.set(null);
@@ -120,8 +114,6 @@ public class LocalJournal implements Closeable {
       } finally {
         IOUtils.close(LOGGER, readers);
       }
-    } finally {
-      _writeLock.unlock();
     }
   }
 
@@ -130,14 +122,11 @@ public class LocalJournal implements Closeable {
   }
 
   public long recover(String uuid, BlockRecoveryWriter writer, long onDiskGeneration) throws IOException {
-    _writeLock.lock();
     LOGGER.info("recover volumeId {} blockId {} on disk generation {}", _volumeId, _blockId, onDiskGeneration);
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
       try (LocalJournalReader reader = getLocalLogReader(uuid)) {
         return recover(reader, writer, onDiskGeneration);
       }
-    } finally {
-      _writeLock.unlock();
     }
   }
 

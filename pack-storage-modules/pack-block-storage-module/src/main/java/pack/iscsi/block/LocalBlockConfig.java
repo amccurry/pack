@@ -5,7 +5,6 @@ import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
@@ -15,11 +14,13 @@ public class LocalBlockConfig {
 
   File blockDataDir;
 
-  PackVolumeMetadata volumeMetadata;
+  long volumeId;
 
   long blockId;
 
-  BlockGenerationStore blockStore;
+  int blockSize;
+
+  BlockGenerationStore blockGenerationStore;
 
   BlockWriteAheadLog wal;
 

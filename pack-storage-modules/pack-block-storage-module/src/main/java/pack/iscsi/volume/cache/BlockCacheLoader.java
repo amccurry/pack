@@ -11,8 +11,6 @@ import com.github.benmanes.caffeine.cache.CacheLoader;
 import io.opencensus.common.Scope;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
-import pack.iscsi.spi.PackVolumeStore;
-import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
@@ -27,19 +25,21 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 
   private static Logger LOGGER = LoggerFactory.getLogger(BlockCacheLoader.class);
 
-  private final BlockGenerationStore _blockStore;
+  private final BlockGenerationStore _blockGenerationStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final File _blockDataDir;
   private final BlockIOFactory _externalBlockStoreFactory;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final BlockRemovalListener _removalListener;
-  private final PackVolumeStore _packVolumeStore;
+  private final long _volumeId;
+  private final int _blockSize;
 
   public BlockCacheLoader(BlockCacheLoaderConfig config) {
-    _packVolumeStore = config.getPackVolumeStore();
+    _volumeId = config.getVolumeId();
+    _blockSize = config.getBlockSize();
     _blockDataDir = config.getBlockDataDir();
-    _blockStore = config.getBlockStore();
+    _blockGenerationStore = config.getBlockGenerationStore();
     _writeAheadLog = config.getWriteAheadLog();
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
@@ -54,12 +54,12 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
       if (stolenBlock != null) {
         return stolenBlock;
       }
-      PackVolumeMetadata volumeMetadata = _packVolumeStore.getVolumeMetadata(key.getVolumeId());
       LocalBlockConfig config = LocalBlockConfig.builder()
                                                 .blockDataDir(_blockDataDir)
-                                                .volumeMetadata(volumeMetadata)
+                                                .volumeId(_volumeId)
+                                                .blockSize(_blockSize)
                                                 .blockId(key.getBlockId())
-                                                .blockStore(_blockStore)
+                                                .blockGenerationStore(_blockGenerationStore)
                                                 .wal(_writeAheadLog)
                                                 .syncTimeAfterIdle(_syncTimeAfterIdle)
                                                 .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)

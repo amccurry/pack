@@ -5,17 +5,20 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.Before;
 import org.junit.Test;
 
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.PackVolumeMetadata;
+import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
@@ -53,13 +56,17 @@ public abstract class BlockStorageModuleFactoryTest {
                                                                             .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                                                             .build();
 
+    String volumeName = "test";
+
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
-      StorageModule storageModule = factory.getStorageModule("test");
+      volumeStore.assignVolume(volumeName);
+      StorageModule storageModule = factory.getStorageModule(volumeName);
       assertEquals(195311, storageModule.getSizeInBlocks());
       long seed = new Random().nextLong();
       long length = 51_000_000;
       readsAndWritesTest(storageModule, seed, length);
       readsOnlyTest(storageModule, seed, length);
+      volumeStore.unassignVolume(volumeName);
     }
   }
 
@@ -84,7 +91,10 @@ public abstract class BlockStorageModuleFactoryTest {
     long seed = new Random().nextLong();
     long length = 51_000_000;
 
+    String volumeName = "test";
+
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
+      volumeStore.assignVolume(volumeName);
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
@@ -94,6 +104,7 @@ public abstract class BlockStorageModuleFactoryTest {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
       }
+      volumeStore.unassignVolume(volumeName);
     }
   }
 
@@ -105,6 +116,7 @@ public abstract class BlockStorageModuleFactoryTest {
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
     long maxCacheSizeInBytes = 50_000_000;
+
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
                                                                             .packVolumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
@@ -118,7 +130,10 @@ public abstract class BlockStorageModuleFactoryTest {
     long seed = new Random().nextLong();
     long length = 51_000_000;
 
+    String volumeName = "test";
+
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
+      volumeStore.assignVolume(volumeName);
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
@@ -130,6 +145,7 @@ public abstract class BlockStorageModuleFactoryTest {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
       }
+      volumeStore.unassignVolume(volumeName);
     }
   }
 
@@ -163,11 +179,6 @@ public abstract class BlockStorageModuleFactoryTest {
     for (long pos = 0; pos < length; pos += buffer1.length) {
 
       random.nextBytes(buffer1);
-
-      if (pos == 98760) {
-        System.out.println();
-      }
-
       storageModule.write(buffer1, pos);
       storageModule.read(buffer2, pos);
 
@@ -191,6 +202,7 @@ public abstract class BlockStorageModuleFactoryTest {
   }
 
   private PackVolumeStore getPackVolumeStore(long volumeId, int blockSize, long lengthInBytes) {
+    Set<String> assigned = new HashSet<>();
     return new PackVolumeStore() {
 
       @Override
@@ -198,6 +210,7 @@ public abstract class BlockStorageModuleFactoryTest {
         return PackVolumeMetadata.builder()
                                  .blockSizeInBytes(blockSize)
                                  .lengthInBytes(lengthInBytes)
+                                 .volumeId(volumeId)
                                  .build();
       }
 
@@ -217,7 +230,7 @@ public abstract class BlockStorageModuleFactoryTest {
 
       @Override
       public List<String> getAssignedVolumes() throws IOException {
-        throw new RuntimeException("not impl");
+        return new ArrayList<String>(assigned);
       }
 
       @Override
@@ -237,12 +250,12 @@ public abstract class BlockStorageModuleFactoryTest {
 
       @Override
       public void assignVolume(String name) throws IOException {
-        throw new RuntimeException("not impl");
+        assigned.add(name);
       }
 
       @Override
       public void unassignVolume(String name) throws IOException {
-        throw new RuntimeException("not impl");
+        assigned.remove(name);
       }
 
       @Override

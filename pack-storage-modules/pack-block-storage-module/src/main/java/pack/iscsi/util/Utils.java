@@ -32,7 +32,7 @@ public class Utils {
   }
 
   public static <T> T runUntilSuccess(Logger logger, Callable<T> callable) {
-    return runUntilSuccess(logger, callable, 20);
+    return runUntilSuccess(logger, callable, 1);
   }
 
   public static <T> T runUntilSuccess(Logger logger, Callable<T> callable, int maxRetries) {

@@ -16,7 +16,6 @@ import java.util.concurrent.TimeUnit;
 import org.junit.Test;
 
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -45,9 +44,10 @@ public class LocalBlockTest {
     int passes = 1000;
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
+                                              .volumeId(volumeId)
                                               .blockId(blockId)
-                                              .blockStore(store)
+                                              .blockGenerationStore(store)
+                                              .blockSize(blockSize)
                                               .wal(wal)
                                               .build();
     try (Block block = new LocalBlock(config)) {
@@ -100,9 +100,10 @@ public class LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
+                                              .volumeId(volumeId)
                                               .blockId(blockId)
-                                              .blockStore(store)
+                                              .blockGenerationStore(store)
+                                              .blockSize(blockSize)
                                               .wal(wal)
                                               .build();
     try (Block block = new LocalBlock(config)) {
@@ -131,9 +132,10 @@ public class LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
+                                              .volumeId(volumeId)
                                               .blockId(blockId)
-                                              .blockStore(store)
+                                              .blockGenerationStore(store)
+                                              .blockSize(blockSize)
                                               .wal(wal)
                                               .build();
     try (Block block = new LocalBlock(config)) {
@@ -168,9 +170,10 @@ public class LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
+                                              .volumeId(volumeId)
                                               .blockId(blockId)
-                                              .blockStore(store)
+                                              .blockGenerationStore(store)
+                                              .blockSize(blockSize)
                                               .wal(wal)
                                               .build();
     try (Block block = new LocalBlock(config)) {
@@ -210,9 +213,10 @@ public class LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
+                                              .volumeId(volumeId)
                                               .blockId(blockId)
-                                              .blockStore(store)
+                                              .blockGenerationStore(store)
+                                              .blockSize(blockSize)
                                               .wal(wal)
                                               .syncTimeAfterIdle(1)
                                               .syncTimeAfterIdleTimeUnit(TimeUnit.SECONDS)
@@ -273,12 +277,5 @@ public class LocalBlockTest {
         _lastStoredGeneration = lastStoredGeneration;
       }
     };
-  }
-
-  private PackVolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
-    return PackVolumeMetadata.builder()
-                             .blockSizeInBytes(blockSize)
-                             .volumeId(volumeId)
-                             .build();
   }
 }

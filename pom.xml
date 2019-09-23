@@ -88,6 +88,13 @@
 			</dependency>
 			<dependency>
 				<groupId>pack</groupId>
+				<artifactId>pack-s3-block-storage-module</artifactId>
+				<version>${project.version}</version>
+				<classifier>tests</classifier>
+				<type>test-jar</type>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
 				<artifactId>pack-block-storage-spi</artifactId>
 				<version>${project.version}</version>
 			</dependency>
@@ -117,6 +124,13 @@
 				<groupId>pack</groupId>
 				<artifactId>pack-remote-wal</artifactId>
 				<version>${project.version}</version>
+			</dependency>
+			<dependency>
+				<groupId>pack</groupId>
+				<artifactId>pack-remote-wal</artifactId>
+				<version>${project.version}</version>
+				<classifier>tests</classifier>
+				<type>test-jar</type>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.thrift</groupId>
@@ -207,7 +221,7 @@
 			<dependency>
 				<groupId>consistent-s3</groupId>
 				<artifactId>consistent-s3</artifactId>
-				<version>1.1.1</version>
+				<version>1.1.2</version>
 			</dependency>
 			<dependency>
     		<groupId>io.opencensus</groupId>

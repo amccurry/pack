@@ -24,7 +24,7 @@ import pack.iscsi.spi.RandomAccessIO;
 public abstract class FileIO implements RandomAccessIO {
 
   private static final String RW = "rw";
-  private static boolean _directIOEnabled;
+  private static boolean _directIOEnabled = true;
 
   public static void setLengthFile(File file, long length) throws IOException {
     try (RandomAccessFile raf = new RandomAccessFile(file, RW)) {

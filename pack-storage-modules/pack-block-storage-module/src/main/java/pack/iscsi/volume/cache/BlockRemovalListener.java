@@ -30,7 +30,11 @@ public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
 
   public Block stealBlock(BlockKey key) {
     synchronized (_lock) {
-      return takeBlock(key);
+      Block block = takeBlock(key);
+      if (block != null) {
+        LOGGER.info("volume id {} block id {} stolen from removal", key.getVolumeId(), key.getBlockId());
+      }
+      return block;
     }
   }
 

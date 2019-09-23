@@ -49,18 +49,14 @@ public class S3BlockWriter implements BlockIOExecutor {
     if (onDiskState == BlockState.CLEAN) {
       return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
     }
-    try {
-      String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
-          onDiskGeneration);
-      LOGGER.info("writing bucket {} key {}", _bucket, key);
-      InputStream input = getInputStream(request.getRandomAccessIO(), request.getBlockSize());
-      ObjectMetadata metadata = new ObjectMetadata();
-      metadata.setContentLength(request.getBlockSize());
-      _consistentAmazonS3.putObject(_bucket, key, input, metadata);
-    } catch (Exception e) {
-      LOGGER.error("Unknown error", e);
-      return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
-    }
+    String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
+        onDiskGeneration);
+    LOGGER.info("starting write bucket {} key {}", _bucket, key);
+    InputStream input = getInputStream(request.getRandomAccessIO(), request.getBlockSize());
+    ObjectMetadata metadata = new ObjectMetadata();
+    metadata.setContentLength(request.getBlockSize());
+    _consistentAmazonS3.putObject(_bucket, key, input, metadata);
+    LOGGER.info("finished write bucket {} key {}", _bucket, key);
     return BlockIOResponse.newBlockIOResult(onDiskGeneration, BlockState.CLEAN, onDiskGeneration);
   }
 

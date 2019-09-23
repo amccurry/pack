@@ -5,7 +5,6 @@ import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
@@ -13,12 +12,24 @@ import pack.iscsi.spi.wal.BlockWriteAheadLog;
 @Value
 @Builder
 public class BlockCacheLoaderConfig {
-  PackVolumeStore packVolumeStore;
-  BlockGenerationStore blockStore;
+  
+  long volumeId;
+  
+  int blockSize;
+  
+  BlockGenerationStore blockGenerationStore;
+  
   BlockWriteAheadLog writeAheadLog;
+  
   File blockDataDir;
+  
   BlockIOFactory externalBlockStoreFactory;
-  long syncTimeAfterIdle;
-  TimeUnit syncTimeAfterIdleTimeUnit;
+  
+  @Builder.Default
+  long syncTimeAfterIdle = 1;
+
+  @Builder.Default
+  TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.MINUTES;
+  
   BlockRemovalListener removalListener;
 }

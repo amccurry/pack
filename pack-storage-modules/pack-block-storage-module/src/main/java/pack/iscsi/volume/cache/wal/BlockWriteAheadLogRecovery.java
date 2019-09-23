@@ -35,14 +35,14 @@ public class BlockWriteAheadLogRecovery implements BlockIOExecutor {
 
   @Override
   public BlockIOResponse exec(BlockIORequest request) throws IOException {
+    long volumeId = request.getVolumeId();
+    long blockId = request.getBlockId();
     long onDiskGeneration = request.getOnDiskGeneration();
     long lastStoredGeneration = request.getLastStoredGeneration();
     if (onDiskGeneration < lastStoredGeneration) {
-      throw new IOException("On disk generation " + onDiskGeneration + " less than last store generation "
-          + lastStoredGeneration + " something is wrong");
+      throw new IOException("volumeId " + volumeId + " blockId " + blockId + " on disk generation " + onDiskGeneration
+          + " less than last store generation " + lastStoredGeneration + " something is wrong");
     }
-    long volumeId = request.getVolumeId();
-    long blockId = request.getBlockId();
     long generation = recover(request.getRandomAccessIO(), volumeId, blockId, request.getOnDiskGeneration());
     return BlockIOResponse.builder()
                           .lastStoredGeneration(lastStoredGeneration)

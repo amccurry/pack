@@ -4,32 +4,24 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.github.benmanes.caffeine.cache.Caffeine;
-import com.github.benmanes.caffeine.cache.LoadingCache;
-import com.github.benmanes.caffeine.cache.Weigher;
-
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.MetricsFactory;
-import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.PackVolumeMetadata;
+import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
-import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
-import pack.iscsi.spi.block.BlockKey;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
-import pack.iscsi.volume.cache.BlockCacheLoader;
-import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
-import pack.iscsi.volume.cache.BlockRemovalListener;
-import pack.iscsi.volume.cache.BlockRemovalListenerConfig;
 
 public class BlockStorageModuleFactory implements StorageModuleFactory, Closeable {
 
@@ -37,39 +29,30 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   private static final String SYNC = "sync";
 
-  private final LoadingCache<BlockKey, Block> _cache;
-  private final BlockGenerationStore _blockStore;
-  private final PackVolumeStore _packVolumeStore;
+  private final BlockGenerationStore _blockGenerationStore;
   private final BlockWriteAheadLog _writeAheadLog;
-  private final BlockIOFactory _externalBlockStoreFactory;
   private final File _blockDataDir;
+  private final PackVolumeStore _packVolumeStore;
+  private final BlockIOFactory _externalBlockStoreFactory;
   private final ExecutorService _syncExecutor;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final MetricsFactory _metricsFactory;
+  private final long _maxCacheSizeInBytes;
+  private final ConcurrentMap<String, BlockStorageModule> _blockStorageModules = new ConcurrentHashMap<>();
+  private final Object _lock = new Object();
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
     _packVolumeStore = config.getPackVolumeStore();
     _blockDataDir = config.getBlockDataDir();
-    _blockStore = config.getBlockStore();
+    _blockGenerationStore = config.getBlockStore();
     _writeAheadLog = config.getWriteAheadLog();
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _syncExecutor = Utils.executor(SYNC, config.getSyncThreads());
     _metricsFactory = config.getMetricsFactory();
-
-    BlockRemovalListener removalListener = getRemovalListener();
-
-    BlockCacheLoader loader = getCacheLoader(removalListener);
-
-    Weigher<BlockKey, Block> weigher = (key, value) -> value.getSize();
-
-    _cache = Caffeine.newBuilder()
-                     .removalListener(removalListener)
-                     .weigher(weigher)
-                     .maximumWeight(config.getMaxCacheSizeInBytes())
-                     .build(loader);
+    _maxCacheSizeInBytes = config.getMaxCacheSizeInBytes();
   }
 
   @Override
@@ -79,48 +62,65 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   @Override
   public StorageModule getStorageModule(String name) throws IOException {
-    PackVolumeMetadata volumeMetadata = _packVolumeStore.getVolumeMetadata(name);
-
-    long volumeId = volumeMetadata.getVolumeId();
-    int blockSize = volumeMetadata.getBlockSizeInBytes();
-    long lengthInBytes = volumeMetadata.getLengthInBytes();
-    BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
-                                                              .blockSize(blockSize)
-                                                              .externalBlockStoreFactory(_externalBlockStoreFactory)
-                                                              .globalCache(_cache)
-                                                              .lengthInBytes(lengthInBytes)
-                                                              .volumeName(name)
-                                                              .volumeId(volumeId)
-                                                              .syncTimeAfterIdle(_syncTimeAfterIdle)
-                                                              .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
-                                                              .syncExecutor(_syncExecutor)
-                                                              .metricsFactory(_metricsFactory)
-                                                              .build();
-    LOGGER.info("open storage module for {}({})", name, volumeId);
-    return new BlockStorageModule(config);
+    synchronized (_lock) {
+      BlockStorageModule storageModule = _blockStorageModules.get(name);
+      if (storageModule != null) {
+        return referenceCounter(name, storageModule);
+      }
+      PackVolumeMetadata volumeMetadata = _packVolumeStore.getVolumeMetadata(name);
+      if (!_packVolumeStore.isAssigned(name)) {
+        throw new IOException("Volume " + name + " is not assigned to this host.");
+      }
+      long volumeId = volumeMetadata.getVolumeId();
+      int blockSize = volumeMetadata.getBlockSizeInBytes();
+      long lengthInBytes = volumeMetadata.getLengthInBytes();
+      BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
+                                                                .blockDataDir(_blockDataDir)
+                                                                .blockGenerationStore(_blockGenerationStore)
+                                                                .blockSize(blockSize)
+                                                                .externalBlockStoreFactory(_externalBlockStoreFactory)
+                                                                .lengthInBytes(lengthInBytes)
+                                                                .volumeName(name)
+                                                                .volumeId(volumeId)
+                                                                .syncTimeAfterIdle(_syncTimeAfterIdle)
+                                                                .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
+                                                                .syncExecutor(_syncExecutor)
+                                                                .metricsFactory(_metricsFactory)
+                                                                .writeAheadLog(_writeAheadLog)
+                                                                .maxCacheSizeInBytes(getMaxCacheSizeInBytes())
+                                                                .build();
+      LOGGER.info("open storage module for {}({})", name, volumeId);
+      storageModule = new BlockStorageModule(config);
+      _blockStorageModules.put(name, storageModule);
+      return referenceCounter(name, storageModule);
+    }
   }
 
   @Override
   public void close() throws IOException {
+    LOGGER.info("starting close of storage module factory");
+    IOUtils.close(LOGGER, _blockStorageModules.values());
     IOUtils.close(LOGGER, _syncExecutor);
   }
 
-  private BlockRemovalListener getRemovalListener() {
-    return new BlockRemovalListener(BlockRemovalListenerConfig.builder()
-                                                              .externalBlockStoreFactory(_externalBlockStoreFactory)
-                                                              .build());
+  private StorageModule referenceCounter(String name, BlockStorageModule storageModule) {
+    storageModule.incrementRef();
+    return new DelegateStorageModule(storageModule) {
+      @Override
+      public void close() throws IOException {
+        synchronized (_lock) {
+          storageModule.decrementRef();
+          if (storageModule.getRefCount() == 0) {
+            storageModule.close();
+            _blockStorageModules.remove(name);
+          }
+        }
+      }
+    };
   }
 
-  private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
-    return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
-                                                      .packVolumeStore(_packVolumeStore)
-                                                      .blockDataDir(_blockDataDir)
-                                                      .blockStore(_blockStore)
-                                                      .externalBlockStoreFactory(_externalBlockStoreFactory)
-                                                      .syncTimeAfterIdle(_syncTimeAfterIdle)
-                                                      .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
-                                                      .writeAheadLog(_writeAheadLog)
-                                                      .removalListener(removalListener)
-                                                      .build());
+  private long getMaxCacheSizeInBytes() {
+    return _maxCacheSizeInBytes;
   }
+
 }

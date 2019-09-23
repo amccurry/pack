@@ -1,6 +1,7 @@
 package pack.iscsi.s3.volume;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,7 +39,7 @@ public class S3VolumeStoreTest {
                                                     .build();
 
     try (S3VolumeStore store = new S3VolumeStore(config)) {
-      store.createVolume("test", 10_000, 100_000_000);
+      store.createVolume("test", 100_000_000, 10_000);
       PackVolumeMetadata volumeMetadata = store.getVolumeMetadata("test");
       assertEquals(10_000, volumeMetadata.getBlockSizeInBytes());
       assertEquals(100_000_000, volumeMetadata.getLengthInBytes());
@@ -64,6 +65,40 @@ public class S3VolumeStoreTest {
   }
 
   @Test
+  public void testS3VolumeStoreAssignedList() throws Exception {
+    S3VolumeStoreConfig config = S3VolumeStoreConfig.builder()
+                                                    .bucket(BUCKET)
+                                                    .objectPrefix(OBJECT_PREFIX)
+                                                    .consistentAmazonS3(CONSISTENT_AMAZON_S3)
+                                                    .build();
+
+    try (S3VolumeStore store = new S3VolumeStore(config)) {
+
+      assertTrue(store.getAssignedVolumes()
+                      .isEmpty());
+
+      store.createVolume("testAssigned", 10_000, 100_000_000);
+
+      assertTrue(store.getAllVolumes()
+                      .contains("testAssigned"));
+
+      store.assignVolume("testAssigned");
+
+      assertEquals(Arrays.asList("testAssigned"), store.getAssignedVolumes());
+
+      store.unassignVolume("testAssigned");
+
+      assertTrue(store.getAssignedVolumes()
+                      .isEmpty());
+
+      store.deleteVolume("testAssigned");
+
+      assertTrue(store.getAssignedVolumes()
+                      .isEmpty());
+    }
+  }
+
+  @Test
   public void testS3VolumeStoreRename() throws Exception {
     S3VolumeStoreConfig config = S3VolumeStoreConfig.builder()
                                                     .bucket(BUCKET)
@@ -72,7 +107,7 @@ public class S3VolumeStoreTest {
                                                     .build();
 
     try (S3VolumeStore store = new S3VolumeStore(config)) {
-      store.createVolume("test3", 10_000, 100_000_000);
+      store.createVolume("test3", 100_000_000, 10_000);
       long volumeId;
       {
         PackVolumeMetadata volumeMetadata = store.getVolumeMetadata("test3");

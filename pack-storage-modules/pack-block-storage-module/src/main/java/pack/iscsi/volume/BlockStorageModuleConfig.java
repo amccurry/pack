@@ -1,23 +1,20 @@
 package pack.iscsi.volume;
 
+import java.io.File;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-
-import com.github.benmanes.caffeine.cache.LoadingCache;
 
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.spi.MetricsFactory;
-import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
-import pack.iscsi.spi.block.BlockKey;
+import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 @Value
 @Builder
 public class BlockStorageModuleConfig {
 
-  LoadingCache<BlockKey, Block> globalCache;
-  
   String volumeName;
 
   long volumeId;
@@ -35,6 +32,15 @@ public class BlockStorageModuleConfig {
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.MINUTES;
 
   ExecutorService syncExecutor;
-  
+
   MetricsFactory metricsFactory;
+
+  BlockGenerationStore blockGenerationStore;
+
+  BlockWriteAheadLog writeAheadLog;
+
+  File blockDataDir;
+
+  long maxCacheSizeInBytes;
+
 }

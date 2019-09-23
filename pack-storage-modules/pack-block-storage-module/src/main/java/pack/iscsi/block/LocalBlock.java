@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,7 +18,6 @@ import org.slf4j.LoggerFactory;
 
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
@@ -27,6 +27,7 @@ import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
+import pack.util.LockUtil;
 
 public class LocalBlock implements Closeable, Block {
 
@@ -52,8 +53,7 @@ public class LocalBlock implements Closeable, Block {
   private final RandomAccessIO _randomAccessIO;
 
   public LocalBlock(LocalBlockConfig config) throws IOException {
-    PackVolumeMetadata volumeMetadata = config.getVolumeMetadata();
-    _volumeId = volumeMetadata.getVolumeId();
+    _volumeId = config.getVolumeId();
     _blockId = config.getBlockId();
     File blockDataDir = config.getBlockDataDir();
     createAndCheckExistence(blockDataDir);
@@ -61,15 +61,16 @@ public class LocalBlock implements Closeable, Block {
     File volumeDir = new File(blockDataDir, Long.toString(_volumeId));
     createAndCheckExistence(volumeDir);
 
-    _blockDataFile = new File(volumeDir, Long.toString(_blockId));
+    _blockDataFile = new File(volumeDir, Long.toString(_blockId) + "." + UUID.randomUUID()
+                                                                             .toString());
 
     ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
     _writeLock = reentrantReadWriteLock.writeLock();
     _readLock = reentrantReadWriteLock.readLock();
-    _blockStore = config.getBlockStore();
+    _blockStore = config.getBlockGenerationStore();
 
     _wal = config.getWal();
-    _blockSize = volumeMetadata.getBlockSizeInBytes();
+    _blockSize = config.getBlockSize();
 
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
@@ -96,26 +97,22 @@ public class LocalBlock implements Closeable, Block {
 
   @Override
   public void readFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
-    _readLock.lock();
-    checkIfClosed();
-    checkState();
-    checkPositionAndLength(blockPosition, len);
-    checkGenerations();
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_readLock)) {
+      checkIfClosed();
+      checkState();
+      checkPositionAndLength(blockPosition, len);
+      checkGenerations();
       _randomAccessIO.readFully(blockPosition, bytes, offset, len);
-    } finally {
-      _readLock.unlock();
     }
   }
 
   @Override
   public BlockJournalResult writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
-    _writeLock.lock();
-    checkIfClosed();
-    checkState();
-    checkPositionAndLength(blockPosition, len);
-    checkGenerations();
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
+      checkIfClosed();
+      checkState();
+      checkPositionAndLength(blockPosition, len);
+      checkGenerations();
       _lastWrite.set(System.nanoTime());
       markDirty();
       long generation = _onDiskGeneration.incrementAndGet();
@@ -123,22 +120,12 @@ public class LocalBlock implements Closeable, Block {
       writeMetadata();
       _randomAccessIO.writeFully(blockPosition, bytes, offset, len);
       return result;
-    } finally {
-      _writeLock.unlock();
-    }
-  }
-
-  private void checkPositionAndLength(long blockPosition, int len) throws EOFException {
-    if (blockPosition + len > _blockSize) {
-      throw new EOFException("volumeId " + _volumeId + " blockId " + _blockId + " blockPosition " + blockPosition
-          + " length " + len + " read/write pass end of block");
     }
   }
 
   @Override
   public void execIO(BlockIOExecutor executor) throws IOException {
-    _writeLock.lock();
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
       checkIfClosed();
       BlockIORequest request = BlockIORequest.builder()
                                              .blockId(_blockId)
@@ -149,42 +136,48 @@ public class LocalBlock implements Closeable, Block {
                                              .onDiskState(_onDiskState.get())
                                              .volumeId(_volumeId)
                                              .build();
+      LOGGER.info("starting execIO volumeId {} blockId {}", _volumeId, _blockId);
       BlockIOResponse response = executor.exec(request);
+      LOGGER.info("finished execIO volumeId {} blockId {}", _volumeId, _blockId);
       _onDiskState.set(response.getOnDiskBlockState());
       _onDiskGeneration.set(response.getOnDiskGeneration());
       _lastStoredGeneration.set(response.getLastStoredGeneration());
+      LOGGER.info("write last store generation volumeId {} blockId {}", _volumeId, _blockId);
       _blockStore.setLastStoreGeneration(_volumeId, _blockId, response.getLastStoredGeneration());
+      LOGGER.info("release journal volumeId {} blockId {} generation {}", _volumeId, _blockId,
+          response.getLastStoredGeneration());
       _wal.releaseJournals(_volumeId, _blockId, response.getLastStoredGeneration());
+      LOGGER.info("write metadata {} blockId {}", _volumeId, _blockId);
       writeMetadata();
-    } finally {
-      _writeLock.unlock();
     }
   }
 
   @Override
   public void close() throws IOException {
-    _writeLock.lock();
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
       if (!_closed.get()) {
         _closed.set(true);
       }
       IOUtils.closeQuietly(_randomAccessIO);
-    } finally {
-      _writeLock.unlock();
     }
   }
 
   @Override
   public void cleanUp() throws IOException {
-    _writeLock.lock();
-    try {
+    try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
       if (!_closed.get()) {
         throw new IOException("Clean up can only occur after a close");
       }
+      LOGGER.info("deleting block file, volume id {} block id {} block file {}", _volumeId, _blockId,
+          _blockDataFile.getAbsolutePath());
       _blockDataFile.delete();
-    } finally {
-      _writeLock.unlock();
     }
+  }
+
+  @Override
+  public boolean idleWrites() {
+    long syncTimeAfterIdle = _syncTimeAfterIdleTimeUnit.toNanos(_syncTimeAfterIdle);
+    return _lastWrite.get() + syncTimeAfterIdle < System.nanoTime();
   }
 
   private void markDirty() {
@@ -288,12 +281,6 @@ public class LocalBlock implements Closeable, Block {
     return _closed.get();
   }
 
-  @Override
-  public boolean idleWrites() {
-    long syncTimeAfterIdle = _syncTimeAfterIdleTimeUnit.toNanos(_syncTimeAfterIdle);
-    return _lastWrite.get() + syncTimeAfterIdle < System.nanoTime();
-  }
-
   static long getLong(byte[] b, int off) {
     return ((b[off + 7] & 0xFFL)) + ((b[off + 6] & 0xFFL) << 8) + ((b[off + 5] & 0xFFL) << 16)
         + ((b[off + 4] & 0xFFL) << 24) + ((b[off + 3] & 0xFFL) << 32) + ((b[off + 2] & 0xFFL) << 40)
@@ -310,4 +297,12 @@ public class LocalBlock implements Closeable, Block {
     b[off + 1] = (byte) (val >>> 48);
     b[off] = (byte) (val >>> 56);
   }
+
+  private void checkPositionAndLength(long blockPosition, int len) throws EOFException {
+    if (blockPosition + len > _blockSize) {
+      throw new EOFException("volumeId " + _volumeId + " blockId " + _blockId + " blockPosition " + blockPosition
+          + " length " + len + " read/write pass end of block with block size " + _blockSize);
+    }
+  }
+
 }

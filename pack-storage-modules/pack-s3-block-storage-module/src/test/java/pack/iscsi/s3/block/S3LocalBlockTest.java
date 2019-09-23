@@ -19,7 +19,6 @@ import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
-import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -45,9 +44,10 @@ public class S3LocalBlockTest {
     BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .blockDataDir(file)
-                                              .volumeMetadata(getVolumeMetadata(volumeId, blockSize))
+                                              .volumeId(volumeId)
                                               .blockId(blockId)
-                                              .blockStore(store)
+                                              .blockGenerationStore(store)
+                                              .blockSize(blockSize)
                                               .wal(wal)
                                               .build();
 
@@ -146,10 +146,4 @@ public class S3LocalBlockTest {
     };
   }
 
-  private PackVolumeMetadata getVolumeMetadata(long volumeId, int blockSize) {
-    return PackVolumeMetadata.builder()
-                             .blockSizeInBytes(blockSize)
-                             .volumeId(volumeId)
-                             .build();
-  }
 }

@@ -49,29 +49,21 @@ public class S3BlockReader implements BlockIOExecutor {
     if (lastStoredGeneration == Block.MISSING_BLOCK_GENERATION) {
       return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
     }
-
     RandomAccessIO randomAccessIO = request.getRandomAccessIO();
-    long onDiskGeneration = request.getOnDiskGeneration();
-    BlockState onDiskState = request.getOnDiskState();
-    try {
-      String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
-          lastStoredGeneration);
-      LOGGER.info("reading bucket {} key {}", _bucket, key);
-      S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
-      try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
-        byte[] buffer = new byte[4096];
-        int read;
-        long pos = 0;
-        while ((read = inputStream.read(buffer)) != -1) {
-          randomAccessIO.writeFully(pos, buffer, 0, read);
-          pos += read;
-        }
+    String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
+        lastStoredGeneration);
+    LOGGER.info("reading bucket {} key {}", _bucket, key);
+    S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
+    try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
+      byte[] buffer = new byte[4096];
+      int read;
+      long pos = 0;
+      while ((read = inputStream.read(buffer)) != -1) {
+        randomAccessIO.writeFully(pos, buffer, 0, read);
+        pos += read;
       }
-      return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
-    } catch (Exception e) {
-      LOGGER.error("Unknown error", e);
-      return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
     }
+    return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
   }
 
 }

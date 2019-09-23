@@ -1,5 +1,6 @@
 package pack.iscsi.volume;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,13 +12,17 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.github.benmanes.caffeine.cache.Weigher;
 
 import io.opencensus.common.Scope;
 import pack.iscsi.block.AlreadyClosedException;
@@ -25,19 +30,24 @@ import pack.iscsi.spi.Meter;
 import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockKey;
 import pack.iscsi.spi.wal.BlockJournalResult;
+import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
+import pack.iscsi.volume.cache.BlockCacheLoader;
+import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
+import pack.iscsi.volume.cache.BlockRemovalListener;
+import pack.iscsi.volume.cache.BlockRemovalListenerConfig;
 import pack.util.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
 
-  private static final String WRITE = "write";
-
-  private static final String READ = "read";
-
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModule.class);
+
+  private static final String WRITE = "write";
+  private static final String READ = "read";
 
   private final long _volumeId;
   private final int _blockSize;
@@ -50,8 +60,19 @@ public class BlockStorageModule implements StorageModule {
   private final MetricsFactory _metricsFactory;
   private final Meter _readMeter;
   private final Meter _writeMeter;
+  private final File _blockDataDir;
+  private final BlockWriteAheadLog _writeAheadLog;
+  private final long _syncTimeAfterIdle;
+  private final TimeUnit _syncTimeAfterIdleTimeUnit;
+  private final BlockGenerationStore _blockGenerationStore;
+  private final AtomicInteger _refCounter = new AtomicInteger();
 
   public BlockStorageModule(BlockStorageModuleConfig config) {
+    _blockGenerationStore = config.getBlockGenerationStore();
+    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
+    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
+    _blockDataDir = config.getBlockDataDir();
+    _writeAheadLog = config.getWriteAheadLog();
     _metricsFactory = config.getMetricsFactory();
     String volumeName = config.getVolumeName();
     _readMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, READ);
@@ -62,13 +83,53 @@ public class BlockStorageModule implements StorageModule {
     _volumeId = config.getVolumeId();
     _blockSize = config.getBlockSize();
     _lengthInBytes = config.getLengthInBytes();
-    _cache = config.getGlobalCache();
     _syncExecutor = config.getSyncExecutor();
     _syncTimer = new Timer("sync-" + _volumeId);
 
     long period = config.getSyncTimeAfterIdleTimeUnit()
                         .toMillis(config.getSyncTimeAfterIdle());
     _syncTimer.schedule(getTask(), period, period);
+
+    BlockRemovalListener removalListener = getRemovalListener();
+
+    BlockCacheLoader loader = getCacheLoader(removalListener);
+
+    Weigher<BlockKey, Block> weigher = (key, value) -> value.getSize();
+
+    _cache = Caffeine.newBuilder()
+                     .removalListener(removalListener)
+                     .weigher(weigher)
+                     .maximumWeight(config.getMaxCacheSizeInBytes())
+                     .build(loader);
+  }
+
+  public void incrementRef() {
+    _refCounter.incrementAndGet();
+  }
+
+  public void decrementRef() {
+    _refCounter.decrementAndGet();
+  }
+
+  public int getRefCount() {
+    return _refCounter.get();
+  }
+
+  @Override
+  public void close() throws IOException {
+    LOGGER.info("starting close of storage module for {}", _volumeId);
+    checkClosed();
+    _syncTimer.cancel();
+    _syncTimer.purge();
+    _closed.set(true);
+    try {
+      List<Future<Void>> syncs = sync(false);
+      LOGGER.info("waiting for syncs to complete");
+      waitForSyncs(syncs);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
+    LOGGER.info("finished close of storage module for {}", _volumeId);
   }
 
   @Override
@@ -157,22 +218,6 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
-  @Override
-  public void close() throws IOException {
-    LOGGER.info("starting close of storage module for {}", _volumeId);
-    checkClosed();
-    _syncTimer.cancel();
-    _syncTimer.purge();
-    _closed.set(true);
-    try {
-      List<Future<Void>> syncs = sync(false);
-      waitForSyncs(syncs);
-    } catch (InterruptedException e) {
-      throw new IOException(e);
-    }
-    LOGGER.info("finished close of storage module for {}", _volumeId);
-  }
-
   private void waitForSyncs(List<Future<Void>> syncs) {
     for (Future<Void> sync : syncs) {
       try {
@@ -194,18 +239,18 @@ public class BlockStorageModule implements StorageModule {
   private List<Callable<Void>> createSyncs(List<Block> blocks, boolean onlyIfIdleWrites) {
     List<Callable<Void>> callables = new ArrayList<>();
     for (Block block : blocks) {
+      Callable<Void> callable = () -> {
+        LOGGER.info("starting sync for block id {} from volume id", block.getBlockId(), block.getVolumeId());
+        sync(block);
+        LOGGER.info("finished sync for block id {} from volume id", block.getBlockId(), block.getVolumeId());
+        return null;
+      };
       if (onlyIfIdleWrites) {
         if (block.idleWrites()) {
-          callables.add(() -> {
-            sync(block);
-            return null;
-          });
+          callables.add(callable);
         }
       } else {
-        callables.add(() -> {
-          sync(block);
-          return null;
-        });
+        callables.add(callable);
       }
     }
     return callables;
@@ -257,7 +302,7 @@ public class BlockStorageModule implements StorageModule {
   public long getSizeInBlocks() {
     return getBlockCount() - 1;
   }
-  
+
   @Override
   public long getSizeInBytes() {
     return _lengthInBytes;
@@ -295,5 +340,24 @@ public class BlockStorageModule implements StorageModule {
     };
   }
 
+  private BlockRemovalListener getRemovalListener() {
+    return new BlockRemovalListener(BlockRemovalListenerConfig.builder()
+                                                              .externalBlockStoreFactory(_externalBlockStoreFactory)
+                                                              .build());
+  }
+
+  private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
+    return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
+                                                      .blockDataDir(_blockDataDir)
+                                                      .blockGenerationStore(_blockGenerationStore)
+                                                      .blockSize(_blockSize)
+                                                      .externalBlockStoreFactory(_externalBlockStoreFactory)
+                                                      .removalListener(removalListener)
+                                                      .syncTimeAfterIdle(_syncTimeAfterIdle)
+                                                      .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
+                                                      .volumeId(_volumeId)
+                                                      .writeAheadLog(_writeAheadLog)
+                                                      .build());
+  }
 
 }

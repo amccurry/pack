@@ -13,6 +13,7 @@ import pack.iscsi.io.IOUtils;
 
 public class S3Utils {
 
+  private static final String ASSIGNED = "assigned";
   private static final String WAL = "wal";
   private static final String DATA = "data";
   private static final String VOLUME = "volume";
@@ -69,6 +70,19 @@ public class S3Utils {
     } else {
       return JOINER.join(objectPrefix, VOLUME) + SEPARATOR;
     }
+  }
+
+  public static String getAssignedVolumeNamePrefix(String objectPrefix, String hostname) {
+    if (objectPrefix == null || objectPrefix.trim()
+                                            .isEmpty()) {
+      return JOINER.join(ASSIGNED, hostname) + SEPARATOR;
+    } else {
+      return JOINER.join(objectPrefix, ASSIGNED, hostname) + SEPARATOR;
+    }
+  }
+
+  public static String getAssignedVolumeNameKey(String objectPrefix, String hostname, String name) {
+    return getAssignedVolumeNamePrefix(objectPrefix, hostname) + name;
   }
 
   public static String getVolumeBlocksPrefix(String objectPrefix, long volumeId) {

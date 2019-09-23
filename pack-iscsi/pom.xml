@@ -34,13 +34,6 @@
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
-			<artifactId>pack-block-storage-test-suite</artifactId>
-			<classifier>tests</classifier>
-			<type>test-jar</type>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>pack</groupId>
 			<artifactId>pack-remote-wal</artifactId>
 		</dependency>
 		<dependency>
@@ -58,6 +51,27 @@
 		<dependency>
 			<groupId>io.opencensus</groupId>
 			<artifactId>opencensus-exporter-trace-jaeger</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>pack-s3-block-storage-module</artifactId>
+			<classifier>tests</classifier>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>pack-block-storage-test-suite</artifactId>
+			<classifier>tests</classifier>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>pack-remote-wal</artifactId>
+			<classifier>tests</classifier>
+			<type>test-jar</type>
+			<scope>test</scope>
 		</dependency>
 	</dependencies>
 </project>

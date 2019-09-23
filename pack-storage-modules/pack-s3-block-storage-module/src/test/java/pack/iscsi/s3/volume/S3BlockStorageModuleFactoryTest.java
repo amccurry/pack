@@ -3,11 +3,12 @@ package pack.iscsi.s3.volume;
 import java.io.File;
 
 import org.junit.Before;
+import org.junit.Test;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.S3TestProperties;
+import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
 import pack.iscsi.spi.block.BlockIOFactory;
@@ -52,6 +53,11 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
                                                                         .walLogDir(WAL_DATA_DIR)
                                                                         .build();
     return new LocalBlockWriteAheadLog(config);
+  }
+  
+  @Test
+  public void testBlockStorageModuleFactory() throws Exception {
+    super.testBlockStorageModuleFactory();
   }
 
 }
