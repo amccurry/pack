@@ -21,6 +21,7 @@ import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
+import pack.util.ExecutorUtil;
 
 public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
 
@@ -57,7 +58,9 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
       return new LocalJournal(blockLogDir, volumeId, blockId);
     };
     RemovalListener<JournalKey, LocalJournal> removalListener = (key, log, cause) -> IOUtils.close(LOGGER, log);
+
     _cache = Caffeine.newBuilder()
+                     .executor(ExecutorUtil.getCallerRunExecutor())
                      .expireAfterWrite(10, TimeUnit.SECONDS)
                      .removalListener(removalListener)
                      .build(loader);

@@ -36,6 +36,7 @@ public class LocalJournal implements Closeable {
   private final long _blockId;
 
   public LocalJournal(File blockLogDir, long volumeId, long blockId) {
+    LOGGER.info("Creating LocalJournal dir {} volumeId {} blockId {}", blockLogDir, volumeId, blockId);
     _blockLogDir = blockLogDir;
     _volumeId = volumeId;
     _blockId = blockId;
@@ -46,7 +47,7 @@ public class LocalJournal implements Closeable {
 
   public void append(long generation, long position, byte[] bytes, int offset, int len) throws IOException {
     try (Closeable lock = LockUtil.getCloseableLock(_readLock)) {
-      LocalJournalWriter writer = getLocalLogWriter(generation);
+      LocalJournalWriter writer = getCurrentWriter(generation);
       writer.append(generation, position, bytes, offset, len);
     }
   }
@@ -57,6 +58,7 @@ public class LocalJournal implements Closeable {
     }
     LOGGER.info("release volumeId {} blockId {} generation {}", _volumeId, _blockId, generation);
     try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
+      closeCurrentWriter();
       List<LocalJournalReader> readers = getLocalLogReaders();
       try {
         for (LocalJournalReader reader : readers) {
@@ -73,16 +75,6 @@ public class LocalJournal implements Closeable {
     }
   }
 
-  private void cleanupDirIfNeeded() {
-    if (!_blockLogDir.exists()) {
-      return;
-    }
-    File[] listFiles = _blockLogDir.listFiles();
-    if (listFiles == null || listFiles.length == 0) {
-      _blockLogDir.delete();
-    }
-  }
-
   public List<BlockJournalRange> getJournalRanges(long onDiskGeneration, boolean closeExistingWriter)
       throws IOException {
     List<BlockJournalRange> result = new ArrayList<>();
@@ -91,10 +83,7 @@ public class LocalJournal implements Closeable {
     }
     LOGGER.info("getJournalRanges volumeId {} blockId {}", _volumeId, _blockId);
     try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
-      if (closeExistingWriter) {
-        IOUtils.close(LOGGER, _writer.get());
-        _writer.set(null);
-      }
+      closeCurrentWriter();
       List<LocalJournalReader> readers = getLocalLogReaders();
       try {
         for (LocalJournalReader reader : readers) {
@@ -124,6 +113,7 @@ public class LocalJournal implements Closeable {
   public long recover(String uuid, BlockRecoveryWriter writer, long onDiskGeneration) throws IOException {
     LOGGER.info("recover volumeId {} blockId {} on disk generation {}", _volumeId, _blockId, onDiskGeneration);
     try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
+      closeCurrentWriter();
       try (LocalJournalReader reader = getLocalLogReader(uuid)) {
         return recover(reader, writer, onDiskGeneration);
       }
@@ -132,12 +122,8 @@ public class LocalJournal implements Closeable {
 
   @Override
   public void close() throws IOException {
-    LocalJournalWriter journalWriter = _writer.get();
-    if (journalWriter != null) {
-      LOGGER.info("close volumeId {} blockId {} last generation {}", _volumeId, _blockId,
-          journalWriter.getLastGeneration());
-      IOUtils.close(LOGGER, journalWriter);
-    }
+    LOGGER.info("Closing LocalJournal dir {} volumeId {} blockId {}", _blockLogDir, _volumeId, _blockId);
+    closeCurrentWriter();
   }
 
   private long recover(LocalJournalReader reader, BlockRecoveryWriter writer, long onDiskGeneration)
@@ -194,7 +180,7 @@ public class LocalJournal implements Closeable {
                          .equals(file);
   }
 
-  private synchronized LocalJournalWriter getLocalLogWriter(long generation) throws IOException {
+  private synchronized LocalJournalWriter getCurrentWriter(long generation) throws IOException {
     LocalJournalWriter writer = _writer.get();
     if (isValid(writer, generation)) {
       return writer;
@@ -217,26 +203,22 @@ public class LocalJournal implements Closeable {
     return writer.getLastGeneration() + 1 == generation;
   }
 
-  // public long recover(RandomAccessIO randomAccessIO, long onDiskGeneration)
-  // throws IOException {
-  // _writeLock.lock();
-  // LOGGER.info("recover volumeId {} blockId {}", _volumeId, _blockId);
-  // try {
-  // IOUtils.close(LOGGER, _writer.get());
-  // _writer.set(null);
-  // long currentGeneration = onDiskGeneration;
-  // List<LocalJournalReader> readers = getLocalLogReaders();
-  // try {
-  // for (LocalJournalReader reader : readers) {
-  // currentGeneration = recover(randomAccessIO, reader, currentGeneration);
-  // }
-  // return currentGeneration;
-  // } finally {
-  // IOUtils.close(LOGGER, readers);
-  // }
-  // } finally {
-  // _writeLock.unlock();
-  // }
-  // }
+  private void closeCurrentWriter() {
+    LocalJournalWriter journalWriter = _writer.getAndSet(null);
+    if (journalWriter != null) {
+      LOGGER.info("Closing LocalJournalWriter volumeId {} blockId {} last generation {}", _volumeId, _blockId,
+          journalWriter.getLastGeneration());
+      IOUtils.close(LOGGER, journalWriter);
+    }
+  }
 
+  private void cleanupDirIfNeeded() {
+    if (!_blockLogDir.exists()) {
+      return;
+    }
+    File[] listFiles = _blockLogDir.listFiles();
+    if (listFiles == null || listFiles.length == 0) {
+      _blockLogDir.delete();
+    }
+  }
 }

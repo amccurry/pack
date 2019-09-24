@@ -1,7 +1,6 @@
 package org.jscsi.target.connection.phase;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.security.DigestException;
 
 import javax.naming.OperationNotSupportedException;

@@ -52,7 +52,7 @@ public class IscsiConfigUtil {
   private static final String BLOCK_CACHE_SIZE_IN_BYTES = "block.cache.size.in.bytes";
   private static final String BLOCK_CACHE_DIR = "block.cache.dir";
   private static final String ZK_CONNECTION = "zk.connection";
-  private static final String S3_ZK_CONSISTENT_PREFIX = "s3.zk.consistent.prefix";
+  private static final String CONSISTENT_S3_ZK_PREFIX = "consistent.s3.zk.prefix";
   private static final String S3_OBJECTPREFIX = "s3.objectprefix";
   private static final String S3_BUCKET = "s3.bucket";
 
@@ -172,7 +172,7 @@ public class IscsiConfigUtil {
     if (curatorFramework == null) {
       return null;
     }
-    String zkPrefix = getPropertyNotNull(properties, S3_ZK_CONSISTENT_PREFIX, configFile);
+    String zkPrefix = getPropertyNotNull(properties, CONSISTENT_S3_ZK_PREFIX, configFile);
     AmazonS3 client = AmazonS3ClientBuilder.defaultClient();
     ConsistentAmazonS3 consistentAmazonS3 = ConsistentAmazonS3.create(client, curatorFramework,
         ConsistentAmazonS3Config.builder()

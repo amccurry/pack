@@ -42,6 +42,7 @@ public class LocalJournalWriter implements Closeable {
     _file = new File(config.getBlockLogDir(), uuid);
     _file.getParentFile()
          .mkdirs();
+    LOGGER.info("Opening journal writer file {} length {}", _file, _file.length());
     _randomAccessIO = FileIO.openRandomAccess(_file, config.getBufferSize(), RW);
   }
 
@@ -72,6 +73,7 @@ public class LocalJournalWriter implements Closeable {
   public void close() throws IOException {
     int size = getSize();
     _randomAccessIO.close();
+    LOGGER.info("Closing journal writer file {} with length of {}", _file, _file.length());
     checkFinalSizeOfFile(size);
   }
 

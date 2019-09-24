@@ -40,6 +40,7 @@ import pack.iscsi.volume.cache.BlockCacheLoader;
 import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
 import pack.iscsi.volume.cache.BlockRemovalListener;
 import pack.iscsi.volume.cache.BlockRemovalListenerConfig;
+import pack.util.ExecutorUtil;
 import pack.util.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
@@ -97,6 +98,7 @@ public class BlockStorageModule implements StorageModule {
     Weigher<BlockKey, Block> weigher = (key, value) -> value.getSize();
 
     _cache = Caffeine.newBuilder()
+                     .executor(ExecutorUtil.getCallerRunExecutor())
                      .removalListener(removalListener)
                      .weigher(weigher)
                      .maximumWeight(config.getMaxCacheSizeInBytes())

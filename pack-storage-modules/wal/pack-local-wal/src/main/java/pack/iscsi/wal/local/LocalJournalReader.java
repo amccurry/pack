@@ -4,12 +4,17 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.spi.RandomAccessIO;
 
 public class LocalJournalReader implements Comparable<LocalJournalReader>, Closeable {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(LocalJournalReader.class);
 
   private static final String R = "r";
 
@@ -37,8 +42,14 @@ public class LocalJournalReader implements Comparable<LocalJournalReader>, Close
     _file = config.getBlockLogFile();
     int bufferSize = config.getBufferSize();
     _ra = FileIO.openRandomAccess(_file, bufferSize, R);
+    LOGGER.info("Opening journal reader file {} length {}", _file, _file.length());
     _minGeneration = getMinGeneration(_ra);
-    _maxGeneration = getMaxGeneration(_ra);
+    try {
+      _maxGeneration = getMaxGeneration(_ra);
+    } catch (Exception e) {
+      LOGGER.error("Unknown error", e);
+      throw new IOException("Error get max generation file " + _file + " length " + _file.length());
+    }
   }
 
   public File getFile() {
@@ -92,6 +103,7 @@ public class LocalJournalReader implements Comparable<LocalJournalReader>, Close
 
   @Override
   public void close() throws IOException {
+    LOGGER.info("Closing journal reader file {} length {}", _file, _file.length());
     _ra.close();
   }
 

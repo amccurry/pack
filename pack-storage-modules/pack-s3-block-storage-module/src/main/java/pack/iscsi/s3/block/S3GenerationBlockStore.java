@@ -21,13 +21,14 @@ import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockKey;
+import pack.util.ExecutorUtil;
 
 public class S3GenerationBlockStore implements BlockGenerationStore {
-  
+
   @Value
   @Builder
   public static class S3GenerationBlockStoreConfig {
-    
+
     ConsistentAmazonS3 consistentAmazonS3;
     String bucket;
     String objectPrefix;
@@ -66,6 +67,7 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
       return Collections.max(generations);
     };
     _cache = Caffeine.newBuilder()
+                     .executor(ExecutorUtil.getCallerRunExecutor())
                      .expireAfterWrite(config.getExpireTimeAfterWrite(), config.getExpireTimeAfterWriteTimeUnit())
                      .build(loader);
   }

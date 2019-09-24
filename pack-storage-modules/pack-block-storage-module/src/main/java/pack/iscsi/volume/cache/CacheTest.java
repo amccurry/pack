@@ -14,6 +14,7 @@ import com.github.benmanes.caffeine.cache.RemovalListener;
 import com.github.benmanes.caffeine.cache.Weigher;
 
 import pack.iscsi.util.Utils;
+import pack.util.ExecutorUtil;
 
 public class CacheTest {
 
@@ -37,6 +38,7 @@ public class CacheTest {
     CacheLoader<String, byte[]> loader = cacheLoader;
 
     LoadingCache<String, byte[]> cache = Caffeine.newBuilder()
+                                                 .executor(ExecutorUtil.getCallerRunExecutor())
                                                  .removalListener(removalListener)
                                                  .weigher(weigher)
                                                  .maximumWeight(1000)
