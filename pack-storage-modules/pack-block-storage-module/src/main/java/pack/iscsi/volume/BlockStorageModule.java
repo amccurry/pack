@@ -68,7 +68,7 @@ public class BlockStorageModule implements StorageModule {
   private final BlockGenerationStore _blockGenerationStore;
   private final AtomicInteger _refCounter = new AtomicInteger();
 
-  public BlockStorageModule(BlockStorageModuleConfig config) {
+  public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
@@ -103,6 +103,10 @@ public class BlockStorageModule implements StorageModule {
                      .weigher(weigher)
                      .maximumWeight(config.getMaxCacheSizeInBytes())
                      .build(loader);
+
+    long blockCount = _lengthInBytes / (long) _blockSize;
+
+    _blockGenerationStore.preloadGenerationInfo(_volumeId, blockCount);
   }
 
   public void incrementRef() {
@@ -137,10 +141,11 @@ public class BlockStorageModule implements StorageModule {
   @Override
   public void read(byte[] bytes, long position) throws IOException {
     checkClosed();
+    LOGGER.info("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
     int length = bytes.length;
     _readMeter.mark(length);
     int offset = 0;
-    try (Scope readScope = TracerUtil.trace(READ)) {
+    try (Scope readScope = TracerUtil.trace(BlockStorageModule.class, READ)) {
       while (length > 0) {
         long blockId = getBlockId(position);
         int blockOffset = getBlockOffset(position);
@@ -152,7 +157,7 @@ public class BlockStorageModule implements StorageModule {
                                     .build();
         Block block = getBlockId(blockKey);
 
-        try (Scope blockWriterScope = TracerUtil.trace("block read")) {
+        try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block read")) {
           block.readFully(blockOffset, bytes, offset, len);
         }
         length -= len;
@@ -168,11 +173,12 @@ public class BlockStorageModule implements StorageModule {
   @Override
   public void write(byte[] bytes, long position) throws IOException {
     checkClosed();
+    LOGGER.info("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
     _writesCount.addAndGet(bytes.length);
     int length = bytes.length;
     _writeMeter.mark(length);
     int offset = 0;
-    try (Scope writeScope = TracerUtil.trace(WRITE)) {
+    try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE)) {
       while (length > 0) {
         long blockId = getBlockId(position);
         int blockOffset = getBlockOffset(position);
@@ -185,7 +191,7 @@ public class BlockStorageModule implements StorageModule {
         Block block = getBlockId(blockKey);
 
         // @TODO perhaps we should do something with the result
-        try (Scope blockWriterScope = TracerUtil.trace("block write")) {
+        try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write")) {
           trackResult(block.writeFully(blockOffset, bytes, offset, len));
         }
         length -= len;
@@ -200,7 +206,7 @@ public class BlockStorageModule implements StorageModule {
     int size = _results.size();
     long writeCount = _writesCount.getAndSet(0);
     long start = System.nanoTime();
-    try (Scope writeScope = TracerUtil.trace("flushWrites")) {
+    try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, "flushWrites")) {
       for (BlockJournalResult result : _results) {
         result.get();
       }
@@ -215,7 +221,7 @@ public class BlockStorageModule implements StorageModule {
   }
 
   private Block getBlockId(BlockKey blockKey) {
-    try (Scope scope = TracerUtil.trace("get block")) {
+    try (Scope scope = TracerUtil.trace(BlockStorageModule.class, "get block")) {
       return _cache.get(blockKey);
     }
   }

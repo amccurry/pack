@@ -63,14 +63,17 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   @Override
   public StorageModule getStorageModule(String name) throws IOException {
     synchronized (_lock) {
-      BlockStorageModule storageModule = _blockStorageModules.get(name);
-      if (storageModule != null) {
-        return referenceCounter(name, storageModule);
-      }
+
       PackVolumeMetadata volumeMetadata = _packVolumeStore.getVolumeMetadata(name);
       if (!_packVolumeStore.isAssigned(name)) {
         throw new IOException("Volume " + name + " is not assigned to this host.");
       }
+
+      BlockStorageModule storageModule = _blockStorageModules.get(name);
+      if (storageModule != null) {
+        return referenceCounter(name, volumeMetadata, storageModule);
+      }
+
       long volumeId = volumeMetadata.getVolumeId();
       int blockSize = volumeMetadata.getBlockSizeInBytes();
       long lengthInBytes = volumeMetadata.getLengthInBytes();
@@ -92,7 +95,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       LOGGER.info("open storage module for {}({})", name, volumeId);
       storageModule = new BlockStorageModule(config);
       _blockStorageModules.put(name, storageModule);
-      return referenceCounter(name, storageModule);
+      return referenceCounter(name, volumeMetadata, storageModule);
     }
   }
 
@@ -103,13 +106,18 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     IOUtils.close(LOGGER, _syncExecutor);
   }
 
-  private StorageModule referenceCounter(String name, BlockStorageModule storageModule) {
+  private StorageModule referenceCounter(String name, PackVolumeMetadata volumeMetadata,
+      BlockStorageModule storageModule) {
+    Thread thread = Thread.currentThread();
+    String connectionInfo = thread.getName();
+    thread.setName(volumeMetadata.getVolumeId() +  connectionInfo);
     storageModule.incrementRef();
     return new DelegateStorageModule(storageModule) {
       @Override
       public void close() throws IOException {
         synchronized (_lock) {
           storageModule.decrementRef();
+          LOGGER.info("reference count {}", storageModule.getRefCount());
           if (storageModule.getRefCount() == 0) {
             storageModule.close();
             _blockStorageModules.remove(name);

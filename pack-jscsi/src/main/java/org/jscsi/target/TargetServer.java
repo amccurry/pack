@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.security.DigestException;
@@ -221,11 +222,17 @@ public final class TargetServer implements Callable<Void> {
               parser.getCommandSequenceNumber(), parser.getExpectedStatusSequenceNumber());
           sessions.add(session);
           threadPool.submit(() -> {
+            Thread thread = Thread.currentThread();
+            String name = thread.getName();
             try {
+              SocketAddress remoteAddress = socketChannel.getRemoteAddress();
+              thread.setName(remoteAddress.toString());
               return connection.call();
             } catch (Throwable e) {
               LOGGER.error("Unknown error", e);
               throw e;
+            } finally {
+              thread.setName(name);
             }
           });
         } catch (DigestException | InternetSCSIException | SettingsException e) {
@@ -265,7 +272,7 @@ public final class TargetServer implements Callable<Void> {
     }
     return iscsiTargetManager.getTarget(targetName);
   }
-  
+
   public String getTargetAlias(String targetName) {
     return iscsiTargetManager.getTargetAlias(targetName);
   }

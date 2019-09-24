@@ -11,7 +11,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.Before;
 import org.junit.Test;
@@ -20,7 +19,6 @@ import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
-import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
@@ -38,10 +36,12 @@ public abstract class BlockStorageModuleFactoryTest {
 
   protected abstract BlockWriteAheadLog getBlockWriteAheadLog() throws Exception;
 
+  protected abstract BlockGenerationStore getBlockGenerationStore() throws Exception;
+
   @Test
   public void testBlockStorageModuleFactory() throws Exception {
     PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
-    BlockGenerationStore blockStore = getBlockStore();
+    BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
@@ -73,7 +73,7 @@ public abstract class BlockStorageModuleFactoryTest {
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws Exception {
     PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
-    BlockGenerationStore blockStore = getBlockStore();
+    BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
@@ -111,7 +111,7 @@ public abstract class BlockStorageModuleFactoryTest {
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws Exception {
     PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
-    BlockGenerationStore blockStore = getBlockStore();
+    BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
 
@@ -147,29 +147,6 @@ public abstract class BlockStorageModuleFactoryTest {
       }
       volumeStore.unassignVolume(volumeName);
     }
-  }
-
-  private BlockGenerationStore getBlockStore() {
-
-    ConcurrentHashMap<Long, Long> gens = new ConcurrentHashMap<>();
-
-    return new BlockGenerationStore() {
-
-      @Override
-      public long getLastStoreGeneration(long volumeId, long blockId) {
-        Long gen = gens.get(blockId);
-        if (gen == null) {
-          return Block.MISSING_BLOCK_GENERATION;
-        }
-        return gen;
-      }
-
-      @Override
-      public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) {
-        gens.put(blockId, lastStoredGeneration);
-      }
-
-    };
   }
 
   private void readsAndWritesTest(StorageModule storageModule, long seed, long length) throws IOException {

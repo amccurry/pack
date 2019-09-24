@@ -17,6 +17,7 @@ import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.IOUtils;
@@ -37,10 +38,11 @@ import pack.iscsi.wal.remote.generated.ReleaseRequest;
 import pack.iscsi.wal.remote.generated.WriteRequest;
 import pack.iscsi.wal.remote.thrift.PackWalServiceClient;
 import pack.iscsi.wal.remote.thrift.PackWalServiceClientImpl;
+import pack.util.TracerUtil;
 
-public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
+public class RemoteWALClient implements BlockWriteAheadLog {
 
-  private static final Logger LOGGER = LoggerFactory.getLogger(RemoteWriteAheadLogClient.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(RemoteWALClient.class);
 
   @Value
   @Builder(toBuilder = true)
@@ -67,7 +69,7 @@ public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
   private final BlockingQueue<PackWalServiceClientImpl> _clients = new ArrayBlockingQueue<>(10);
   private final int _retries = 10;
 
-  public RemoteWriteAheadLogClient(RemoteWriteAheadLogClientConfig config) {
+  public RemoteWALClient(RemoteWriteAheadLogClientConfig config) {
     _zkPrefix = config.getZkPrefix();
     _curatorFramework = config.getCuratorFramework();
     _hostname = config.getHostname();
@@ -81,7 +83,9 @@ public class RemoteWriteAheadLogClient implements BlockWriteAheadLog {
     return execute(client -> {
       ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, offset, len);
       WriteRequest writeRequest = new WriteRequest(volumeId, blockId, generation, position, byteBuffer);
-      client.write(writeRequest);
+      try (Scope scope = TracerUtil.trace(RemoteWALClient.class, "wal client write")) {
+        client.write(writeRequest);
+      }
       return () -> {
       };
     });

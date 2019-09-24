@@ -12,10 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.retry.RetryForever;
 import org.apache.thrift.TException;
 import org.apache.thrift.TProcessor;
 import org.apache.thrift.protocol.TBinaryProtocol;
@@ -48,10 +45,10 @@ import pack.iscsi.wal.remote.generated.PackWalService.Processor;
 import pack.iscsi.wal.remote.generated.ReleaseRequest;
 import pack.iscsi.wal.remote.generated.WriteRequest;
 
-public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Iface {
+public class RemoteWALServer implements Closeable, PackWalService.Iface {
 
   private static final String SERVER = "server";
-  private static final Logger LOGGER = LoggerFactory.getLogger(RemoteWriteAheadLogServer.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(RemoteWALServer.class);
 
   @Value
   @Builder(toBuilder = true)
@@ -77,33 +74,6 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
 
   }
 
-  public static void main(String[] args) throws Exception {
-    String zkConnection = args[0];
-    String zkPrefix = args[1];
-    File walLogDir = new File(args[2]);
-    RetryPolicy retryPolicy = new RetryForever((int) TimeUnit.SECONDS.toMillis(10));
-    CuratorFramework curatorFramework = CuratorFrameworkFactory.newClient(zkConnection, retryPolicy);
-    curatorFramework.getUnhandledErrorListenable()
-                    .addListener((message, e) -> {
-                      LOGGER.error("Unknown error " + message, e);
-                    });
-    curatorFramework.getConnectionStateListenable()
-                    .addListener((c, newState) -> {
-                      LOGGER.info("Connection state {}", newState);
-                    });
-    curatorFramework.start();
-    RemoteWriteAheadLogServerConfig config = RemoteWriteAheadLogServerConfig.builder()
-                                                                            .walLogDir(walLogDir)
-                                                                            .curatorFramework(curatorFramework)
-                                                                            .zkPrefix(zkPrefix)
-                                                                            .port(0)
-                                                                            .build();
-    try (RemoteWriteAheadLogServer server = new RemoteWriteAheadLogServer(config)) {
-      LOGGER.info("Starting server");
-      server.start(true);
-    }
-  }
-
   private final TServer _server;
   private final LocalBlockWriteAheadLog _log;
   private final int _maxEntryPayload;
@@ -111,13 +81,13 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
   private final TServerSocket _serverTransport;
   private final String _zkPrefix;
 
-  public RemoteWriteAheadLogServer(RemoteWriteAheadLogServerConfig config) throws Exception {
+  public RemoteWALServer(RemoteWriteAheadLogServerConfig config) throws Exception {
     _zkPrefix = config.getZkPrefix();
     _maxEntryPayload = config.getMaxEntryPayload();
     _curatorFramework = config.getCuratorFramework();
     InetSocketAddress bindAddr = new InetSocketAddress(config.getAddress(), config.getPort());
     _serverTransport = new TServerSocket(bindAddr, config.getClientTimeout());
-    Processor<RemoteWriteAheadLogServer> processor = new PackWalService.Processor<>(this);
+    Processor<RemoteWALServer> processor = new PackWalService.Processor<>(this);
     Args args = new TThreadPoolServer.Args(_serverTransport).processor(handleClosedConnections(processor))
                                                             .protocolFactory(new TBinaryProtocol.Factory())
                                                             .minWorkerThreads(10)
@@ -296,7 +266,7 @@ public class RemoteWriteAheadLogServer implements Closeable, PackWalService.Ifac
     }
   }
 
-  private TProcessor handleClosedConnections(Processor<RemoteWriteAheadLogServer> processor) {
+  private TProcessor handleClosedConnections(Processor<RemoteWALServer> processor) {
     return (in, out) -> {
       try {
         return processor.process(in, out);

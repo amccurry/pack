@@ -2,7 +2,7 @@ package pack.iscsi.wal.remote;
 
 import java.util.Random;
 
-import pack.iscsi.wal.remote.RemoteWriteAheadLogClient.RemoteWriteAheadLogClientConfig;
+import pack.iscsi.wal.remote.RemoteWALClient.RemoteWriteAheadLogClientConfig;
 
 public class ThroughputTest {
 
@@ -13,7 +13,7 @@ public class ThroughputTest {
                                                                             .port(43897)
                                                                             .build();
 
-    try (RemoteWriteAheadLogClient client = new RemoteWriteAheadLogClient(config)) {
+    try (RemoteWALClient client = new RemoteWALClient(config)) {
       Random random = new Random();
       byte[] buffer = new byte[8192];
       long volumeId = random.nextInt(10);

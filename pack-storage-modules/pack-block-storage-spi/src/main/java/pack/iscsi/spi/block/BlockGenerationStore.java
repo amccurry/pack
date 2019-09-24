@@ -10,6 +10,10 @@ public interface BlockGenerationStore extends Closeable {
   void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException;
 
   default void close() throws IOException {
-    
+
+  }
+
+  default void preloadGenerationInfo(long volumeId, long numberOfBlocks) throws IOException {
+
   }
 }

@@ -22,6 +22,21 @@ public class S3Utils {
   private static final Splitter SPLITTER = Splitter.on(SEPARATOR);
   private static final Joiner JOINER = Joiner.on(SEPARATOR);
 
+  public static interface ListResultProcessor {
+
+    void addResult(S3ObjectSummary summary);
+
+  }
+
+  public static String getVolumeKeyPrefix(String objectPrefix, long volumeId) {
+    if (objectPrefix == null || objectPrefix.trim()
+                                            .isEmpty()) {
+      return JOINER.join(DATA, volumeId) + SEPARATOR;
+    } else {
+      return JOINER.join(objectPrefix, DATA, volumeId) + SEPARATOR;
+    }
+  }
+
   public static String getBlockKeyPrefix(String objectPrefix, long volumeId, long blockId) {
     if (objectPrefix == null || objectPrefix.trim()
                                             .isEmpty()) {
@@ -43,6 +58,14 @@ public class S3Utils {
       results.add(summary.getKey());
     }
     return results;
+  }
+
+  public static void listObjects(AmazonS3 amazonS3, String bucketName, String prefix, ListResultProcessor processor) {
+    ObjectListing listObjects = amazonS3.listObjects(bucketName, prefix);
+    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
+    for (S3ObjectSummary summary : objectSummaries) {
+      processor.addResult(summary);
+    }
   }
 
   public static String getVolumeMetadataKey(String objectPrefix, long volumeId) {

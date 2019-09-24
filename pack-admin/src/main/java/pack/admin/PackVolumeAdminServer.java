@@ -239,10 +239,10 @@ public class PackVolumeAdminServer {
   public static class CreateVolumeRequest {
 
     @Builder.Default
-    long sizeInBytes = 1073741824;// 1 GiB
+    long sizeInBytes = 107374182400L;// 100 GiB
 
     @Builder.Default
-    int blockSize = 67108864;// 64 MiB
+    int blockSize = 1048576;// 1 MiB
   }
 
   @Value

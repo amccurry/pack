@@ -18,8 +18,10 @@ import org.slf4j.LoggerFactory;
 
 import com.sun.jna.Platform;
 
+import io.opencensus.common.Scope;
 import net.smacke.jaydio.DirectRandomAccessFile;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.util.TracerUtil;
 
 public abstract class FileIO implements RandomAccessIO {
 
@@ -81,12 +83,16 @@ public abstract class FileIO implements RandomAccessIO {
 
     @Override
     public void writeFully(long position, byte[] buffer, int offset, int length) throws IOException {
-      _writeLock.lock();
-      try {
-        seekIfNeeded(position);
-        _draf.write(buffer, offset, length);
-      } finally {
-        _writeLock.unlock();
+      try (Scope scope1 = TracerUtil.trace(FileIODirectRandomAccessFile.class, "writeFully")) {
+        _writeLock.lock();
+        try {
+          seekIfNeeded(position);
+          try (Scope scope2 = TracerUtil.trace(FileIODirectRandomAccessFile.class, "write")) {
+            _draf.write(buffer, offset, length);
+          }
+        } finally {
+          _writeLock.unlock();
+        }
       }
     }
 
@@ -102,8 +108,10 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     private void seekIfNeeded(long position) throws IOException {
-      if (_draf.getFilePointer() != position) {
-        _draf.seek(position);
+      try (Scope scope = TracerUtil.trace(FileIODirectRandomAccessFile.class, "seekIfNeeded")) {
+        if (_draf.getFilePointer() != position) {
+          _draf.seek(position);
+        }
       }
     }
 
@@ -146,12 +154,16 @@ public abstract class FileIO implements RandomAccessIO {
 
     @Override
     public void write(byte[] b) throws IOException {
-      _draf.write(b);
+      try (Scope scope = TracerUtil.trace(FileIODirectRandomAccessFile.class, "write")) {
+        _draf.write(b);
+      }
     }
 
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
-      _draf.write(b, off, len);
+      try (Scope scope = TracerUtil.trace(FileIODirectRandomAccessFile.class, "write")) {
+        _draf.write(b, off, len);
+      }
     }
 
     @Override

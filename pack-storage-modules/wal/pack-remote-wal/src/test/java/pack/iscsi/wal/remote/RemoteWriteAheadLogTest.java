@@ -26,19 +26,19 @@ import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.wal.WalTestSetup;
-import pack.iscsi.wal.remote.RemoteWriteAheadLogClient.RemoteWriteAheadLogClientConfig;
-import pack.iscsi.wal.remote.RemoteWriteAheadLogServer.RemoteWriteAheadLogServerConfig;
+import pack.iscsi.wal.remote.RemoteWALClient.RemoteWriteAheadLogClientConfig;
+import pack.iscsi.wal.remote.RemoteWALServer.RemoteWriteAheadLogServerConfig;
 
 public class RemoteWriteAheadLogTest {
 
   private static final File DIR = new File("./target/tmp/RemoteWriteAheadLogTest");
-  private RemoteWriteAheadLogServer _server;
+  private RemoteWALServer _server;
 
   @Before
   public void setup() throws Exception {
     IOUtils.rmr(DIR);
     DIR.mkdirs();
-    _server = new RemoteWriteAheadLogServer(RemoteWriteAheadLogServerConfig.builder()
+    _server = new RemoteWALServer(RemoteWriteAheadLogServerConfig.builder()
                                                                            .maxEntryPayload(64000)
                                                                            .walLogDir(new File(DIR, "server"))
                                                                            .port(0)
@@ -61,7 +61,7 @@ public class RemoteWriteAheadLogTest {
                                                                                 WalTestSetup.getCuratorFramework())
                                                                             .timeout(timeout)
                                                                             .build();
-    try (RemoteWriteAheadLogClient client = new RemoteWriteAheadLogClient(config)) {
+    try (RemoteWALClient client = new RemoteWALClient(config)) {
 
       long volumeId = 0;
       long blockId = 0;
@@ -80,7 +80,7 @@ public class RemoteWriteAheadLogTest {
                                                                                 WalTestSetup.getCuratorFramework())
                                                                             .timeout(timeout)
                                                                             .build();
-    try (RemoteWriteAheadLogClient client = new RemoteWriteAheadLogClient(config)) {
+    try (RemoteWALClient client = new RemoteWALClient(config)) {
       long volumeId = 0;
       File dir = new File(DIR, "client");
       dir.mkdirs();
@@ -99,7 +99,7 @@ public class RemoteWriteAheadLogTest {
     }
   }
 
-  private void runTest(RemoteWriteAheadLogClient client, long volumeId, long blockId, File dir)
+  private void runTest(RemoteWALClient client, long volumeId, long blockId, File dir)
       throws IOException, InterruptedException, FileNotFoundException {
     long generation = 0;
     long position = 1000;

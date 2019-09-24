@@ -4,24 +4,27 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.google.common.base.Splitter;
 
 import consistent.s3.ConsistentAmazonS3;
+import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.s3.util.S3Utils;
+import pack.iscsi.s3.util.S3Utils.ListResultProcessor;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockKey;
 import pack.util.ExecutorUtil;
+import pack.util.TracerUtil;
 
 public class S3GenerationBlockStore implements BlockGenerationStore {
 
@@ -32,12 +35,6 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
     ConsistentAmazonS3 consistentAmazonS3;
     String bucket;
     String objectPrefix;
-
-    @Builder.Default
-    long expireTimeAfterWrite = 10;
-
-    @Builder.Default
-    TimeUnit expireTimeAfterWriteTimeUnit = TimeUnit.MINUTES;
 
   }
 
@@ -57,7 +54,10 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
     CacheLoader<BlockKey, Long> loader = key -> {
       String blockKey = S3Utils.getBlockKeyPrefix(_objectPrefix, key.getVolumeId(), key.getBlockId());
       LOGGER.info("blockkey {} scan key from {}", key, blockKey);
-      List<String> keys = S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blockKey);
+      List<String> keys;
+      try (Scope scope = TracerUtil.trace(S3GenerationBlockStore.class, "s3 list objects")) {
+        keys = S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blockKey);
+      }
       LOGGER.info("keys {}", keys);
       if (keys.isEmpty()) {
         return Block.MISSING_BLOCK_GENERATION;
@@ -68,8 +68,61 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
     };
     _cache = Caffeine.newBuilder()
                      .executor(ExecutorUtil.getCallerRunExecutor())
-                     .expireAfterWrite(config.getExpireTimeAfterWrite(), config.getExpireTimeAfterWriteTimeUnit())
                      .build(loader);
+  }
+
+  @Override
+  public void preloadGenerationInfo(long volumeId, long numberOfBlocks) throws IOException {
+    String volumeKey = S3Utils.getVolumeKeyPrefix(_objectPrefix, volumeId);
+    try (Scope scope = TracerUtil.trace(S3GenerationBlockStore.class, "s3 list objects")) {
+      S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, volumeKey, new ListResultProcessor() {
+        @Override
+        public void addResult(S3ObjectSummary summary) {
+          String key = summary.getKey();
+          if (key.contains("metadata")) {
+            return;
+          }
+          List<String> list = KEY_SPLITTER.splitToList(key);
+          long blockId = getBlockId(list);
+          if (blockId < 0) {
+            return;
+          }
+          long currentGeneration = getGeneration(list);
+          BlockKey blockKey = BlockKey.builder()
+                                      .blockId(blockId)
+                                      .volumeId(volumeId)
+                                      .build();
+          Long existingGeneration = _cache.getIfPresent(blockKey);
+          if (existingGeneration == null || currentGeneration > existingGeneration) {
+            LOGGER.info("preload {} with generation {}", blockKey, currentGeneration);
+            _cache.put(blockKey, currentGeneration);
+          }
+        }
+
+        private long getGeneration(List<String> list) {
+          return Long.parseLong(list.get(list.size() - 1));
+        }
+
+        private long getBlockId(List<String> list) {
+          try {
+            return Long.parseLong(list.get(list.size() - 2));
+          } catch (NumberFormatException e) {
+            return -1L;
+          }
+        }
+      });
+    }
+
+    for (long blockId = 0; blockId < numberOfBlocks; blockId++) {
+      BlockKey blockKey = BlockKey.builder()
+                                  .blockId(blockId)
+                                  .volumeId(volumeId)
+                                  .build();
+      Long generation = _cache.getIfPresent(blockKey);
+      if (generation == null) {
+        _cache.put(blockKey, Block.MISSING_BLOCK_GENERATION);
+      }
+    }
   }
 
   @Override

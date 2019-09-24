@@ -91,9 +91,9 @@ public class TracerUtil {
     return startTime + gcTime;
   }
 
-  public static Scope trace(String spanName) {
+  public static Scope trace(Class<?> clazz, String spanName) {
     Tracer tracer = Tracing.getTracer();
-    Scope scope = tracer.spanBuilder(spanName)
+    Scope scope = tracer.spanBuilder(clazz.getName() + " " + spanName)
                         .startScopedSpan();
     List<GCData> gcDataListBefore = getGCDataList();
     return new Scope() {

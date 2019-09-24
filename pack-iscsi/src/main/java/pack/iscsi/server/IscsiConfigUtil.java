@@ -37,8 +37,8 @@ import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
-import pack.iscsi.wal.remote.RemoteWriteAheadLogClient;
-import pack.iscsi.wal.remote.RemoteWriteAheadLogClient.RemoteWriteAheadLogClientConfig;
+import pack.iscsi.wal.remote.RemoteWALClient;
+import pack.iscsi.wal.remote.RemoteWALClient.RemoteWriteAheadLogClientConfig;
 import spark.Service;
 
 public class IscsiConfigUtil {
@@ -110,11 +110,11 @@ public class IscsiConfigUtil {
 
   private static MetricsFactory getMetricsFactoryIfNeeded() {
     MetricRegistry metricRegistry = new MetricRegistry();
-    ConsoleReporter reporter = ConsoleReporter.forRegistry(metricRegistry)
-                                              .convertRatesTo(TimeUnit.SECONDS)
-                                              .convertDurationsTo(TimeUnit.MILLISECONDS)
-                                              .build();
-    reporter.start(10, TimeUnit.SECONDS);
+//    ConsoleReporter reporter = ConsoleReporter.forRegistry(metricRegistry)
+//                                              .convertRatesTo(TimeUnit.SECONDS)
+//                                              .convertDurationsTo(TimeUnit.MILLISECONDS)
+//                                              .build();
+//    reporter.start(10, TimeUnit.SECONDS);
     return new MetricsFactory() {
       @Override
       public Meter meter(Class<?> clazz, String... name) {
@@ -141,7 +141,7 @@ public class IscsiConfigUtil {
                                                                             .zkPrefix(zkPrefix)
                                                                             .timeout(TimeUnit.MINUTES.toMillis(10))
                                                                             .build();
-    return new RemoteWriteAheadLogClient(config);
+    return new RemoteWALClient(config);
   }
 
   private static PackVolumeStore getVolumeStore(Properties properties, File configFile,
@@ -197,6 +197,8 @@ public class IscsiConfigUtil {
                       LOGGER.info("Connection state {}", newState);
                     });
     curatorFramework.start();
+    Runtime.getRuntime()
+           .addShutdownHook(new Thread(() -> curatorFramework.close()));
     return curatorFramework;
   }
 

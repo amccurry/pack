@@ -1,12 +1,16 @@
 package pack.iscsi.file.block.storage;
 
 import java.io.File;
+import java.io.IOException;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.Before;
 import org.junit.Test;
 
-import pack.iscsi.file.block.storage.LocalExternalBlockStoreFactory;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;
@@ -42,5 +46,26 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
   @Test
   public void testBlockStorageModuleFactory() throws Exception {
     super.testBlockStorageModuleFactory();
+  }
+
+  @Override
+  protected BlockGenerationStore getBlockGenerationStore() throws Exception {
+    Map<Long, Long> gens = new ConcurrentHashMap<>();
+    return new BlockGenerationStore() {
+
+      @Override
+      public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException {
+        gens.put(blockId, lastStoredGeneration);
+      }
+
+      @Override
+      public long getLastStoreGeneration(long volumeId, long blockId) throws IOException {
+        Long gen = gens.get(blockId);
+        if (gen == null) {
+          return Block.MISSING_BLOCK_GENERATION;
+        }
+        return gen;
+      }
+    };
   }
 }

@@ -10,10 +10,12 @@ import org.slf4j.LoggerFactory;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 
+import io.opencensus.common.Scope;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockKey;
 import pack.iscsi.util.Utils;
+import pack.util.TracerUtil;
 
 public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
 
@@ -43,9 +45,15 @@ public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
     if (block == null) {
       return;
     }
-    add(key, block);
-    if (sync(key)) {
-      destroy(key);
+    try (Scope scope = TracerUtil.trace(BlockRemovalListener.class, "block cache removal add")) {
+      add(key, block);
+    }
+    try (Scope scope1 = TracerUtil.trace(BlockRemovalListener.class, "block cache removal sync")) {
+      if (sync(key)) {
+        try (Scope scope2 = TracerUtil.trace(BlockRemovalListener.class, "block cache removal destroy")) {
+          destroy(key);
+        }
+      }
     }
   }
 

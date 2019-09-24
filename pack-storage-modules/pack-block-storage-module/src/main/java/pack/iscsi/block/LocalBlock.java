@@ -16,6 +16,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opencensus.common.Scope;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
@@ -28,6 +29,7 @@ import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.util.LockUtil;
+import pack.util.TracerUtil;
 
 public class LocalBlock implements Closeable, Block {
 
@@ -55,14 +57,16 @@ public class LocalBlock implements Closeable, Block {
   public LocalBlock(LocalBlockConfig config) throws IOException {
     _volumeId = config.getVolumeId();
     _blockId = config.getBlockId();
-    File blockDataDir = config.getBlockDataDir();
-    createAndCheckExistence(blockDataDir);
+    try (Scope scope = TracerUtil.trace(LocalBlock.class, "directory setup")) {
+      File blockDataDir = config.getBlockDataDir();
+      createAndCheckExistence(blockDataDir);
 
-    File volumeDir = new File(blockDataDir, Long.toString(_volumeId));
-    createAndCheckExistence(volumeDir);
+      File volumeDir = new File(blockDataDir, Long.toString(_volumeId));
+      createAndCheckExistence(volumeDir);
 
-    _blockDataFile = new File(volumeDir, Long.toString(_blockId) + "." + UUID.randomUUID()
-                                                                             .toString());
+      _blockDataFile = new File(volumeDir, Long.toString(_blockId) + "." + UUID.randomUUID()
+                                                                               .toString());
+    }
 
     ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
     _writeLock = reentrantReadWriteLock.writeLock();
@@ -75,21 +79,34 @@ public class LocalBlock implements Closeable, Block {
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
 
-    if (_blockDataFile.exists() && isLengthValid()) {
-      // recovery will need to occur, may be out of date
-      FileIO.setLengthFile(_blockDataFile, _blockSize + BLOCK_OVERHEAD);
-      _randomAccessIO = FileIO.openRandomAccess(_blockDataFile, config.getBufferSize(), "rw");
-    } else {
-      if (_blockDataFile.exists()) {
-        LOGGER.info("Block file {} length incorrect actual {} expecting {}, remove and recover.", _blockDataFile,
-            _blockDataFile.length(), getValidLength());
-        _blockDataFile.delete();
+    try (Scope scope1 = TracerUtil.trace(LocalBlock.class, "file setup")) {
+      if (_blockDataFile.exists() && isLengthValid()) {
+        // recovery will need to occur, may be out of date
+        FileIO.setLengthFile(_blockDataFile, _blockSize + BLOCK_OVERHEAD);
+        try (Scope scope2 = TracerUtil.trace(LocalBlock.class, "open random access")) {
+          _randomAccessIO = FileIO.openRandomAccess(_blockDataFile, config.getBufferSize(), "rw");
+        }
+      } else {
+        if (_blockDataFile.exists()) {
+          LOGGER.info("Block file {} length incorrect actual {} expecting {}, remove and recover.", _blockDataFile,
+              _blockDataFile.length(), getValidLength());
+          try (Scope scope2 = TracerUtil.trace(LocalBlock.class, "file delete")) {
+            _blockDataFile.delete();
+          }
+        }
+        try (Scope scope2 = TracerUtil.trace(LocalBlock.class, "set file length")) {
+          FileIO.setLengthFile(_blockDataFile, _blockSize + BLOCK_OVERHEAD);
+        }
+        try (Scope scope2 = TracerUtil.trace(LocalBlock.class, "open random access")) {
+          _randomAccessIO = FileIO.openRandomAccess(_blockDataFile, config.getBufferSize(), "rw");
+        }
       }
-      FileIO.setLengthFile(_blockDataFile, _blockSize + BLOCK_OVERHEAD);
-      _randomAccessIO = FileIO.openRandomAccess(_blockDataFile, config.getBufferSize(), "rw");
     }
     readMetadata();
-    long lastStoreGeneration = _blockStore.getLastStoreGeneration(_volumeId, _blockId);
+    long lastStoreGeneration;
+    try (Scope scope = TracerUtil.trace(LocalBlock.class, "last store generation")) {
+      lastStoreGeneration = _blockStore.getLastStoreGeneration(_volumeId, _blockId);
+    }
     LOGGER.info("volumeId {} blockId {} last store generation {} on disk generation {}", _volumeId, _blockId,
         lastStoreGeneration, _onDiskGeneration.get());
     _lastStoredGeneration.set(lastStoreGeneration);
@@ -102,7 +119,9 @@ public class LocalBlock implements Closeable, Block {
       checkState();
       checkPositionAndLength(blockPosition, len);
       checkGenerations();
-      _randomAccessIO.readFully(blockPosition, bytes, offset, len);
+      try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio read")) {
+        _randomAccessIO.readFully(blockPosition, bytes, offset, len);
+      }
     }
   }
 
@@ -114,11 +133,18 @@ public class LocalBlock implements Closeable, Block {
       checkPositionAndLength(blockPosition, len);
       checkGenerations();
       _lastWrite.set(System.nanoTime());
-      markDirty();
+      try (Scope scope = TracerUtil.trace(LocalBlock.class, "mark dirty")) {
+        markDirty();
+      }
       long generation = _onDiskGeneration.incrementAndGet();
-      BlockJournalResult result = _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
+      BlockJournalResult result;
+      try (Scope scope = TracerUtil.trace(LocalBlock.class, "wal write")) {
+        result = _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
+      }
       writeMetadata();
-      _randomAccessIO.writeFully(blockPosition, bytes, offset, len);
+      try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio write")) {
+        _randomAccessIO.writeFully(blockPosition, bytes, offset, len);
+      }
       return result;
     }
   }
@@ -193,25 +219,34 @@ public class LocalBlock implements Closeable, Block {
   }
 
   private void writeMetadata() throws IOException {
-    byte[] buffer = getMetadataBuffer();
-    _randomAccessIO.writeFully(getMetadataPosition(), buffer);
-    LOGGER.debug("write meta data volumeId {} blockId {} state {} on disk generation {} last stored generation {}",
-        _volumeId, _blockId, _onDiskState, _onDiskGeneration, _lastStoredGeneration);
+    try (Scope scope1 = TracerUtil.trace(LocalBlock.class, "metadata write")) {
+      // @TODO move to indexing structure??? maybe memory mapped?
+      // byte[] buffer = getMetadataBuffer();
+      // _randomAccessIO.writeFully(getMetadataPosition(), buffer);
+      // LOGGER.debug("write meta data volumeId {} blockId {} state {} on disk
+      // generation {} last stored generation {}",
+      // _volumeId, _blockId, _onDiskState, _onDiskGeneration,
+      // _lastStoredGeneration);
+    }
   }
 
   private void readMetadata() throws IOException {
-    byte[] buffer = new byte[BLOCK_OVERHEAD];
-    _randomAccessIO.readFully(getMetadataPosition(), buffer);
-    _onDiskState.set(BlockState.lookup(buffer[0]));
-    _onDiskGeneration.set(getLong(buffer, 1));
+    try (Scope scope = TracerUtil.trace(LocalBlock.class, "metadata read")) {
+      // byte[] buffer = new byte[BLOCK_OVERHEAD];
+      // _randomAccessIO.readFully(getMetadataPosition(), buffer);
+      // _onDiskState.set(BlockState.lookup(buffer[0]));
+      // _onDiskGeneration.set(getLong(buffer, 1));
+    }
   }
 
   private byte[] getMetadataBuffer() {
-    byte[] buffer = new byte[BLOCK_OVERHEAD];
-    BlockState blockState = _onDiskState.get();
-    buffer[0] = blockState.getType();
-    putLong(buffer, 1, _onDiskGeneration.get());
-    return buffer;
+    try (Scope scope = TracerUtil.trace(LocalBlock.class, "metadata buffer")) {
+      byte[] buffer = new byte[BLOCK_OVERHEAD];
+      BlockState blockState = _onDiskState.get();
+      buffer[0] = blockState.getType();
+      putLong(buffer, 1, _onDiskGeneration.get());
+      return buffer;
+    }
   }
 
   private void checkIfClosed() throws IOException {

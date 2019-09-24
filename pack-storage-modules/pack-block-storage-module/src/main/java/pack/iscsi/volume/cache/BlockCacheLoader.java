@@ -14,7 +14,9 @@ import pack.iscsi.block.LocalBlockConfig;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockKey;
+import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery;
@@ -49,7 +51,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 
   @Override
   public Block load(BlockKey key) throws Exception {
-    try (Scope blockLoader = TracerUtil.trace("block loader")) {
+    try (Scope blockLoader = TracerUtil.trace(BlockCacheLoader.class, "block loader")) {
       Block stolenBlock = _removalListener.stealBlock(key);
       if (stolenBlock != null) {
         return stolenBlock;
@@ -64,24 +66,30 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
                                                 .syncTimeAfterIdle(_syncTimeAfterIdle)
                                                 .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
                                                 .build();
-
-      LocalBlock localBlock = new LocalBlock(config);
-      try (Scope externalRead = TracerUtil.trace("block external read")) {
-        Utils.runUntilSuccess(LOGGER, () -> {
-          localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
-          return null;
-        });
+      LocalBlock localBlock;
+      try (Scope scope = TracerUtil.trace(BlockCacheLoader.class, "create local block")) {
+        localBlock = new LocalBlock(config);
       }
-      try (Scope externalRead = TracerUtil.trace("block recover")) {
-        Utils.runUntilSuccess(LOGGER, () -> {
-          // recover if needed
-          BlockWriteAheadLogRecovery recovery = new BlockWriteAheadLogRecovery(
-              BlockWriteAheadLogRecoveryConfig.builder()
-                                              .blockWriteAheadLog(_writeAheadLog)
-                                              .build());
-          localBlock.execIO(recovery);
-          return null;
-        });
+      if (localBlock.getLastStoredGeneration() != Block.MISSING_BLOCK_GENERATION) {
+        try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block external read")) {
+          Utils.runUntilSuccess(LOGGER, () -> {
+            localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
+            return null;
+          });
+        }
+        try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block recover")) {
+          Utils.runUntilSuccess(LOGGER, () -> {
+            // recover if needed
+            BlockWriteAheadLogRecovery recovery = new BlockWriteAheadLogRecovery(
+                BlockWriteAheadLogRecoveryConfig.builder()
+                                                .blockWriteAheadLog(_writeAheadLog)
+                                                .build());
+            localBlock.execIO(recovery);
+            return null;
+          });
+        }
+      } else {
+        localBlock.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
       }
       return localBlock;
     }
