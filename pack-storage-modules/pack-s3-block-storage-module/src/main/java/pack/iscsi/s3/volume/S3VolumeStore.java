@@ -2,22 +2,26 @@ package pack.iscsi.s3.volume;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
-import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.util.S3Utils;
+import pack.iscsi.s3.util.S3Utils.ListResultProcessor;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
+import pack.iscsi.spi.VolumeLengthListener;
 
 public class S3VolumeStore implements PackVolumeStore {
 
@@ -28,12 +32,16 @@ public class S3VolumeStore implements PackVolumeStore {
   private final String _objectPrefix;
   private final Random _random = new Random();
   private final String _hostname;
+  private final int _maxDeleteBatchSize;
+  private final Set<VolumeLengthListener> _listeners;
 
   public S3VolumeStore(S3VolumeStoreConfig config) {
+    _maxDeleteBatchSize = config.getMaxDeleteBatchSize();
     _consistentAmazonS3 = config.getConsistentAmazonS3();
     _bucket = config.getBucket();
     _objectPrefix = config.getObjectPrefix();
     _hostname = config.getHostname();
+    _listeners = Collections.newSetFromMap(new WeakHashMap<>());
   }
 
   @Override
@@ -120,18 +128,17 @@ public class S3VolumeStore implements PackVolumeStore {
     List<String> result = new ArrayList<>();
     AmazonS3 client = _consistentAmazonS3.getClient();
     String prefix = S3Utils.getVolumeNamePrefix(_objectPrefix);
-    ObjectListing listObjects = client.listObjects(_bucket, prefix);
-    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
-    for (S3ObjectSummary summary : objectSummaries) {
-      result.add(S3Utils.getVolumeName(_objectPrefix, summary.getKey()));
-    }
+    S3Utils.listObjects(client, _bucket, prefix,
+        summary -> result.add(S3Utils.getVolumeName(_objectPrefix, summary.getKey())));
     return result;
   }
 
   @Override
   public void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException {
+    checkNonExistence(name);
     long volumeId = createVolumeId(name);
     PackVolumeMetadata metadata = PackVolumeMetadata.builder()
+                                                    .name(name)
                                                     .blockSizeInBytes(blockSizeInBytes)
                                                     .lengthInBytes(lengthInBytes)
                                                     .volumeId(volumeId)
@@ -147,20 +154,26 @@ public class S3VolumeStore implements PackVolumeStore {
 
   @Override
   public void deleteVolume(String name) throws IOException {
+    checkExistence(name);
+    checkNotAssigned(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     String key = S3Utils.getVolumeNameKey(_objectPrefix, name);
     _consistentAmazonS3.deleteObject(_bucket, key);
     String blockPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix, metadata.getVolumeId());
     AmazonS3 client = _consistentAmazonS3.getClient();
-    ObjectListing listObjects = client.listObjects(_bucket, blockPrefix);
-    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
+
     List<KeyVersion> keys = new ArrayList<>();
-    for (S3ObjectSummary summary : objectSummaries) {
-      keys.add(new KeyVersion(summary.getKey()));
-    }
-    DeleteObjectsRequest deleteObjectsRequest = new DeleteObjectsRequest(_bucket);
-    deleteObjectsRequest.withKeys(keys);
-    client.deleteObjects(deleteObjectsRequest);
+    S3Utils.listObjects(client, _bucket, blockPrefix, new ListResultProcessor() {
+
+      @Override
+      public void addResult(S3ObjectSummary summary) {
+        if (keys.size() >= _maxDeleteBatchSize) {
+          client.deleteObjects(new DeleteObjectsRequest(_bucket).withKeys(keys));
+          keys.clear();
+        }
+        keys.add(new KeyVersion(summary.getKey()));
+      }
+    });
   }
 
   @Override
@@ -168,16 +181,15 @@ public class S3VolumeStore implements PackVolumeStore {
     List<String> result = new ArrayList<>();
     AmazonS3 client = _consistentAmazonS3.getClient();
     String prefix = S3Utils.getAssignedVolumeNamePrefix(_objectPrefix, _hostname);
-    ObjectListing listObjects = client.listObjects(_bucket, prefix);
-    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
-    for (S3ObjectSummary summary : objectSummaries) {
-      result.add(S3Utils.getVolumeName(_objectPrefix, summary.getKey()));
-    }
+    S3Utils.listObjects(client, _bucket, prefix,
+        summary -> result.add(S3Utils.getVolumeName(_objectPrefix, summary.getKey())));
     return result;
   }
 
   @Override
   public void assignVolume(String name) throws IOException {
+    checkExistence(name);
+    checkNotAssigned(name);
     String key = S3Utils.getAssignedVolumeNameKey(_objectPrefix, _hostname, name);
     _consistentAmazonS3.putObject(_bucket, key, _hostname);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
@@ -188,6 +200,8 @@ public class S3VolumeStore implements PackVolumeStore {
 
   @Override
   public void unassignVolume(String name) throws IOException {
+    checkExistence(name);
+    checkAssigned(name);
     String key = S3Utils.getAssignedVolumeNameKey(_objectPrefix, _hostname, name);
     _consistentAmazonS3.deleteObject(_bucket, key);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
@@ -198,6 +212,7 @@ public class S3VolumeStore implements PackVolumeStore {
 
   @Override
   public void growVolume(String name, long newLengthInBytes) throws IOException {
+    checkExistence(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     String key = getVolumeMetadataKey(metadata.getVolumeId());
     if (newLengthInBytes < metadata.getLengthInBytes()) {
@@ -209,6 +224,14 @@ public class S3VolumeStore implements PackVolumeStore {
                                              .build();
     String json = OBJECT_MAPPER.writeValueAsString(newMetadata);
     _consistentAmazonS3.putObject(_bucket, key, json);
+    for (VolumeLengthListener listener : _listeners) {
+      listener.lengthChange(newMetadata);
+    }
+  }
+
+  @Override
+  public void register(VolumeLengthListener listener) {
+    _listeners.add(listener);
   }
 
 }

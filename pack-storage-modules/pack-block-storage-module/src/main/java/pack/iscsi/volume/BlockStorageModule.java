@@ -1,5 +1,6 @@
 package pack.iscsi.volume;
 
+import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ import pack.iscsi.block.AlreadyClosedException;
 import pack.iscsi.spi.Meter;
 import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.StorageModule;
+import pack.iscsi.spi.TimerContext;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
@@ -47,12 +49,14 @@ public class BlockStorageModule implements StorageModule {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModule.class);
 
-  private static final String WRITE = "write";
-  private static final String READ = "read";
+  private static final String WRITE = "write-bytes";
+  private static final String READ = "read-bytes";
+  private static final String READ_IOPS = "read-iops";
+  private static final String WRITE_IOPS = "write-iops";
 
   private final long _volumeId;
   private final int _blockSize;
-  private final long _lengthInBytes;
+  private final AtomicLong _lengthInBytes = new AtomicLong();
   private final LoadingCache<BlockKey, Block> _cache;
   private final AtomicBoolean _closed = new AtomicBoolean();
   private final BlockIOFactory _externalBlockStoreFactory;
@@ -67,6 +71,10 @@ public class BlockStorageModule implements StorageModule {
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final BlockGenerationStore _blockGenerationStore;
   private final AtomicInteger _refCounter = new AtomicInteger();
+  private final Meter _readIOMeter;
+  private final Meter _writeIOMeter;
+  private final TimerContext _readTimer;
+  private final TimerContext _writeTimer;
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
     _blockGenerationStore = config.getBlockGenerationStore();
@@ -77,13 +85,17 @@ public class BlockStorageModule implements StorageModule {
     _metricsFactory = config.getMetricsFactory();
     String volumeName = config.getVolumeName();
     _readMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, READ);
+    _readIOMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, READ_IOPS);
     _writeMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE);
+    _writeIOMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE_IOPS);
+    _readTimer = _metricsFactory.timer(BlockStorageModule.class, volumeName, "read-timer");
+    _writeTimer = _metricsFactory.timer(BlockStorageModule.class, volumeName, "write-timer");
 
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
 
     _volumeId = config.getVolumeId();
     _blockSize = config.getBlockSize();
-    _lengthInBytes = config.getLengthInBytes();
+    _lengthInBytes.set(config.getLengthInBytes());
     _syncExecutor = config.getSyncExecutor();
     _syncTimer = new Timer("sync-" + _volumeId);
 
@@ -104,9 +116,22 @@ public class BlockStorageModule implements StorageModule {
                      .maximumWeight(config.getMaxCacheSizeInBytes())
                      .build(loader);
 
-    long blockCount = _lengthInBytes / (long) _blockSize;
+    preloadBlockInfo();
+  }
 
+  private void preloadBlockInfo() throws IOException {
+    long blockCount = _lengthInBytes.get() / (long) _blockSize;
     _blockGenerationStore.preloadGenerationInfo(_volumeId, blockCount);
+  }
+
+  public void setLengthInBytes(long lengthInBytes) throws IOException {
+    long current = _lengthInBytes.get();
+    if (lengthInBytes < current) {
+      throw new IOException("new length of " + lengthInBytes + " is less than current length " + current);
+    }
+    LOGGER.info("Updating the current length of volume id {} to {}", _volumeId, lengthInBytes);
+    _lengthInBytes.set(lengthInBytes);
+    preloadBlockInfo();
   }
 
   public void incrementRef() {
@@ -144,25 +169,28 @@ public class BlockStorageModule implements StorageModule {
     LOGGER.info("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
     int length = bytes.length;
     _readMeter.mark(length);
+    _readIOMeter.mark();
     int offset = 0;
-    try (Scope readScope = TracerUtil.trace(BlockStorageModule.class, READ)) {
-      while (length > 0) {
-        long blockId = getBlockId(position);
-        int blockOffset = getBlockOffset(position);
-        int remaining = _blockSize - blockOffset;
-        int len = Math.min(remaining, length);
-        BlockKey blockKey = BlockKey.builder()
-                                    .volumeId(_volumeId)
-                                    .blockId(blockId)
-                                    .build();
-        Block block = getBlockId(blockKey);
+    try (Closeable time = _readTimer.time()) {
+      try (Scope readScope = TracerUtil.trace(BlockStorageModule.class, READ)) {
+        while (length > 0) {
+          long blockId = getBlockId(position);
+          int blockOffset = getBlockOffset(position);
+          int remaining = _blockSize - blockOffset;
+          int len = Math.min(remaining, length);
+          BlockKey blockKey = BlockKey.builder()
+                                      .volumeId(_volumeId)
+                                      .blockId(blockId)
+                                      .build();
+          Block block = getBlockId(blockKey);
 
-        try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block read")) {
-          block.readFully(blockOffset, bytes, offset, len);
+          try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block read")) {
+            block.readFully(blockOffset, bytes, offset, len);
+          }
+          length -= len;
+          position += len;
+          offset += len;
         }
-        length -= len;
-        position += len;
-        offset += len;
       }
     }
   }
@@ -177,26 +205,29 @@ public class BlockStorageModule implements StorageModule {
     _writesCount.addAndGet(bytes.length);
     int length = bytes.length;
     _writeMeter.mark(length);
+    _writeIOMeter.mark();
     int offset = 0;
-    try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE)) {
-      while (length > 0) {
-        long blockId = getBlockId(position);
-        int blockOffset = getBlockOffset(position);
-        int remaining = _blockSize - blockOffset;
-        int len = Math.min(remaining, length);
-        BlockKey blockKey = BlockKey.builder()
-                                    .volumeId(_volumeId)
-                                    .blockId(blockId)
-                                    .build();
-        Block block = getBlockId(blockKey);
+    try (Closeable time = _writeTimer.time()) {
+      try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE)) {
+        while (length > 0) {
+          long blockId = getBlockId(position);
+          int blockOffset = getBlockOffset(position);
+          int remaining = _blockSize - blockOffset;
+          int len = Math.min(remaining, length);
+          BlockKey blockKey = BlockKey.builder()
+                                      .volumeId(_volumeId)
+                                      .blockId(blockId)
+                                      .build();
+          Block block = getBlockId(blockKey);
 
-        // @TODO perhaps we should do something with the result
-        try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write")) {
-          trackResult(block.writeFully(blockOffset, bytes, offset, len));
+          // @TODO perhaps we should do something with the result
+          try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write")) {
+            trackResult(block.writeFully(blockOffset, bytes, offset, len));
+          }
+          length -= len;
+          position += len;
+          offset += len;
         }
-        length -= len;
-        position += len;
-        offset += len;
       }
     }
   }
@@ -313,11 +344,11 @@ public class BlockStorageModule implements StorageModule {
 
   @Override
   public long getSizeInBytes() {
-    return _lengthInBytes;
+    return _lengthInBytes.get();
   }
 
   private long getBlockCount() {
-    return _lengthInBytes / VIRTUAL_BLOCK_SIZE;
+    return _lengthInBytes.get() / VIRTUAL_BLOCK_SIZE;
   }
 
   private void checkClosed() throws IOException {

@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 
 import consistent.s3.ConsistentAmazonS3;
+import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.s3.util.S3Utils;
@@ -18,6 +19,7 @@ import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
+import pack.util.TracerUtil;
 
 public class S3BlockWriter implements BlockIOExecutor {
 
@@ -43,21 +45,23 @@ public class S3BlockWriter implements BlockIOExecutor {
 
   @Override
   public BlockIOResponse exec(BlockIORequest request) throws IOException {
-    long onDiskGeneration = request.getOnDiskGeneration();
-    BlockState onDiskState = request.getOnDiskState();
-    long lastStoredGeneration = request.getLastStoredGeneration();
-    if (onDiskState == BlockState.CLEAN) {
-      return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
+    try (Scope scope = TracerUtil.trace(getClass(), "s3 write")) {
+      long onDiskGeneration = request.getOnDiskGeneration();
+      BlockState onDiskState = request.getOnDiskState();
+      long lastStoredGeneration = request.getLastStoredGeneration();
+      if (onDiskState == BlockState.CLEAN) {
+        return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
+      }
+      String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
+          onDiskGeneration);
+      LOGGER.info("starting write bucket {} key {}", _bucket, key);
+      InputStream input = getInputStream(request.getRandomAccessIO(), request.getBlockSize());
+      ObjectMetadata metadata = new ObjectMetadata();
+      metadata.setContentLength(request.getBlockSize());
+      _consistentAmazonS3.putObject(_bucket, key, input, metadata);
+      LOGGER.info("finished write bucket {} key {}", _bucket, key);
+      return BlockIOResponse.newBlockIOResult(onDiskGeneration, BlockState.CLEAN, onDiskGeneration);
     }
-    String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
-        onDiskGeneration);
-    LOGGER.info("starting write bucket {} key {}", _bucket, key);
-    InputStream input = getInputStream(request.getRandomAccessIO(), request.getBlockSize());
-    ObjectMetadata metadata = new ObjectMetadata();
-    metadata.setContentLength(request.getBlockSize());
-    _consistentAmazonS3.putObject(_bucket, key, input, metadata);
-    LOGGER.info("finished write bucket {} key {}", _bucket, key);
-    return BlockIOResponse.newBlockIOResult(onDiskGeneration, BlockState.CLEAN, onDiskGeneration);
   }
 
   private InputStream getInputStream(RandomAccessIO randomAccessIO, int blockSize) {

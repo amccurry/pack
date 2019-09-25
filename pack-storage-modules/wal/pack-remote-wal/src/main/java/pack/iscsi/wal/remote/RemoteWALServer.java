@@ -24,6 +24,7 @@ import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.IOUtils;
@@ -44,6 +45,7 @@ import pack.iscsi.wal.remote.generated.PackWalService;
 import pack.iscsi.wal.remote.generated.PackWalService.Processor;
 import pack.iscsi.wal.remote.generated.ReleaseRequest;
 import pack.iscsi.wal.remote.generated.WriteRequest;
+import pack.util.TracerUtil;
 
 public class RemoteWALServer implements Closeable, PackWalService.Iface {
 
@@ -141,17 +143,19 @@ public class RemoteWALServer implements Closeable, PackWalService.Iface {
 
   @Override
   public void write(WriteRequest writeRequest) throws PackException, TException {
-    long volumeId = writeRequest.getVolumeId();
-    long blockId = writeRequest.getBlockId();
-    long generation = writeRequest.getGeneration();
-    long position = writeRequest.getPosition();
-    byte[] data = writeRequest.getData();
-    try {
-      BlockJournalResult result = _log.write(volumeId, blockId, generation, position, data);
-      result.get();
-    } catch (Exception e) {
-      LOGGER.error("Unknown error", e);
-      throw newPackException(e);
+    try (Scope scope = TracerUtil.trace(getClass(), "write")) {
+      long volumeId = writeRequest.getVolumeId();
+      long blockId = writeRequest.getBlockId();
+      long generation = writeRequest.getGeneration();
+      long position = writeRequest.getPosition();
+      byte[] data = writeRequest.getData();
+      try {
+        BlockJournalResult result = _log.write(volumeId, blockId, generation, position, data);
+        result.get();
+      } catch (Exception e) {
+        LOGGER.error("Unknown error", e);
+        throw newPackException(e);
+      }
     }
   }
 

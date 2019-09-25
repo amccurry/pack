@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
@@ -93,7 +95,7 @@ public class TracerUtil {
 
   public static Scope trace(Class<?> clazz, String spanName) {
     Tracer tracer = Tracing.getTracer();
-    Scope scope = tracer.spanBuilder(clazz.getName() + " " + spanName)
+    Scope scope = tracer.spanBuilder(getSpanNameFromClass(clazz) + " " + spanName)
                         .startScopedSpan();
     List<GCData> gcDataListBefore = getGCDataList();
     return new Scope() {
@@ -104,6 +106,39 @@ public class TracerUtil {
         scope.close();
       }
     };
+  }
+
+  static {
+
+  }
+
+  private static final ConcurrentMap<Class<?>, String> NAME_CACHE = new ConcurrentHashMap<>();
+
+  private static String getSpanNameFromClass(Class<?> clazz) {
+    String name = NAME_CACHE.get(clazz);
+    if (name != null) {
+      return name;
+    }
+    NAME_CACHE.put(clazz, name = calculateSpanName(clazz));
+    return name;
+  }
+
+  private static String calculateSpanName(Class<?> clazz) {
+    StringBuilder builder = new StringBuilder();
+    String clazzName = clazz.getName();
+    int index = 0;
+    while (true) {
+      int nextIndex = clazzName.indexOf('.', index);
+      if (nextIndex < 0) {
+        builder.append(clazzName.substring(index)
+                                .replace('$', '.'));
+        return builder.toString();
+      } else {
+        builder.append(clazzName.charAt(index));
+        builder.append('.');
+        index = nextIndex + 1;
+      }
+    }
   }
 
   private static List<GCData> getGCDataList() {

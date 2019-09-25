@@ -22,6 +22,11 @@ public class RemoteWALServerMain {
     String zkConnection = RemoteWALServerArgsUtil.getZkConnection(cmd);
     String zkPrefix = RemoteWALServerArgsUtil.getZkPrefix(cmd);
     File walLogDir = RemoteWALServerArgsUtil.getWalLogDir(cmd);
+    String jaegerEndpoint = RemoteWALServerArgsUtil.getJaegerEndpoint(cmd);
+    if (jaegerEndpoint != null) {
+      RemoteWALTracerConfig.setupTracer(jaegerEndpoint);
+    }
+
     RetryPolicy retryPolicy = new RetryForever((int) TimeUnit.SECONDS.toMillis(10));
     CuratorFramework curatorFramework = CuratorFrameworkFactory.newClient(zkConnection, retryPolicy);
     curatorFramework.getUnhandledErrorListenable()

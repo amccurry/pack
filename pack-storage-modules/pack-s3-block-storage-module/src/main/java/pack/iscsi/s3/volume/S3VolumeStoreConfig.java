@@ -32,4 +32,7 @@ public class S3VolumeStoreConfig {
 
   @Builder.Default
   String hostname = HOSTNAME;
+
+  @Builder.Default
+  int maxDeleteBatchSize = 100;
 }

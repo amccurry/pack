@@ -15,6 +15,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opencensus.common.Scope;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.wal.BlockJournalRange;
@@ -22,6 +23,7 @@ import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.wal.local.LocalJournalReader.LocalLogReaderConfig;
 import pack.iscsi.wal.local.LocalJournalWriter.LocalLogWriterConfig;
 import pack.util.LockUtil;
+import pack.util.TracerUtil;
 
 public class LocalJournal implements Closeable {
 
@@ -46,9 +48,11 @@ public class LocalJournal implements Closeable {
   }
 
   public void append(long generation, long position, byte[] bytes, int offset, int len) throws IOException {
-    try (Closeable lock = LockUtil.getCloseableLock(_readLock)) {
-      LocalJournalWriter writer = getCurrentWriter(generation);
-      writer.append(generation, position, bytes, offset, len);
+    try (Scope scope = TracerUtil.trace(getClass(), "append")) {
+      try (Closeable lock = LockUtil.getCloseableLock(_readLock)) {
+        LocalJournalWriter writer = getCurrentWriter(generation);
+        writer.append(generation, position, bytes, offset, len);
+      }
     }
   }
 

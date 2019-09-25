@@ -11,9 +11,11 @@ import org.apache.commons.cli.ParseException;
 
 public class RemoteWALServerArgsUtil {
 
+  private static final String JAEGER = "jaeger";
   private static final String PREFIX = "prefix";
   private static final String WALDIR = "waldir";
   private static final String ZK = "zk";
+  private static final String SHORT_JAEGER_OPTION = "j";
   private static final String SHORT_WAL_DIR = "d";
   private static final String SHORT_ZK_PREFIX = "p";
   private static final String SHORT_OPTION_ZK_CONNECTION = "z";
@@ -33,6 +35,10 @@ public class RemoteWALServerArgsUtil {
     {
       Option option = new Option(SHORT_WAL_DIR, WALDIR, true, "Log directory");
       option.setRequired(true);
+      options.addOption(option);
+    }
+    {
+      Option option = new Option(SHORT_JAEGER_OPTION, JAEGER, true, "Jaeger thrift endpoint (default none)");
       options.addOption(option);
     }
     CommandLineParser parser = new DefaultParser();
@@ -56,6 +62,13 @@ public class RemoteWALServerArgsUtil {
   public static File getWalLogDir(CommandLine cmd) {
     if (cmd.hasOption(WALDIR)) {
       return new File(cmd.getOptionValue(WALDIR));
+    }
+    return null;
+  }
+
+  public static String getJaegerEndpoint(CommandLine cmd) {
+    if (cmd.hasOption(JAEGER)) {
+      return cmd.getOptionValue(JAEGER);
     }
     return null;
   }

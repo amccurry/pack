@@ -1,5 +1,48 @@
 #!/bin/bash
 set -e
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+key="$1"
+case $key in
+    -l|--length)
+    VOLUME_LENGTH="$2"
+    shift # past argument
+    shift # past value
+    ;;
+    -b|--blocksize)
+    BLOCK_SIZE="$2"
+    shift # past argument
+    shift # past value
+    ;;
+    *)    # unknown option
+    POSITIONAL+=("$1") # save it in an array for later
+    shift # past argument
+    ;;
+esac
+done
+set -- "${POSITIONAL[@]}" # restore positional parameters
+
+if [ "$#" -ne 1 ]; then
+  echo "Usage:"
+  echo "${0} [--length <length in bytes>] [--blocksize <block size in bytes>] <volumename>"
+fi
+
 VOLUME_NAME="${1}"
-curl -d '{}' -X POST localhost:4567/create/${VOLUME_NAME} 2>/dev/null \
- | jq -r '.'
+
+POST_FILE=$(mktemp /tmp/pack.create.XXXXXXXXXX)
+
+echo -n "{" > ${POST_FILE}
+
+if ! test -z "${VOLUME_LENGTH}" && ! test -z "${BLOCK_SIZE}" ; then
+  echo -n "\"sizeInBytes\":${VOLUME_LENGTH}" >> ${POST_FILE}
+  echo -n "," >> ${POST_FILE}
+  echo -n "\"blockSize\":${BLOCK_SIZE}" >> ${POST_FILE}
+elif ! test -z "${VOLUME_LENGTH}" ; then
+  echo -n "\"sizeInBytes\":${VOLUME_LENGTH}" >> ${POST_FILE}
+elif ! test -z "${BLOCK_SIZE}" ; then
+  echo -n "\"blockSize\":${BLOCK_SIZE}" >> ${POST_FILE}
+fi
+echo "}" >> ${POST_FILE}
+
+curl -d "@${POST_FILE}" -X POST localhost:4567/api/v1.0/create/${VOLUME_NAME} 2>/dev/null | jq -r '.'

@@ -8,8 +8,20 @@ public interface MetricsFactory {
       return count -> {
       };
     }
+
+    @Override
+    public TimerContext timer(Class<?> clazz, String... name) {
+      return () -> () -> {
+      };
+    }
   };
 
   Meter meter(Class<?> clazz, String... name);
+
+  TimerContext timer(Class<?> clazz, String... name);
+
+  default Object getMetricRegistry() {
+    return null;
+  }
 
 }

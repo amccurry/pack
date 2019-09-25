@@ -25,6 +25,10 @@ public interface PackVolumeStore extends Closeable {
   PackVolumeMetadata getVolumeMetadata(String name) throws IOException;
 
   PackVolumeMetadata getVolumeMetadata(long volumeId) throws IOException;
+  
+  default void register(VolumeLengthListener listener) {
+    
+  }
 
   default void checkExistence(String name) throws IOException {
     if (!exists(name)) {
@@ -46,7 +50,7 @@ public interface PackVolumeStore extends Closeable {
 
   default void checkAssigned(String name) throws IOException {
     if (!isAssigned(name)) {
-      throw new IOException("Volume " + name + " assigned to a host");
+      throw new IOException("Volume " + name + " not assigned to a host");
     }
   }
 

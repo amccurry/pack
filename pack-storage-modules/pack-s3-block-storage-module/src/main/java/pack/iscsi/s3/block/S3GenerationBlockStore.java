@@ -8,7 +8,6 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
@@ -54,9 +53,9 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
     CacheLoader<BlockKey, Long> loader = key -> {
       String blockKey = S3Utils.getBlockKeyPrefix(_objectPrefix, key.getVolumeId(), key.getBlockId());
       LOGGER.info("blockkey {} scan key from {}", key, blockKey);
-      List<String> keys;
+      List<String> keys = new ArrayList<>();
       try (Scope scope = TracerUtil.trace(S3GenerationBlockStore.class, "s3 list objects")) {
-        keys = S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blockKey);
+        S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blockKey, summary -> keys.add(summary.getKey()));
       }
       LOGGER.info("keys {}", keys);
       if (keys.isEmpty()) {
@@ -74,45 +73,10 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
   @Override
   public void preloadGenerationInfo(long volumeId, long numberOfBlocks) throws IOException {
     String volumeKey = S3Utils.getVolumeKeyPrefix(_objectPrefix, volumeId);
+    ListResultProcessor processor = getPreloadProcessor(volumeId);
     try (Scope scope = TracerUtil.trace(S3GenerationBlockStore.class, "s3 list objects")) {
-      S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, volumeKey, new ListResultProcessor() {
-        @Override
-        public void addResult(S3ObjectSummary summary) {
-          String key = summary.getKey();
-          if (key.contains("metadata")) {
-            return;
-          }
-          List<String> list = KEY_SPLITTER.splitToList(key);
-          long blockId = getBlockId(list);
-          if (blockId < 0) {
-            return;
-          }
-          long currentGeneration = getGeneration(list);
-          BlockKey blockKey = BlockKey.builder()
-                                      .blockId(blockId)
-                                      .volumeId(volumeId)
-                                      .build();
-          Long existingGeneration = _cache.getIfPresent(blockKey);
-          if (existingGeneration == null || currentGeneration > existingGeneration) {
-            LOGGER.info("preload {} with generation {}", blockKey, currentGeneration);
-            _cache.put(blockKey, currentGeneration);
-          }
-        }
-
-        private long getGeneration(List<String> list) {
-          return Long.parseLong(list.get(list.size() - 1));
-        }
-
-        private long getBlockId(List<String> list) {
-          try {
-            return Long.parseLong(list.get(list.size() - 2));
-          } catch (NumberFormatException e) {
-            return -1L;
-          }
-        }
-      });
+      S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, volumeKey, processor);
     }
-
     for (long blockId = 0; blockId < numberOfBlocks; blockId++) {
       BlockKey blockKey = BlockKey.builder()
                                   .blockId(blockId)
@@ -152,5 +116,41 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
       generations.add(Long.parseLong(generationStr));
     }
     return generations;
+  }
+
+  private ListResultProcessor getPreloadProcessor(long volumeId) {
+    return summary -> {
+      String key = summary.getKey();
+      if (key.contains("metadata")) {
+        return;
+      }
+      List<String> list = KEY_SPLITTER.splitToList(key);
+      long blockId = getBlockId(list);
+      if (blockId < 0) {
+        return;
+      }
+      long currentGeneration = getGeneration(list);
+      BlockKey blockKey = BlockKey.builder()
+                                  .blockId(blockId)
+                                  .volumeId(volumeId)
+                                  .build();
+      Long existingGeneration = _cache.getIfPresent(blockKey);
+      if (existingGeneration == null || currentGeneration > existingGeneration) {
+        LOGGER.info("preload {} with generation {}", blockKey, currentGeneration);
+        _cache.put(blockKey, currentGeneration);
+      }
+    };
+  }
+
+  private long getGeneration(List<String> list) {
+    return Long.parseLong(list.get(list.size() - 1));
+  }
+
+  private long getBlockId(List<String> list) {
+    try {
+      return Long.parseLong(list.get(list.size() - 2));
+    } catch (NumberFormatException e) {
+      return -1L;
+    }
   }
 }

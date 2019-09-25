@@ -9,6 +9,7 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 
 import consistent.s3.ConsistentAmazonS3;
+import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.s3.util.S3Utils;
@@ -18,6 +19,7 @@ import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
+import pack.util.TracerUtil;
 
 public class S3BlockReader implements BlockIOExecutor {
 
@@ -43,27 +45,28 @@ public class S3BlockReader implements BlockIOExecutor {
 
   @Override
   public BlockIOResponse exec(BlockIORequest request) throws IOException {
-
-    // @TODO partial reads may cause corruption, needs work
-    long lastStoredGeneration = request.getLastStoredGeneration();
-    if (lastStoredGeneration == Block.MISSING_BLOCK_GENERATION) {
+    try (Scope scope = TracerUtil.trace(getClass(), "s3 read")) {
+      // @TODO partial reads may cause corruption, needs work
+      long lastStoredGeneration = request.getLastStoredGeneration();
+      if (lastStoredGeneration == Block.MISSING_BLOCK_GENERATION) {
+        return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
+      }
+      RandomAccessIO randomAccessIO = request.getRandomAccessIO();
+      String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
+          lastStoredGeneration);
+      LOGGER.info("reading bucket {} key {}", _bucket, key);
+      S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
+      try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
+        byte[] buffer = new byte[1024 * 1024];
+        int read;
+        long pos = 0;
+        while ((read = inputStream.read(buffer)) != -1) {
+          randomAccessIO.writeFully(pos, buffer, 0, read);
+          pos += read;
+        }
+      }
       return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
     }
-    RandomAccessIO randomAccessIO = request.getRandomAccessIO();
-    String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
-        lastStoredGeneration);
-    LOGGER.info("reading bucket {} key {}", _bucket, key);
-    S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
-    try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
-      byte[] buffer = new byte[4096];
-      int read;
-      long pos = 0;
-      while ((read = inputStream.read(buffer)) != -1) {
-        randomAccessIO.writeFully(pos, buffer, 0, read);
-        pos += read;
-      }
-    }
-    return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
   }
 
 }

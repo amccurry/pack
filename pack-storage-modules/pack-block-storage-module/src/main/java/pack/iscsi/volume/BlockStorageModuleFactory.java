@@ -18,12 +18,13 @@ import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
+import pack.iscsi.spi.VolumeLengthListener;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 
-public class BlockStorageModuleFactory implements StorageModuleFactory, Closeable {
+public class BlockStorageModuleFactory implements StorageModuleFactory, Closeable, VolumeLengthListener {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModuleFactory.class);
 
@@ -53,6 +54,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _syncExecutor = Utils.executor(SYNC, config.getSyncThreads());
     _metricsFactory = config.getMetricsFactory();
     _maxCacheSizeInBytes = config.getMaxCacheSizeInBytes();
+    _packVolumeStore.register(this);
   }
 
   @Override
@@ -110,7 +112,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       BlockStorageModule storageModule) {
     Thread thread = Thread.currentThread();
     String connectionInfo = thread.getName();
-    thread.setName(volumeMetadata.getVolumeId() +  connectionInfo);
+    thread.setName(volumeMetadata.getVolumeId() + connectionInfo);
     storageModule.incrementRef();
     return new DelegateStorageModule(storageModule) {
       @Override
@@ -129,6 +131,15 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   private long getMaxCacheSizeInBytes() {
     return _maxCacheSizeInBytes;
+  }
+
+  @Override
+  public void lengthChange(PackVolumeMetadata packVolumeMetadata) throws IOException {
+    String name = packVolumeMetadata.getName();
+    BlockStorageModule blockStorageModule = _blockStorageModules.get(name);
+    if (blockStorageModule != null) {
+      blockStorageModule.setLengthInBytes(packVolumeMetadata.getLengthInBytes());
+    }
   }
 
 }

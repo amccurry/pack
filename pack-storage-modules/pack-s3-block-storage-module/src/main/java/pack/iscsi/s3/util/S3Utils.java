@@ -1,6 +1,5 @@
 package pack.iscsi.s3.util;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import com.amazonaws.services.s3.AmazonS3;
@@ -50,19 +49,16 @@ public class S3Utils {
     return getBlockKeyPrefix(objectPrefix, volumeId, blockId) + generation;
   }
 
-  public static List<String> listObjects(AmazonS3 amazonS3, String bucketName, String prefix) {
-    List<String> results = new ArrayList<>();
-    ObjectListing listObjects = amazonS3.listObjects(bucketName, prefix);
-    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
-    for (S3ObjectSummary summary : objectSummaries) {
-      results.add(summary.getKey());
-    }
-    return results;
-  }
-
   public static void listObjects(AmazonS3 amazonS3, String bucketName, String prefix, ListResultProcessor processor) {
     ObjectListing listObjects = amazonS3.listObjects(bucketName, prefix);
-    List<S3ObjectSummary> objectSummaries = listObjects.getObjectSummaries();
+    processSummaries(processor, listObjects.getObjectSummaries());
+    while (listObjects.isTruncated()) {
+      listObjects = amazonS3.listNextBatchOfObjects(listObjects);
+      processSummaries(processor, listObjects.getObjectSummaries());
+    }
+  }
+
+  private static void processSummaries(ListResultProcessor processor, List<S3ObjectSummary> objectSummaries) {
     for (S3ObjectSummary summary : objectSummaries) {
       processor.addResult(summary);
     }

@@ -2,9 +2,11 @@ package pack.admin;
 
 import java.io.IOException;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -19,18 +21,28 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.Value;
-import pack.iscsi.spi.PackVolumeStore;
+import pack.iscsi.admin.ActionTable;
+import pack.iscsi.admin.Column;
+import pack.iscsi.admin.Menu;
+import pack.iscsi.admin.MenuTable;
+import pack.iscsi.admin.Row;
 import pack.iscsi.spi.PackVolumeMetadata;
+import pack.iscsi.spi.PackVolumeStore;
+import spark.ModelAndView;
+import spark.Request;
+import spark.Response;
 import spark.ResponseTransformer;
 import spark.Route;
 import spark.Service;
+import spark.TemplateViewRoute;
+import spark.template.freemarker.FreeMarkerEngine;
 
 public class PackVolumeAdminServer {
 
   private static final String VOLUME_NAME_PARAM = ":volumeName";
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-  public static void main(String[] args) throws UnknownHostException {
+  public static void main(String[] args) throws IOException {
     Service service = Service.ignite();
 
     String hostname = InetAddress.getLocalHost()
@@ -38,6 +50,71 @@ public class PackVolumeAdminServer {
 
     Map<String, PackVolumeMetadata> allVolumes = new ConcurrentHashMap<>();
     List<String> assignedVolumes = new ArrayList<String>();
+
+    ActionTable actionTable1 = new ActionTable() {
+
+      @Override
+      public String getLink() {
+        return "test1";
+      }
+
+      @Override
+      public List<Row> getRows() {
+        return Arrays.asList(createRow("1"), createRow("2"), createRow("3"));
+      }
+
+      private Row createRow(String id) {
+        return Row.builder()
+                  .id(id)
+                  .columns(Arrays.asList(Column.builder()
+                                               .value("test1")
+                                               .build(),
+                      Column.builder()
+                            .value("test2")
+                            .build()))
+                  .build();
+      }
+
+      @Override
+      public List<String> getActions() {
+        return Arrays.asList("action1", "action2");
+      }
+
+      @Override
+      public List<String> getHeaders() {
+        return Arrays.asList("col1", "col2");
+      }
+    };
+
+    ActionTable actionTable2 = new ActionTable() {
+
+      @Override
+      public String getLink() {
+        return "test2";
+      }
+
+      @Override
+      public List<Row> getRows() {
+        return Arrays.asList(createRow("1"), createRow("2"), createRow("3"));
+      }
+
+      private Row createRow(String id) {
+        return Row.builder()
+                  .id(id)
+                  .columns(Arrays.asList(Column.builder()
+                                               .value("test1")
+                                               .build(),
+                      Column.builder()
+                            .value("test2")
+                            .build()))
+                  .build();
+      }
+
+      @Override
+      public List<String> getHeaders() {
+        return Arrays.asList("col1", "col2");
+      }
+    };
 
     PackVolumeStore packAdmin = new PackVolumeStore() {
 
@@ -129,28 +206,75 @@ public class PackVolumeAdminServer {
       }
 
     };
-    PackVolumeAdminServer server = new PackVolumeAdminServer(service, packAdmin);
+    PackVolumeAdminServer server = new PackVolumeAdminServer(service, packAdmin, actionTable1.getLink(), actionTable1,
+        actionTable2);
     server.setup();
   }
 
   private final Service _service;
   private final PackVolumeStore _packAdmin;
+  private final FreeMarkerEngine _engine = new FreeMarkerEngine();
+  private final Map<String, ActionTable> _tables = new ConcurrentHashMap<>();
+  private final MenuTable _menuTable;
+  private final String _defaultActionTable;
 
-  public PackVolumeAdminServer(Service service, PackVolumeStore packAdmin) {
+  public PackVolumeAdminServer(Service service, PackVolumeStore packAdmin, String defaultActionTable,
+      ActionTable... actionTables) throws IOException {
     _service = service;
+    _service.staticFileLocation("/public");
     _packAdmin = packAdmin;
+    _menuTable = new MenuTable() {
+
+      @Override
+      public List<Menu> getMenus() throws IOException {
+        List<Menu> menus = new ArrayList<>();
+        for (ActionTable actionTable : actionTables) {
+          menus.add(Menu.builder()
+                        .name(actionTable.getName())
+                        .link("/" + actionTable.getLink())
+                        .build());
+        }
+        Collections.sort(menus, new Comparator<Menu>() {
+          @Override
+          public int compare(Menu o1, Menu o2) {
+            return o1.getName()
+                     .compareTo(o2.getName());
+          }
+        });
+        return menus;
+      }
+    };
+    _defaultActionTable = defaultActionTable;
+    for (ActionTable actionTable : actionTables) {
+      addActionTable(actionTable);
+    }
+  }
+
+  public void addActionTable(ActionTable actionTable) throws IOException {
+    String name = actionTable.getLink();
+    if (_tables.containsKey(name)) {
+      throw new RuntimeException("Already contains table " + name);
+    }
+    _tables.put(name, actionTable);
+    _service.get("/" + name, getActionTable(actionTable), _engine);
+    _service.post("/" + name, portActionTable(actionTable), _engine);
   }
 
   public void setup() {
     ResponseTransformer transformer = model -> OBJECT_MAPPER.writeValueAsString(model);
-    _service.get("/all-volumes", getAllVolumes(), transformer);
-    _service.get("/assigned-volumes", getAssignedVolumes(), transformer);
-    _service.post("/create/" + VOLUME_NAME_PARAM, createVolume(), transformer);
-    _service.post("/grow/" + VOLUME_NAME_PARAM, growVolume(), transformer);
-    _service.post("/delete/" + VOLUME_NAME_PARAM, deleteVolume(), transformer);
-    _service.post("/assign/" + VOLUME_NAME_PARAM, assignVolume(), transformer);
-    _service.post("/unassign/" + VOLUME_NAME_PARAM, unassignVolume(), transformer);
-    _service.get("/volume/" + VOLUME_NAME_PARAM, getVolumeInfo(), transformer);
+    _service.get("/api/v1.0/all-volumes", getAllVolumes(), transformer);
+    _service.get("/api/v1.0/assigned-volumes", getAssignedVolumes(), transformer);
+    _service.post("/api/v1.0/create/" + VOLUME_NAME_PARAM, createVolume(), transformer);
+    _service.post("/api/v1.0/grow/" + VOLUME_NAME_PARAM, growVolume(), transformer);
+    _service.post("/api/v1.0/delete/" + VOLUME_NAME_PARAM, deleteVolume(), transformer);
+    _service.post("/api/v1.0/assign/" + VOLUME_NAME_PARAM, assignVolume(), transformer);
+    _service.post("/api/v1.0/unassign/" + VOLUME_NAME_PARAM, unassignVolume(), transformer);
+    _service.get("/api/v1.0/volume/" + VOLUME_NAME_PARAM, getVolumeInfo(), transformer);
+
+    ActionTable defaultActionTable = getActionTable(_defaultActionTable);
+    _service.get("/", getActionTable(defaultActionTable), _engine);
+    _service.post("/", portActionTable(defaultActionTable), _engine);
+
     _service.exception(Exception.class, (exception, request, response) -> {
       ErrorResponse errorResponse = ErrorResponse.builder()
                                                  .error(exception.getMessage())
@@ -162,6 +286,41 @@ public class PackVolumeAdminServer {
         response.body(errorResponse.getError());
       }
     });
+  }
+
+  private ActionTable getActionTable(String name) {
+    return _tables.get(name);
+  }
+
+  private TemplateViewRoute portActionTable(ActionTable actionTable) {
+    return new TemplateViewRoute() {
+      @Override
+      public ModelAndView handle(Request request, Response response) throws Exception {
+        String action = request.queryParams("action");
+        actionTable.execute(action, request.queryParamsValues("id"));
+        response.redirect("/" + actionTable.getLink());
+        return null;
+      }
+    };
+  }
+
+  private TemplateViewRoute getActionTable(ActionTable actionTable) {
+    return (request, response) -> {
+      Map<String, Object> model = new HashMap<>();
+      List<Menu> menus = new ArrayList<>();
+      menus.add(Menu.builder()
+                    .link("/")
+                    .name("Pack")
+                    .build());
+      menus.addAll(_menuTable.getMenus());
+      model.put("menus", menus);
+      model.put("name", actionTable.getName());
+      model.put("link", actionTable.getLink());
+      model.put("headers", actionTable.getHeaders());
+      model.put("rows", actionTable.getRows());
+      model.put("actions", actionTable.getActions());
+      return new ModelAndView(model, "table.ftl");
+    };
   }
 
   private Route growVolume() {

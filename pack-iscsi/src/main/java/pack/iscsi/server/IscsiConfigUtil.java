@@ -16,13 +16,16 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
+import com.codahale.metrics.Timer.Context;
+import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
 import pack.admin.PackVolumeAdminServer;
+import pack.iscsi.admin.ActionTable;
 import pack.iscsi.file.block.storage.LocalExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
@@ -30,9 +33,14 @@ import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
+import pack.iscsi.server.admin.AllVolumeActionTable;
+import pack.iscsi.server.admin.AssignedVolumeActionTable;
+import pack.iscsi.server.admin.MeterMetricsActionTable;
+import pack.iscsi.server.admin.TimerMetricsActionTable;
 import pack.iscsi.spi.Meter;
 import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.PackVolumeStore;
+import pack.iscsi.spi.TimerContext;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
@@ -42,6 +50,8 @@ import pack.iscsi.wal.remote.RemoteWALClient.RemoteWriteAheadLogClientConfig;
 import spark.Service;
 
 public class IscsiConfigUtil {
+
+  private static final Joiner JOINER_DOT = Joiner.on('.');
 
   private static final String WAL_ZK_PREFIX = "wal.zk.prefix";
 
@@ -89,7 +99,14 @@ public class IscsiConfigUtil {
 
     Service service = getSparkServiceIfNeeded(properties, configFile);
     if (service != null) {
-      PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore);
+      ActionTable allVolumeActionTable = new AllVolumeActionTable(volumeStore);
+      ActionTable assignedVolumeActionTable = new AssignedVolumeActionTable(volumeStore);
+      MeterMetricsActionTable meterMetricsActionTable = new MeterMetricsActionTable(metricsFactory);
+      TimerMetricsActionTable timerMetricsActionTable = new TimerMetricsActionTable(metricsFactory);
+
+      PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore,
+          assignedVolumeActionTable.getLink(), allVolumeActionTable, assignedVolumeActionTable, meterMetricsActionTable,
+          timerMetricsActionTable);
       adminServer.setup();
     }
 
@@ -110,18 +127,32 @@ public class IscsiConfigUtil {
 
   private static MetricsFactory getMetricsFactoryIfNeeded() {
     MetricRegistry metricRegistry = new MetricRegistry();
-//    ConsoleReporter reporter = ConsoleReporter.forRegistry(metricRegistry)
-//                                              .convertRatesTo(TimeUnit.SECONDS)
-//                                              .convertDurationsTo(TimeUnit.MILLISECONDS)
-//                                              .build();
-//    reporter.start(10, TimeUnit.SECONDS);
     return new MetricsFactory() {
+
+      @Override
+      public Object getMetricRegistry() {
+        return metricRegistry;
+      }
+
       @Override
       public Meter meter(Class<?> clazz, String... name) {
-        com.codahale.metrics.Meter meter = metricRegistry.meter(MetricRegistry.name(clazz, name));
+        com.codahale.metrics.Meter meter = metricRegistry.meter(getName(clazz, name));
         return count -> meter.mark(count);
       }
+
+      @Override
+      public TimerContext timer(Class<?> clazz, String... name) {
+        Timer timer = metricRegistry.timer(getName(clazz, name));
+        return () -> {
+          Context context = timer.time();
+          return () -> context.close();
+        };
+      }
     };
+  }
+
+  private static String getName(Class<?> clazz, String... names) {
+    return clazz.getSimpleName() + '.' + JOINER_DOT.join(names);
   }
 
   private static Service getSparkServiceIfNeeded(Properties properties, File configFile) {
@@ -246,13 +277,14 @@ public class IscsiConfigUtil {
     return new S3ExternalBlockStoreFactory(config);
   }
 
-  private static int getPropertyWithDefault(Properties properties, String name, File file, int defaultValue) {
-    String property = properties.getProperty(name);
-    if (property == null) {
-      return defaultValue;
-    }
-    return Integer.parseInt(property);
-  }
+  // private static int getPropertyWithDefault(Properties properties, String
+  // name, File file, int defaultValue) {
+  // String property = properties.getProperty(name);
+  // if (property == null) {
+  // return defaultValue;
+  // }
+  // return Integer.parseInt(property);
+  // }
 
   private static String getPropertyNotNull(Properties properties, String name, File file) {
     String property = properties.getProperty(name);

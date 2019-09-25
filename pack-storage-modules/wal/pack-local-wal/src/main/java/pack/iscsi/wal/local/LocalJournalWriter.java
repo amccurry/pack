@@ -12,10 +12,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.util.TracerUtil;
 
 public class LocalJournalWriter implements Closeable {
 
@@ -56,17 +58,19 @@ public class LocalJournalWriter implements Closeable {
 
   public synchronized void append(long generation, long position, byte[] bytes, int offset, int len)
       throws IOException {
-    _lastGeneration.set(generation);
-    int currentPosition = _size.get();
-    int bufferLength = 8 + 8 + 4 + len + 4;
-    ByteBuffer byteBuffer = ByteBuffer.allocate(bufferLength);
-    byteBuffer.putLong(generation)
-              .putLong(position)
-              .putInt(len)
-              .put(bytes, offset, len)
-              .putInt(currentPosition);
-    _randomAccessIO.write(byteBuffer.array());
-    _size.addAndGet(bufferLength);
+    try (Scope scope = TracerUtil.trace(getClass(), "append")) {
+      _lastGeneration.set(generation);
+      int currentPosition = _size.get();
+      int bufferLength = 8 + 8 + 4 + len + 4;
+      ByteBuffer byteBuffer = ByteBuffer.allocate(bufferLength);
+      byteBuffer.putLong(generation)
+                .putLong(position)
+                .putInt(len)
+                .put(bytes, offset, len)
+                .putInt(currentPosition);
+      _randomAccessIO.write(byteBuffer.array());
+      _size.addAndGet(bufferLength);
+    }
   }
 
   @Override

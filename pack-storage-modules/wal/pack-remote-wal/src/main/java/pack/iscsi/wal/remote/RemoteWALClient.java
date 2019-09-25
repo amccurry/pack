@@ -81,13 +81,15 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   public BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset,
       int len) throws IOException {
     return execute(client -> {
-      ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, offset, len);
-      WriteRequest writeRequest = new WriteRequest(volumeId, blockId, generation, position, byteBuffer);
-      try (Scope scope = TracerUtil.trace(RemoteWALClient.class, "wal client write")) {
-        client.write(writeRequest);
+      try (Scope scope1 = TracerUtil.trace(RemoteWALClient.class, "wal write")) {
+        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, offset, len);
+        WriteRequest writeRequest = new WriteRequest(volumeId, blockId, generation, position, byteBuffer);
+        try (Scope scope2 = TracerUtil.trace(RemoteWALClient.class, "wal client write")) {
+          client.write(writeRequest);
+        }
+        return () -> {
+        };
       }
-      return () -> {
-      };
     });
 
   }
@@ -168,15 +170,17 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   }
 
   private PackWalServiceClientImpl getClient() throws IOException {
-    PackWalServiceClientImpl client = _clients.poll();
-    if (client != null) {
-      if (testClient(client)) {
-        return client;
-      } else {
-        IOUtils.close(LOGGER, client);
+    try (Scope scope = TracerUtil.trace(RemoteWALClient.class, "getClient")) {
+      PackWalServiceClientImpl client = _clients.poll();
+      if (client != null) {
+        if (testClient(client)) {
+          return client;
+        } else {
+          IOUtils.close(LOGGER, client);
+        }
       }
+      return newClient();
     }
-    return newClient();
   }
 
   private boolean testClient(PackWalServiceClientImpl client) {
@@ -189,17 +193,19 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   }
 
   private void releaseClient(PackWalServiceClientImpl client) {
-    if (client == null) {
-      return;
-    }
-    if (!_clients.offer(client)) {
-      LOGGER.info("Closing client {}", client);
-      IOUtils.close(LOGGER, client);
+    try (Scope scope = TracerUtil.trace(RemoteWALClient.class, "releaseClient")) {
+      if (client == null) {
+        return;
+      }
+      if (!_clients.offer(client)) {
+        LOGGER.info("Closing client {}", client);
+        IOUtils.close(LOGGER, client);
+      }
     }
   }
 
   private PackWalServiceClientImpl newClient() throws IOException {
-    try {
+    try (Scope scope = TracerUtil.trace(RemoteWALClient.class, "newClient")) {
       PackWalHostEntry entry = newPackWalHostEntry();
       LOGGER.info("Creating a new client host {} port {}", entry.getHostname(), entry.getPort());
       TSocket transport = new TSocket(entry.getHostname(), entry.getPort());
@@ -258,7 +264,7 @@ public class RemoteWALClient implements BlockWriteAheadLog {
     Exception lastException = null;
     for (int i = 0; i < _retries; i++) {
       PackWalServiceClientImpl client = null;
-      try {
+      try (Scope scope = TracerUtil.trace(RemoteWALClient.class, "execute")) {
         client = getClient();
         return exec.exec(client);
       } catch (Exception e) {
