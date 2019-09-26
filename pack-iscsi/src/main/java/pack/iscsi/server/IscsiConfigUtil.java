@@ -26,6 +26,8 @@ import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
 import pack.admin.PackVolumeAdminServer;
 import pack.iscsi.admin.ActionTable;
+import pack.iscsi.block.LocalBlockStateStore;
+import pack.iscsi.block.LocalBlockStateStoreConfig;
 import pack.iscsi.file.block.storage.LocalExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
@@ -40,6 +42,7 @@ import pack.iscsi.server.admin.TimerMetricsActionTable;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.metric.TimerContext;
@@ -61,6 +64,7 @@ public class IscsiConfigUtil {
   private static final String EXTERNAL_BLOCK_TYPE = "external.block.type";
   private static final String BLOCK_CACHE_SIZE_IN_BYTES = "block.cache.size.in.bytes";
   private static final String BLOCK_CACHE_DIR = "block.cache.dir";
+  private static final String BLOCK_STATE_DIR = "block.state.dir";
   private static final String ZK_CONNECTION = "zk.connection";
   private static final String CONSISTENT_S3_ZK_PREFIX = "consistent.s3.zk.prefix";
   private static final String S3_OBJECTPREFIX = "s3.objectprefix";
@@ -114,8 +118,10 @@ public class IscsiConfigUtil {
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile,
         consistentAmazonS3.getCuratorFramework());
     BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3);
+    BlockStateStore blockStateStore = getBlockStateStore(properties, configFile);
     return BlockStorageModuleFactoryConfig.builder()
                                           .packVolumeStore(volumeStore)
+                                          .blockStateStore(blockStateStore)
                                           .blockDataDir(blockDataDir)
                                           .blockStore(blockStore)
                                           .externalBlockStoreFactory(externalBlockStoreFactory)
@@ -123,6 +129,14 @@ public class IscsiConfigUtil {
                                           .writeAheadLog(writeAheadLog)
                                           .metricsFactory(metricsFactory)
                                           .build();
+  }
+
+  private static BlockStateStore getBlockStateStore(Properties properties, File configFile) {
+    File blockStateDir = new File(getPropertyNotNull(properties, BLOCK_STATE_DIR, configFile));
+    LocalBlockStateStoreConfig config = LocalBlockStateStoreConfig.builder()
+                                                                  .blockStateDir(blockStateDir)
+                                                                  .build();
+    return new LocalBlockStateStore(config);
   }
 
   private static MetricsFactory getMetricsFactoryIfNeeded() {

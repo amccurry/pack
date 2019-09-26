@@ -21,6 +21,7 @@ import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 public abstract class BlockStorageModuleFactoryTest {
@@ -38,17 +39,21 @@ public abstract class BlockStorageModuleFactoryTest {
 
   protected abstract BlockGenerationStore getBlockGenerationStore() throws Exception;
 
+  protected abstract BlockStateStore getBlockStateStore();
+
   @Test
   public void testBlockStorageModuleFactory() throws Exception {
     PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
+    BlockStateStore blockStateStore = getBlockStateStore();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
                                                                             .packVolumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
+                                                                            .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
                                                                                 externalBlockStoreFactory)
@@ -76,11 +81,13 @@ public abstract class BlockStorageModuleFactoryTest {
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
+    BlockStateStore blockStateStore = getBlockStateStore();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
                                                                             .packVolumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
+                                                                            .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
                                                                                 externalBlockStoreFactory)
@@ -99,7 +106,7 @@ public abstract class BlockStorageModuleFactoryTest {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
       }
-
+      System.out.println();
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
@@ -114,12 +121,14 @@ public abstract class BlockStorageModuleFactoryTest {
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
+    BlockStateStore blockStateStore = getBlockStateStore();
 
     long maxCacheSizeInBytes = 50_000_000;
 
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
                                                                             .packVolumeStore(volumeStore)
                                                                             .blockDataDir(BLOCK_DATA_DIR)
+                                                                            .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
                                                                                 externalBlockStoreFactory)
@@ -172,6 +181,9 @@ public abstract class BlockStorageModuleFactoryTest {
     byte[] buffer2 = new byte[9876];
     Random random = new Random(seed);
     for (long pos = 0; pos < length; pos += buffer1.length) {
+      if (pos == 98760) {
+        System.out.println();
+      }
       random.nextBytes(buffer1);
       storageModule.read(buffer2, pos);
       assertTrue("pos " + pos, Arrays.equals(buffer1, buffer2));

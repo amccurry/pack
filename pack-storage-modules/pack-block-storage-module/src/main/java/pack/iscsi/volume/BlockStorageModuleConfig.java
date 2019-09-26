@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
@@ -21,7 +22,7 @@ public class BlockStorageModuleConfig {
 
   int blockSize;
 
-  long lengthInBytes;
+  long blockCount;
 
   BlockIOFactory externalBlockStoreFactory;
 
@@ -42,5 +43,10 @@ public class BlockStorageModuleConfig {
   File blockDataDir;
 
   long maxCacheSizeInBytes;
+  
+  @Builder.Default
+  long bufferSize = 1024 * 1024;
+  
+  BlockStateStore blockStateStore;
 
 }

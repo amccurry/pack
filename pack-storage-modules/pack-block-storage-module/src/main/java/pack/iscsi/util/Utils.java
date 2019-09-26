@@ -19,6 +19,14 @@ public class Utils {
   private static final String SET_MAXIMUM = "setMaximum";
   private static final String CACHE = "cache";
 
+  public static long getBlockCount(long lengthInBytes, int blockSize) {
+    long blockCount = lengthInBytes / (long) blockSize;
+    if (lengthInBytes % blockSize == 0) {
+      return blockCount;
+    }
+    return blockCount + 1;
+  }
+
   public static ExecutorService executor(String name, int threads) {
     return Executors.newFixedThreadPool(threads, new PackThreadFactory(name));
   }

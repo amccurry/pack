@@ -1,16 +1,20 @@
 package pack.iscsi.io;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.Arrays;
+import java.util.Random;
 import java.util.UUID;
 
 import org.junit.Test;
 
 import net.smacke.jaydio.DirectRandomAccessFile;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.RandomAccessIOReader;
 
 public class FileIOTest {
 
@@ -22,19 +26,18 @@ public class FileIOTest {
         .mkdirs();
     int blockSize = 4096;
 
-    FileIO.setDirectIOEnabled(false);
+    FileIO.setDirectIOEnabled(true);
 
     FileIO.setLengthFile(file, 1);
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
-      randomAccessIO.write(new byte[] { 1 });
+      randomAccessIO.writeFully(0, new byte[] { 1 });
       assertEquals(1, randomAccessIO.length());
     }
 
     FileIO.setLengthFile(file, 1000);
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
-      randomAccessIO.seek(0);
       byte[] buf = new byte[1000];
-      randomAccessIO.readFully(buf);
+      randomAccessIO.readFully(0, buf);
       assertEquals((byte) 1, buf[0]);
       assertEquals(1000, randomAccessIO.length());
     }
@@ -43,6 +46,27 @@ public class FileIOTest {
       assertEquals(1000, randomAccessIO.length());
     }
     file.delete();
+  }
+
+  @Test
+  public void testReadOnlyClone() throws IOException {
+    File file = new File("./target/tmp/FileIOTest/" + UUID.randomUUID()
+                                                          .toString());
+    file.getParentFile()
+        .mkdirs();
+    int blockSize = 4096;
+
+    Random random = new Random();
+    try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
+      byte[] buffer1 = new byte[blockSize];
+      random.nextBytes(buffer1);
+      randomAccessIO.writeFully(1000, buffer1);
+      try (RandomAccessIOReader reader = randomAccessIO.cloneReadOnly()) {
+        byte[] buffer2 = new byte[blockSize];
+        reader.readFully(1000, buffer2);
+        assertTrue(Arrays.equals(buffer1, buffer2));
+      }
+    }
   }
 
   @Test

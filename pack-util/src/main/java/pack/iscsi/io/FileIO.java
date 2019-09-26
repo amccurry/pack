@@ -7,11 +7,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock.ReadLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,7 +18,9 @@ import com.sun.jna.Platform;
 
 import io.opencensus.common.Scope;
 import net.smacke.jaydio.DirectRandomAccessFile;
+import net.smacke.jaydio.align.DirectIoByteChannelAligner;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.RandomAccessIOReader;
 import pack.util.TracerUtil;
 
 public abstract class FileIO implements RandomAccessIO {
@@ -32,6 +32,10 @@ public abstract class FileIO implements RandomAccessIO {
     try (RandomAccessFile raf = new RandomAccessFile(file, RW)) {
       raf.setLength(length);
     }
+  }
+
+  public static void setSparseLengthFile(File file, long length) throws IOException {
+    setLengthFile(file, length);
   }
 
   public static RandomAccessIO openRandomAccess(File file, int bufferSize, String mode) throws IOException {
@@ -70,40 +74,85 @@ public abstract class FileIO implements RandomAccessIO {
 
   private static class FileIODirectRandomAccessFile implements RandomAccessIO {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(FileIODirectRandomAccessFile.class);
+
     private final DirectRandomAccessFile _draf;
-    private final ReadLock _readLock;
-    private final WriteLock _writeLock;
+    private final File _file;
+    private final Object _lock = new Object();
 
     public FileIODirectRandomAccessFile(File file, DirectRandomAccessFile draf) {
       _draf = draf;
-      ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock(true);
-      _readLock = readWriteLock.readLock();
-      _writeLock = readWriteLock.writeLock();
+      _file = file;
     }
 
     @Override
     public void writeFully(long position, byte[] buffer, int offset, int length) throws IOException {
       try (Scope scope1 = TracerUtil.trace(FileIODirectRandomAccessFile.class, "writeFully")) {
-        _writeLock.lock();
-        try {
+        synchronized (_lock) {
           seekIfNeeded(position);
           try (Scope scope2 = TracerUtil.trace(FileIODirectRandomAccessFile.class, "write")) {
             _draf.write(buffer, offset, length);
           }
-        } finally {
-          _writeLock.unlock();
         }
       }
     }
 
     @Override
     public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
-      _readLock.lock();
-      try {
+      synchronized (_lock) {
         seekIfNeeded(position);
         _draf.read(buffer, offset, length);
-      } finally {
-        _readLock.unlock();
+      }
+    }
+
+    @Override
+    public long length() throws IOException {
+      return _draf.length();
+    }
+
+    @Override
+    public void close() throws IOException {
+      LOGGER.info("Closing FileIODirectRandomAccessFile file {}", _file);
+      _draf.close();
+    }
+
+    @Override
+    public RandomAccessIOReader cloneReadOnly() throws IOException {
+      synchronized (_lock) {
+        DirectIoByteChannelAligner channel = getChannel(_draf);
+        channel.flush();
+        return new FileIODirectRandomAccessFileReader(_file);
+      }
+    }
+
+    private void seekIfNeeded(long position) throws IOException {
+      try (Scope scope = TracerUtil.trace(FileIODirectRandomAccessFile.class, "seekIfNeeded")) {
+        if (_draf.getFilePointer() != position) {
+          _draf.seek(position);
+        }
+      }
+    }
+
+  }
+
+  private static class FileIODirectRandomAccessFileReader implements RandomAccessIOReader {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(FileIODirectRandomAccessFile.class);
+
+    private final DirectRandomAccessFile _draf;
+    private final File _file;
+    private final Object _lock = new Object();
+
+    public FileIODirectRandomAccessFileReader(File file) throws IOException {
+      _draf = new DirectRandomAccessFile(file, "r");
+      _file = file;
+    }
+
+    @Override
+    public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
+      synchronized (_lock) {
+        seekIfNeeded(position);
+        _draf.read(buffer, offset, length);
       }
     }
 
@@ -116,74 +165,14 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     @Override
-    public void seek(long position) throws IOException {
-      _draf.seek(position);
-    }
-
-    @Override
-    public long getFilePointer() throws IOException {
-      return _draf.getFilePointer();
-    }
-
-    @Override
     public long length() throws IOException {
       return _draf.length();
     }
 
     @Override
-    public int read() throws IOException {
-      return _draf.read();
-    }
-
-    @Override
-    public int read(byte[] b, int off, int len) throws IOException {
-      _draf.read(b, off, len);
-      return len;
-    }
-
-    @Override
-    public int read(byte[] b) throws IOException {
-      _draf.read(b);
-      return b.length;
-    }
-
-    @Override
     public void close() throws IOException {
+      LOGGER.info("Closing FileIODirectRandomAccessFile file {}", _file);
       _draf.close();
-    }
-
-    @Override
-    public void write(byte[] b) throws IOException {
-      try (Scope scope = TracerUtil.trace(FileIODirectRandomAccessFile.class, "write")) {
-        _draf.write(b);
-      }
-    }
-
-    @Override
-    public void write(byte[] b, int off, int len) throws IOException {
-      try (Scope scope = TracerUtil.trace(FileIODirectRandomAccessFile.class, "write")) {
-        _draf.write(b, off, len);
-      }
-    }
-
-    @Override
-    public void readFully(byte[] b) throws IOException {
-      _draf.readFully(b);
-    }
-
-    @Override
-    public void readFully(byte[] b, int off, int len) throws IOException {
-      _draf.readFully(b, off, len);
-    }
-
-    @Override
-    public int readInt() throws IOException {
-      return _draf.readInt();
-    }
-
-    @Override
-    public long readLong() throws IOException {
-      return _draf.readLong();
     }
   }
 
@@ -220,63 +209,13 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     @Override
-    public int read() throws IOException {
-      return _raf.read();
-    }
-
-    @Override
-    public int read(byte[] b, int off, int len) throws IOException {
-      return _raf.read(b, off, len);
-    }
-
-    @Override
-    public int read(byte[] b) throws IOException {
-      return _raf.read(b);
-    }
-
-    @Override
-    public final void readFully(byte[] b) throws IOException {
-      _raf.readFully(b);
-    }
-
-    @Override
-    public final void readFully(byte[] b, int off, int len) throws IOException {
-      _raf.readFully(b, off, len);
-    }
-
-    @Override
-    public void write(byte[] b) throws IOException {
-      _raf.write(b);
-    }
-
-    @Override
-    public void write(byte[] b, int off, int len) throws IOException {
-      _raf.write(b, off, len);
-    }
-
-    @Override
-    public long getFilePointer() throws IOException {
-      return _raf.getFilePointer();
-    }
-
-    @Override
-    public void seek(long pos) throws IOException {
-      _raf.seek(pos);
-    }
-
-    @Override
     public long length() throws IOException {
       return _raf.length();
     }
 
     @Override
-    public final int readInt() throws IOException {
-      return _raf.readInt();
-    }
-
-    @Override
-    public final long readLong() throws IOException {
-      return _raf.readLong();
+    public RandomAccessIOReader cloneReadOnly() throws IOException {
+      return this;
     }
 
   }
@@ -343,5 +282,15 @@ public abstract class FileIO implements RandomAccessIO {
 
   public static boolean isDirectIOEnabled() {
     return _directIOEnabled;
+  }
+
+  private static DirectIoByteChannelAligner getChannel(DirectRandomAccessFile draf) throws IOException {
+    try {
+      Field field = DirectRandomAccessFile.class.getDeclaredField("channel");
+      field.setAccessible(true);
+      return (DirectIoByteChannelAligner) field.get(draf);
+    } catch (Exception e) {
+      throw new IOException(e);
+    }
   }
 }

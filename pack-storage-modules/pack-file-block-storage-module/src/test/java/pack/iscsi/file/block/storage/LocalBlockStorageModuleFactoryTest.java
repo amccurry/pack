@@ -8,10 +8,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.junit.Before;
 import org.junit.Test;
 
+import pack.iscsi.block.LocalBlockStateStore;
+import pack.iscsi.block.LocalBlockStateStoreConfig;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;
 import pack.iscsi.wal.local.LocalBlockWriteAheadLog;
@@ -22,12 +25,14 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
   public static final File WAL_DATA_DIR = new File("./target/tmp/LocalBlockStorageModuleFactoryTest/wal");
   public static final File EXTERNAL_BLOCK_DATA_DIR = new File(
       "./target/tmp/LocalBlockStorageModuleFactoryTest/external");
+  public static final File BLOCK_STATE_DIR = new File("./target/tmp/LocalBlockStorageModuleFactoryTest/state");
 
   @Before
   public void setup() throws Exception {
     super.setup();
     IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
     IOUtils.rmr(WAL_DATA_DIR);
+    IOUtils.rmr(BLOCK_STATE_DIR);
   }
 
   @Override
@@ -43,9 +48,12 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
     return new LocalBlockWriteAheadLog(config);
   }
 
-  @Test
-  public void testBlockStorageModuleFactory() throws Exception {
-    super.testBlockStorageModuleFactory();
+  @Override
+  protected BlockStateStore getBlockStateStore() {
+    LocalBlockStateStoreConfig config = LocalBlockStateStoreConfig.builder()
+                                                                  .blockStateDir(BLOCK_STATE_DIR)
+                                                                  .build();
+    return new LocalBlockStateStore(config);
   }
 
   @Override
@@ -67,5 +75,20 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
         return gen;
       }
     };
+  }
+
+  @Test
+  public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws Exception {
+    super.testBlockStorageModuleFactoryWithClosingAndReOpen();
+  }
+
+  @Test
+  public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws Exception {
+    super.testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks();
+  }
+
+  @Test
+  public void testBlockStorageModuleFactory() throws Exception {
+    super.testBlockStorageModuleFactory();
   }
 }

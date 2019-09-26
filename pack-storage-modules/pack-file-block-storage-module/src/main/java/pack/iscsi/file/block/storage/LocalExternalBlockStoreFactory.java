@@ -49,16 +49,29 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
            .mkdirs();
 
         try (FileOutputStream output = new FileOutputStream(dst)) {
-          int len = request.getBlockSize();
           RandomAccessIO randomAccessIO = request.getRandomAccessIO();
           byte[] buffer = new byte[4096];
-          long position = 0;
-          while (len > 0) {
-            randomAccessIO.readFully(position, buffer);
-            len -= buffer.length;
-            position += buffer.length;
-            output.write(buffer, 0, buffer.length);
+          long position = request.getStartingPositionOfBlock();
+          int length = request.getBlockSize();
+          while (length > 0) {
+            int len = Math.min(buffer.length, length);
+            LOGGER.info("readFully position {} buffer {} len {}", position, buffer.length, len);
+            try {
+              randomAccessIO.readFully(position, buffer, 0, len);
+            } catch (Throwable t) {
+              LOGGER.error("Unknown error", t);
+              throw t;
+            }
+            output.write(buffer, 0, len);
+            position += len;
+            length -= len;
           }
+        } catch (IOException e) {
+          LOGGER.error("Unknown error", e);
+          throw e;
+        } catch (Exception e) {
+          LOGGER.error("Unknown error", e);
+          throw e;
         }
         return BlockIOResponse.builder()
                               .lastStoredGeneration(request.getOnDiskGeneration())
@@ -91,17 +104,14 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
           try (FileInputStream input = new FileInputStream(src)) {
             RandomAccessIO randomAccessIO = request.getRandomAccessIO();
             byte[] buffer = new byte[4096];
-            int read;
-            long position = 0;
-            while ((read = input.read(buffer)) != -1) {
-              int len = read;
-              int offset = 0;
-              while (len > 0) {
-                randomAccessIO.writeFully(position, buffer, offset, len);
-                position += buffer.length;
-                len -= buffer.length;
-                offset += buffer.length;
-              }
+
+            long position = request.getStartingPositionOfBlock();
+            int length = request.getBlockSize();
+            while (length > 0) {
+              int read = input.read(buffer);
+              randomAccessIO.writeFully(position, buffer, 0, read);
+              position += read;
+              length -= read;
             }
           }
         } else {

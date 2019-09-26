@@ -69,6 +69,13 @@ public final class Fallocate {
     throw new UnsupportedOperationException(feature + " is not supported on this operating system");
   }
 
+  public static void fallocate(int fd, int mode, long offset, long length) throws IOException {
+    int result = FallocateHolder.fallocate(fd, mode, offset, length);
+    if (result != 0) {
+      throw new IOException("fallocate returned " + Native.getLastError());
+    }
+  }
+
   public void execute() throws IOException {
     final int errno;
     if (IS_LINUX) {

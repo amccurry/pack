@@ -1,24 +1,27 @@
 package pack.iscsi.block;
 
-import java.io.File;
 import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
 import lombok.Value;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockGenerationStore;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 @Value
-@Builder
+@Builder(toBuilder = true)
 public class LocalBlockConfig {
-
-  File blockDataDir;
 
   long volumeId;
 
   long blockId;
 
   int blockSize;
+
+  RandomAccessIO randomAccessIO;
+
+  BlockStateStore blockStateStore;
 
   BlockGenerationStore blockGenerationStore;
 
@@ -30,6 +33,4 @@ public class LocalBlockConfig {
   @Builder.Default
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
 
-  @Builder.Default
-  int bufferSize = 64 * 1024;
 }

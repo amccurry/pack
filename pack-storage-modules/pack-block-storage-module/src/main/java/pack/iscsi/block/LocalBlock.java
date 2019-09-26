@@ -2,9 +2,7 @@ package pack.iscsi.block;
 
 import java.io.Closeable;
 import java.io.EOFException;
-import java.io.File;
 import java.io.IOException;
-import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,15 +15,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.opencensus.common.Scope;
-import pack.iscsi.io.FileIO;
-import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
+import pack.iscsi.spi.block.BlockMetadata;
 import pack.iscsi.spi.block.BlockState;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.util.LockUtil;
@@ -35,14 +33,11 @@ public class LocalBlock implements Closeable, Block {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalBlock.class);
 
-  private static final int BLOCK_OVERHEAD = 9;
-
   private final long _blockId;
   private final long _volumeId;
   private final int _blockSize;
   private final WriteLock _writeLock;
   private final ReadLock _readLock;
-  private final File _blockDataFile;
   private final AtomicReference<BlockState> _onDiskState = new AtomicReference<>();
   private final AtomicLong _onDiskGeneration = new AtomicLong();
   private final AtomicLong _lastStoredGeneration = new AtomicLong();
@@ -53,55 +48,25 @@ public class LocalBlock implements Closeable, Block {
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final RandomAccessIO _randomAccessIO;
+  private final BlockStateStore _blockStateStore;
+  private final long _startingPositionOfBlock;
 
   public LocalBlock(LocalBlockConfig config) throws IOException {
+    _randomAccessIO = config.getRandomAccessIO();
+    _blockStore = config.getBlockGenerationStore();
+    _wal = config.getWal();
     _volumeId = config.getVolumeId();
     _blockId = config.getBlockId();
-    try (Scope scope = TracerUtil.trace(LocalBlock.class, "directory setup")) {
-      File blockDataDir = config.getBlockDataDir();
-      createAndCheckExistence(blockDataDir);
-
-      File volumeDir = new File(blockDataDir, Long.toString(_volumeId));
-      createAndCheckExistence(volumeDir);
-
-      _blockDataFile = new File(volumeDir, Long.toString(_blockId) + "." + UUID.randomUUID()
-                                                                               .toString());
-    }
+    _blockStateStore = config.getBlockStateStore();
+    _blockSize = config.getBlockSize();
+    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
+    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
+    _startingPositionOfBlock = _blockId * _blockSize;
 
     ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
     _writeLock = reentrantReadWriteLock.writeLock();
     _readLock = reentrantReadWriteLock.readLock();
-    _blockStore = config.getBlockGenerationStore();
 
-    _wal = config.getWal();
-    _blockSize = config.getBlockSize();
-
-    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
-    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
-
-    try (Scope scope1 = TracerUtil.trace(LocalBlock.class, "file setup")) {
-      if (_blockDataFile.exists() && isLengthValid()) {
-        // recovery will need to occur, may be out of date
-        FileIO.setLengthFile(_blockDataFile, _blockSize + BLOCK_OVERHEAD);
-        try (Scope scope2 = TracerUtil.trace(LocalBlock.class, "open random access")) {
-          _randomAccessIO = FileIO.openRandomAccess(_blockDataFile, config.getBufferSize(), "rw");
-        }
-      } else {
-        if (_blockDataFile.exists()) {
-          LOGGER.info("Block file {} length incorrect actual {} expecting {}, remove and recover.", _blockDataFile,
-              _blockDataFile.length(), getValidLength());
-          try (Scope scope2 = TracerUtil.trace(LocalBlock.class, "file delete")) {
-            _blockDataFile.delete();
-          }
-        }
-        try (Scope scope2 = TracerUtil.trace(LocalBlock.class, "set file length")) {
-          FileIO.setLengthFile(_blockDataFile, _blockSize + BLOCK_OVERHEAD);
-        }
-        try (Scope scope2 = TracerUtil.trace(LocalBlock.class, "open random access")) {
-          _randomAccessIO = FileIO.openRandomAccess(_blockDataFile, config.getBufferSize(), "rw");
-        }
-      }
-    }
     readMetadata();
     long lastStoreGeneration;
     try (Scope scope = TracerUtil.trace(LocalBlock.class, "last store generation")) {
@@ -120,7 +85,7 @@ public class LocalBlock implements Closeable, Block {
       checkPositionAndLength(blockPosition, len);
       checkGenerations();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio read")) {
-        _randomAccessIO.readFully(blockPosition, bytes, offset, len);
+        _randomAccessIO.readFully(getFilePosition(blockPosition), bytes, offset, len);
       }
     }
   }
@@ -143,10 +108,14 @@ public class LocalBlock implements Closeable, Block {
       }
       writeMetadata();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio write")) {
-        _randomAccessIO.writeFully(blockPosition, bytes, offset, len);
+        _randomAccessIO.writeFully(getFilePosition(blockPosition), bytes, offset, len);
       }
       return result;
     }
+  }
+
+  private long getFilePosition(long blockPosition) {
+    return _startingPositionOfBlock + blockPosition;
   }
 
   @Override
@@ -161,6 +130,7 @@ public class LocalBlock implements Closeable, Block {
                                              .onDiskGeneration(_onDiskGeneration.get())
                                              .onDiskState(_onDiskState.get())
                                              .volumeId(_volumeId)
+                                             .startingPositionOfBlock(_startingPositionOfBlock)
                                              .build();
       LOGGER.info("starting execIO volumeId {} blockId {}", _volumeId, _blockId);
       BlockIOResponse response = executor.exec(request);
@@ -184,19 +154,11 @@ public class LocalBlock implements Closeable, Block {
       if (!_closed.get()) {
         _closed.set(true);
       }
-      IOUtils.closeQuietly(_randomAccessIO);
-    }
-  }
 
-  @Override
-  public void cleanUp() throws IOException {
-    try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
-      if (!_closed.get()) {
-        throw new IOException("Clean up can only occur after a close");
-      }
-      LOGGER.info("deleting block file, volume id {} block id {} block file {}", _volumeId, _blockId,
-          _blockDataFile.getAbsolutePath());
-      _blockDataFile.delete();
+      _blockStateStore.removeBlockMetadata(_volumeId, _blockId);
+      long position = _blockId * (long) _blockSize;
+      LOGGER.info("punching hole in volume id {} for block id {}", _volumeId, _blockId);
+      _randomAccessIO.punchHole(position, _blockSize);
     }
   }
 
@@ -220,32 +182,24 @@ public class LocalBlock implements Closeable, Block {
 
   private void writeMetadata() throws IOException {
     try (Scope scope1 = TracerUtil.trace(LocalBlock.class, "metadata write")) {
-      // @TODO move to indexing structure??? maybe memory mapped?
-      // byte[] buffer = getMetadataBuffer();
-      // _randomAccessIO.writeFully(getMetadataPosition(), buffer);
-      // LOGGER.debug("write meta data volumeId {} blockId {} state {} on disk
-      // generation {} last stored generation {}",
-      // _volumeId, _blockId, _onDiskState, _onDiskGeneration,
-      // _lastStoredGeneration);
+      BlockMetadata metadata = BlockMetadata.builder()
+                                            .blockState(_onDiskState.get())
+                                            .generation(_onDiskGeneration.get())
+                                            .build();
+      _blockStateStore.setBlockMetadata(_volumeId, _blockId, metadata);
     }
   }
 
   private void readMetadata() throws IOException {
     try (Scope scope = TracerUtil.trace(LocalBlock.class, "metadata read")) {
-      // byte[] buffer = new byte[BLOCK_OVERHEAD];
-      // _randomAccessIO.readFully(getMetadataPosition(), buffer);
-      // _onDiskState.set(BlockState.lookup(buffer[0]));
-      // _onDiskGeneration.set(getLong(buffer, 1));
-    }
-  }
-
-  private byte[] getMetadataBuffer() {
-    try (Scope scope = TracerUtil.trace(LocalBlock.class, "metadata buffer")) {
-      byte[] buffer = new byte[BLOCK_OVERHEAD];
-      BlockState blockState = _onDiskState.get();
-      buffer[0] = blockState.getType();
-      putLong(buffer, 1, _onDiskGeneration.get());
-      return buffer;
+      BlockMetadata blockMetadata = _blockStateStore.getBlockMetadata(_volumeId, _blockId);
+      if (blockMetadata != null) {
+        _onDiskState.set(blockMetadata.getBlockState());
+        _onDiskGeneration.set(blockMetadata.getGeneration());
+      } else {
+        _onDiskState.set(BlockState.CLEAN);
+        _onDiskGeneration.set(0);
+      }
     }
   }
 
@@ -259,25 +213,6 @@ public class LocalBlock implements Closeable, Block {
     if (_lastStoredGeneration.get() > _onDiskGeneration.get()) {
       throw new IOException("Last generation " + _lastStoredGeneration + " should never be ahead of on disk generation "
           + _onDiskGeneration);
-    }
-  }
-
-  private long getMetadataPosition() {
-    return _blockSize;
-  }
-
-  private long getValidLength() {
-    return _blockSize + BLOCK_OVERHEAD;
-  }
-
-  private boolean isLengthValid() {
-    return _blockDataFile.length() == getValidLength();
-  }
-
-  private void createAndCheckExistence(File dir) throws IOException {
-    dir.mkdirs();
-    if (!dir.exists()) {
-      throw new IOException("Directory " + dir + " does not exist.");
     }
   }
 
@@ -308,29 +243,12 @@ public class LocalBlock implements Closeable, Block {
 
   @Override
   public int getSize() {
-    return (int) getValidLength();
+    return _blockSize;
   }
 
   @Override
   public boolean isClosed() {
     return _closed.get();
-  }
-
-  static long getLong(byte[] b, int off) {
-    return ((b[off + 7] & 0xFFL)) + ((b[off + 6] & 0xFFL) << 8) + ((b[off + 5] & 0xFFL) << 16)
-        + ((b[off + 4] & 0xFFL) << 24) + ((b[off + 3] & 0xFFL) << 32) + ((b[off + 2] & 0xFFL) << 40)
-        + ((b[off + 1] & 0xFFL) << 48) + (((long) b[off]) << 56);
-  }
-
-  static void putLong(byte[] b, int off, long val) {
-    b[off + 7] = (byte) (val);
-    b[off + 6] = (byte) (val >>> 8);
-    b[off + 5] = (byte) (val >>> 16);
-    b[off + 4] = (byte) (val >>> 24);
-    b[off + 3] = (byte) (val >>> 32);
-    b[off + 2] = (byte) (val >>> 40);
-    b[off + 1] = (byte) (val >>> 48);
-    b[off] = (byte) (val >>> 56);
   }
 
   private void checkPositionAndLength(long blockPosition, int len) throws EOFException {

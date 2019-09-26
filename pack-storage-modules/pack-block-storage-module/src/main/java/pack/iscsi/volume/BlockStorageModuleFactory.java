@@ -20,6 +20,7 @@ import pack.iscsi.spi.StorageModuleFactory;
 import pack.iscsi.spi.VolumeLengthListener;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
@@ -42,8 +43,10 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final long _maxCacheSizeInBytes;
   private final ConcurrentMap<String, BlockStorageModule> _blockStorageModules = new ConcurrentHashMap<>();
   private final Object _lock = new Object();
+  private final BlockStateStore _blockStateStore;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
+    _blockStateStore = config.getBlockStateStore();
     _packVolumeStore = config.getPackVolumeStore();
     _blockDataDir = config.getBlockDataDir();
     _blockGenerationStore = config.getBlockStore();
@@ -79,12 +82,15 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       long volumeId = volumeMetadata.getVolumeId();
       int blockSize = volumeMetadata.getBlockSizeInBytes();
       long lengthInBytes = volumeMetadata.getLengthInBytes();
+      long blockCount = Utils.getBlockCount(lengthInBytes, blockSize);
+
       BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
                                                                 .blockDataDir(_blockDataDir)
                                                                 .blockGenerationStore(_blockGenerationStore)
+                                                                .blockStateStore(_blockStateStore)
                                                                 .blockSize(blockSize)
                                                                 .externalBlockStoreFactory(_externalBlockStoreFactory)
-                                                                .lengthInBytes(lengthInBytes)
+                                                                .blockCount(blockCount)
                                                                 .volumeName(name)
                                                                 .volumeId(volumeId)
                                                                 .syncTimeAfterIdle(_syncTimeAfterIdle)

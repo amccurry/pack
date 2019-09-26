@@ -56,13 +56,24 @@ public class S3BlockReader implements BlockIOExecutor {
           lastStoredGeneration);
       LOGGER.info("reading bucket {} key {}", _bucket, key);
       S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
+      long contentLength = s3Object.getObjectMetadata()
+                                   .getContentLength();
+      int blockSize = request.getBlockSize();
+      if (contentLength != blockSize) {
+        LOGGER.error("object size wrong bucket {} key {} content length {} blocksize {}", _bucket, key, contentLength,
+            blockSize);
+        throw new IOException("object size wrong");
+      }
       try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
         byte[] buffer = new byte[1024 * 1024];
-        int read;
-        long pos = 0;
-        while ((read = inputStream.read(buffer)) != -1) {
+        long pos = request.getStartingPositionOfBlock();
+        int length = blockSize;
+        while (length > 0) {
+          int len = Math.min(length, buffer.length);
+          int read = inputStream.read(buffer, 0, len);
           randomAccessIO.writeFully(pos, buffer, 0, read);
           pos += read;
+          length -= read;
         }
       }
       return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);

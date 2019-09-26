@@ -9,6 +9,7 @@ import lombok.Value;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
@@ -23,6 +24,8 @@ public class BlockStorageModuleFactoryConfig {
   BlockWriteAheadLog writeAheadLog;
 
   BlockIOFactory externalBlockStoreFactory;
+  
+  BlockStateStore blockStateStore;
 
   File blockDataDir;
 

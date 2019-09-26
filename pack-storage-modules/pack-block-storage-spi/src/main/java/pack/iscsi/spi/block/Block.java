@@ -33,8 +33,6 @@ public interface Block extends Closeable {
 
   int getSize();
 
-  void cleanUp() throws IOException;
-
   boolean idleWrites();
 
   boolean isClosed();

@@ -8,6 +8,7 @@ import pack.iscsi.spi.RandomAccessIO;
 @Builder
 public class BlockIORequest {
   int blockSize;
+  long startingPositionOfBlock;
   long volumeId;
   long blockId;
   long onDiskGeneration;

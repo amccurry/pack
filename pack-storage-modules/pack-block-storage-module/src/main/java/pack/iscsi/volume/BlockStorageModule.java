@@ -27,11 +27,15 @@ import com.github.benmanes.caffeine.cache.Weigher;
 
 import io.opencensus.common.Scope;
 import pack.iscsi.block.AlreadyClosedException;
+import pack.iscsi.io.FileIO;
+import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockKey;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.metric.TimerContext;
@@ -49,6 +53,9 @@ public class BlockStorageModule implements StorageModule {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModule.class);
 
+  private static final String RW = "rw";
+  private static final String WRITE_TIMER = "write-timer";
+  private static final String READ_TIMER = "read-timer";
   private static final String WRITE = "write-bytes";
   private static final String READ = "read-bytes";
   private static final String READ_IOPS = "read-iops";
@@ -56,7 +63,7 @@ public class BlockStorageModule implements StorageModule {
 
   private final long _volumeId;
   private final int _blockSize;
-  private final AtomicLong _lengthInBytes = new AtomicLong();
+  private final AtomicLong _blockCount = new AtomicLong();
   private final LoadingCache<BlockKey, Block> _cache;
   private final AtomicBoolean _closed = new AtomicBoolean();
   private final BlockIOFactory _externalBlockStoreFactory;
@@ -75,8 +82,14 @@ public class BlockStorageModule implements StorageModule {
   private final Meter _writeIOMeter;
   private final TimerContext _readTimer;
   private final TimerContext _writeTimer;
+  private final RandomAccessIO _randomAccessIO;
+  private final BlockStateStore _blockStateStore;
+  private final File _file;
+  private final List<BlockJournalResult> _results = new ArrayList<>();
+  private final AtomicLong _writesCount = new AtomicLong();
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
+    _blockStateStore = config.getBlockStateStore();
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
@@ -88,20 +101,30 @@ public class BlockStorageModule implements StorageModule {
     _readIOMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, READ_IOPS);
     _writeMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE);
     _writeIOMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE_IOPS);
-    _readTimer = _metricsFactory.timer(BlockStorageModule.class, volumeName, "read-timer");
-    _writeTimer = _metricsFactory.timer(BlockStorageModule.class, volumeName, "write-timer");
+    _readTimer = _metricsFactory.timer(BlockStorageModule.class, volumeName, READ_TIMER);
+    _writeTimer = _metricsFactory.timer(BlockStorageModule.class, volumeName, WRITE_TIMER);
 
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
 
     _volumeId = config.getVolumeId();
     _blockSize = config.getBlockSize();
-    _lengthInBytes.set(config.getLengthInBytes());
+    _blockCount.set(config.getBlockCount());
     _syncExecutor = config.getSyncExecutor();
     _syncTimer = new Timer("sync-" + _volumeId);
 
     long period = config.getSyncTimeAfterIdleTimeUnit()
                         .toMillis(config.getSyncTimeAfterIdle());
     _syncTimer.schedule(getTask(), period, period);
+
+    _blockDataDir.mkdirs();
+
+    _file = new File(_blockDataDir, Long.toString(_volumeId));
+    FileIO.setSparseLengthFile(_file, getLengthInBytes());
+
+    _randomAccessIO = FileIO.openRandomAccess(_file, config.getBlockSize(), RW);
+
+    _blockStateStore.createBlockMetadataStore(_volumeId);
+    _blockStateStore.setMaxBlockCount(_volumeId, _blockCount.get());
 
     BlockRemovalListener removalListener = getRemovalListener();
 
@@ -119,19 +142,48 @@ public class BlockStorageModule implements StorageModule {
     preloadBlockInfo();
   }
 
+  @Override
+  public void close() throws IOException {
+    LOGGER.info("starting close of storage module for {}", _volumeId);
+    checkClosed();
+    _syncTimer.cancel();
+    _syncTimer.purge();
+    _closed.set(true);
+    try {
+      List<Future<Void>> syncs = sync(false);
+      LOGGER.info("waiting for syncs to complete");
+      waitForSyncs(syncs);
+    } catch (InterruptedException e) {
+      throw new IOException(e);
+    }
+    IOUtils.close(LOGGER, _randomAccessIO);
+    _file.delete();
+    _blockStateStore.createBlockMetadataStore(_volumeId);
+    LOGGER.info("finished close of storage module for {}", _volumeId);
+  }
+
+  private long getLengthInBytes() {
+    return _blockCount.get() * _blockSize;
+  }
+
   private void preloadBlockInfo() throws IOException {
-    long blockCount = _lengthInBytes.get() / (long) _blockSize;
-    _blockGenerationStore.preloadGenerationInfo(_volumeId, blockCount);
+    _blockGenerationStore.preloadGenerationInfo(_volumeId, _blockCount.get());
+  }
+
+  public void setBlockClount(long newBlockCount) throws IOException {
+    long current = _blockCount.get();
+    if (newBlockCount < current) {
+      throw new IOException("new block count of " + newBlockCount + " is less than current block count " + current);
+    }
+    LOGGER.info("Updating the current block count of volume id {} to {}", _volumeId, newBlockCount);
+    _blockCount.set(newBlockCount);
+    _blockStateStore.setMaxBlockCount(_volumeId, newBlockCount);
+    preloadBlockInfo();
   }
 
   public void setLengthInBytes(long lengthInBytes) throws IOException {
-    long current = _lengthInBytes.get();
-    if (lengthInBytes < current) {
-      throw new IOException("new length of " + lengthInBytes + " is less than current length " + current);
-    }
-    LOGGER.info("Updating the current length of volume id {} to {}", _volumeId, lengthInBytes);
-    _lengthInBytes.set(lengthInBytes);
-    preloadBlockInfo();
+    long newBlockCount = Utils.getBlockCount(lengthInBytes, _blockSize);
+    setBlockClount(newBlockCount);
   }
 
   public void incrementRef() {
@@ -147,26 +199,9 @@ public class BlockStorageModule implements StorageModule {
   }
 
   @Override
-  public void close() throws IOException {
-    LOGGER.info("starting close of storage module for {}", _volumeId);
-    checkClosed();
-    _syncTimer.cancel();
-    _syncTimer.purge();
-    _closed.set(true);
-    try {
-      List<Future<Void>> syncs = sync(false);
-      LOGGER.info("waiting for syncs to complete");
-      waitForSyncs(syncs);
-    } catch (InterruptedException e) {
-      throw new IOException(e);
-    }
-    LOGGER.info("finished close of storage module for {}", _volumeId);
-  }
-
-  @Override
   public void read(byte[] bytes, long position) throws IOException {
     checkClosed();
-    LOGGER.info("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
+    LOGGER.debug("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
     int length = bytes.length;
     _readMeter.mark(length);
     _readIOMeter.mark();
@@ -195,13 +230,10 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
-  private List<BlockJournalResult> _results = new ArrayList<>();
-  private final AtomicLong _writesCount = new AtomicLong();
-
   @Override
   public void write(byte[] bytes, long position) throws IOException {
     checkClosed();
-    LOGGER.info("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
+    LOGGER.debug("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
     _writesCount.addAndGet(bytes.length);
     int length = bytes.length;
     _writeMeter.mark(length);
@@ -244,7 +276,7 @@ public class BlockStorageModule implements StorageModule {
       _results.clear();
     }
     long end = System.nanoTime();
-    LOGGER.info("flushWrites {} {} in {} ms", size, writeCount, (end - start) / 1_000_000.0);
+    LOGGER.debug("flushWrites {} {} in {} ms", size, writeCount, (end - start) / 1_000_000.0);
   }
 
   private void trackResult(BlockJournalResult result) {
@@ -344,11 +376,11 @@ public class BlockStorageModule implements StorageModule {
 
   @Override
   public long getSizeInBytes() {
-    return _lengthInBytes.get();
+    return getLengthInBytes();
   }
 
   private long getBlockCount() {
-    return _lengthInBytes.get() / VIRTUAL_BLOCK_SIZE;
+    return getLengthInBytes() / VIRTUAL_BLOCK_SIZE;
   }
 
   private void checkClosed() throws IOException {
@@ -387,7 +419,8 @@ public class BlockStorageModule implements StorageModule {
 
   private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
     return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
-                                                      .blockDataDir(_blockDataDir)
+                                                      .randomAccessIO(_randomAccessIO)
+                                                      .blockStateStore(_blockStateStore)
                                                       .blockGenerationStore(_blockGenerationStore)
                                                       .blockSize(_blockSize)
                                                       .externalBlockStoreFactory(_externalBlockStoreFactory)

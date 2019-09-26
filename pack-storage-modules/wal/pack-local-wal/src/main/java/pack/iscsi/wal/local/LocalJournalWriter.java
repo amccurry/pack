@@ -35,7 +35,8 @@ public class LocalJournalWriter implements Closeable {
 
   private final AtomicLong _lastGeneration = new AtomicLong(-1L);
   private final File _file;
-  private final RandomAccessIO _randomAccessIO;
+  private final RandomAccessIO _ra;
+  private final AtomicLong _raPosition = new AtomicLong();
   private final AtomicInteger _size = new AtomicInteger();
 
   public LocalJournalWriter(LocalLogWriterConfig config) throws IOException {
@@ -45,7 +46,7 @@ public class LocalJournalWriter implements Closeable {
     _file.getParentFile()
          .mkdirs();
     LOGGER.info("Opening journal writer file {} length {}", _file, _file.length());
-    _randomAccessIO = FileIO.openRandomAccess(_file, config.getBufferSize(), RW);
+    _ra = FileIO.openRandomAccess(_file, config.getBufferSize(), RW);
   }
 
   public File getFile() {
@@ -68,15 +69,21 @@ public class LocalJournalWriter implements Closeable {
                 .putInt(len)
                 .put(bytes, offset, len)
                 .putInt(currentPosition);
-      _randomAccessIO.write(byteBuffer.array());
+      write(byteBuffer.array());
       _size.addAndGet(bufferLength);
     }
+  }
+
+  private void write(byte[] array) throws IOException {
+    long pos = _raPosition.get();
+    _ra.writeFully(pos, array);
+    _raPosition.set(pos + array.length);
   }
 
   @Override
   public void close() throws IOException {
     int size = getSize();
-    _randomAccessIO.close();
+    _ra.close();
     LOGGER.info("Closing journal writer file {} with length of {}", _file, _file.length());
     checkFinalSizeOfFile(size);
   }

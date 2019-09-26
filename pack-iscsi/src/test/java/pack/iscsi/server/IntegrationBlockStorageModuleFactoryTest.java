@@ -7,6 +7,8 @@ import org.junit.After;
 import org.junit.Before;
 
 import consistent.s3.ConsistentAmazonS3;
+import pack.iscsi.block.LocalBlockStateStore;
+import pack.iscsi.block.LocalBlockStateStoreConfig;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.S3TestSetup;
@@ -16,6 +18,7 @@ import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFacto
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;
 import pack.iscsi.wal.WalTestProperties;
@@ -30,6 +33,7 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
   public static final File WAL_DATA_DIR = new File("./target/tmp/IntegrationBlockStorageModuleFactoryTest/wal");
   public static final File EXTERNAL_BLOCK_DATA_DIR = new File(
       "./target/tmp/IntegrationBlockStorageModuleFactoryTest/external");
+  public static final File BLOCK_STATE_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/state");
   private ConsistentAmazonS3 _consistentAmazonS3;
   private String _bucket;
   private String _objectPrefix;
@@ -40,6 +44,7 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
     super.setup();
     IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
     IOUtils.rmr(WAL_DATA_DIR);
+    IOUtils.rmr(BLOCK_STATE_DIR);
 
     _consistentAmazonS3 = S3TestSetup.getConsistentAmazonS3();
     _bucket = S3TestProperties.getBucket();
@@ -92,6 +97,14 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
                                                                       .objectPrefix(_objectPrefix)
                                                                       .build();
     return new S3GenerationBlockStore(config);
+  }
+
+  @Override
+  protected BlockStateStore getBlockStateStore() {
+    LocalBlockStateStoreConfig config = LocalBlockStateStoreConfig.builder()
+                                                                  .blockStateDir(BLOCK_STATE_DIR)
+                                                                  .build();
+    return new LocalBlockStateStore(config);
   }
 
 }

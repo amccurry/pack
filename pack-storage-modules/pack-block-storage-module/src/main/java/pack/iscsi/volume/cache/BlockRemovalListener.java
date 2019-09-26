@@ -68,11 +68,6 @@ public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
       } catch (IOException e) {
         LOGGER.error("Unknown error", e);
       }
-      try {
-        block.cleanUp();
-      } catch (IOException e) {
-        LOGGER.error("Unknown error", e);
-      }
       return true;
     }
   }
