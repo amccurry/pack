@@ -23,7 +23,7 @@ import com.codahale.metrics.Timer;
 import pack.iscsi.admin.ActionTable;
 import pack.iscsi.admin.Column;
 import pack.iscsi.admin.Row;
-import pack.iscsi.spi.MetricsFactory;
+import pack.iscsi.spi.metric.MetricsFactory;
 
 public class TimerMetricsActionTable extends ScheduledReporter implements ActionTable {
 

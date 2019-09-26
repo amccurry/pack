@@ -13,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
@@ -21,6 +20,7 @@ import pack.iscsi.spi.StorageModuleFactory;
 import pack.iscsi.spi.VolumeLengthListener;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
+import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 

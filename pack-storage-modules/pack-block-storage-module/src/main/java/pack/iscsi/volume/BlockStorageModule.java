@@ -27,14 +27,14 @@ import com.github.benmanes.caffeine.cache.Weigher;
 
 import io.opencensus.common.Scope;
 import pack.iscsi.block.AlreadyClosedException;
-import pack.iscsi.spi.Meter;
-import pack.iscsi.spi.MetricsFactory;
 import pack.iscsi.spi.StorageModule;
-import pack.iscsi.spi.TimerContext;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockKey;
+import pack.iscsi.spi.metric.Meter;
+import pack.iscsi.spi.metric.MetricsFactory;
+import pack.iscsi.spi.metric.TimerContext;
 import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;

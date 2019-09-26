@@ -1,4 +1,4 @@
-package pack.iscsi.spi;
+package pack.iscsi.spi.metric;
 
 public interface Meter {
 
