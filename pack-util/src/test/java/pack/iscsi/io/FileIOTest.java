@@ -28,14 +28,14 @@ public class FileIOTest {
 
     FileIO.setDirectIOEnabled(true);
 
-    FileIO.setLengthFile(file, 1);
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
+      randomAccessIO.setLength(1);
       randomAccessIO.writeFully(0, new byte[] { 1 });
       assertEquals(1, randomAccessIO.length());
     }
 
-    FileIO.setLengthFile(file, 1000);
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
+      randomAccessIO.setLength(1000);
       byte[] buf = new byte[1000];
       randomAccessIO.readFully(0, buf);
       assertEquals((byte) 1, buf[0]);

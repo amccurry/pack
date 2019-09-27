@@ -19,6 +19,9 @@ import com.sun.jna.Platform;
 import io.opencensus.common.Scope;
 import net.smacke.jaydio.DirectRandomAccessFile;
 import net.smacke.jaydio.align.DirectIoByteChannelAligner;
+import pack.iscsi.io.util.DirectRandomAccessFileUtil;
+import pack.iscsi.io.util.NativeFileUtil;
+import pack.iscsi.io.util.NativeFileUtil.FallocateMode;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.RandomAccessIOReader;
 import pack.util.TracerUtil;
@@ -27,16 +30,6 @@ public abstract class FileIO implements RandomAccessIO {
 
   private static final String RW = "rw";
   private static boolean _directIOEnabled = true;
-
-  public static void setLengthFile(File file, long length) throws IOException {
-    try (RandomAccessFile raf = new RandomAccessFile(file, RW)) {
-      raf.setLength(length);
-    }
-  }
-
-  public static void setSparseLengthFile(File file, long length) throws IOException {
-    setLengthFile(file, length);
-  }
 
   public static RandomAccessIO openRandomAccess(File file, int bufferSize, String mode) throws IOException {
     if (isDirectIOSupported()) {
@@ -106,6 +99,14 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     @Override
+    public void punchHole(long position, long length) throws IOException {
+      if (Platform.isLinux()) {
+        NativeFileUtil.fallocate(_draf, position, length, FallocateMode.FALLOC_FL_PUNCH_HOLE,
+            FallocateMode.FALLOC_FL_KEEP_SIZE);
+      }
+    }
+
+    @Override
     public long length() throws IOException {
       return _draf.length();
     }
@@ -131,6 +132,16 @@ public abstract class FileIO implements RandomAccessIO {
           _draf.seek(position);
         }
       }
+    }
+
+    @Override
+    public void setLength(long length) throws IOException {
+      NativeFileUtil.ftruncate(_draf, length);
+    }
+
+    @Override
+    public void flush() throws IOException {
+      DirectRandomAccessFileUtil.flush(_draf);
     }
 
   }
@@ -216,6 +227,16 @@ public abstract class FileIO implements RandomAccessIO {
     @Override
     public RandomAccessIOReader cloneReadOnly() throws IOException {
       return this;
+    }
+
+    @Override
+    public void setLength(long length) throws IOException {
+      _raf.setLength(length);
+    }
+
+    @Override
+    public void flush() throws IOException {
+
     }
 
   }

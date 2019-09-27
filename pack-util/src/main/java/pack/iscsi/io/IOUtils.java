@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collection;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -136,6 +137,26 @@ public class IOUtils {
     return new StringBuilder().append(BUFFER_PREFIX, 0, BUFFER_PREFIX.length() - str.length())
                               .append(str)
                               .toString();
+  }
+
+  public static String exec(String... args) throws IOException, InterruptedException {
+    ProcessBuilder builder = new ProcessBuilder(args);
+    Process process = builder.start();
+    if (process.waitFor() == 0) {
+      InputStream inputStream = process.getInputStream();
+      return toString(inputStream);
+    }
+    throw new IOException(toString(process.getErrorStream()));
+  }
+
+  private static String toString(InputStream inputStream) throws IOException {
+    byte[] buffer = new byte[4096];
+    int read;
+    StringBuilder stringBuilder = new StringBuilder();
+    while ((read = inputStream.read(buffer)) != -1) {
+      stringBuilder.append(new String(buffer, 0, read));
+    }
+    return stringBuilder.toString();
   }
 
 }

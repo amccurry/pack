@@ -68,8 +68,8 @@ public class LocalLogTest {
       }
     }
 
-    FileIO.setLengthFile(recover, length);
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(recover, 4096, "rw")) {
+      randomAccessIO.setLength(length);
       try (LocalJournal log = new LocalJournal(DIR, 0, 0)) {
         long generation = 0;
         List<BlockJournalRange> journalRanges = log.getJournalRanges(generation, true);

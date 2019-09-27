@@ -119,9 +119,9 @@ public class BlockStorageModule implements StorageModule {
     _blockDataDir.mkdirs();
 
     _file = new File(_blockDataDir, Long.toString(_volumeId));
-    FileIO.setSparseLengthFile(_file, getLengthInBytes());
 
     _randomAccessIO = FileIO.openRandomAccess(_file, config.getBlockSize(), RW);
+    _randomAccessIO.setLength(getLengthInBytes());
 
     _blockStateStore.createBlockMetadataStore(_volumeId);
     _blockStateStore.setMaxBlockCount(_volumeId, _blockCount.get());

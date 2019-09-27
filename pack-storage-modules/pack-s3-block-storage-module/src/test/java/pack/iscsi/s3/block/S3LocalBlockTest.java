@@ -172,8 +172,9 @@ public class S3LocalBlockTest {
     int bufferSize = 1024 * 1024;
     File file = new File(dir, UUID.randomUUID()
                                   .toString());
-    FileIO.setLengthFile(file, length);
-    return FileIO.openRandomAccess(file, bufferSize, "rw");
+    RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, bufferSize, "rw");
+    randomAccessIO.setLength(length);
+    return randomAccessIO;
   }
 
   private BlockStateStore getBlockStateStore() {
