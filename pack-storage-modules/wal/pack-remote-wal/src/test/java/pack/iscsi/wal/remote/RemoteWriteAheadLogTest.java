@@ -26,7 +26,7 @@ import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.wal.WalTestSetup;
-import pack.iscsi.wal.remote.RemoteWALClient.RemoteWriteAheadLogClientConfig;
+import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 import pack.iscsi.wal.remote.RemoteWALServer.RemoteWriteAheadLogServerConfig;
 
 public class RemoteWriteAheadLogTest {
@@ -56,7 +56,7 @@ public class RemoteWriteAheadLogTest {
   @Test
   public void testRemoteWriteAheadLog() throws Exception {
     long timeout = TimeUnit.SECONDS.toMillis(3);
-    RemoteWriteAheadLogClientConfig config = RemoteWriteAheadLogClientConfig.builder()
+    RemoteWALClientConfig config = RemoteWALClientConfig.builder()
                                                                             .curatorFramework(
                                                                                 WalTestSetup.getCuratorFramework())
                                                                             .timeout(timeout)
@@ -75,7 +75,7 @@ public class RemoteWriteAheadLogTest {
   @Test
   public void testRemoteWriteAheadLogThreaded() throws Exception {
     long timeout = TimeUnit.SECONDS.toMillis(3);
-    RemoteWriteAheadLogClientConfig config = RemoteWriteAheadLogClientConfig.builder()
+    RemoteWALClientConfig config = RemoteWALClientConfig.builder()
                                                                             .curatorFramework(
                                                                                 WalTestSetup.getCuratorFramework())
                                                                             .timeout(timeout)

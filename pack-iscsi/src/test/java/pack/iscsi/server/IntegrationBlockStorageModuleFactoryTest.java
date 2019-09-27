@@ -24,7 +24,7 @@ import pack.iscsi.volume.BlockStorageModuleFactoryTest;
 import pack.iscsi.wal.WalTestProperties;
 import pack.iscsi.wal.WalTestSetup;
 import pack.iscsi.wal.remote.RemoteWALClient;
-import pack.iscsi.wal.remote.RemoteWALClient.RemoteWriteAheadLogClientConfig;
+import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 import pack.iscsi.wal.remote.RemoteWALServer;
 import pack.iscsi.wal.remote.RemoteWALServer.RemoteWriteAheadLogServerConfig;
 
@@ -82,7 +82,7 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
   @Override
   protected BlockWriteAheadLog getBlockWriteAheadLog() throws Exception {
     CuratorFramework curatorFramework = WalTestSetup.getCuratorFramework();
-    RemoteWriteAheadLogClientConfig config = RemoteWriteAheadLogClientConfig.builder()
+    RemoteWALClientConfig config = RemoteWALClientConfig.builder()
                                                                             .curatorFramework(curatorFramework)
                                                                             .zkPrefix(WalTestProperties.getPrefix())
                                                                             .build();

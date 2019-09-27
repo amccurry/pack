@@ -126,7 +126,7 @@ public final class TargetServer implements Callable<Void> {
       group = (s != null) ? s.getThreadGroup()
           : Thread.currentThread()
                   .getThreadGroup();
-      namePrefix = "pool-" + poolNumber.getAndIncrement() + "-thread-";
+      namePrefix = "target-" + poolNumber.getAndIncrement() + "-t-";
     }
 
     public Thread newThread(Runnable r) {
@@ -188,6 +188,11 @@ public final class TargetServer implements Callable<Void> {
       // Making sure the socket is bound to the address used in the config.
       serverSocketChannel.socket()
                          .bind(new InetSocketAddress(targetAddress, targetPort));
+
+      InetSocketAddress address = (InetSocketAddress) serverSocketChannel.getLocalAddress();
+      targetPort = address.getPort();
+
+      LOGGER.info("target server listening on {}:{}", targetAddress, targetPort);
 
       while (running) {
         // Accept the connection request.

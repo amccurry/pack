@@ -2,13 +2,13 @@ package pack.iscsi.wal.remote;
 
 import java.util.Random;
 
-import pack.iscsi.wal.remote.RemoteWALClient.RemoteWriteAheadLogClientConfig;
+import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 
 public class ThroughputTest {
 
   public static void main(String[] args) throws Exception {
 
-    RemoteWriteAheadLogClientConfig config = RemoteWriteAheadLogClientConfig.builder()
+    RemoteWALClientConfig config = RemoteWALClientConfig.builder()
                                                                             .hostname("localhost")
                                                                             .port(43897)
                                                                             .build();

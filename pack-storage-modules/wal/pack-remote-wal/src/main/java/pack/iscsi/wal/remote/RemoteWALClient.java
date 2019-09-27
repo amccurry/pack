@@ -46,7 +46,7 @@ public class RemoteWALClient implements BlockWriteAheadLog {
 
   @Value
   @Builder(toBuilder = true)
-  public static class RemoteWriteAheadLogClientConfig {
+  public static class RemoteWALClientConfig {
     @Builder.Default
     String hostname = "localhost";
 
@@ -69,7 +69,7 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   private final BlockingQueue<PackWalServiceClientImpl> _clients = new ArrayBlockingQueue<>(10);
   private final int _retries = 10;
 
-  public RemoteWALClient(RemoteWriteAheadLogClientConfig config) {
+  public RemoteWALClient(RemoteWALClientConfig config) {
     _zkPrefix = config.getZkPrefix();
     _curatorFramework = config.getCuratorFramework();
     _hostname = config.getHostname();

@@ -49,7 +49,7 @@ import pack.iscsi.spi.metric.TimerContext;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 import pack.iscsi.wal.remote.RemoteWALClient;
-import pack.iscsi.wal.remote.RemoteWALClient.RemoteWriteAheadLogClientConfig;
+import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 import spark.Service;
 
 public class IscsiConfigUtil {
@@ -181,7 +181,7 @@ public class IscsiConfigUtil {
   private static BlockWriteAheadLog getRemoteBlockWriteAheadLog(Properties properties, File configFile,
       CuratorFramework curatorFramework) throws Exception {
     String zkPrefix = getPropertyNotNull(properties, WAL_ZK_PREFIX, configFile);
-    RemoteWriteAheadLogClientConfig config = RemoteWriteAheadLogClientConfig.builder()
+    RemoteWALClientConfig config = RemoteWALClientConfig.builder()
                                                                             .curatorFramework(curatorFramework)
                                                                             .zkPrefix(zkPrefix)
                                                                             .timeout(TimeUnit.MINUTES.toMillis(10))

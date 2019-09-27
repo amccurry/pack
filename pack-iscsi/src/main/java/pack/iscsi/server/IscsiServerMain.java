@@ -36,8 +36,6 @@ public class IscsiServerMain {
       for (BlockStorageModuleFactoryConfig config : configs) {
         factories.add(closer.register(new BlockStorageModuleFactory(config)));
       }
-      // factories.add(FileStorageModule.createFactory(new
-      // File("./iscsi-volume")));
       TargetManager targetManager = new BaseTargetManager(factories);
       IscsiServerConfig config = IscsiServerConfig.builder()
                                                   .addresses(addresses)
