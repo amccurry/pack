@@ -14,6 +14,7 @@ import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.Before;
@@ -22,6 +23,7 @@ import org.junit.Test;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -29,7 +31,6 @@ import pack.iscsi.spi.block.BlockMetadata;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockJournalRange;
-import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
@@ -56,7 +57,7 @@ public class LocalBlockTest {
   }
 
   @Test
-  public void testBlockSimple() throws IOException {
+  public void testBlockSimple() throws IOException, InterruptedException, ExecutionException {
     long volumeId = _random.nextLong();
     long blockId = _random.nextInt(_blockCount);
 
@@ -74,7 +75,8 @@ public class LocalBlockTest {
           for (int i = 0; i < _passes; i++) {
             long blockPosition = i * buffer1.length;
             random.nextBytes(buffer1);
-            block.writeFully(blockPosition, buffer1, 0, buffer1.length);
+            AsyncCompletableFuture future = block.writeFully(blockPosition, buffer1, 0, buffer1.length);
+            future.get();
             block.readFully(blockPosition, buffer2, 0, buffer2.length);
             assertTrue(Arrays.equals(buffer1, buffer2));
           }
@@ -204,11 +206,9 @@ public class LocalBlockTest {
     return new BlockWriteAheadLog() {
 
       @Override
-      public BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes,
+      public AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes,
           int offset, int len) throws IOException {
-        return () -> {
-
-        };
+        return AsyncCompletableFuture.completedFuture();
       }
 
       @Override

@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.curator.framework.CuratorFramework;
@@ -21,8 +23,8 @@ import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.wal.BlockJournalRange;
-import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.wal.remote.curator.CuratorUtil;
@@ -59,6 +61,9 @@ public class RemoteWALClient implements BlockWriteAheadLog {
     CuratorFramework curatorFramework;
 
     String zkPrefix;
+
+    @Builder.Default
+    Executor executor = Executors.newSingleThreadExecutor();
   }
 
   private final String _hostname;
@@ -68,8 +73,10 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   private final String _zkPrefix;
   private final BlockingQueue<PackWalServiceClientImpl> _clients = new ArrayBlockingQueue<>(10);
   private final int _retries = 10;
+  private final Executor _executor;
 
   public RemoteWALClient(RemoteWALClientConfig config) {
+    _executor = config.getExecutor();
     _zkPrefix = config.getZkPrefix();
     _curatorFramework = config.getCuratorFramework();
     _hostname = config.getHostname();
@@ -78,20 +85,21 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   }
 
   @Override
-  public BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset,
-      int len) throws IOException {
-    return execute(client -> {
+  public AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes,
+      int offset, int len) throws IOException {
+    // Needed for thread safety, copy the buffer before returning
+    ByteBuffer byteBuffer = (ByteBuffer) ByteBuffer.allocate(len)
+                                                   .put(bytes, offset, len)
+                                                   .flip();
+    return AsyncCompletableFuture.exec(_executor, () -> execute(client -> {
       try (Scope scope1 = TracerUtil.trace(RemoteWALClient.class, "wal write")) {
-        ByteBuffer byteBuffer = ByteBuffer.wrap(bytes, offset, len);
         WriteRequest writeRequest = new WriteRequest(volumeId, blockId, generation, position, byteBuffer);
         try (Scope scope2 = TracerUtil.trace(RemoteWALClient.class, "wal client write")) {
           client.write(writeRequest);
         }
-        return () -> {
-        };
       }
-    });
-
+      return null;
+    }));
   }
 
   @Override

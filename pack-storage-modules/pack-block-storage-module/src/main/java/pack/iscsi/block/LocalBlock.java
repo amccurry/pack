@@ -3,6 +3,7 @@ package pack.iscsi.block;
 import java.io.Closeable;
 import java.io.EOFException;
 import java.io.IOException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -16,6 +17,7 @@ import org.slf4j.LoggerFactory;
 
 import io.opencensus.common.Scope;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOExecutor;
@@ -24,7 +26,6 @@ import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockMetadata;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.util.LockUtil;
 import pack.util.TracerUtil;
@@ -50,8 +51,10 @@ public class LocalBlock implements Closeable, Block {
   private final RandomAccessIO _randomAccessIO;
   private final BlockStateStore _blockStateStore;
   private final long _startingPositionOfBlock;
+  private final Executor _executor;
 
   public LocalBlock(LocalBlockConfig config) throws IOException {
+    _executor = config.getExecutor();
     _randomAccessIO = config.getRandomAccessIO();
     _blockStore = config.getBlockGenerationStore();
     _wal = config.getWal();
@@ -91,7 +94,8 @@ public class LocalBlock implements Closeable, Block {
   }
 
   @Override
-  public BlockJournalResult writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
+  public AsyncCompletableFuture writeFully(long blockPosition, byte[] bytes, int offset, int len, boolean autoFlush)
+      throws IOException {
     try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
       checkIfClosed();
       checkState();
@@ -102,15 +106,20 @@ public class LocalBlock implements Closeable, Block {
         markDirty();
       }
       long generation = _onDiskGeneration.incrementAndGet();
-      BlockJournalResult result;
+      AsyncCompletableFuture comWalWrite;
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "wal write")) {
-        result = _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
+        comWalWrite = _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
       }
       writeMetadata();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio write")) {
         _randomAccessIO.writeFully(getFilePosition(blockPosition), bytes, offset, len);
       }
-      return result;
+      if (autoFlush) {
+        AsyncCompletableFuture comFlush = AsyncCompletableFuture.exec(_executor, () -> _randomAccessIO.flush());
+        return AsyncCompletableFuture.allOf(comFlush, comWalWrite);
+      } else {
+        return comWalWrite;
+      }
     }
   }
 

@@ -1,5 +1,7 @@
 package pack.iscsi.block;
 
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
@@ -32,5 +34,8 @@ public class LocalBlockConfig {
 
   @Builder.Default
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
+
+  @Builder.Default
+  Executor executor = Executors.newSingleThreadExecutor();
 
 }

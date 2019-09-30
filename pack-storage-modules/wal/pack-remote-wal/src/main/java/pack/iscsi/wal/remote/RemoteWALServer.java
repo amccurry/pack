@@ -28,8 +28,8 @@ import io.opencensus.common.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.wal.BlockJournalRange;
-import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.wal.local.LocalBlockWriteAheadLog;
 import pack.iscsi.wal.local.LocalBlockWriteAheadLog.LocalBlockWriteAheadLogConfig;
@@ -150,8 +150,10 @@ public class RemoteWALServer implements Closeable, PackWalService.Iface {
       long position = writeRequest.getPosition();
       byte[] data = writeRequest.getData();
       try {
-        BlockJournalResult result = _log.write(volumeId, blockId, generation, position, data);
-        result.get();
+        LOGGER.info("write to log volume id {} block id {} generation {}", volumeId, blockId, generation);
+        AsyncCompletableFuture completableFuture = _log.write(volumeId, blockId, generation, position, data);
+        completableFuture.get();
+        LOGGER.info("completed write to log volume id {} block id {} generation {}", volumeId, blockId, generation);
       } catch (Exception e) {
         LOGGER.error("Unknown error", e);
         throw newPackException(e);

@@ -3,6 +3,8 @@ package pack.iscsi.wal.local;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -17,8 +19,8 @@ import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.wal.BlockJournalRange;
-import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.util.ExecutorUtil;
@@ -28,7 +30,11 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
   @Value
   @Builder(toBuilder = true)
   public static class LocalBlockWriteAheadLogConfig {
+    
     File walLogDir;
+    
+    @Builder.Default
+    Executor executor = Executors.newSingleThreadExecutor();
   }
 
   @EqualsAndHashCode
@@ -43,8 +49,10 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
 
   private final LoadingCache<JournalKey, LocalJournal> _cache;
   private final File _walLogDir;
+  private final Executor _asyncExecutor;
 
   public LocalBlockWriteAheadLog(LocalBlockWriteAheadLogConfig config) throws IOException {
+    _asyncExecutor = config.getExecutor();
     _walLogDir = config.getWalLogDir();
     _walLogDir.mkdirs();
     if (!_walLogDir.exists()) {
@@ -67,12 +75,14 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
   }
 
   @Override
-  public BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset,
-      int len) throws IOException {
+  public AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes,
+      int offset, int len) throws IOException {
     LocalJournal journal = getJournal(volumeId, blockId);
-    synchronized (journal) {
-      return () -> journal.append(generation, position, bytes, offset, len);
-    }
+    return AsyncCompletableFuture.exec(_asyncExecutor, () -> {
+      synchronized (journal) {
+        journal.append(generation, position, bytes, offset, len);
+      }
+    });
   }
 
   @Override

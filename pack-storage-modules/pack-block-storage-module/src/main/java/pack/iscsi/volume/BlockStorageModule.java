@@ -12,6 +12,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,6 +32,7 @@ import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.StorageModule;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
@@ -39,7 +41,6 @@ import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.metric.TimerContext;
-import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.BlockCacheLoader;
@@ -85,10 +86,12 @@ public class BlockStorageModule implements StorageModule {
   private final RandomAccessIO _randomAccessIO;
   private final BlockStateStore _blockStateStore;
   private final File _file;
-  private final List<BlockJournalResult> _results = new ArrayList<>();
+  private final List<AsyncCompletableFuture> _results = new ArrayList<>();
   private final AtomicLong _writesCount = new AtomicLong();
+  private final ExecutorService _flushExecutor;
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
+    _flushExecutor = Executors.newSingleThreadExecutor();
     _blockStateStore = config.getBlockStateStore();
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
@@ -156,6 +159,7 @@ public class BlockStorageModule implements StorageModule {
     } catch (InterruptedException e) {
       throw new IOException(e);
     }
+    IOUtils.close(LOGGER, _flushExecutor);
     IOUtils.close(LOGGER, _randomAccessIO);
     _file.delete();
     _blockStateStore.createBlockMetadataStore(_volumeId);
@@ -251,10 +255,8 @@ public class BlockStorageModule implements StorageModule {
                                       .blockId(blockId)
                                       .build();
           Block block = getBlockId(blockKey);
-
-          // @TODO perhaps we should do something with the result
           try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write")) {
-            trackResult(block.writeFully(blockOffset, bytes, offset, len));
+            trackResult(block.writeFully(blockOffset, bytes, offset, len, false));
           }
           length -= len;
           position += len;
@@ -269,18 +271,21 @@ public class BlockStorageModule implements StorageModule {
     int size = _results.size();
     long writeCount = _writesCount.getAndSet(0);
     long start = System.nanoTime();
+
+    AsyncCompletableFuture future = AsyncCompletableFuture.exec(_flushExecutor, () -> _randomAccessIO.flush());
     try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, "flushWrites")) {
-      for (BlockJournalResult result : _results) {
+      for (AsyncCompletableFuture result : _results) {
         result.get();
       }
       _results.clear();
     }
+    future.get();
     long end = System.nanoTime();
     LOGGER.debug("flushWrites {} {} in {} ms", size, writeCount, (end - start) / 1_000_000.0);
   }
 
-  private void trackResult(BlockJournalResult result) {
-    _results.add(result);
+  private void trackResult(AsyncCompletableFuture completableFuture) {
+    _results.add(completableFuture);
   }
 
   private Block getBlockId(BlockKey blockKey) {
@@ -311,9 +316,9 @@ public class BlockStorageModule implements StorageModule {
     List<Callable<Void>> callables = new ArrayList<>();
     for (Block block : blocks) {
       Callable<Void> callable = () -> {
-        LOGGER.info("starting sync for block id {} from volume id", block.getBlockId(), block.getVolumeId());
+        LOGGER.info("starting sync for block id {} from volume id {}", block.getBlockId(), block.getVolumeId());
         sync(block);
-        LOGGER.info("finished sync for block id {} from volume id", block.getBlockId(), block.getVolumeId());
+        LOGGER.info("finished sync for block id {} from volume id {}", block.getBlockId(), block.getVolumeId());
         return null;
       };
       if (onlyIfIdleWrites) {

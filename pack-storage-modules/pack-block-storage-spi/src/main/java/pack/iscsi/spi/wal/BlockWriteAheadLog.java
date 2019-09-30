@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.List;
 
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 
 public interface BlockWriteAheadLog extends Closeable {
 
@@ -16,13 +17,13 @@ public interface BlockWriteAheadLog extends Closeable {
   /**
    * Writes new data to a write ahead log for given generation returns a result.
    */
-  BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset,
+  AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes, int offset,
       int len) throws IOException;
 
   /**
    * Writes new data to a write ahead log for given generation returns a result.
    */
-  default BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes)
+  default AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes)
       throws IOException {
     return write(volumeId, blockId, generation, position, bytes, 0, bytes.length);
   }

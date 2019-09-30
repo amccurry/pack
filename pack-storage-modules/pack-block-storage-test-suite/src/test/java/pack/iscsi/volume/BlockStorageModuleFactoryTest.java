@@ -15,7 +15,6 @@ import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
 
-import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
@@ -26,12 +25,20 @@ import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 public abstract class BlockStorageModuleFactoryTest {
 
-  public static final File BLOCK_DATA_DIR = new File("./target/tmp/BlockStorageModuleFactoryTest/blocks");
-
   @Before
   public void setup() throws Exception {
-    IOUtils.rmr(BLOCK_DATA_DIR);
+    clearBlockData();
+    clearWalData();
+    clearStateData();
   }
+
+  protected abstract void clearBlockData();
+
+  protected abstract void clearWalData();
+
+  protected abstract void clearStateData();
+
+  protected abstract File getBlockDataDir();
 
   protected abstract BlockIOFactory getBlockIOFactory() throws Exception;
 
@@ -52,7 +59,7 @@ public abstract class BlockStorageModuleFactoryTest {
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
                                                                             .packVolumeStore(volumeStore)
-                                                                            .blockDataDir(BLOCK_DATA_DIR)
+                                                                            .blockDataDir(getBlockDataDir())
                                                                             .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -86,7 +93,7 @@ public abstract class BlockStorageModuleFactoryTest {
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
                                                                             .packVolumeStore(volumeStore)
-                                                                            .blockDataDir(BLOCK_DATA_DIR)
+                                                                            .blockDataDir(getBlockDataDir())
                                                                             .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -106,7 +113,6 @@ public abstract class BlockStorageModuleFactoryTest {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
       }
-      System.out.println();
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
@@ -127,7 +133,7 @@ public abstract class BlockStorageModuleFactoryTest {
 
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
                                                                             .packVolumeStore(volumeStore)
-                                                                            .blockDataDir(BLOCK_DATA_DIR)
+                                                                            .blockDataDir(getBlockDataDir())
                                                                             .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -148,7 +154,8 @@ public abstract class BlockStorageModuleFactoryTest {
         readsAndWritesTest(storageModule, seed, length);
       }
     }
-    IOUtils.rmr(BLOCK_DATA_DIR);
+    clearBlockData();
+    clearStateData();
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
@@ -166,13 +173,14 @@ public abstract class BlockStorageModuleFactoryTest {
 
       random.nextBytes(buffer1);
       storageModule.write(buffer1, pos);
+      storageModule.flushWrites();
       storageModule.read(buffer2, pos);
 
       for (int i = 0; i < buffer1.length; i++) {
-        assertEquals("pos=" + pos + " i=" + i, buffer1[i], buffer2[i]);
+        assertEquals("seed=" + seed + " pos=" + pos + " i=" + i, buffer1[i], buffer2[i]);
       }
 
-      assertTrue("pos=" + pos, Arrays.equals(buffer1, buffer2));
+      assertTrue("seed=" + seed + " pos=" + pos, Arrays.equals(buffer1, buffer2));
     }
   }
 
@@ -181,12 +189,11 @@ public abstract class BlockStorageModuleFactoryTest {
     byte[] buffer2 = new byte[9876];
     Random random = new Random(seed);
     for (long pos = 0; pos < length; pos += buffer1.length) {
-      if (pos == 98760) {
-        System.out.println();
-      }
       random.nextBytes(buffer1);
       storageModule.read(buffer2, pos);
-      assertTrue("pos " + pos, Arrays.equals(buffer1, buffer2));
+      for (int i = 0; i < buffer1.length; i++) {
+        assertEquals("pos " + pos + " " + i, buffer1[i], buffer2[i]);
+      }
     }
   }
 

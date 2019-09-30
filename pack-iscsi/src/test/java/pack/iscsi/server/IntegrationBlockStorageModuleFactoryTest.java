@@ -39,12 +39,29 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
   private String _objectPrefix;
   private RemoteWALServer _walServer;
 
+  @Override
+  protected void clearBlockData() {
+    IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
+  }
+
+  @Override
+  protected void clearWalData() {
+    IOUtils.rmr(WAL_DATA_DIR);
+  }
+
+  @Override
+  protected void clearStateData() {
+    IOUtils.rmr(BLOCK_STATE_DIR);
+  }
+
+  @Override
+  protected File getBlockDataDir() {
+    return EXTERNAL_BLOCK_DATA_DIR;
+  }
+
   @Before
   public void setup() throws Exception {
     super.setup();
-    IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
-    IOUtils.rmr(WAL_DATA_DIR);
-    IOUtils.rmr(BLOCK_STATE_DIR);
 
     _consistentAmazonS3 = S3TestSetup.getConsistentAmazonS3();
     _bucket = S3TestProperties.getBucket();
@@ -83,9 +100,9 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
   protected BlockWriteAheadLog getBlockWriteAheadLog() throws Exception {
     CuratorFramework curatorFramework = WalTestSetup.getCuratorFramework();
     RemoteWALClientConfig config = RemoteWALClientConfig.builder()
-                                                                            .curatorFramework(curatorFramework)
-                                                                            .zkPrefix(WalTestProperties.getPrefix())
-                                                                            .build();
+                                                        .curatorFramework(curatorFramework)
+                                                        .zkPrefix(WalTestProperties.getPrefix())
+                                                        .build();
     return new RemoteWALClient(config);
   }
 

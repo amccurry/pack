@@ -92,29 +92,39 @@ public abstract class FileIO implements RandomAccessIO {
 
     @Override
     public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
-      synchronized (_lock) {
-        seekIfNeeded(position);
-        _draf.read(buffer, offset, length);
+      try (Scope scope1 = TracerUtil.trace(FileIODirectRandomAccessFile.class, "readFully")) {
+        synchronized (_lock) {
+          seekIfNeeded(position);
+          try (Scope scope2 = TracerUtil.trace(FileIODirectRandomAccessFile.class, "read")) {
+            _draf.read(buffer, offset, length);
+          }
+        }
       }
     }
 
     @Override
     public void punchHole(long position, long length) throws IOException {
-      if (Platform.isLinux()) {
-        NativeFileUtil.fallocate(_draf, position, length, FallocateMode.FALLOC_FL_PUNCH_HOLE,
-            FallocateMode.FALLOC_FL_KEEP_SIZE);
+      synchronized (_lock) {
+        if (Platform.isLinux()) {
+          NativeFileUtil.fallocate(_draf, position, length, FallocateMode.FALLOC_FL_PUNCH_HOLE,
+              FallocateMode.FALLOC_FL_KEEP_SIZE);
+        }
       }
     }
 
     @Override
     public long length() throws IOException {
-      return _draf.length();
+      synchronized (_lock) {
+        return _draf.length();
+      }
     }
 
     @Override
     public void close() throws IOException {
-      LOGGER.info("Closing FileIODirectRandomAccessFile file {}", _file);
-      _draf.close();
+      synchronized (_lock) {
+        LOGGER.info("Closing FileIODirectRandomAccessFile file {}", _file);
+        _draf.close();
+      }
     }
 
     @Override
@@ -126,6 +136,20 @@ public abstract class FileIO implements RandomAccessIO {
       }
     }
 
+    @Override
+    public void setLength(long length) throws IOException {
+      synchronized (_lock) {
+        NativeFileUtil.ftruncate(_draf, length);
+      }
+    }
+
+    @Override
+    public void flush() throws IOException {
+      synchronized (_lock) {
+        DirectRandomAccessFileUtil.flush(_draf);
+      }
+    }
+
     private void seekIfNeeded(long position) throws IOException {
       try (Scope scope = TracerUtil.trace(FileIODirectRandomAccessFile.class, "seekIfNeeded")) {
         if (_draf.getFilePointer() != position) {
@@ -133,17 +157,6 @@ public abstract class FileIO implements RandomAccessIO {
         }
       }
     }
-
-    @Override
-    public void setLength(long length) throws IOException {
-      NativeFileUtil.ftruncate(_draf, length);
-    }
-
-    @Override
-    public void flush() throws IOException {
-      DirectRandomAccessFileUtil.flush(_draf);
-    }
-
   }
 
   private static class FileIODirectRandomAccessFileReader implements RandomAccessIOReader {

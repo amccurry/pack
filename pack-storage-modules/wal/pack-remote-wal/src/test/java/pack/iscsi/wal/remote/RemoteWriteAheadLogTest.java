@@ -13,17 +13,21 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.wal.WalTestSetup;
 import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
@@ -31,6 +35,7 @@ import pack.iscsi.wal.remote.RemoteWALServer.RemoteWriteAheadLogServerConfig;
 
 public class RemoteWriteAheadLogTest {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(RemoteWriteAheadLogTest.class);
   private static final File DIR = new File("./target/tmp/RemoteWriteAheadLogTest");
   private RemoteWALServer _server;
 
@@ -39,12 +44,11 @@ public class RemoteWriteAheadLogTest {
     IOUtils.rmr(DIR);
     DIR.mkdirs();
     _server = new RemoteWALServer(RemoteWriteAheadLogServerConfig.builder()
-                                                                           .maxEntryPayload(64000)
-                                                                           .walLogDir(new File(DIR, "server"))
-                                                                           .port(0)
-                                                                           .curatorFramework(
-                                                                               WalTestSetup.getCuratorFramework())
-                                                                           .build());
+                                                                 .maxEntryPayload(64000)
+                                                                 .walLogDir(new File(DIR, "server"))
+                                                                 .port(0)
+                                                                 .curatorFramework(WalTestSetup.getCuratorFramework())
+                                                                 .build());
     _server.start(false);
   }
 
@@ -57,10 +61,9 @@ public class RemoteWriteAheadLogTest {
   public void testRemoteWriteAheadLog() throws Exception {
     long timeout = TimeUnit.SECONDS.toMillis(3);
     RemoteWALClientConfig config = RemoteWALClientConfig.builder()
-                                                                            .curatorFramework(
-                                                                                WalTestSetup.getCuratorFramework())
-                                                                            .timeout(timeout)
-                                                                            .build();
+                                                        .curatorFramework(WalTestSetup.getCuratorFramework())
+                                                        .timeout(timeout)
+                                                        .build();
     try (RemoteWALClient client = new RemoteWALClient(config)) {
 
       long volumeId = 0;
@@ -76,27 +79,28 @@ public class RemoteWriteAheadLogTest {
   public void testRemoteWriteAheadLogThreaded() throws Exception {
     long timeout = TimeUnit.SECONDS.toMillis(3);
     RemoteWALClientConfig config = RemoteWALClientConfig.builder()
-                                                                            .curatorFramework(
-                                                                                WalTestSetup.getCuratorFramework())
-                                                                            .timeout(timeout)
-                                                                            .build();
+                                                        .curatorFramework(WalTestSetup.getCuratorFramework())
+                                                        .timeout(timeout)
+                                                        .build();
+    int threads = 10;
+    ExecutorService pool = Executors.newCachedThreadPool();
     try (RemoteWALClient client = new RemoteWALClient(config)) {
       long volumeId = 0;
       File dir = new File(DIR, "client");
       dir.mkdirs();
-      ForkJoinPool pool = ForkJoinPool.commonPool();
-      List<ForkJoinTask<Void>> futures = new ArrayList<>();
-      for (int i = 0; i < 10; i++) {
+      List<Future<Void>> futures = new ArrayList<>();
+      for (int i = 0; i < threads; i++) {
         long blockId = i;
         futures.add(pool.submit(() -> {
           runTest(client, volumeId, blockId, dir);
           return null;
         }));
       }
-      for (ForkJoinTask<Void> future : futures) {
+      for (Future<Void> future : futures) {
         future.get();
       }
     }
+    pool.shutdownNow();
   }
 
   private void runTest(RemoteWALClient client, long volumeId, long blockId, File dir)
@@ -115,15 +119,21 @@ public class RemoteWriteAheadLogTest {
     try (RandomAccessFile raf = new RandomAccessFile(expected, "rw")) {
       raf.setLength(length);
       for (int i = 0; i < passes; i++) {
+        LOGGER.info("Running pass {}", i);
         generation++;
         position = random.nextInt(length - bytes.length);
         random.nextBytes(bytes);
-        client.write(volumeId, blockId, generation, position, bytes);
+        LOGGER.info("Client write - pass {}", i);
+        AsyncCompletableFuture future = client.write(volumeId, blockId, generation, position, bytes);
+        future.get();
         if (i % 35 == 0) {
+          LOGGER.info("Sleeping - pass {}", i);
           Thread.sleep(TimeUnit.SECONDS.toMillis(4));
         }
+        LOGGER.info("Writing locally - pass {}", i);
         raf.seek(position);
         raf.write(bytes);
+
       }
     }
 

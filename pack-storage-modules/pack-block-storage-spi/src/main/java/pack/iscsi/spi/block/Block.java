@@ -3,7 +3,7 @@ package pack.iscsi.spi.block;
 import java.io.Closeable;
 import java.io.IOException;
 
-import pack.iscsi.spi.wal.BlockJournalResult;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 
 public interface Block extends Closeable {
 
@@ -17,7 +17,15 @@ public interface Block extends Closeable {
   /**
    * Position is relative to the block.
    */
-  BlockJournalResult writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException;
+  default AsyncCompletableFuture writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
+    return writeFully(blockPosition, bytes, offset, len, true);
+  }
+
+  /**
+   * Position is relative to the block.
+   */
+  AsyncCompletableFuture writeFully(long blockPosition, byte[] bytes, int offset, int len, boolean autoFlush)
+      throws IOException;
 
   void execIO(BlockIOExecutor executor) throws IOException;
 

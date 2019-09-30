@@ -70,6 +70,7 @@ public class LocalJournalWriter implements Closeable {
                 .put(bytes, offset, len)
                 .putInt(currentPosition);
       write(byteBuffer.array());
+      _ra.flush();
       _size.addAndGet(bufferLength);
     }
   }

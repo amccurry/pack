@@ -7,7 +7,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.spi.wal.BlockJournalResult;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.wal.local.LocalBlockWriteAheadLog.LocalBlockWriteAheadLogConfig;
 
 public class LocalBlockWriteAheadLogTest {
@@ -26,8 +26,8 @@ public class LocalBlockWriteAheadLogTest {
                                                                         .walLogDir(DIR)
                                                                         .build();
     try (LocalBlockWriteAheadLog log = new LocalBlockWriteAheadLog(config)) {
-      BlockJournalResult result = log.write(0, 0, 1, 0, new byte[1000]);
-      result.get();
+      AsyncCompletableFuture completableFuture = log.write(0, 0, 1, 0, new byte[1000]);
+      completableFuture.get();
       log.releaseJournals(0, 0, 1);
     }
   }

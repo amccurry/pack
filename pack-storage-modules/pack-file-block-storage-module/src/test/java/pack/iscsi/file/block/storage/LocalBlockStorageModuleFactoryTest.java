@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.junit.Before;
-import org.junit.Test;
 
 import pack.iscsi.block.LocalBlockStateStore;
 import pack.iscsi.block.LocalBlockStateStoreConfig;
@@ -30,9 +29,27 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
   @Before
   public void setup() throws Exception {
     super.setup();
+
+  }
+
+  @Override
+  protected void clearBlockData() {
     IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
+  }
+
+  @Override
+  protected void clearWalData() {
     IOUtils.rmr(WAL_DATA_DIR);
+  }
+
+  @Override
+  protected void clearStateData() {
     IOUtils.rmr(BLOCK_STATE_DIR);
+  }
+
+  @Override
+  protected File getBlockDataDir() {
+    return EXTERNAL_BLOCK_DATA_DIR;
   }
 
   @Override
@@ -77,18 +94,4 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
     };
   }
 
-  @Test
-  public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws Exception {
-    super.testBlockStorageModuleFactoryWithClosingAndReOpen();
-  }
-
-  @Test
-  public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws Exception {
-    super.testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks();
-  }
-
-  @Test
-  public void testBlockStorageModuleFactory() throws Exception {
-    super.testBlockStorageModuleFactory();
-  }
 }

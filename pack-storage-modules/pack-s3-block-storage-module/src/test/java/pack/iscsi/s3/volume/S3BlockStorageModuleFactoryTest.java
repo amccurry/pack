@@ -3,7 +3,6 @@ package pack.iscsi.s3.volume;
 import java.io.File;
 
 import org.junit.Before;
-import org.junit.Test;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.block.LocalBlockStateStore;
@@ -35,14 +34,30 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
   @Before
   public void setup() throws Exception {
     super.setup();
-    IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
-    IOUtils.rmr(WAL_DATA_DIR);
-    IOUtils.rmr(BLOCK_STATE_DIR);
-
     _consistentAmazonS3 = S3TestSetup.getConsistentAmazonS3();
     _bucket = S3TestProperties.getBucket();
     _objectPrefix = S3TestProperties.getObjectPrefix();
     S3TestSetup.cleanS3(_bucket, _objectPrefix);
+  }
+
+  @Override
+  protected void clearBlockData() {
+    IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
+  }
+
+  @Override
+  protected void clearWalData() {
+    IOUtils.rmr(WAL_DATA_DIR);
+  }
+
+  @Override
+  protected void clearStateData() {
+    IOUtils.rmr(BLOCK_STATE_DIR);
+  }
+
+  @Override
+  protected File getBlockDataDir() {
+    return EXTERNAL_BLOCK_DATA_DIR;
   }
 
   @Override
@@ -79,16 +94,6 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
                                                                   .blockStateDir(BLOCK_STATE_DIR)
                                                                   .build();
     return new LocalBlockStateStore(config);
-  }
-
-  @Test
-  public void testBlockStorageModuleFactory() throws Exception {
-    super.testBlockStorageModuleFactory();
-  }
-
-  @Override
-  public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws Exception {
-    super.testBlockStorageModuleFactoryWithClosingAndReOpen();
   }
 
 }

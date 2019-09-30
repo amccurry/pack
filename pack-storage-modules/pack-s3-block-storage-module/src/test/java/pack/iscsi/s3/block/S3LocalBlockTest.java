@@ -25,6 +25,7 @@ import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -32,7 +33,6 @@ import pack.iscsi.spi.block.BlockMetadata;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockJournalRange;
-import pack.iscsi.spi.wal.BlockJournalResult;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
@@ -124,11 +124,9 @@ public class S3LocalBlockTest {
     return new BlockWriteAheadLog() {
 
       @Override
-      public BlockJournalResult write(long volumeId, long blockId, long generation, long position, byte[] bytes,
+      public AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes,
           int offset, int len) throws IOException {
-        return () -> {
-
-        };
+        return AsyncCompletableFuture.completedFuture();
       }
 
       @Override
