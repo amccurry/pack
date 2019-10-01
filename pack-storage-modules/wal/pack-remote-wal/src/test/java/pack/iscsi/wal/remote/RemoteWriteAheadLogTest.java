@@ -29,6 +29,7 @@ import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.wal.BlockJournalRange;
+import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.wal.WalTestSetup;
 import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 import pack.iscsi.wal.remote.RemoteWALServer.RemoteWriteAheadLogServerConfig;
@@ -149,7 +150,8 @@ public class RemoteWriteAheadLogTest {
     }
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(actual, 4096, "rw")) {
       for (BlockJournalRange journalRange : journalRanges) {
-        onDiskGeneration = client.recoverFromJournal(randomAccessIO, journalRange, onDiskGeneration);
+        onDiskGeneration = client.recoverFromJournal(BlockRecoveryWriter.toBlockRecoveryWriter(0, randomAccessIO),
+            journalRange, onDiskGeneration);
       }
     }
     compareFile(seed, expected, actual);

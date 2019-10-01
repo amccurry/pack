@@ -75,27 +75,35 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
         localBlock = new LocalBlock(config);
       }
       if (localBlock.getLastStoredGeneration() != Block.MISSING_BLOCK_GENERATION) {
-        try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block external read")) {
-          Utils.runUntilSuccess(LOGGER, () -> {
-            localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
-            return null;
-          });
-        }
-        try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block recover")) {
-          Utils.runUntilSuccess(LOGGER, () -> {
-            // recover if needed
-            BlockWriteAheadLogRecovery recovery = new BlockWriteAheadLogRecovery(
-                BlockWriteAheadLogRecoveryConfig.builder()
-                                                .blockWriteAheadLog(_writeAheadLog)
-                                                .build());
-            localBlock.execIO(recovery);
-            return null;
-          });
-        }
+        pullBlockFromExternalStore(localBlock);
       } else {
         localBlock.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
       }
+      recoverFromWal(localBlock);
       return localBlock;
+    }
+  }
+
+  private void pullBlockFromExternalStore(LocalBlock localBlock) {
+    try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block external read")) {
+      Utils.runUntilSuccess(LOGGER, () -> {
+        localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
+        return null;
+      });
+    }
+  }
+
+  private void recoverFromWal(LocalBlock localBlock) {
+    try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block recover")) {
+      Utils.runUntilSuccess(LOGGER, () -> {
+        // recover if needed
+        BlockWriteAheadLogRecovery recovery = new BlockWriteAheadLogRecovery(BlockWriteAheadLogRecoveryConfig.builder()
+                                                                                                             .blockWriteAheadLog(
+                                                                                                                 _writeAheadLog)
+                                                                                                             .build());
+        localBlock.execIO(recovery);
+        return null;
+      });
     }
   }
 

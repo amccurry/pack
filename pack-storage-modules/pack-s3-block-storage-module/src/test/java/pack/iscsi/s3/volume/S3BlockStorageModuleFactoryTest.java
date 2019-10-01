@@ -3,6 +3,7 @@ package pack.iscsi.s3.volume;
 import java.io.File;
 
 import org.junit.Before;
+import org.junit.Test;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.block.LocalBlockStateStore;
@@ -94,6 +95,11 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
                                                                   .blockStateDir(BLOCK_STATE_DIR)
                                                                   .build();
     return new LocalBlockStateStore(config);
+  }
+
+  @Test
+  public void testBlockStorageModuleFactoryRecoverBlockThatOnlyExistsInWal() throws Exception {
+    super.testBlockStorageModuleFactoryRecoverBlockThatOnlyExistsInWal();
   }
 
 }

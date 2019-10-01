@@ -8,6 +8,9 @@ import java.util.Random;
 import java.util.Set;
 import java.util.WeakHashMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
@@ -24,6 +27,8 @@ import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.VolumeLengthListener;
 
 public class S3VolumeStore implements PackVolumeStore {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(S3VolumeStore.class);
 
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -157,23 +162,29 @@ public class S3VolumeStore implements PackVolumeStore {
     checkExistence(name);
     checkNotAssigned(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
-    String key = S3Utils.getVolumeNameKey(_objectPrefix, name);
-    _consistentAmazonS3.deleteObject(_bucket, key);
+    _consistentAmazonS3.deleteObject(_bucket, S3Utils.getVolumeNameKey(_objectPrefix, name));
     String blockPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix, metadata.getVolumeId());
     AmazonS3 client = _consistentAmazonS3.getClient();
 
     List<KeyVersion> keys = new ArrayList<>();
     S3Utils.listObjects(client, _bucket, blockPrefix, new ListResultProcessor() {
-
       @Override
       public void addResult(S3ObjectSummary summary) {
         if (keys.size() >= _maxDeleteBatchSize) {
+          LOGGER.info("Batch delete of {} keys", keys.size());
           client.deleteObjects(new DeleteObjectsRequest(_bucket).withKeys(keys));
           keys.clear();
         }
-        keys.add(new KeyVersion(summary.getKey()));
+        String key = summary.getKey();
+        LOGGER.info("Adding key {} to delete batch", key);
+        keys.add(new KeyVersion(key));
       }
     });
+
+    if (keys.size() > 0) {
+      LOGGER.info("Batch delete of {} keys", keys.size());
+      client.deleteObjects(new DeleteObjectsRequest(_bucket).withKeys(keys));
+    }
   }
 
   @Override

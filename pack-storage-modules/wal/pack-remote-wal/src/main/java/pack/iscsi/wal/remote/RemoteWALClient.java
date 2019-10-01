@@ -139,7 +139,7 @@ public class RemoteWALClient implements BlockWriteAheadLog {
             range.getMaxGeneration(), range.getMinGeneration(), onDiskGen);
         FetchJournalEntriesResponse fetchJournalEntriesResponse = client.fetchJournalEntries(
             fetchJournalEntriesRequest);
-        onDiskGen = applyJournalEntries(writer, onDiskGen, fetchJournalEntriesResponse);
+        onDiskGen = applyJournalEntries(writer, onDiskGen, fetchJournalEntriesResponse, blockId);
         if (fetchJournalEntriesResponse.isJournalExhausted()) {
           return onDiskGen;
         }
@@ -153,7 +153,7 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   }
 
   private long applyJournalEntries(BlockRecoveryWriter writer, long onDiskGeneration,
-      FetchJournalEntriesResponse fetchJournalEntriesResponse) throws IOException {
+      FetchJournalEntriesResponse fetchJournalEntriesResponse, long blockId) throws IOException {
     for (JournalEntry journalEntry : fetchJournalEntriesResponse.getEntries()) {
       if (!writer.writeEntry(journalEntry.getGeneration(), journalEntry.getPosition(), journalEntry.getData())) {
         return journalEntry.getGeneration();

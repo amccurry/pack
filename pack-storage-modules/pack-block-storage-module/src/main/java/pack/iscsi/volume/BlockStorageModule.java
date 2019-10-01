@@ -162,7 +162,7 @@ public class BlockStorageModule implements StorageModule {
     IOUtils.close(LOGGER, _flushExecutor);
     IOUtils.close(LOGGER, _randomAccessIO);
     _file.delete();
-    _blockStateStore.createBlockMetadataStore(_volumeId);
+    _blockStateStore.destroyBlockMetadataStore(_volumeId);
     LOGGER.info("finished close of storage module for {}", _volumeId);
   }
 

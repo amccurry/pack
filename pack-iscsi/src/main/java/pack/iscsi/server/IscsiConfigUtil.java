@@ -182,10 +182,10 @@ public class IscsiConfigUtil {
       CuratorFramework curatorFramework) throws Exception {
     String zkPrefix = getPropertyNotNull(properties, WAL_ZK_PREFIX, configFile);
     RemoteWALClientConfig config = RemoteWALClientConfig.builder()
-                                                                            .curatorFramework(curatorFramework)
-                                                                            .zkPrefix(zkPrefix)
-                                                                            .timeout(TimeUnit.MINUTES.toMillis(10))
-                                                                            .build();
+                                                        .curatorFramework(curatorFramework)
+                                                        .zkPrefix(zkPrefix)
+                                                        .timeout(TimeUnit.MINUTES.toMillis(10))
+                                                        .build();
     return new RemoteWALClient(config);
   }
 

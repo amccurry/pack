@@ -39,6 +39,8 @@ public class LocalBlockStateStore implements BlockStateStore {
 
     FileRef(File file) throws IOException {
       _file = file;
+      _file.getParentFile()
+           .mkdirs();
       _raf = new RandomAccessFile(file, "rw");
       _channel = _raf.getChannel();
     }
@@ -105,7 +107,11 @@ public class LocalBlockStateStore implements BlockStateStore {
 
   @Override
   public void destroyBlockMetadataStore(long volumeId) throws IOException {
-    IOUtils.close(LOGGER, _metadataMap.remove(volumeId));
+    FileRef fileRef = _metadataMap.remove(volumeId);
+    IOUtils.close(LOGGER, fileRef);
+    if (fileRef != null) {
+      fileRef._file.delete();
+    }
   }
 
   private long getPosition(long blockId) {

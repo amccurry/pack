@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 
 import io.opencensus.common.Scope;
 import pack.iscsi.io.IOUtils;
-import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.wal.local.LocalJournalReader.LocalLogReaderConfig;
@@ -110,9 +109,9 @@ public class LocalJournal implements Closeable {
     }
   }
 
-  public long recover(String uuid, RandomAccessIO randomAccessIO, long onDiskGeneration) throws IOException {
-    return recover(uuid, BlockRecoveryWriter.toBlockRecoveryWriter(randomAccessIO), onDiskGeneration);
-  }
+//  public long recover(String uuid, RandomAccessIO randomAccessIO, long onDiskGeneration) throws IOException {
+//    return recover(uuid, BlockRecoveryWriter.toBlockRecoveryWriter(randomAccessIO), onDiskGeneration);
+//  }
 
   public long recover(String uuid, BlockRecoveryWriter writer, long onDiskGeneration) throws IOException {
     LOGGER.info("recover volumeId {} blockId {} on disk generation {}", _volumeId, _blockId, onDiskGeneration);

@@ -20,6 +20,7 @@ import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.wal.BlockJournalRange;
+import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.wal.local.LocalJournal;
 
 public class LocalLogTest {
@@ -76,7 +77,7 @@ public class LocalLogTest {
         assertEquals(1, journalRanges.size());
         long recoveredGeneration = log.recover(journalRanges.get(0)
                                                             .getUuid(),
-            randomAccessIO, generation);
+            BlockRecoveryWriter.toBlockRecoveryWriter(0, randomAccessIO), generation);
         assertEquals(passes, recoveredGeneration);
       }
     }
