@@ -12,6 +12,7 @@ import pack.iscsi.io.IOUtils;
 
 public class S3Utils {
 
+  private static final String CACHED_BLOCK_ID = "cached-block-id";
   private static final String ASSIGNED = "assigned";
   private static final String WAL = "wal";
   private static final String DATA = "data";
@@ -67,9 +68,18 @@ public class S3Utils {
   public static String getVolumeMetadataKey(String objectPrefix, long volumeId) {
     if (objectPrefix == null || objectPrefix.trim()
                                             .isEmpty()) {
-      return JOINER.join(DATA, volumeId, METADATA);
+      return JOINER.join(METADATA, volumeId);
     } else {
-      return JOINER.join(objectPrefix, DATA, volumeId, METADATA);
+      return JOINER.join(objectPrefix, METADATA, volumeId);
+    }
+  }
+
+  public static String getCachedBlockId(String objectPrefix, long volumeId) {
+    if (objectPrefix == null || objectPrefix.trim()
+                                            .isEmpty()) {
+      return JOINER.join(CACHED_BLOCK_ID, volumeId);
+    } else {
+      return JOINER.join(objectPrefix, CACHED_BLOCK_ID, volumeId);
     }
   }
 

@@ -1,6 +1,9 @@
 package pack.iscsi.s3.volume;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,6 +18,8 @@ import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,8 +30,9 @@ import pack.iscsi.s3.util.S3Utils.ListResultProcessor;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.VolumeLengthListener;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 
-public class S3VolumeStore implements PackVolumeStore {
+public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(S3VolumeStore.class);
 
@@ -162,7 +168,11 @@ public class S3VolumeStore implements PackVolumeStore {
     checkExistence(name);
     checkNotAssigned(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
+    long volumeId = metadata.getVolumeId();
     _consistentAmazonS3.deleteObject(_bucket, S3Utils.getVolumeNameKey(_objectPrefix, name));
+    _consistentAmazonS3.deleteObject(_bucket, S3Utils.getCachedBlockId(_objectPrefix, volumeId));
+    _consistentAmazonS3.deleteObject(_bucket, S3Utils.getVolumeMetadataKey(_objectPrefix, volumeId));
+    
     String blockPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix, metadata.getVolumeId());
     AmazonS3 client = _consistentAmazonS3.getClient();
 
@@ -243,6 +253,43 @@ public class S3VolumeStore implements PackVolumeStore {
   @Override
   public void register(VolumeLengthListener listener) {
     _listeners.add(listener);
+  }
+
+  @Override
+  public void setCachedBlockIds(long volumeId, long... blockIds) throws IOException {
+    ByteBuffer byteBuffer = ByteBuffer.allocate(blockIds.length * 8);
+    for (int i = 0; i < blockIds.length; i++) {
+      byteBuffer.putLong(blockIds[i]);
+    }
+    String key = S3Utils.getCachedBlockId(_objectPrefix, volumeId);
+    byte[] bs = byteBuffer.array();
+    try (ByteArrayInputStream inputStream = new ByteArrayInputStream(bs)) {
+      ObjectMetadata metadata = new ObjectMetadata();
+      metadata.setContentLength(bs.length);
+      _consistentAmazonS3.putObject(_bucket, key, inputStream, metadata);
+    }
+  }
+
+  @Override
+  public long[] getCachedBlockIds(long volumeId) throws IOException {
+    String key = S3Utils.getCachedBlockId(_objectPrefix, volumeId);
+    try {
+      S3Object object = _consistentAmazonS3.getObject(_bucket, key);
+      long contentLength = object.getObjectMetadata()
+                                 .getContentLength();
+      long[] ids = new long[(int) (contentLength / 8)];
+      try (DataInputStream inputStream = new DataInputStream(object.getObjectContent())) {
+        for (int i = 0; i < ids.length; i++) {
+          ids[i] = inputStream.readLong();
+        }
+      }
+      return ids;
+    } catch (AmazonServiceException e) {
+      if (e.getStatusCode() == 404) {
+        return new long[] {};
+      }
+      throw e;
+    }
   }
 
 }

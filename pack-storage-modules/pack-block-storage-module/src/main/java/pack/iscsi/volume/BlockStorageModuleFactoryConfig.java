@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.spi.PackVolumeStore;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
@@ -26,6 +27,8 @@ public class BlockStorageModuleFactoryConfig {
   BlockIOFactory externalBlockStoreFactory;
   
   BlockStateStore blockStateStore;
+  
+  BlockCacheMetadataStore blockCacheMetadataStore;
 
   File blockDataDir;
 
@@ -39,6 +42,9 @@ public class BlockStorageModuleFactoryConfig {
 
   @Builder.Default
   int syncThreads = ForkJoinPool.getCommonPoolParallelism();
+  
+  @Builder.Default
+  int preloadThreads = ForkJoinPool.getCommonPoolParallelism();
 
   @Builder.Default
   MetricsFactory metricsFactory = MetricsFactory.NO_OP;

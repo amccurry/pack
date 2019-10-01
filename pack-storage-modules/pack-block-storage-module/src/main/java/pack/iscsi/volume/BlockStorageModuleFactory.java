@@ -18,6 +18,7 @@ import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
 import pack.iscsi.spi.VolumeLengthListener;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
@@ -44,8 +45,11 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final ConcurrentMap<String, BlockStorageModule> _blockStorageModules = new ConcurrentHashMap<>();
   private final Object _lock = new Object();
   private final BlockStateStore _blockStateStore;
+  private final BlockCacheMetadataStore _blockCacheMetadataStore;
+  private final ExecutorService _cachePreloadExecutor;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
+    _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _blockStateStore = config.getBlockStateStore();
     _packVolumeStore = config.getPackVolumeStore();
     _blockDataDir = config.getBlockDataDir();
@@ -55,6 +59,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _syncExecutor = Utils.executor(SYNC, config.getSyncThreads());
+    _cachePreloadExecutor = Utils.executor("preload", config.getPreloadThreads());
     _metricsFactory = config.getMetricsFactory();
     _maxCacheSizeInBytes = config.getMaxCacheSizeInBytes();
     _packVolumeStore.register(this);
@@ -85,6 +90,8 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       long blockCount = Utils.getBlockCount(lengthInBytes, blockSize);
 
       BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
+                                                                .cachePreloadExecutor(_cachePreloadExecutor)
+                                                                .blockCacheMetadataStore(_blockCacheMetadataStore)
                                                                 .blockDataDir(_blockDataDir)
                                                                 .blockGenerationStore(_blockGenerationStore)
                                                                 .blockStateStore(_blockStateStore)

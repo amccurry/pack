@@ -97,10 +97,10 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block recover")) {
       Utils.runUntilSuccess(LOGGER, () -> {
         // recover if needed
-        BlockWriteAheadLogRecovery recovery = new BlockWriteAheadLogRecovery(BlockWriteAheadLogRecoveryConfig.builder()
-                                                                                                             .blockWriteAheadLog(
-                                                                                                                 _writeAheadLog)
-                                                                                                             .build());
+        BlockWriteAheadLogRecoveryConfig config = BlockWriteAheadLogRecoveryConfig.builder()
+                                                                                  .blockWriteAheadLog(_writeAheadLog)
+                                                                                  .build();
+        BlockWriteAheadLogRecovery recovery = new BlockWriteAheadLogRecovery(config);
         localBlock.execIO(recovery);
         return null;
       });

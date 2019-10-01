@@ -34,6 +34,7 @@ import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockKey;
@@ -89,9 +90,13 @@ public class BlockStorageModule implements StorageModule {
   private final List<AsyncCompletableFuture> _results = new ArrayList<>();
   private final AtomicLong _writesCount = new AtomicLong();
   private final ExecutorService _flushExecutor;
+  private final ExecutorService _cachePreloadExecutor;
+  private final BlockCacheMetadataStore _blockCacheMetadataStore;
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
+    _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _flushExecutor = Executors.newSingleThreadExecutor();
+    _cachePreloadExecutor = config.getCachePreloadExecutor();
     _blockStateStore = config.getBlockStateStore();
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
@@ -143,6 +148,32 @@ public class BlockStorageModule implements StorageModule {
                      .build(loader);
 
     preloadBlockInfo();
+    preloadBlockCache();
+  }
+
+  private void preloadBlockCache() {
+    _cachePreloadExecutor.submit(() -> {
+      try {
+        preloadBlockCache(_blockCacheMetadataStore.getCachedBlockIds(_volumeId));
+      } catch (Exception e) {
+        LOGGER.error("Unknown error trying to preload block cache", e);
+      }
+      return null;
+    });
+  }
+
+  private void preloadBlockCache(long[] blockIds) {
+    for (long blockId : blockIds) {
+      BlockKey blockKey = BlockKey.builder()
+                                  .blockId(blockId)
+                                  .volumeId(_volumeId)
+                                  .build();
+      _cachePreloadExecutor.submit(() -> {
+        LOGGER.info("preloading volume id {} block id {}", _volumeId, blockId);
+        _cache.get(blockKey);
+        return null;
+      });
+    }
   }
 
   @Override
@@ -306,10 +337,25 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
-  private List<Future<Void>> sync(boolean onlyIfIdleWrites) throws InterruptedException {
+  private List<Future<Void>> sync(boolean onlyIfIdleWrites) throws InterruptedException, IOException {
     List<Block> blocks = getBlocks();
+    storeBlockCacheMetadata(blocks);
     List<Callable<Void>> callables = createSyncs(blocks, onlyIfIdleWrites);
     return _syncExecutor.invokeAll(callables);
+  }
+
+  private void storeBlockCacheMetadata(List<Block> blocks) throws IOException {
+    long[] blockIds = getBlockIds(blocks);
+    _blockCacheMetadataStore.setCachedBlockIds(_volumeId, blockIds);
+  }
+
+  private long[] getBlockIds(List<Block> blocks) {
+    long[] blockIds = new long[blocks.size()];
+    int index = 0;
+    for (Block block : blocks) {
+      blockIds[index++] = block.getBlockId();
+    }
+    return blockIds;
   }
 
   private List<Callable<Void>> createSyncs(List<Block> blocks, boolean onlyIfIdleWrites) {

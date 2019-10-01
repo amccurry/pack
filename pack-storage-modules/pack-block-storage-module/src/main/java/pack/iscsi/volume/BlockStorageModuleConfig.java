@@ -6,6 +6,7 @@ import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
 import lombok.Value;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
@@ -33,6 +34,8 @@ public class BlockStorageModuleConfig {
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.MINUTES;
 
   ExecutorService syncExecutor;
+  
+  ExecutorService cachePreloadExecutor;
 
   MetricsFactory metricsFactory;
 
@@ -48,5 +51,7 @@ public class BlockStorageModuleConfig {
   long bufferSize = 1024 * 1024;
   
   BlockStateStore blockStateStore;
+  
+  BlockCacheMetadataStore blockCacheMetadataStore;
 
 }

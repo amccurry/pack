@@ -40,6 +40,7 @@ import pack.iscsi.server.admin.AssignedVolumeActionTable;
 import pack.iscsi.server.admin.MeterMetricsActionTable;
 import pack.iscsi.server.admin.TimerMetricsActionTable;
 import pack.iscsi.spi.PackVolumeStore;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
@@ -114,13 +115,17 @@ public class IscsiConfigUtil {
       adminServer.setup();
     }
 
+    BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore(properties, configFile,
+        consistentAmazonS3, volumeStore);
     BlockGenerationStore blockStore = getBlockStore(properties, configFile, consistentAmazonS3);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile,
         consistentAmazonS3.getCuratorFramework());
     BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3);
     BlockStateStore blockStateStore = getBlockStateStore(properties, configFile);
+
     return BlockStorageModuleFactoryConfig.builder()
                                           .packVolumeStore(volumeStore)
+                                          .blockCacheMetadataStore(blockCacheMetadataStore)
                                           .blockStateStore(blockStateStore)
                                           .blockDataDir(blockDataDir)
                                           .blockStore(blockStore)
@@ -129,6 +134,16 @@ public class IscsiConfigUtil {
                                           .writeAheadLog(writeAheadLog)
                                           .metricsFactory(metricsFactory)
                                           .build();
+  }
+
+  private static BlockCacheMetadataStore getBlockCacheMetadataStore(Properties properties, File configFile,
+      ConsistentAmazonS3 consistentAmazonS3, PackVolumeStore volumeStore) {
+    if (volumeStore instanceof BlockCacheMetadataStore) {
+      return (BlockCacheMetadataStore) volumeStore;
+    } else {
+      return new BlockCacheMetadataStore() {
+      };
+    }
   }
 
   private static BlockStateStore getBlockStateStore(Properties properties, File configFile) {

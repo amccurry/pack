@@ -121,9 +121,6 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
   private ListResultProcessor getPreloadProcessor(long volumeId) {
     return summary -> {
       String key = summary.getKey();
-      if (key.contains("metadata")) {
-        return;
-      }
       List<String> list = KEY_SPLITTER.splitToList(key);
       long blockId = getBlockId(list);
       if (blockId < 0) {
