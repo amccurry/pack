@@ -5,4 +5,4 @@ if [ "$#" -ne 1 ]; then
   echo "${0} <volumename>"
 fi
 VOLUME_NAME="${1}"
-curl -X POST localhost:4567/api/v1.0/volume/unassign/${VOLUME_NAME} 2>/dev/null | jq -r '.'
+curl -s localhost:4567/api/v1.0/volume/snapshot/${VOLUME_NAME} | jq -r '.'

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +13,7 @@ import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.google.common.base.Splitter;
+import com.google.common.collect.ImmutableMap;
 
 import consistent.s3.ConsistentAmazonS3;
 import io.opencensus.common.Scope;
@@ -19,9 +21,9 @@ import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.s3.util.S3Utils.ListResultProcessor;
+import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
-import pack.iscsi.spi.block.BlockKey;
 import pack.util.ExecutorUtil;
 import pack.util.TracerUtil;
 
@@ -51,7 +53,7 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
     _objectPrefix = config.getObjectPrefix();
 
     CacheLoader<BlockKey, Long> loader = key -> {
-      String blockKey = S3Utils.getBlockKeyPrefix(_objectPrefix, key.getVolumeId(), key.getBlockId());
+      String blockKey = S3Utils.getBlockGenerationKeyPrefix(_objectPrefix, key.getVolumeId(), key.getBlockId());
       LOGGER.info("blockkey {} scan key from {}", key, blockKey);
       List<String> keys = new ArrayList<>();
       try (Scope scope = TracerUtil.trace(S3GenerationBlockStore.class, "s3 list objects")) {
@@ -72,7 +74,7 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
 
   @Override
   public void preloadGenerationInfo(long volumeId, long numberOfBlocks) throws IOException {
-    String volumeKey = S3Utils.getVolumeKeyPrefix(_objectPrefix, volumeId);
+    String volumeKey = S3Utils.getVolumeBlocksPrefix(_objectPrefix, volumeId);
     ListResultProcessor processor = getPreloadProcessor(volumeId);
     try (Scope scope = TracerUtil.trace(S3GenerationBlockStore.class, "s3 list objects")) {
       S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, volumeKey, processor);
@@ -90,7 +92,7 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
   }
 
   @Override
-  public long getLastStoreGeneration(long volumeId, long blockId) throws IOException {
+  public long getLastStoredGeneration(long volumeId, long blockId) throws IOException {
     return _cache.get(BlockKey.builder()
                               .volumeId(volumeId)
                               .blockId(blockId)
@@ -98,7 +100,7 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
   }
 
   @Override
-  public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException {
+  public void setLastStoredGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException {
     LOGGER.info("storing generation volumeId {} blockId {} lastStoredGeneration {}", volumeId, blockId,
         lastStoredGeneration);
     _cache.put(BlockKey.builder()
@@ -150,4 +152,10 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
       return -1L;
     }
   }
+
+  @Override
+  public Map<BlockKey, Long> getAllLastStoredGeneration(long volumeId) throws IOException {
+    return ImmutableMap.copyOf(_cache.asMap());
+  }
+
 }

@@ -25,9 +25,17 @@ public interface PackVolumeStore extends Closeable {
   PackVolumeMetadata getVolumeMetadata(String name) throws IOException;
 
   PackVolumeMetadata getVolumeMetadata(long volumeId) throws IOException;
-  
-  default void register(VolumeLengthListener listener) {
-    
+
+  void createSnapshot(String name, String snapshotName) throws IOException;
+
+  List<String> listSnapshots(String name) throws IOException;
+
+  void deleteSnapshot(String name, String snapshotName) throws IOException;
+
+  void sync(String name) throws IOException;
+
+  default void register(VolumeListener listener) {
+
   }
 
   default void checkExistence(String name) throws IOException {
@@ -58,6 +66,12 @@ public interface PackVolumeStore extends Closeable {
     PackVolumeMetadata volumeMetadata = getVolumeMetadata(name);
     if (newSizeInBytes <= volumeMetadata.getLengthInBytes()) {
       throw new IOException("Volume " + name + " new size too small");
+    }
+  }
+
+  default void checkNoSnapshots(String name) throws IOException {
+    if (!listSnapshots(name).isEmpty()) {
+      throw new IOException("Volume " + name + " has snapshots");
     }
   }
 

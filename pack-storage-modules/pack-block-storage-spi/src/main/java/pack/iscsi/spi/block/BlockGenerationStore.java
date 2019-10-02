@@ -2,12 +2,17 @@ package pack.iscsi.spi.block;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Map;
+
+import pack.iscsi.spi.BlockKey;
 
 public interface BlockGenerationStore extends Closeable {
 
-  long getLastStoreGeneration(long volumeId, long blockId) throws IOException;
+  Map<BlockKey, Long> getAllLastStoredGeneration(long volumeId) throws IOException;
 
-  void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException;
+  long getLastStoredGeneration(long volumeId, long blockId) throws IOException;
+
+  void setLastStoredGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException;
 
   default void close() throws IOException {
 

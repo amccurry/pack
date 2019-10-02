@@ -15,6 +15,7 @@ import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
 import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
@@ -100,6 +101,12 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
   @Test
   public void testBlockStorageModuleFactoryRecoverBlockThatOnlyExistsInWal() throws Exception {
     super.testBlockStorageModuleFactoryRecoverBlockThatOnlyExistsInWal();
+  }
+
+  @Override
+  protected BlockCacheMetadataStore getBlockCacheMetadataStore() throws Exception {
+    return new BlockCacheMetadataStore() {
+    };
   }
 
 }

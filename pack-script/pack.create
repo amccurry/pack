@@ -45,4 +45,4 @@ elif ! test -z "${BLOCK_SIZE}" ; then
 fi
 echo "}" >> ${POST_FILE}
 
-curl -d "@${POST_FILE}" -X POST localhost:4567/api/v1.0/create/${VOLUME_NAME} 2>/dev/null | jq -r '.'
+curl -d "@${POST_FILE}" -X POST localhost:4567/api/v1.0/volume/create/${VOLUME_NAME} 2>/dev/null | jq -r '.'

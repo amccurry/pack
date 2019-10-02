@@ -16,6 +16,7 @@ import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
 import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
@@ -122,6 +123,12 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
                                                                   .blockStateDir(BLOCK_STATE_DIR)
                                                                   .build();
     return new LocalBlockStateStore(config);
+  }
+
+  @Override
+  protected BlockCacheMetadataStore getBlockCacheMetadataStore() throws Exception {
+    return new BlockCacheMetadataStore() {
+    };
   }
 
 }

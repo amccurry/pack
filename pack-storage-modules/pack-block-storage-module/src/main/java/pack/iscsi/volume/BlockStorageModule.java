@@ -5,6 +5,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -30,6 +31,7 @@ import io.opencensus.common.Scope;
 import pack.iscsi.block.AlreadyClosedException;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
@@ -37,7 +39,6 @@ import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
-import pack.iscsi.spi.block.BlockKey;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
@@ -174,6 +175,11 @@ public class BlockStorageModule implements StorageModule {
         return null;
       });
     }
+  }
+
+  public synchronized Map<BlockKey, Long> createSnapshot() throws IOException {
+    sync(true, false);
+    return _blockGenerationStore.getAllLastStoredGeneration(_volumeId);
   }
 
   @Override
@@ -334,6 +340,17 @@ public class BlockStorageModule implements StorageModule {
       } catch (Exception e) {
         LOGGER.error("Unknown error while syncing", e);
       }
+    }
+  }
+
+  public void sync(boolean blocking, boolean onlyIfIdleWrites) throws IOException {
+    try {
+      List<Future<Void>> syncs = sync(onlyIfIdleWrites);
+      if (blocking) {
+        waitForSyncs(syncs);
+      }
+    } catch (InterruptedException e) {
+      throw new IOException(e);
     }
   }
 

@@ -73,7 +73,7 @@ public class LocalBlock implements Closeable, Block {
     readMetadata();
     long lastStoreGeneration;
     try (Scope scope = TracerUtil.trace(LocalBlock.class, "last store generation")) {
-      lastStoreGeneration = _blockStore.getLastStoreGeneration(_volumeId, _blockId);
+      lastStoreGeneration = _blockStore.getLastStoredGeneration(_volumeId, _blockId);
     }
     LOGGER.info("volumeId {} blockId {} last store generation {} on disk generation {}", _volumeId, _blockId,
         lastStoreGeneration, _onDiskGeneration.get());
@@ -148,7 +148,7 @@ public class LocalBlock implements Closeable, Block {
       _onDiskGeneration.set(response.getOnDiskGeneration());
       _lastStoredGeneration.set(response.getLastStoredGeneration());
       LOGGER.info("write last store generation volumeId {} blockId {}", _volumeId, _blockId);
-      _blockStore.setLastStoreGeneration(_volumeId, _blockId, response.getLastStoredGeneration());
+      _blockStore.setLastStoredGeneration(_volumeId, _blockId, response.getLastStoredGeneration());
       LOGGER.info("release journal volumeId {} blockId {} generation {}", _volumeId, _blockId,
           response.getLastStoredGeneration());
       _wal.releaseJournals(_volumeId, _blockId, response.getLastStoredGeneration());

@@ -38,8 +38,8 @@ public class S3BlockStoreTest {
                                                   .build();
 
     try (S3GenerationBlockStore store = new S3GenerationBlockStore(config)) {
-      store.setLastStoreGeneration(volumeId, blockId, 1);
-      assertEquals(1, store.getLastStoreGeneration(volumeId, blockId));
+      store.setLastStoredGeneration(volumeId, blockId, 1);
+      assertEquals(1, store.getLastStoredGeneration(volumeId, blockId));
     }
   }
 
@@ -61,7 +61,7 @@ public class S3BlockStoreTest {
                                                   .build();
 
     try (S3GenerationBlockStore store = new S3GenerationBlockStore(config)) {
-      assertEquals(12345, store.getLastStoreGeneration(volumeId, blockId));
+      assertEquals(12345, store.getLastStoredGeneration(volumeId, blockId));
     }
   }
 
@@ -92,8 +92,8 @@ public class S3BlockStoreTest {
                                                   .build();
 
     try (S3GenerationBlockStore store = new S3GenerationBlockStore(config)) {
-      assertEquals(generation1, store.getLastStoreGeneration(volumeId, blockId1));
-      assertEquals(generation2, store.getLastStoreGeneration(volumeId, blockId2));
+      assertEquals(generation1, store.getLastStoredGeneration(volumeId, blockId1));
+      assertEquals(generation2, store.getLastStoredGeneration(volumeId, blockId2));
     }
   }
 

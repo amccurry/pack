@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,6 +23,7 @@ import org.junit.Test;
 
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
@@ -236,13 +238,18 @@ public class LocalBlockTest {
       private long _lastStoredGeneration;
 
       @Override
-      public long getLastStoreGeneration(long volumeId, long blockId) {
+      public long getLastStoredGeneration(long volumeId, long blockId) {
         return _lastStoredGeneration;
       }
 
       @Override
-      public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) {
+      public void setLastStoredGeneration(long volumeId, long blockId, long lastStoredGeneration) {
         _lastStoredGeneration = lastStoredGeneration;
+      }
+
+      @Override
+      public Map<BlockKey, Long> getAllLastStoredGeneration(long volumeId) throws IOException {
+        throw new RuntimeException("not impl");
       }
     };
   }

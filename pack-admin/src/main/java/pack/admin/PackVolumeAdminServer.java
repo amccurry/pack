@@ -13,8 +13,12 @@ import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Joiner;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -39,7 +43,18 @@ import spark.template.freemarker.FreeMarkerEngine;
 
 public class PackVolumeAdminServer {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(PackVolumeAdminServer.class);
+
+  private static final String VOLUME_PREFIX = "/api/v1.0/volume";
+  private static final String SNAPSHOT_ID_PARAM = ":snapshotId";
   private static final String VOLUME_NAME_PARAM = ":volumeName";
+  private static final String ASSIGNED = "assigned";
+  private static final String CREATE = "create";
+  private static final String GROW = "grow";
+  private static final String DELETE = "delete";
+  private static final String ASSIGN = "assign";
+  private static final String UNASSIGN = "unassign";
+  private static final String SNAPSHOT = "snapshot";
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   public static void main(String[] args) throws IOException {
@@ -205,6 +220,27 @@ public class PackVolumeAdminServer {
                                         .build());
       }
 
+      @Override
+      public void createSnapshot(String name, String snapshotName) throws IOException {
+        LOGGER.info("createSnapshot {} {}", name, snapshotName);
+      }
+
+      @Override
+      public List<String> listSnapshots(String name) throws IOException {
+        LOGGER.info("listSnapshots {} {}", name);
+        return Arrays.asList();
+      }
+
+      @Override
+      public void deleteSnapshot(String name, String snapshotName) throws IOException {
+        LOGGER.info("deleteSnapshot {} {}", name, snapshotName);
+      }
+
+      @Override
+      public void sync(String name) throws IOException {
+        LOGGER.info("sync {}", name);
+      }
+
     };
     PackVolumeAdminServer server = new PackVolumeAdminServer(service, packAdmin, actionTable1.getLink(), actionTable1,
         actionTable2);
@@ -262,14 +298,43 @@ public class PackVolumeAdminServer {
 
   public void setup() {
     ResponseTransformer transformer = model -> OBJECT_MAPPER.writeValueAsString(model);
-    _service.get("/api/v1.0/all-volumes", getAllVolumes(), transformer);
-    _service.get("/api/v1.0/assigned-volumes", getAssignedVolumes(), transformer);
-    _service.post("/api/v1.0/create/" + VOLUME_NAME_PARAM, createVolume(), transformer);
-    _service.post("/api/v1.0/grow/" + VOLUME_NAME_PARAM, growVolume(), transformer);
-    _service.post("/api/v1.0/delete/" + VOLUME_NAME_PARAM, deleteVolume(), transformer);
-    _service.post("/api/v1.0/assign/" + VOLUME_NAME_PARAM, assignVolume(), transformer);
-    _service.post("/api/v1.0/unassign/" + VOLUME_NAME_PARAM, unassignVolume(), transformer);
-    _service.get("/api/v1.0/volume/" + VOLUME_NAME_PARAM, getVolumeInfo(), transformer);
+    // _service.get("/api/v1.0/all-volumes", getAllVolumes(), transformer);
+    // _service.get("/api/v1.0/assigned-volumes", getAssignedVolumes(),
+    // transformer);
+    // _service.post("/api/v1.0/create/" + VOLUME_NAME_PARAM, createVolume(),
+    // transformer);
+    // _service.post("/api/v1.0/grow/" + VOLUME_NAME_PARAM, growVolume(),
+    // transformer);
+    // _service.post("/api/v1.0/delete/" + VOLUME_NAME_PARAM, deleteVolume(),
+    // transformer);
+    // _service.post("/api/v1.0/assign/" + VOLUME_NAME_PARAM, assignVolume(),
+    // transformer);
+    // _service.post("/api/v1.0/unassign/" + VOLUME_NAME_PARAM,
+    // unassignVolume(), transformer);
+    // _service.get("/api/v1.0/volume/" + VOLUME_NAME_PARAM, getVolumeInfo(),
+    // transformer);
+    // _service.get("/api/v1.0/snapshot/" + VOLUME_NAME_PARAM, getSnapshots(),
+    // transformer);
+    // _service.post("/api/v1.0/create-snapshot/" + VOLUME_NAME_PARAM + "/" +
+    // SNAPSHOT_ID_PARAM, createSnapshot(),
+    // transformer);
+    // _service.post("/api/v1.0/delete-snapshot/" + VOLUME_NAME_PARAM + "/" +
+    // SNAPSHOT_ID_PARAM, deleteSnapshot(),
+    // transformer);
+
+    _service.get(toPath(VOLUME_PREFIX), getAllVolumes(), transformer);
+    _service.get(toPath(VOLUME_PREFIX, ASSIGNED), getAssignedVolumes(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, CREATE, VOLUME_NAME_PARAM), createVolume(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, GROW, VOLUME_NAME_PARAM), growVolume(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, DELETE, VOLUME_NAME_PARAM), deleteVolume(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, ASSIGN, VOLUME_NAME_PARAM), assignVolume(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, UNASSIGN, VOLUME_NAME_PARAM), unassignVolume(), transformer);
+    _service.get(toPath(VOLUME_PREFIX, VOLUME_NAME_PARAM), getVolumeInfo(), transformer);
+    _service.get(toPath(VOLUME_PREFIX, SNAPSHOT, VOLUME_NAME_PARAM), getSnapshots(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, SNAPSHOT, CREATE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM), createSnapshot(),
+        transformer);
+    _service.post(toPath(VOLUME_PREFIX, SNAPSHOT, DELETE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM), deleteSnapshot(),
+        transformer);
 
     ActionTable defaultActionTable = getActionTable(_defaultActionTable);
     _service.get("/", getActionTable(defaultActionTable), _engine);
@@ -286,6 +351,11 @@ public class PackVolumeAdminServer {
         response.body(errorResponse.getError());
       }
     });
+  }
+
+  private String toPath(String... path) {
+    return Joiner.on('/')
+                 .join(path);
   }
 
   private ActionTable getActionTable(String name) {
@@ -342,6 +412,13 @@ public class PackVolumeAdminServer {
     };
   }
 
+  private Route getSnapshots() {
+    return (request, response) -> {
+      String volumeName = request.params(VOLUME_NAME_PARAM);
+      return _packAdmin.listSnapshots(volumeName);
+    };
+  }
+
   private Route unassignVolume() {
     return (request, response) -> {
       String volumeName = request.params(VOLUME_NAME_PARAM);
@@ -379,6 +456,28 @@ public class PackVolumeAdminServer {
       _packAdmin.createVolume(volumeName, createVolumeRequest.getSizeInBytes(), createVolumeRequest.getBlockSize());
       return OKResponse.builder()
                        .message("Volume " + volumeName + " created")
+                       .build();
+    };
+  }
+
+  private Route createSnapshot() {
+    return (request, response) -> {
+      String volumeName = request.params(VOLUME_NAME_PARAM);
+      String snapshotId = request.params(SNAPSHOT_ID_PARAM);
+      _packAdmin.createSnapshot(volumeName, snapshotId);
+      return OKResponse.builder()
+                       .message("Snapshot " + snapshotId + " for Volume " + volumeName + " created")
+                       .build();
+    };
+  }
+
+  private Route deleteSnapshot() {
+    return (request, response) -> {
+      String volumeName = request.params(VOLUME_NAME_PARAM);
+      String snapshotId = request.params(SNAPSHOT_ID_PARAM);
+      _packAdmin.deleteSnapshot(volumeName, snapshotId);
+      return OKResponse.builder()
+                       .message("Snapshot " + snapshotId + " for Volume " + volumeName + " deleted")
                        .build();
     };
   }

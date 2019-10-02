@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
@@ -13,11 +14,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.StorageModuleFactory;
-import pack.iscsi.spi.VolumeLengthListener;
+import pack.iscsi.spi.VolumeListener;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
@@ -26,7 +28,7 @@ import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 
-public class BlockStorageModuleFactory implements StorageModuleFactory, Closeable, VolumeLengthListener {
+public class BlockStorageModuleFactory implements StorageModuleFactory, Closeable, VolumeListener {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModuleFactory.class);
 
@@ -148,11 +150,32 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   @Override
   public void lengthChange(PackVolumeMetadata packVolumeMetadata) throws IOException {
-    String name = packVolumeMetadata.getName();
-    BlockStorageModule blockStorageModule = _blockStorageModules.get(name);
-    if (blockStorageModule != null) {
-      blockStorageModule.setLengthInBytes(packVolumeMetadata.getLengthInBytes());
-    }
+    getModule(packVolumeMetadata).setLengthInBytes(packVolumeMetadata.getLengthInBytes());
   }
 
+  @Override
+  public void sync(PackVolumeMetadata packVolumeMetadata, boolean blocking, boolean onlyIfIdleWrites)
+      throws IOException {
+    getModule(packVolumeMetadata).sync(blocking, onlyIfIdleWrites);
+  }
+
+  @Override
+  public Map<BlockKey, Long> createSnapshot(PackVolumeMetadata packVolumeMetadata) throws IOException {
+    return getModule(packVolumeMetadata).createSnapshot();
+  }
+
+  @Override
+  public boolean hasVolume(PackVolumeMetadata metadata) throws IOException {
+    String name = metadata.getName();
+    return _blockStorageModules.containsKey(name);
+  }
+
+  private BlockStorageModule getModule(PackVolumeMetadata packVolumeMetadata) throws IOException {
+    String name = packVolumeMetadata.getName();
+    BlockStorageModule module = _blockStorageModules.get(name);
+    if (module == null) {
+      throw new IOException("Storage module " + name + " not found");
+    }
+    return module;
+  }
 }

@@ -7,4 +7,4 @@ fi
 
 VOLUME_NAME="${1}"
 SIZE="${2}"
-curl -d "{\"sizeInBytes\":${SIZE}}" -X POST localhost:4567/api/v1.0/grow/${VOLUME_NAME} 2>/dev/null | jq -r '.'
+curl -d "{\"sizeInBytes\":${SIZE}}" -X POST localhost:4567/api/v1.0/volume/grow/${VOLUME_NAME} 2>/dev/null | jq -r '.'

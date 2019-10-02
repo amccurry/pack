@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,6 +25,7 @@ import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
+import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
@@ -155,13 +157,18 @@ public class S3LocalBlockTest {
       private long _lastStoredGeneration;
 
       @Override
-      public long getLastStoreGeneration(long volumeId, long blockId) {
+      public long getLastStoredGeneration(long volumeId, long blockId) {
         return _lastStoredGeneration;
       }
 
       @Override
-      public void setLastStoreGeneration(long volumeId, long blockId, long lastStoredGeneration) {
+      public void setLastStoredGeneration(long volumeId, long blockId, long lastStoredGeneration) {
         _lastStoredGeneration = lastStoredGeneration;
+      }
+
+      @Override
+      public Map<BlockKey, Long> getAllLastStoredGeneration(long volumeId) throws IOException {
+        throw new RuntimeException("not impl");
       }
     };
   }

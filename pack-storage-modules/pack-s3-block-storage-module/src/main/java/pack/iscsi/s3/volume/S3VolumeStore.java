@@ -1,12 +1,17 @@
 package pack.iscsi.s3.volume;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
 import java.util.WeakHashMap;
@@ -20,6 +25,7 @@ import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,9 +33,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.s3.util.S3Utils.ListResultProcessor;
+import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
-import pack.iscsi.spi.VolumeLengthListener;
+import pack.iscsi.spi.VolumeListener;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
 
 public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
@@ -44,7 +51,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   private final Random _random = new Random();
   private final String _hostname;
   private final int _maxDeleteBatchSize;
-  private final Set<VolumeLengthListener> _listeners;
+  private final Set<VolumeListener> _listeners;
 
   public S3VolumeStore(S3VolumeStoreConfig config) {
     _maxDeleteBatchSize = config.getMaxDeleteBatchSize();
@@ -167,12 +174,13 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   public void deleteVolume(String name) throws IOException {
     checkExistence(name);
     checkNotAssigned(name);
+    checkNoSnapshots(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     long volumeId = metadata.getVolumeId();
     _consistentAmazonS3.deleteObject(_bucket, S3Utils.getVolumeNameKey(_objectPrefix, name));
-    _consistentAmazonS3.deleteObject(_bucket, S3Utils.getCachedBlockId(_objectPrefix, volumeId));
+    _consistentAmazonS3.deleteObject(_bucket, S3Utils.getCachedBlockInfo(_objectPrefix, volumeId));
     _consistentAmazonS3.deleteObject(_bucket, S3Utils.getVolumeMetadataKey(_objectPrefix, volumeId));
-    
+
     String blockPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix, metadata.getVolumeId());
     AmazonS3 client = _consistentAmazonS3.getClient();
 
@@ -245,24 +253,20 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
                                              .build();
     String json = OBJECT_MAPPER.writeValueAsString(newMetadata);
     _consistentAmazonS3.putObject(_bucket, key, json);
-    for (VolumeLengthListener listener : _listeners) {
+    for (VolumeListener listener : _listeners) {
       listener.lengthChange(newMetadata);
     }
   }
 
   @Override
-  public void register(VolumeLengthListener listener) {
+  public void register(VolumeListener listener) {
     _listeners.add(listener);
   }
 
   @Override
   public void setCachedBlockIds(long volumeId, long... blockIds) throws IOException {
-    ByteBuffer byteBuffer = ByteBuffer.allocate(blockIds.length * 8);
-    for (int i = 0; i < blockIds.length; i++) {
-      byteBuffer.putLong(blockIds[i]);
-    }
-    String key = S3Utils.getCachedBlockId(_objectPrefix, volumeId);
-    byte[] bs = byteBuffer.array();
+    byte[] bs = toByteArray(blockIds);
+    String key = S3Utils.getCachedBlockInfo(_objectPrefix, volumeId);
     try (ByteArrayInputStream inputStream = new ByteArrayInputStream(bs)) {
       ObjectMetadata metadata = new ObjectMetadata();
       metadata.setContentLength(bs.length);
@@ -272,18 +276,13 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
 
   @Override
   public long[] getCachedBlockIds(long volumeId) throws IOException {
-    String key = S3Utils.getCachedBlockId(_objectPrefix, volumeId);
+    String key = S3Utils.getCachedBlockInfo(_objectPrefix, volumeId);
     try {
       S3Object object = _consistentAmazonS3.getObject(_bucket, key);
       long contentLength = object.getObjectMetadata()
                                  .getContentLength();
-      long[] ids = new long[(int) (contentLength / 8)];
-      try (DataInputStream inputStream = new DataInputStream(object.getObjectContent())) {
-        for (int i = 0; i < ids.length; i++) {
-          ids[i] = inputStream.readLong();
-        }
-      }
-      return ids;
+      S3ObjectInputStream input = object.getObjectContent();
+      return toLongArray(input, (int) (contentLength / 8));
     } catch (AmazonServiceException e) {
       if (e.getStatusCode() == 404) {
         return new long[] {};
@@ -292,4 +291,94 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     }
   }
 
+  @Override
+  public void createSnapshot(String name, String snapshotName) throws IOException {
+    checkExistence(name);
+    checkAssigned(name);
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    long volumeId = metadata.getVolumeId();
+    VolumeListener listener = getListener(metadata);
+    Map<BlockKey, Long> generations = listener.createSnapshot(metadata);
+    byte[] bs = toByteArray(generations);
+    String key = S3Utils.getVolumeSnapshotKey(_objectPrefix, volumeId, snapshotName);
+    try (ByteArrayInputStream input = new ByteArrayInputStream(bs)) {
+      ObjectMetadata objectMetadata = new ObjectMetadata();
+      objectMetadata.setContentLength(bs.length);
+      _consistentAmazonS3.putObject(_bucket, key, input, objectMetadata);
+    }
+  }
+
+  private byte[] toByteArray(Map<BlockKey, Long> generations) throws IOException {
+    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+    try (DataOutputStream output = new DataOutputStream(outputStream)) {
+      Set<Entry<BlockKey, Long>> entrySet = generations.entrySet();
+      output.writeInt(entrySet.size());
+      for (Entry<BlockKey, Long> e : entrySet) {
+        BlockKey blockKey = e.getKey();
+        output.writeLong(blockKey.getBlockId());
+        output.writeLong(e.getValue());
+      }
+    }
+    return outputStream.toByteArray();
+  }
+
+  @Override
+  public List<String> listSnapshots(String name) throws IOException {
+    checkExistence(name);
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    long volumeId = metadata.getVolumeId();
+    String prefix = S3Utils.getVolumeSnapshotPrefix(_objectPrefix, volumeId);
+    AmazonS3 amazonS3 = _consistentAmazonS3.getClient();
+    List<String> snapshots = new ArrayList<>();
+    S3Utils.listObjects(amazonS3, _bucket, prefix,
+        summary -> snapshots.add(S3Utils.getSnapshotName(_objectPrefix, summary.getKey())));
+    return snapshots;
+  }
+
+  @Override
+  public void deleteSnapshot(String name, String snapshotName) throws IOException {
+    checkExistence(name);
+    checkAssigned(name);
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    long volumeId = metadata.getVolumeId();
+    String key = S3Utils.getVolumeSnapshotKey(_objectPrefix, volumeId, snapshotName);
+    _consistentAmazonS3.deleteObject(_bucket, key);
+  }
+
+  @Override
+  public void sync(String name) throws IOException {
+    checkExistence(name);
+    checkAssigned(name);
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    VolumeListener listener = getListener(metadata);
+    listener.sync(metadata, true, false);
+  }
+
+  private VolumeListener getListener(PackVolumeMetadata metadata) throws IOException {
+    for (VolumeListener listener : _listeners) {
+      if (listener.hasVolume(metadata)) {
+        return listener;
+      }
+    }
+    throw new IOException("Volume listener for volume " + metadata.getName() + " not found");
+  }
+
+  private static long[] toLongArray(InputStream input, int count) throws IOException {
+    long[] ids = new long[count];
+    try (DataInputStream inputStream = new DataInputStream(input)) {
+      for (int i = 0; i < ids.length; i++) {
+        ids[i] = inputStream.readLong();
+      }
+    }
+    return ids;
+  }
+
+  private byte[] toByteArray(long... longs) {
+    ByteBuffer byteBuffer = ByteBuffer.allocate(longs.length * 8);
+    for (int i = 0; i < longs.length; i++) {
+      byteBuffer.putLong(longs[i]);
+    }
+    byte[] bs = byteBuffer.array();
+    return bs;
+  }
 }

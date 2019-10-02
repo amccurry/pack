@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+if [ "$#" -ne 2 ]; then
+  echo "Usage:"
+  echo "${0} <volumename> <snapshot id>"
+fi
+VOLUME_NAME="${1}"
+SNAPSHOT_ID="${2}"
+curl -X POST localhost:4567/api/v1.0/volume/snapshot/delete/${VOLUME_NAME}/${SNAPSHOT_ID} 2>/dev/null | jq -r '.'

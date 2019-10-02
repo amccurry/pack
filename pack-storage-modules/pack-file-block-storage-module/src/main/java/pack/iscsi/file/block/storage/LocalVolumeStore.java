@@ -57,4 +57,24 @@ public class LocalVolumeStore implements PackVolumeStore {
   public void renameVolume(String name, String newName) throws IOException {
     throw new RuntimeException("not impl");
   }
+
+  @Override
+  public void createSnapshot(String name, String snapshotName) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public List<String> listSnapshots(String name) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public void deleteSnapshot(String name, String snapshotName) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public void sync(String name) throws IOException {
+    throw new RuntimeException("not impl");
+  }
 }

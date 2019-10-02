@@ -22,6 +22,7 @@ import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
+import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
@@ -52,7 +53,9 @@ public abstract class BlockStorageModuleFactoryTest {
 
   protected abstract BlockGenerationStore getBlockGenerationStore() throws Exception;
 
-  protected abstract BlockStateStore getBlockStateStore();
+  protected abstract BlockStateStore getBlockStateStore() throws Exception;
+
+  protected abstract BlockCacheMetadataStore getBlockCacheMetadataStore() throws Exception;
 
   @Test
   public void testBlockStorageModuleFactory() throws Exception {
@@ -61,9 +64,12 @@ public abstract class BlockStorageModuleFactoryTest {
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
     BlockStateStore blockStateStore = getBlockStateStore();
+    BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .blockCacheMetadataStore(
+                                                                                blockCacheMetadataStore)
                                                                             .packVolumeStore(volumeStore)
                                                                             .blockDataDir(getBlockDataDir())
                                                                             .blockStateStore(blockStateStore)
@@ -95,9 +101,12 @@ public abstract class BlockStorageModuleFactoryTest {
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
     BlockStateStore blockStateStore = getBlockStateStore();
+    BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore();
 
     long maxCacheSizeInBytes = 50_000_000;
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .blockCacheMetadataStore(
+                                                                                blockCacheMetadataStore)
                                                                             .packVolumeStore(volumeStore)
                                                                             .blockDataDir(getBlockDataDir())
                                                                             .blockStateStore(blockStateStore)
@@ -134,10 +143,13 @@ public abstract class BlockStorageModuleFactoryTest {
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
     BlockStateStore blockStateStore = getBlockStateStore();
+    BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore();
 
     long maxCacheSizeInBytes = 50_000_000;
 
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .blockCacheMetadataStore(
+                                                                                blockCacheMetadataStore)
                                                                             .packVolumeStore(volumeStore)
                                                                             .blockDataDir(getBlockDataDir())
                                                                             .blockStateStore(blockStateStore)
@@ -178,10 +190,13 @@ public abstract class BlockStorageModuleFactoryTest {
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
     BlockStateStore blockStateStore = getBlockStateStore();
+    BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore();
 
     long maxCacheSizeInBytes = 50_000_000;
 
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
+                                                                            .blockCacheMetadataStore(
+                                                                                blockCacheMetadataStore)
                                                                             .packVolumeStore(volumeStore)
                                                                             .blockDataDir(getBlockDataDir())
                                                                             .blockStateStore(blockStateStore)
@@ -309,6 +324,26 @@ public abstract class BlockStorageModuleFactoryTest {
 
       @Override
       public void renameVolume(String name, String newName) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void createSnapshot(String name, String snapshotName) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public List<String> listSnapshots(String name) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void deleteSnapshot(String name, String snapshotName) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
+      @Override
+      public void sync(String name) throws IOException {
         throw new RuntimeException("not impl");
       }
 
