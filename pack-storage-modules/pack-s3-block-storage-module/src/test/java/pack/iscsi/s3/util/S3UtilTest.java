@@ -49,9 +49,25 @@ public class S3UtilTest {
   }
 
   @Test
-  public void getVolumeSnapshotKey() {
-    assertEquals("volume/12345/snapshot/8765", S3Utils.getVolumeSnapshotKey(null, 12345L, "8765"));
-    assertEquals("prefix/volume/12345/snapshot/8765", S3Utils.getVolumeSnapshotKey("prefix", 12345L, "8765"));
+  public void getVolumeSnapshotBlockInfoKey() {
+    assertEquals("volume/12345/snapshot/8765/block-info", S3Utils.getVolumeSnapshotBlockInfoKey(null, 12345L, "8765"));
+    assertEquals("prefix/volume/12345/snapshot/8765/block-info",
+        S3Utils.getVolumeSnapshotBlockInfoKey("prefix", 12345L, "8765"));
+  }
+
+  @Test
+  public void getVolumeSnapshotMetadataKey() {
+    assertEquals("volume/12345/snapshot/8765/metadata", S3Utils.getVolumeSnapshotMetadataKey(null, 12345L, "8765"));
+    assertEquals("prefix/volume/12345/snapshot/8765/metadata",
+        S3Utils.getVolumeSnapshotMetadataKey("prefix", 12345L, "8765"));
+  }
+
+  @Test
+  public void getVolumeSnapshotCachedBlockInfoKey() {
+    assertEquals("volume/12345/snapshot/8765/cached-block-info",
+        S3Utils.getVolumeSnapshotCachedBlockInfoKey(null, 12345L, "8765"));
+    assertEquals("prefix/volume/12345/snapshot/8765/cached-block-info",
+        S3Utils.getVolumeSnapshotCachedBlockInfoKey("prefix", 12345L, "8765"));
   }
 
   @Test

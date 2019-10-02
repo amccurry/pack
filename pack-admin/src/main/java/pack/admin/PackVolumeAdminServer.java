@@ -241,6 +241,28 @@ public class PackVolumeAdminServer {
         LOGGER.info("sync {}", name);
       }
 
+      @Override
+      public void cloneVolume(String name, String existingVolume, String snapshotId) throws IOException {
+        checkNonExistence(name);
+        checkExistence(existingVolume);
+        checkExistence(existingVolume, snapshotId);
+        PackVolumeMetadata metadata = getVolumeMetadata(existingVolume, snapshotId);
+        allVolumes.put(name, metadata.toBuilder()
+                                     .name(name)
+                                     .volumeId(new Random().nextLong())
+                                     .build());
+      }
+
+      @Override
+      public PackVolumeMetadata getVolumeMetadata(String name, String snapshotId) throws IOException {
+        return getVolumeMetadata(name);
+      }
+
+      @Override
+      public PackVolumeMetadata getVolumeMetadata(long volumeId, String snapshotId) throws IOException {
+        return getVolumeMetadata(volumeId);
+      }
+
     };
     PackVolumeAdminServer server = new PackVolumeAdminServer(service, packAdmin, actionTable1.getLink(), actionTable1,
         actionTable2);
@@ -298,30 +320,6 @@ public class PackVolumeAdminServer {
 
   public void setup() {
     ResponseTransformer transformer = model -> OBJECT_MAPPER.writeValueAsString(model);
-    // _service.get("/api/v1.0/all-volumes", getAllVolumes(), transformer);
-    // _service.get("/api/v1.0/assigned-volumes", getAssignedVolumes(),
-    // transformer);
-    // _service.post("/api/v1.0/create/" + VOLUME_NAME_PARAM, createVolume(),
-    // transformer);
-    // _service.post("/api/v1.0/grow/" + VOLUME_NAME_PARAM, growVolume(),
-    // transformer);
-    // _service.post("/api/v1.0/delete/" + VOLUME_NAME_PARAM, deleteVolume(),
-    // transformer);
-    // _service.post("/api/v1.0/assign/" + VOLUME_NAME_PARAM, assignVolume(),
-    // transformer);
-    // _service.post("/api/v1.0/unassign/" + VOLUME_NAME_PARAM,
-    // unassignVolume(), transformer);
-    // _service.get("/api/v1.0/volume/" + VOLUME_NAME_PARAM, getVolumeInfo(),
-    // transformer);
-    // _service.get("/api/v1.0/snapshot/" + VOLUME_NAME_PARAM, getSnapshots(),
-    // transformer);
-    // _service.post("/api/v1.0/create-snapshot/" + VOLUME_NAME_PARAM + "/" +
-    // SNAPSHOT_ID_PARAM, createSnapshot(),
-    // transformer);
-    // _service.post("/api/v1.0/delete-snapshot/" + VOLUME_NAME_PARAM + "/" +
-    // SNAPSHOT_ID_PARAM, deleteSnapshot(),
-    // transformer);
-
     _service.get(toPath(VOLUME_PREFIX), getAllVolumes(), transformer);
     _service.get(toPath(VOLUME_PREFIX, ASSIGNED), getAssignedVolumes(), transformer);
     _service.post(toPath(VOLUME_PREFIX, CREATE, VOLUME_NAME_PARAM), createVolume(), transformer);

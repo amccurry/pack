@@ -12,6 +12,8 @@ public interface PackVolumeStore extends Closeable {
 
   void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException;
 
+  void cloneVolume(String name, String existingVolume, String snapshotId) throws IOException;
+
   void deleteVolume(String name) throws IOException;
 
   void growVolume(String name, long newLengthInBytes) throws IOException;
@@ -26,11 +28,15 @@ public interface PackVolumeStore extends Closeable {
 
   PackVolumeMetadata getVolumeMetadata(long volumeId) throws IOException;
 
-  void createSnapshot(String name, String snapshotName) throws IOException;
+  PackVolumeMetadata getVolumeMetadata(String name, String snapshotId) throws IOException;
+
+  PackVolumeMetadata getVolumeMetadata(long volumeId, String snapshotId) throws IOException;
+
+  void createSnapshot(String name, String snapshotId) throws IOException;
 
   List<String> listSnapshots(String name) throws IOException;
 
-  void deleteSnapshot(String name, String snapshotName) throws IOException;
+  void deleteSnapshot(String name, String snapshotId) throws IOException;
 
   void sync(String name) throws IOException;
 
@@ -41,6 +47,13 @@ public interface PackVolumeStore extends Closeable {
   default void checkExistence(String name) throws IOException {
     if (!exists(name)) {
       throw new IOException("Volume " + name + " does not exist");
+    }
+  }
+
+  default void checkExistence(String name, String snapshotId) throws IOException {
+    checkAssigned(name);
+    if (!listSnapshots(name).contains(snapshotId)) {
+      throw new IOException("Volume " + name + " with snapshot " + snapshotId + " does not exist");
     }
   }
 

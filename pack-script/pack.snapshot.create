@@ -26,7 +26,7 @@ fi
 VOLUME_NAME="${1}"
 
 if test -z "${SNAPSHOT_ID}" ; then
-  SNAPSHOT_ID=$(uuidgen)
+  SNAPSHOT_ID=$(date +"%Y-%d-%mT%H.%M.%S")
 fi
 
 curl -X POST localhost:4567/api/v1.0/volume/snapshot/create/${VOLUME_NAME}/${SNAPSHOT_ID} 2>/dev/null | jq -r '.'

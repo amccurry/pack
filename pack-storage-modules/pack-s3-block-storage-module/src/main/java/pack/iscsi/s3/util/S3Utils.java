@@ -1,18 +1,27 @@
 package pack.iscsi.s3.util;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 import org.apache.curator.shaded.com.google.common.collect.ImmutableList;
+import org.slf4j.Logger;
 
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 
+import consistent.s3.ConsistentAmazonS3;
+
 public class S3Utils {
 
+  private static final String BLOCK_INFO = "block-info";
   private static final String NAME = "name";
   private static final String VOLUME = "volume";
   private static final String SNAPSHOT = "snapshot";
@@ -42,6 +51,25 @@ public class S3Utils {
   private static void processSummaries(ListResultProcessor processor, List<S3ObjectSummary> objectSummaries) {
     for (S3ObjectSummary summary : objectSummaries) {
       processor.addResult(summary);
+    }
+  }
+
+  public static void deleteObjects(AmazonS3 amazonS3, String bucketName, String prefix, int maxDeleteBatchSize,
+      Logger logger) {
+    List<KeyVersion> keys = new ArrayList<>();
+    S3Utils.listObjects(amazonS3, bucketName, prefix, summary -> {
+      if (keys.size() >= maxDeleteBatchSize) {
+        logger.info("Batch delete of {} keys", keys.size());
+        amazonS3.deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(keys));
+        keys.clear();
+      }
+      String key = summary.getKey();
+      logger.info("Adding key {} to delete batch", key);
+      keys.add(new KeyVersion(key));
+    });
+    if (keys.size() > 0) {
+      logger.info("Batch delete of {} keys", keys.size());
+      amazonS3.deleteObjects(new DeleteObjectsRequest(bucketName).withKeys(keys));
     }
   }
 
@@ -81,12 +109,24 @@ public class S3Utils {
     return getBlockGenerationKeyPrefix(objectPrefix, volumeId, blockId) + generation;
   }
 
-  public static String getVolumeSnapshotKey(String objectPrefix, long volumeId, String snapshot) {
-    return getVolumeSnapshotPrefix(objectPrefix, volumeId) + snapshot;
+  public static String getVolumeSnapshotBlockInfoKey(String objectPrefix, long volumeId, String snapshot) {
+    return getVolumeSnapshotPrefix(objectPrefix, volumeId, snapshot) + BLOCK_INFO;
+  }
+
+  public static String getVolumeSnapshotMetadataKey(String objectPrefix, long volumeId, String snapshot) {
+    return getVolumeSnapshotPrefix(objectPrefix, volumeId, snapshot) + METADATA;
+  }
+
+  public static String getVolumeSnapshotCachedBlockInfoKey(String objectPrefix, long volumeId, String snapshot) {
+    return getVolumeSnapshotPrefix(objectPrefix, volumeId, snapshot) + CACHED_BLOCK_INFO;
   }
 
   public static String getVolumeSnapshotPrefix(String objectPrefix, long volumeId) {
     return join(objectPrefix, VOLUME, volumeId, SNAPSHOT) + SEPARATOR;
+  }
+
+  public static String getVolumeSnapshotPrefix(String objectPrefix, long volumeId, String snapshot) {
+    return getVolumeSnapshotPrefix(objectPrefix, volumeId) + snapshot + SEPARATOR;
   }
 
   public static String getVolumeName(String objectPrefix, String key) {
@@ -96,7 +136,7 @@ public class S3Utils {
 
   public static String getSnapshotName(String objectPrefix, String key) {
     List<String> list = SPLITTER.splitToList(key);
-    return list.get(list.size() - 1);
+    return list.get(list.size() - 2);
   }
 
   private static String join(String objectPrefix, Object... parts) {
@@ -110,4 +150,14 @@ public class S3Utils {
                                       .build());
     }
   }
+
+  public static void copy(ConsistentAmazonS3 consistentAmazonS3, String bucket, String src, String dst) {
+    S3Object s3Object = consistentAmazonS3.getObject(bucket, src);
+    long length = s3Object.getObjectMetadata()
+                          .getContentLength();
+    ObjectMetadata metadata = new ObjectMetadata();
+    metadata.setContentLength(length);
+    consistentAmazonS3.putObject(bucket, dst, s3Object.getObjectContent(), metadata);
+  }
+
 }

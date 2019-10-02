@@ -77,4 +77,19 @@ public class LocalVolumeStore implements PackVolumeStore {
   public void sync(String name) throws IOException {
     throw new RuntimeException("not impl");
   }
+
+  @Override
+  public void cloneVolume(String name, String existingVolume, String snapshotId) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public PackVolumeMetadata getVolumeMetadata(String name, String snapshotId) throws IOException {
+    throw new RuntimeException("not impl");
+  }
+
+  @Override
+  public PackVolumeMetadata getVolumeMetadata(long volumeId, String snapshotId) throws IOException {
+    throw new RuntimeException("not impl");
+  }
 }
