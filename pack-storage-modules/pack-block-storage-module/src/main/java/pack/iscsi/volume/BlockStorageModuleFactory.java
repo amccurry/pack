@@ -69,7 +69,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   @Override
   public List<String> getStorageModuleNames() throws IOException {
-    return _packVolumeStore.getAssignedVolumes();
+    return _packVolumeStore.getAttachedVolumes();
   }
 
   @Override
@@ -77,8 +77,8 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     synchronized (_lock) {
 
       PackVolumeMetadata volumeMetadata = _packVolumeStore.getVolumeMetadata(name);
-      if (!_packVolumeStore.isAssigned(name)) {
-        throw new IOException("Volume " + name + " is not assigned to this host.");
+      if (!_packVolumeStore.isAttached(name)) {
+        throw new IOException("Volume " + name + " is not attached to this host.");
       }
 
       BlockStorageModule storageModule = _blockStorageModules.get(name);

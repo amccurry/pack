@@ -43,9 +43,9 @@ public class S3UtilTest {
   }
 
   @Test
-  public void getAssignedVolumeNamePrefix() {
-    assertEquals("attachment/host/", S3Utils.getAssignedVolumeNamePrefix(null, "host"));
-    assertEquals("prefix/attachment/host/", S3Utils.getAssignedVolumeNamePrefix("prefix", "host"));
+  public void getAttachedVolumeNamePrefix() {
+    assertEquals("attachment/host/", S3Utils.getAttachedVolumeNamePrefix(null, "host"));
+    assertEquals("prefix/attachment/host/", S3Utils.getAttachedVolumeNamePrefix("prefix", "host"));
   }
 
   @Test

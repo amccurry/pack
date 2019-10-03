@@ -14,7 +14,7 @@ public class LocalVolumeStore implements PackVolumeStore {
   }
 
   @Override
-  public List<String> getAssignedVolumes() throws IOException {
+  public List<String> getAttachedVolumes() throws IOException {
     throw new RuntimeException("not impl");
   }
 
@@ -34,12 +34,12 @@ public class LocalVolumeStore implements PackVolumeStore {
   }
 
   @Override
-  public void assignVolume(String name) throws IOException {
+  public void attachVolume(String name) throws IOException {
     throw new RuntimeException("not impl");
   }
 
   @Override
-  public void unassignVolume(String name) throws IOException {
+  public void detachVolume(String name) throws IOException {
     throw new RuntimeException("not impl");
   }
 

@@ -12,7 +12,7 @@ public class AllVolumeActionTable extends VolumeActionTable {
   private static final String ALL = "all";
   private static final String ALL_VOLUMES = "All Volumes";
   private static final String DELETE = "Delete";
-  private static final String ASSIGN = "Assign";
+  private static final String ATTACH = "Attach";
 
   public AllVolumeActionTable(PackVolumeStore volumeStore) {
     super(ALL_VOLUMES, ALL, volumeStore);
@@ -25,7 +25,7 @@ public class AllVolumeActionTable extends VolumeActionTable {
 
   @Override
   public List<String> getActions() throws IOException {
-    return Arrays.asList(ASSIGN, DELETE);
+    return Arrays.asList(ATTACH, DELETE);
   }
 
   @Override
@@ -34,8 +34,8 @@ public class AllVolumeActionTable extends VolumeActionTable {
       long id = Long.parseLong(idStr);
       PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(id);
       switch (action) {
-      case ASSIGN:
-        _volumeStore.assignVolume(metadata.getName());
+      case ATTACH:
+        _volumeStore.attachVolume(metadata.getName());
         break;
       case DELETE:
         _volumeStore.deleteVolume(metadata.getName());

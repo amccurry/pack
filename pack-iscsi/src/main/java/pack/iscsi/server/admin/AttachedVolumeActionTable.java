@@ -7,24 +7,24 @@ import java.util.List;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 
-public class AssignedVolumeActionTable extends VolumeActionTable {
+public class AttachedVolumeActionTable extends VolumeActionTable {
 
-  private static final String ASSIGNED = "assigned";
-  private static final String ASSIGNED_VOLUMES = "Assigned Volumes";
-  private static final String UNASSIGN = "Unassign";
+  private static final String ATTACHED = "attached";
+  private static final String ATTACHED_VOLUMES = "Attached Volumes";
+  private static final String DETACH_ACTION = "Detach";
 
-  public AssignedVolumeActionTable(PackVolumeStore volumeStore) {
-    super(ASSIGNED_VOLUMES, ASSIGNED, volumeStore);
+  public AttachedVolumeActionTable(PackVolumeStore volumeStore) {
+    super(ATTACHED_VOLUMES, ATTACHED, volumeStore);
   }
 
   @Override
   protected List<String> getVolumeNames() throws IOException {
-    return _volumeStore.getAssignedVolumes();
+    return _volumeStore.getAttachedVolumes();
   }
 
   @Override
   public List<String> getActions() throws IOException {
-    return Arrays.asList(UNASSIGN);
+    return Arrays.asList(DETACH_ACTION);
   }
 
   @Override
@@ -33,8 +33,8 @@ public class AssignedVolumeActionTable extends VolumeActionTable {
       long id = Long.parseLong(idStr);
       PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(id);
       switch (action) {
-      case UNASSIGN:
-        _volumeStore.unassignVolume(metadata.getName());
+      case DETACH_ACTION:
+        _volumeStore.detachVolume(metadata.getName());
         break;
       default:
         break;

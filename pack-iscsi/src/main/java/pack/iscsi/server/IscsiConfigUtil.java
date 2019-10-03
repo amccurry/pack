@@ -36,7 +36,7 @@ import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
 import pack.iscsi.server.admin.AllVolumeActionTable;
-import pack.iscsi.server.admin.AssignedVolumeActionTable;
+import pack.iscsi.server.admin.AttachedVolumeActionTable;
 import pack.iscsi.server.admin.MeterMetricsActionTable;
 import pack.iscsi.server.admin.TimerMetricsActionTable;
 import pack.iscsi.spi.PackVolumeStore;
@@ -105,12 +105,12 @@ public class IscsiConfigUtil {
     Service service = getSparkServiceIfNeeded(properties, configFile);
     if (service != null) {
       ActionTable allVolumeActionTable = new AllVolumeActionTable(volumeStore);
-      ActionTable assignedVolumeActionTable = new AssignedVolumeActionTable(volumeStore);
+      ActionTable attachedVolumeActionTable = new AttachedVolumeActionTable(volumeStore);
       MeterMetricsActionTable meterMetricsActionTable = new MeterMetricsActionTable(metricsFactory);
       TimerMetricsActionTable timerMetricsActionTable = new TimerMetricsActionTable(metricsFactory);
 
       PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore,
-          assignedVolumeActionTable.getLink(), allVolumeActionTable, assignedVolumeActionTable, meterMetricsActionTable,
+          attachedVolumeActionTable.getLink(), allVolumeActionTable, attachedVolumeActionTable, meterMetricsActionTable,
           timerMetricsActionTable);
       adminServer.setup();
     }

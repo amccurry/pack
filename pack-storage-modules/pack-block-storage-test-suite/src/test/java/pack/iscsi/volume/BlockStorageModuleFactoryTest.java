@@ -83,14 +83,14 @@ public abstract class BlockStorageModuleFactoryTest {
     String volumeName = "test";
 
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
-      volumeStore.assignVolume(volumeName);
+      volumeStore.attachVolume(volumeName);
       StorageModule storageModule = factory.getStorageModule(volumeName);
       assertEquals(195311, storageModule.getSizeInBlocks());
       long seed = new Random().nextLong();
       long length = 51_000_000;
       readsAndWritesTest(storageModule, seed, length);
       readsOnlyTest(storageModule, seed, length);
-      volumeStore.unassignVolume(volumeName);
+      volumeStore.detachVolume(volumeName);
     }
   }
 
@@ -123,7 +123,7 @@ public abstract class BlockStorageModuleFactoryTest {
     String volumeName = "test";
 
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
-      volumeStore.assignVolume(volumeName);
+      volumeStore.attachVolume(volumeName);
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
@@ -132,7 +132,7 @@ public abstract class BlockStorageModuleFactoryTest {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
       }
-      volumeStore.unassignVolume(volumeName);
+      volumeStore.detachVolume(volumeName);
     }
   }
 
@@ -166,7 +166,7 @@ public abstract class BlockStorageModuleFactoryTest {
     String volumeName = "test";
 
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
-      volumeStore.assignVolume(volumeName);
+      volumeStore.attachVolume(volumeName);
       try (StorageModule storageModule = factory.getStorageModule("test")) {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
@@ -179,7 +179,7 @@ public abstract class BlockStorageModuleFactoryTest {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
       }
-      volumeStore.unassignVolume(volumeName);
+      volumeStore.detachVolume(volumeName);
     }
   }
 
@@ -214,7 +214,7 @@ public abstract class BlockStorageModuleFactoryTest {
     {
       BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
       closeList.add(factory);
-      volumeStore.assignVolume(volumeName);
+      volumeStore.attachVolume(volumeName);
       StorageModule storageModule = factory.getStorageModule("test");
       closeList.add(storageModule);
       assertEquals(195311, storageModule.getSizeInBlocks());
@@ -227,7 +227,7 @@ public abstract class BlockStorageModuleFactoryTest {
         assertEquals(195311, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, 9876);
       }
-      volumeStore.unassignVolume(volumeName);
+      volumeStore.detachVolume(volumeName);
     }
 
     IOUtils.close(LOGGER, closeList);
@@ -266,7 +266,7 @@ public abstract class BlockStorageModuleFactoryTest {
   }
 
   private PackVolumeStore getPackVolumeStore(long volumeId, int blockSize, long lengthInBytes) {
-    Set<String> assigned = new HashSet<>();
+    Set<String> attached = new HashSet<>();
     return new PackVolumeStore() {
 
       @Override
@@ -293,8 +293,8 @@ public abstract class BlockStorageModuleFactoryTest {
       }
 
       @Override
-      public List<String> getAssignedVolumes() throws IOException {
-        return new ArrayList<String>(assigned);
+      public List<String> getAttachedVolumes() throws IOException {
+        return new ArrayList<String>(attached);
       }
 
       @Override
@@ -313,13 +313,13 @@ public abstract class BlockStorageModuleFactoryTest {
       }
 
       @Override
-      public void assignVolume(String name) throws IOException {
-        assigned.add(name);
+      public void attachVolume(String name) throws IOException {
+        attached.add(name);
       }
 
       @Override
-      public void unassignVolume(String name) throws IOException {
-        assigned.remove(name);
+      public void detachVolume(String name) throws IOException {
+        attached.remove(name);
       }
 
       @Override

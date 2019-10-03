@@ -35,15 +35,15 @@ public abstract class VolumeActionTable implements ActionTable {
 
   @Override
   public List<String> getHeaders() throws IOException {
-    return Arrays.asList("Name", "Assigned Host", "Length", "Id");
+    return Arrays.asList("Name", "Attached Host", "Length", "Id");
   }
 
   @Override
   public List<Row> getRows() throws IOException {
     List<String> volumes = getVolumeNames();
     List<Row> rows = new ArrayList<>();
-    for (String assignedVolume : volumes) {
-      PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(assignedVolume);
+    for (String attachedVolume : volumes) {
+      PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(attachedVolume);
       if (metadata != null) {
         rows.add(Row.builder()
                     .columns(getColumns(metadata))
@@ -63,7 +63,7 @@ public abstract class VolumeActionTable implements ActionTable {
                       .build());
 
     columns.add(Column.builder()
-                      .value(metadata.getAssignedHostname())
+                      .value(metadata.getAttachedHostname())
                       .build());
 
     columns.add(Column.builder()

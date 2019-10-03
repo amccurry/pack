@@ -65,7 +65,7 @@ public class S3VolumeStoreTest {
   }
 
   @Test
-  public void testS3VolumeStoreAssignedList() throws Exception {
+  public void testS3VolumeStoreAttachedList() throws Exception {
     S3VolumeStoreConfig config = S3VolumeStoreConfig.builder()
                                                     .bucket(BUCKET)
                                                     .objectPrefix(OBJECT_PREFIX)
@@ -74,26 +74,26 @@ public class S3VolumeStoreTest {
 
     try (S3VolumeStore store = new S3VolumeStore(config)) {
 
-      assertTrue(store.getAssignedVolumes()
+      assertTrue(store.getAttachedVolumes()
                       .isEmpty());
 
-      store.createVolume("testAssigned", 10_000, 100_000_000);
+      store.createVolume("testAttached", 10_000, 100_000_000);
 
       assertTrue(store.getAllVolumes()
-                      .contains("testAssigned"));
+                      .contains("testAttached"));
 
-      store.assignVolume("testAssigned");
+      store.attachVolume("testAttached");
 
-      assertEquals(Arrays.asList("testAssigned"), store.getAssignedVolumes());
+      assertEquals(Arrays.asList("testAttached"), store.getAttachedVolumes());
 
-      store.unassignVolume("testAssigned");
+      store.detachVolume("testAttached");
 
-      assertTrue(store.getAssignedVolumes()
+      assertTrue(store.getAttachedVolumes()
                       .isEmpty());
 
-      store.deleteVolume("testAssigned");
+      store.deleteVolume("testAttached");
 
-      assertTrue(store.getAssignedVolumes()
+      assertTrue(store.getAttachedVolumes()
                       .isEmpty());
     }
   }

@@ -16,6 +16,6 @@ public class PackVolumeMetadata {
   long volumeId;
   int blockSizeInBytes;
   long lengthInBytes;
-  String assignedHostname;
+  String attachedHostname;
 
 }

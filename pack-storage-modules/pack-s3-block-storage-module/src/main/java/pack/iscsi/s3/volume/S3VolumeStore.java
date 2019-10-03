@@ -91,7 +91,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   public void renameVolume(String existingName, String newName) throws IOException {
     checkExistence(existingName);
     checkNonExistence(newName);
-    checkNotAssigned(existingName);
+    checkDetached(existingName);
     PackVolumeMetadata metadata = getVolumeMetadata(existingName);
     long volumeId = metadata.getVolumeId();
     createVolumeNamePointer(newName, volumeId);
@@ -176,7 +176,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public void deleteVolume(String name) throws IOException {
     checkExistence(name);
-    checkNotAssigned(name);
+    checkDetached(name);
     checkNoSnapshots(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     long volumeId = metadata.getVolumeId();
@@ -190,38 +190,38 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   }
 
   @Override
-  public List<String> getAssignedVolumes() throws IOException {
+  public List<String> getAttachedVolumes() throws IOException {
     List<String> result = new ArrayList<>();
     AmazonS3 client = _consistentAmazonS3.getClient();
-    String prefix = S3Utils.getAssignedVolumeNamePrefix(_objectPrefix, _hostname);
+    String prefix = S3Utils.getAttachedVolumeNamePrefix(_objectPrefix, _hostname);
     S3Utils.listObjects(client, _bucket, prefix,
         summary -> result.add(S3Utils.getVolumeName(_objectPrefix, summary.getKey())));
     return result;
   }
 
   @Override
-  public void assignVolume(String name) throws IOException {
+  public void attachVolume(String name) throws IOException {
     checkExistence(name);
-    checkNotAssigned(name);
-    String key = S3Utils.getAssignedVolumeNameKey(_objectPrefix, _hostname, name);
+    checkDetached(name);
+    String key = S3Utils.getAttachedVolumeNameKey(_objectPrefix, _hostname, name);
     _consistentAmazonS3.putObject(_bucket, key, _hostname);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     String metadataKey = getVolumeMetadataKey(metadata.getVolumeId());
     writeVolumeMetadata(metadataKey, metadata.toBuilder()
-                                             .assignedHostname(_hostname)
+                                             .attachedHostname(_hostname)
                                              .build());
   }
 
   @Override
-  public void unassignVolume(String name) throws IOException {
+  public void detachVolume(String name) throws IOException {
     checkExistence(name);
-    checkAssigned(name);
-    String key = S3Utils.getAssignedVolumeNameKey(_objectPrefix, _hostname, name);
+    checkAttached(name);
+    String key = S3Utils.getAttachedVolumeNameKey(_objectPrefix, _hostname, name);
     _consistentAmazonS3.deleteObject(_bucket, key);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     String metadataKey = getVolumeMetadataKey(metadata.getVolumeId());
     writeVolumeMetadata(metadataKey, metadata.toBuilder()
-                                             .assignedHostname(null)
+                                             .attachedHostname(null)
                                              .build());
   }
 
@@ -276,7 +276,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public void createSnapshot(String name, String snapshotName) throws IOException {
     checkExistence(name);
-    checkAssigned(name);
+    checkAttached(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     long volumeId = metadata.getVolumeId();
     VolumeListener listener = getListener(metadata);
@@ -290,7 +290,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     // Store metadata
     String snapshotMetadataKey = S3Utils.getVolumeSnapshotMetadataKey(_objectPrefix, volumeId, snapshotName);
     writeVolumeMetadata(snapshotMetadataKey, metadata.toBuilder()
-                                                     .assignedHostname(null)
+                                                     .attachedHostname(null)
                                                      .build());
 
     // Store cached block info
@@ -331,7 +331,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public void deleteSnapshot(String name, String snapshotName) throws IOException {
     checkExistence(name);
-    checkAssigned(name);
+    checkAttached(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     long volumeId = metadata.getVolumeId();
     String prefix = S3Utils.getVolumeSnapshotPrefix(_objectPrefix, volumeId, snapshotName);
@@ -342,7 +342,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public void sync(String name) throws IOException {
     checkExistence(name);
-    checkAssigned(name);
+    checkAttached(name);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     VolumeListener listener = getListener(metadata);
     listener.sync(metadata, true, false);

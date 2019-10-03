@@ -8,7 +8,7 @@ public interface PackVolumeStore extends Closeable {
 
   List<String> getAllVolumes() throws IOException;
 
-  List<String> getAssignedVolumes() throws IOException;
+  List<String> getAttachedVolumes() throws IOException;
 
   void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException;
 
@@ -20,9 +20,9 @@ public interface PackVolumeStore extends Closeable {
 
   void renameVolume(String name, String newName) throws IOException;
 
-  void assignVolume(String name) throws IOException;
+  void attachVolume(String name) throws IOException;
 
-  void unassignVolume(String name) throws IOException;
+  void detachVolume(String name) throws IOException;
 
   PackVolumeMetadata getVolumeMetadata(String name) throws IOException;
 
@@ -51,7 +51,7 @@ public interface PackVolumeStore extends Closeable {
   }
 
   default void checkExistence(String name, String snapshotId) throws IOException {
-    checkAssigned(name);
+    checkAttached(name);
     if (!listSnapshots(name).contains(snapshotId)) {
       throw new IOException("Volume " + name + " with snapshot " + snapshotId + " does not exist");
     }
@@ -63,15 +63,15 @@ public interface PackVolumeStore extends Closeable {
     }
   }
 
-  default void checkNotAssigned(String name) throws IOException {
-    if (isAssigned(name)) {
-      throw new IOException("Volume " + name + " assigned to a host");
+  default void checkDetached(String name) throws IOException {
+    if (isAttached(name)) {
+      throw new IOException("Volume " + name + " attached to a host");
     }
   }
 
-  default void checkAssigned(String name) throws IOException {
-    if (!isAssigned(name)) {
-      throw new IOException("Volume " + name + " not assigned to a host");
+  default void checkAttached(String name) throws IOException {
+    if (!isAttached(name)) {
+      throw new IOException("Volume " + name + " not attached to a host");
     }
   }
 
@@ -88,8 +88,8 @@ public interface PackVolumeStore extends Closeable {
     }
   }
 
-  default boolean isAssigned(String name) throws IOException {
-    return getAssignedVolumes().contains(name);
+  default boolean isAttached(String name) throws IOException {
+    return getAttachedVolumes().contains(name);
   }
 
   default boolean exists(String name) throws IOException {

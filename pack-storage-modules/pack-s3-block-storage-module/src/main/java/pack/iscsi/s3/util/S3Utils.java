@@ -89,11 +89,11 @@ public class S3Utils {
     return join(objectPrefix, NAME) + SEPARATOR;
   }
 
-  public static String getAssignedVolumeNameKey(String objectPrefix, String hostname, String name) {
-    return getAssignedVolumeNamePrefix(objectPrefix, hostname) + name;
+  public static String getAttachedVolumeNameKey(String objectPrefix, String hostname, String name) {
+    return getAttachedVolumeNamePrefix(objectPrefix, hostname) + name;
   }
 
-  public static String getAssignedVolumeNamePrefix(String objectPrefix, String hostname) {
+  public static String getAttachedVolumeNamePrefix(String objectPrefix, String hostname) {
     return join(objectPrefix, ATTACHMENT, hostname) + SEPARATOR;
   }
 

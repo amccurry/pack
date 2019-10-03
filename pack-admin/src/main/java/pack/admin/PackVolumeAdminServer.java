@@ -48,13 +48,13 @@ public class PackVolumeAdminServer {
   private static final String CLONE_VOLUME_NAME_PARAM = ":cloneVolumeName";
   private static final String SNAPSHOT_ID_PARAM = ":snapshotId";
   private static final String VOLUME_NAME_PARAM = ":volumeName";
-  private static final String ASSIGNED = "assigned";
+  private static final String ATTACHED = "attached";
   private static final String CREATE = "create";
   private static final String CLONE = "clone";
   private static final String GROW = "grow";
   private static final String DELETE = "delete";
-  private static final String ASSIGN = "assign";
-  private static final String UNASSIGN = "unassign";
+  private static final String ATTACH = "attach";
+  private static final String DETACH = "detach";
   private static final String SNAPSHOT = "snapshot";
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -65,7 +65,7 @@ public class PackVolumeAdminServer {
                                  .getHostName();
 
     Map<String, PackVolumeMetadata> allVolumes = new ConcurrentHashMap<>();
-    List<String> assignedVolumes = new ArrayList<String>();
+    List<String> attachedVolumes = new ArrayList<String>();
 
     ActionTable actionTable1 = new ActionTable() {
 
@@ -143,8 +143,8 @@ public class PackVolumeAdminServer {
       }
 
       @Override
-      public List<String> getAssignedVolumes() throws IOException {
-        return assignedVolumes;
+      public List<String> getAttachedVolumes() throws IOException {
+        return attachedVolumes;
       }
 
       @Override
@@ -162,7 +162,7 @@ public class PackVolumeAdminServer {
       @Override
       public void deleteVolume(String name) throws IOException {
         checkExistence(name);
-        checkNotAssigned(name);
+        checkDetached(name);
         allVolumes.remove(name);
       }
 
@@ -177,21 +177,21 @@ public class PackVolumeAdminServer {
       }
 
       @Override
-      public void assignVolume(String name) throws IOException {
+      public void attachVolume(String name) throws IOException {
         checkExistence(name);
-        checkNotAssigned(name);
-        assignedVolumes.add(name);
+        checkDetached(name);
+        attachedVolumes.add(name);
         PackVolumeMetadata metadata = getVolumeMetadata(name);
         allVolumes.put(name, metadata.toBuilder()
-                                     .assignedHostname(hostname)
+                                     .attachedHostname(hostname)
                                      .build());
       }
 
       @Override
-      public void unassignVolume(String name) throws IOException {
+      public void detachVolume(String name) throws IOException {
         checkExistence(name);
-        checkAssigned(name);
-        assignedVolumes.remove(name);
+        checkAttached(name);
+        attachedVolumes.remove(name);
       }
 
       @Override
@@ -214,7 +214,7 @@ public class PackVolumeAdminServer {
       public void renameVolume(String name, String newName) throws IOException {
         checkExistence(name);
         checkNonExistence(newName);
-        checkNotAssigned(name);
+        checkDetached(name);
         PackVolumeMetadata metadata = allVolumes.remove(name);
         allVolumes.put(newName, metadata.toBuilder()
                                         .name(newName)
@@ -322,14 +322,14 @@ public class PackVolumeAdminServer {
   public void setup() {
     ResponseTransformer transformer = model -> OBJECT_MAPPER.writeValueAsString(model);
     _service.get(toPath(VOLUME_PREFIX), getAllVolumes(), transformer);
-    _service.get(toPath(VOLUME_PREFIX, ASSIGNED), getAssignedVolumes(), transformer);
+    _service.get(toPath(VOLUME_PREFIX, ATTACHED), getAttachedVolumes(), transformer);
     _service.post(toPath(VOLUME_PREFIX, CREATE, VOLUME_NAME_PARAM), createVolume(), transformer);
     _service.post(toPath(VOLUME_PREFIX, CLONE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM, CLONE_VOLUME_NAME_PARAM),
         cloneVolume(), transformer);
     _service.post(toPath(VOLUME_PREFIX, GROW, VOLUME_NAME_PARAM), growVolume(), transformer);
     _service.post(toPath(VOLUME_PREFIX, DELETE, VOLUME_NAME_PARAM), deleteVolume(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, ASSIGN, VOLUME_NAME_PARAM), assignVolume(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, UNASSIGN, VOLUME_NAME_PARAM), unassignVolume(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, ATTACH, VOLUME_NAME_PARAM), attachVolume(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, DETACH, VOLUME_NAME_PARAM), detachVolume(), transformer);
     _service.get(toPath(VOLUME_PREFIX, VOLUME_NAME_PARAM), getVolumeInfo(), transformer);
     _service.get(toPath(VOLUME_PREFIX, SNAPSHOT, VOLUME_NAME_PARAM), getSnapshots(), transformer);
     _service.post(toPath(VOLUME_PREFIX, SNAPSHOT, CREATE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM), createSnapshot(),
@@ -420,22 +420,22 @@ public class PackVolumeAdminServer {
     };
   }
 
-  private Route unassignVolume() {
+  private Route detachVolume() {
     return (request, response) -> {
       String volumeName = request.params(VOLUME_NAME_PARAM);
-      _packAdmin.unassignVolume(volumeName);
+      _packAdmin.detachVolume(volumeName);
       return OKResponse.builder()
-                       .message("Volume " + volumeName + " unassigned")
+                       .message("Volume " + volumeName + " unattached")
                        .build();
     };
   }
 
-  private Route assignVolume() {
+  private Route attachVolume() {
     return (request, response) -> {
       String volumeName = request.params(VOLUME_NAME_PARAM);
-      _packAdmin.assignVolume(volumeName);
+      _packAdmin.attachVolume(volumeName);
       return OKResponse.builder()
-                       .message("Volume " + volumeName + " assigned")
+                       .message("Volume " + volumeName + " attached")
                        .build();
     };
   }
@@ -495,8 +495,8 @@ public class PackVolumeAdminServer {
     };
   }
 
-  private Route getAssignedVolumes() {
-    return (request, response) -> _packAdmin.getAssignedVolumes();
+  private Route getAttachedVolumes() {
+    return (request, response) -> _packAdmin.getAttachedVolumes();
   }
 
   private Route getAllVolumes() {
@@ -544,7 +544,7 @@ public class PackVolumeAdminServer {
     String volumeName;
     long sizeInBytes;
     int blockSizeInBytes;
-    String assignedHostname;
+    String attachedHostname;
 
   }
 
