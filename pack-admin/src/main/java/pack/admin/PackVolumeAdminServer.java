@@ -44,12 +44,13 @@ import spark.template.freemarker.FreeMarkerEngine;
 public class PackVolumeAdminServer {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(PackVolumeAdminServer.class);
-
   private static final String VOLUME_PREFIX = "/api/v1.0/volume";
+  private static final String CLONE_VOLUME_NAME_PARAM = ":cloneVolumeName";
   private static final String SNAPSHOT_ID_PARAM = ":snapshotId";
   private static final String VOLUME_NAME_PARAM = ":volumeName";
   private static final String ASSIGNED = "assigned";
   private static final String CREATE = "create";
+  private static final String CLONE = "clone";
   private static final String GROW = "grow";
   private static final String DELETE = "delete";
   private static final String ASSIGN = "assign";
@@ -323,6 +324,8 @@ public class PackVolumeAdminServer {
     _service.get(toPath(VOLUME_PREFIX), getAllVolumes(), transformer);
     _service.get(toPath(VOLUME_PREFIX, ASSIGNED), getAssignedVolumes(), transformer);
     _service.post(toPath(VOLUME_PREFIX, CREATE, VOLUME_NAME_PARAM), createVolume(), transformer);
+    _service.post(toPath(VOLUME_PREFIX, CLONE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM, CLONE_VOLUME_NAME_PARAM),
+        cloneVolume(), transformer);
     _service.post(toPath(VOLUME_PREFIX, GROW, VOLUME_NAME_PARAM), growVolume(), transformer);
     _service.post(toPath(VOLUME_PREFIX, DELETE, VOLUME_NAME_PARAM), deleteVolume(), transformer);
     _service.post(toPath(VOLUME_PREFIX, ASSIGN, VOLUME_NAME_PARAM), assignVolume(), transformer);
@@ -454,6 +457,18 @@ public class PackVolumeAdminServer {
       _packAdmin.createVolume(volumeName, createVolumeRequest.getSizeInBytes(), createVolumeRequest.getBlockSize());
       return OKResponse.builder()
                        .message("Volume " + volumeName + " created")
+                       .build();
+    };
+  }
+
+  private Route cloneVolume() {
+    return (request, response) -> {
+      String volumeName = request.params(VOLUME_NAME_PARAM);
+      String snapshotId = request.params(SNAPSHOT_ID_PARAM);
+      String cloneVolumeName = request.params(CLONE_VOLUME_NAME_PARAM);
+      _packAdmin.cloneVolume(cloneVolumeName, volumeName, snapshotId);
+      return OKResponse.builder()
+                       .message("Volume " + cloneVolumeName + " cloned from " + volumeName + "/" + snapshotId)
                        .build();
     };
   }

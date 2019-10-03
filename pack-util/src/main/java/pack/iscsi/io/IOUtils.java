@@ -1,5 +1,6 @@
 package pack.iscsi.io;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -157,6 +158,16 @@ public class IOUtils {
       stringBuilder.append(new String(buffer, 0, read));
     }
     return stringBuilder.toString();
+  }
+
+  public static byte[] toByteArray(InputStream input) throws IOException {
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    byte[] buffer = new byte[4096];
+    int read;
+    while ((read = input.read(buffer)) != -1) {
+      output.write(buffer, 0, read);
+    }
+    return output.toByteArray();
   }
 
 }
