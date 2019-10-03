@@ -15,6 +15,7 @@ import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.spi.RandomAccessIOReader;
+import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
@@ -49,8 +50,9 @@ public class S3BlockWriter implements BlockIOExecutor {
       long onDiskGeneration = request.getOnDiskGeneration();
       BlockState onDiskState = request.getOnDiskState();
       long lastStoredGeneration = request.getLastStoredGeneration();
-      if (onDiskState == BlockState.CLEAN) {
-        return BlockIOResponse.newBlockIOResult(onDiskGeneration, onDiskState, lastStoredGeneration);
+      if (onDiskState == BlockState.CLEAN || onDiskGeneration == Block.MISSING_BLOCK_GENERATION
+          || lastStoredGeneration == onDiskGeneration) {
+        return BlockIOResponse.newBlockIOResult(onDiskGeneration, BlockState.CLEAN, lastStoredGeneration);
       }
       String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
           onDiskGeneration);

@@ -48,7 +48,8 @@ public class S3BlockReader implements BlockIOExecutor {
     try (Scope scope = TracerUtil.trace(getClass(), "s3 read")) {
       // @TODO partial reads may cause corruption, needs work
       long lastStoredGeneration = request.getLastStoredGeneration();
-      if (lastStoredGeneration == Block.MISSING_BLOCK_GENERATION) {
+      if (lastStoredGeneration == Block.MISSING_BLOCK_GENERATION
+          || lastStoredGeneration == request.getOnDiskGeneration()) {
         return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);
       }
       RandomAccessIO randomAccessIO = request.getRandomAccessIO();

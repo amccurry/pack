@@ -60,7 +60,6 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
     }
     CacheLoader<JournalKey, LocalJournal> loader = key -> {
       File blockLogDir = getBlockLogDir(key);
-      blockLogDir.mkdirs();
       long volumeId = key.getVolumeId();
       long blockId = key.getBlockId();
       return new LocalJournal(blockLogDir, volumeId, blockId);

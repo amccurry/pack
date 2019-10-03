@@ -37,7 +37,7 @@ public class LocalJournal implements Closeable {
   private final long _blockId;
 
   public LocalJournal(File blockLogDir, long volumeId, long blockId) {
-    LOGGER.info("Creating LocalJournal dir {} volumeId {} blockId {}", blockLogDir, volumeId, blockId);
+    LOGGER.debug("Creating LocalJournal dir {} volumeId {} blockId {}", blockLogDir, volumeId, blockId);
     _blockLogDir = blockLogDir;
     _volumeId = volumeId;
     _blockId = blockId;

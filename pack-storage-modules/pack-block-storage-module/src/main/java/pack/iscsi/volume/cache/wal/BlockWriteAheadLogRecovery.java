@@ -1,7 +1,9 @@
 package pack.iscsi.volume.cache.wal;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
 import org.slf4j.Logger;
@@ -61,7 +63,8 @@ public class BlockWriteAheadLogRecovery implements BlockIOExecutor {
       long onDiskGeneration) throws IOException {
     List<BlockJournalRange> journalRanges = _blockWriteAheadLog.getJournalRanges(volumeId, blockId, onDiskGeneration,
         true);
-    removeDuplicates(journalRanges);
+    journalRanges = removeOldRanges(journalRanges, onDiskGeneration);
+    journalRanges = removeDuplicates(journalRanges);
     Collections.sort(journalRanges);
     checkForGaps(journalRanges);
     return applyJournals(startingPositionOfBlock, randomAccessIO, journalRanges, onDiskGeneration);
@@ -76,11 +79,30 @@ public class BlockWriteAheadLogRecovery implements BlockIOExecutor {
     return onDiskGeneration;
   }
 
-  private void checkForGaps(List<BlockJournalRange> journalRanges) {
-    LOGGER.info("todo check for gaps");
+  private List<BlockJournalRange> removeOldRanges(List<BlockJournalRange> journalRanges, long onDiskGeneration) {
+    List<BlockJournalRange> result = new ArrayList<>();
+    for (BlockJournalRange range : journalRanges) {
+      if (range.getMaxGeneration() > onDiskGeneration) {
+        result.add(range);
+      }
+    }
+    return result;
   }
 
-  private void removeDuplicates(List<BlockJournalRange> journalRanges) {
-    LOGGER.info("removeDuplicates and overlaps");
+  private void checkForGaps(List<BlockJournalRange> journalRanges) {
+    if (journalRanges.size() <= 1) {
+      return;
+    }
+    for (int i = 1; i < journalRanges.size(); i++) {
+      BlockJournalRange prev = journalRanges.get(0);
+      BlockJournalRange current = journalRanges.get(0);
+      if (prev.getMaxGeneration() + 1 != current.getMinGeneration()) {
+        LOGGER.error("Missing WAL entries between journal ranges {} {}", prev, current);
+      }
+    }
+  }
+
+  private List<BlockJournalRange> removeDuplicates(List<BlockJournalRange> journalRanges) {
+    return new ArrayList<>(new HashSet<>(journalRanges));
   }
 }

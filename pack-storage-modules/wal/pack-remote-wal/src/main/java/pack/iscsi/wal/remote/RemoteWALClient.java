@@ -155,6 +155,9 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   private long applyJournalEntries(BlockRecoveryWriter writer, long onDiskGeneration,
       FetchJournalEntriesResponse fetchJournalEntriesResponse, long blockId) throws IOException {
     for (JournalEntry journalEntry : fetchJournalEntriesResponse.getEntries()) {
+      if (journalEntry.getGeneration() <= onDiskGeneration) {
+        continue;
+      }
       if (!writer.writeEntry(journalEntry.getGeneration(), journalEntry.getPosition(), journalEntry.getData())) {
         return journalEntry.getGeneration();
       }
@@ -215,7 +218,7 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   private PackWalServiceClientImpl newClient() throws IOException {
     try (Scope scope = TracerUtil.trace(RemoteWALClient.class, "newClient")) {
       PackWalHostEntry entry = newPackWalHostEntry();
-      LOGGER.info("Creating a new client host {} port {}", entry.getHostname(), entry.getPort());
+      LOGGER.debug("Creating a new client host {} port {}", entry.getHostname(), entry.getPort());
       TSocket transport = new TSocket(entry.getHostname(), entry.getPort());
       transport.setTimeout(_timeout);
       transport.open();
@@ -250,7 +253,11 @@ public class RemoteWALClient implements BlockWriteAheadLog {
     } catch (Exception e) {
       throw new IOException(e);
     }
-    return pickOne(entries);
+    PackWalHostEntry entry = pickOne(entries);
+    if (entry == null) {
+      throw new IOException("No wal servers found.");
+    }
+    return entry;
   }
 
   private PackWalHostEntry pickOne(List<PackWalHostEntry> entries) {

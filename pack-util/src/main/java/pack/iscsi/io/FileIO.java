@@ -122,7 +122,7 @@ public abstract class FileIO implements RandomAccessIO {
     @Override
     public void close() throws IOException {
       synchronized (_lock) {
-        LOGGER.info("Closing FileIODirectRandomAccessFile file {}", _file);
+        LOGGER.info("Closing file {}", _file);
         _draf.close();
       }
     }
@@ -161,7 +161,7 @@ public abstract class FileIO implements RandomAccessIO {
 
   private static class FileIODirectRandomAccessFileReader implements RandomAccessIOReader {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(FileIODirectRandomAccessFile.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(FileIODirectRandomAccessFileReader.class);
 
     private final DirectRandomAccessFile _draf;
     private final File _file;
@@ -195,7 +195,7 @@ public abstract class FileIO implements RandomAccessIO {
 
     @Override
     public void close() throws IOException {
-      LOGGER.info("Closing FileIODirectRandomAccessFile file {}", _file);
+      LOGGER.debug("Closing file {}", _file);
       _draf.close();
     }
   }

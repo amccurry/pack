@@ -101,7 +101,7 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
 
   @Override
   public void setLastStoredGeneration(long volumeId, long blockId, long lastStoredGeneration) throws IOException {
-    LOGGER.info("storing generation volumeId {} blockId {} lastStoredGeneration {}", volumeId, blockId,
+    LOGGER.debug("storing generation volumeId {} blockId {} lastStoredGeneration {}", volumeId, blockId,
         lastStoredGeneration);
     _cache.put(BlockKey.builder()
                        .volumeId(volumeId)

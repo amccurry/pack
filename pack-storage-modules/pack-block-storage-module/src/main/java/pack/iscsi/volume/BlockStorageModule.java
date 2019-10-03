@@ -164,13 +164,14 @@ public class BlockStorageModule implements StorageModule {
   }
 
   private void preloadBlockCache(long[] blockIds) {
+    LOGGER.info("preloading volume id {}", _volumeId);
     for (long blockId : blockIds) {
       BlockKey blockKey = BlockKey.builder()
                                   .blockId(blockId)
                                   .volumeId(_volumeId)
                                   .build();
       _cachePreloadExecutor.submit(() -> {
-        LOGGER.info("preloading volume id {} block id {}", _volumeId, blockId);
+        LOGGER.debug("preloading volume id {} block id {}", _volumeId, blockId);
         _cache.get(blockKey);
         return null;
       });
@@ -379,9 +380,9 @@ public class BlockStorageModule implements StorageModule {
     List<Callable<Void>> callables = new ArrayList<>();
     for (Block block : blocks) {
       Callable<Void> callable = () -> {
-        LOGGER.info("starting sync for block id {} from volume id {}", block.getBlockId(), block.getVolumeId());
+        LOGGER.debug("starting sync for block id {} from volume id {}", block.getBlockId(), block.getVolumeId());
         sync(block);
-        LOGGER.info("finished sync for block id {} from volume id {}", block.getBlockId(), block.getVolumeId());
+        LOGGER.debug("finished sync for block id {} from volume id {}", block.getBlockId(), block.getVolumeId());
         return null;
       };
       if (onlyIfIdleWrites) {
@@ -416,11 +417,11 @@ public class BlockStorageModule implements StorageModule {
       return;
     }
     Utils.runUntilSuccess(LOGGER, () -> {
-      LOGGER.info("volume sync volumeId {} blockId {}", _volumeId, block.getBlockId());
+      LOGGER.debug("volume sync volumeId {} blockId {}", _volumeId, block.getBlockId());
       try {
         block.execIO(_externalBlockStoreFactory.getBlockWriter());
       } catch (AlreadyClosedException e) {
-        LOGGER.info("volume {} block {} already closed", _volumeId, block.getBlockId());
+        LOGGER.error("volume {} block {} already closed", _volumeId, block.getBlockId());
       }
       return null;
     });

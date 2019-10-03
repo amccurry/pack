@@ -44,6 +44,8 @@ public class LocalJournalReader implements Comparable<LocalJournalReader>, Close
 
   public LocalJournalReader(LocalLogReaderConfig config) throws IOException {
     _file = config.getBlockLogFile();
+    _file.getParentFile()
+         .mkdirs();
     int bufferSize = config.getBufferSize();
     _ra = FileIO.openRandomAccess(_file, bufferSize, R);
     LOGGER.info("Opening journal reader file {} length {}", _file, _file.length());

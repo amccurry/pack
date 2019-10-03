@@ -75,7 +75,7 @@ public class LocalBlock implements Closeable, Block {
     try (Scope scope = TracerUtil.trace(LocalBlock.class, "last store generation")) {
       lastStoreGeneration = _blockStore.getLastStoredGeneration(_volumeId, _blockId);
     }
-    LOGGER.info("volumeId {} blockId {} last store generation {} on disk generation {}", _volumeId, _blockId,
+    LOGGER.debug("volumeId {} blockId {} last store generation {} on disk generation {}", _volumeId, _blockId,
         lastStoreGeneration, _onDiskGeneration.get());
     _lastStoredGeneration.set(lastStoreGeneration);
   }
@@ -141,18 +141,18 @@ public class LocalBlock implements Closeable, Block {
                                              .volumeId(_volumeId)
                                              .startingPositionOfBlock(_startingPositionOfBlock)
                                              .build();
-      LOGGER.info("starting execIO volumeId {} blockId {}", _volumeId, _blockId);
+      LOGGER.debug("starting execIO volumeId {} blockId {}", _volumeId, _blockId);
       BlockIOResponse response = executor.exec(request);
-      LOGGER.info("finished execIO volumeId {} blockId {}", _volumeId, _blockId);
+      LOGGER.debug("finished execIO volumeId {} blockId {}", _volumeId, _blockId);
       _onDiskState.set(response.getOnDiskBlockState());
       _onDiskGeneration.set(response.getOnDiskGeneration());
       _lastStoredGeneration.set(response.getLastStoredGeneration());
-      LOGGER.info("write last store generation volumeId {} blockId {}", _volumeId, _blockId);
+      LOGGER.debug("write last store generation volumeId {} blockId {}", _volumeId, _blockId);
       _blockStore.setLastStoredGeneration(_volumeId, _blockId, response.getLastStoredGeneration());
-      LOGGER.info("release journal volumeId {} blockId {} generation {}", _volumeId, _blockId,
+      LOGGER.debug("release journal volumeId {} blockId {} generation {}", _volumeId, _blockId,
           response.getLastStoredGeneration());
       _wal.releaseJournals(_volumeId, _blockId, response.getLastStoredGeneration());
-      LOGGER.info("write metadata {} blockId {}", _volumeId, _blockId);
+      LOGGER.debug("write metadata {} blockId {}", _volumeId, _blockId);
       writeMetadata();
     }
   }
