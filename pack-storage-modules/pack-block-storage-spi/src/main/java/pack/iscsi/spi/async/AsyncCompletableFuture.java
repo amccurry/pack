@@ -5,6 +5,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 
+import pack.util.TracerUtil;
+
 public class AsyncCompletableFuture {
 
   private CompletableFuture<Void> _future;
@@ -13,8 +15,9 @@ public class AsyncCompletableFuture {
     _future = future;
   }
 
-  public static AsyncCompletableFuture exec(Executor executor, AsyncExec exec) {
-    return new AsyncCompletableFuture(CompletableFuture.supplyAsync(exec, executor));
+  public static AsyncCompletableFuture exec(Class<?> clazz, String name, Executor executor, AsyncExec exec) {
+    return new AsyncCompletableFuture(
+        CompletableFuture.supplyAsync(TracerUtil.traceSupplier(clazz, name, exec), executor));
   }
 
   public void get() throws IOException {

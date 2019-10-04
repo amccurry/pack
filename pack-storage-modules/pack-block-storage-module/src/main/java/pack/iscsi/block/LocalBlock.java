@@ -15,7 +15,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
@@ -115,7 +115,8 @@ public class LocalBlock implements Closeable, Block {
         _randomAccessIO.writeFully(getFilePosition(blockPosition), bytes, offset, len);
       }
       if (autoFlush) {
-        AsyncCompletableFuture comFlush = AsyncCompletableFuture.exec(_executor, () -> _randomAccessIO.flush());
+        AsyncCompletableFuture comFlush = AsyncCompletableFuture.exec(getClass(), "flush", _executor,
+            () -> _randomAccessIO.flush());
         return AsyncCompletableFuture.allOf(comFlush, comWalWrite);
       } else {
         return comWalWrite;

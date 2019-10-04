@@ -21,3 +21,4 @@ hadoop-conf/
 iscsi-test/
 iscsi-test-wal/
 logs/
+*.log

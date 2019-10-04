@@ -30,9 +30,9 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
   @Value
   @Builder(toBuilder = true)
   public static class LocalBlockWriteAheadLogConfig {
-    
+
     File walLogDir;
-    
+
     @Builder.Default
     Executor executor = Executors.newSingleThreadExecutor();
   }
@@ -77,7 +77,7 @@ public class LocalBlockWriteAheadLog implements BlockWriteAheadLog {
   public AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes,
       int offset, int len) throws IOException {
     LocalJournal journal = getJournal(volumeId, blockId);
-    return AsyncCompletableFuture.exec(_asyncExecutor, () -> {
+    return AsyncCompletableFuture.exec(LocalBlockWriteAheadLog.class, "append", _asyncExecutor, () -> {
       synchronized (journal) {
         journal.append(generation, position, bytes, offset, len);
       }

@@ -1,7 +1,6 @@
 package pack.iscsi.volume;
 
 import java.io.File;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
@@ -33,9 +32,11 @@ public class BlockStorageModuleConfig {
   @Builder.Default
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.MINUTES;
 
-  ExecutorService syncExecutor;
-  
-  ExecutorService cachePreloadExecutor;
+  @Builder.Default
+  int syncExecutorThreadCount = 5;
+
+  @Builder.Default
+  int cachePreloadExecutorThreadCount = 5;
 
   MetricsFactory metricsFactory;
 
@@ -46,12 +47,12 @@ public class BlockStorageModuleConfig {
   File blockDataDir;
 
   long maxCacheSizeInBytes;
-  
+
   @Builder.Default
   long bufferSize = 1024 * 1024;
-  
+
   BlockStateStore blockStateStore;
-  
+
   BlockCacheMetadataStore blockCacheMetadataStore;
 
 }

@@ -9,7 +9,7 @@ import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
 
 import consistent.s3.ConsistentAmazonS3;
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.s3.util.S3Utils;

@@ -4,29 +4,35 @@ import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.function.Supplier;
 
 import javax.management.NotificationEmitter;
 import javax.management.NotificationListener;
 import javax.management.openmbean.CompositeData;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.sun.management.GarbageCollectionNotificationInfo;
 import com.sun.management.GcInfo;
 
-import io.opencensus.common.Scope;
-import io.opencensus.trace.AttributeValue;
-import io.opencensus.trace.Span;
-import io.opencensus.trace.Tracer;
-import io.opencensus.trace.Tracing;
+import io.opentracing.Scope;
+import io.opentracing.Span;
+import io.opentracing.Tracer;
+import io.opentracing.contrib.reporter.Reporter;
+import io.opentracing.contrib.reporter.TracerR;
+import io.opentracing.contrib.reporter.slf4j.Slf4jReporter;
+import io.opentracing.util.ThreadLocalScopeManager;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
+import pack.util.tracer.PackTracer;
 
 @SuppressWarnings("restriction")
 public class TracerUtil {
@@ -47,6 +53,7 @@ public class TracerUtil {
   }
 
   private static final AtomicReferenceArray<GCData> GCINFO;
+  public static final Tracer TRACER;
 
   static {
     RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
@@ -93,23 +100,65 @@ public class TracerUtil {
     return startTime + gcTime;
   }
 
-  public static Scope trace(Class<?> clazz, String spanName) {
-    Tracer tracer = Tracing.getTracer();
-    Scope scope = tracer.spanBuilder(getSpanNameFromClass(clazz) + " " + spanName)
-                        .startScopedSpan();
-    List<GCData> gcDataListBefore = getGCDataList();
-    return new Scope() {
-      @Override
-      public void close() {
-        Span span = tracer.getCurrentSpan();
-        addGcInfoIfNeeded(span, gcDataListBefore);
-        scope.close();
+  public static <T> Supplier<T> traceSupplier(Class<?> clazz, String name, Supplier<T> supplier) {
+    Span activeSpan = TRACER.activeSpan();
+    return () -> {
+      Span span = getSpan(clazz, name, activeSpan);
+      try (Scope scope = trace(span, TRACER.activateSpan(span))) {
+        return supplier.get();
       }
     };
   }
 
-  static {
+  public static <T> Callable<T> traceCallable(Class<?> clazz, String name, Callable<T> callable) {
+    Span activeSpan = TRACER.activeSpan();
+    return () -> {
+      Span span = getSpan(clazz, name, activeSpan);
+      try (Scope scope = trace(span, TRACER.activateSpan(span))) {
+        return callable.call();
+      }
+    };
+  }
 
+  public static Scope trace(Class<?> clazz, String name) {
+    Span activeSpan = TRACER.activeSpan();
+    Span span = getSpan(clazz, name, activeSpan);
+    Scope scope = TRACER.activateSpan(span);
+    return trace(span, scope);
+  }
+
+  private static Scope trace(Span span, Scope scope) {
+    List<GCData> gcDataListBefore = getGCDataList();
+    return new Scope() {
+      @Override
+      public void close() {
+        addGcInfoIfNeeded(span, gcDataListBefore);
+        scope.close();
+        span.finish();
+      }
+    };
+  }
+
+  private static Span getSpan(Class<?> clazz, String name, Span activeSpan) {
+    String operationName = getSpanNameFromClass(clazz) + " " + name;
+    Span span;
+    if (activeSpan == null) {
+      span = TRACER.buildSpan(operationName)
+                   .start();
+    } else {
+      span = TRACER.buildSpan(operationName)
+                   .asChildOf(activeSpan)
+                   .start();
+    }
+    return span;
+  }
+
+  static {
+    Logger logger = LoggerFactory.getLogger("TRACER");
+    ThreadLocalScopeManager scopeManager = new ThreadLocalScopeManager();
+    Tracer backend = new PackTracer(scopeManager);
+    Reporter reporter = new Slf4jReporter(logger, true);
+    TRACER = new TracerR(backend, reporter, scopeManager);
   }
 
   private static final ConcurrentMap<Class<?>, String> NAME_CACHE = new ConcurrentHashMap<>();
@@ -161,13 +210,16 @@ public class TracerUtil {
     GCData nextGCData = data.getNext()
                             .get();
     if (nextGCData != null) {
-      Map<String, AttributeValue> attributes = new HashMap<>();
       long id = nextGCData.getId();
       long start = nextGCData.getStart();
       long end = nextGCData.getEnd();
-      attributes.put(TIME, AttributeValue.longAttributeValue(end - start));
-      attributes.put(ID, AttributeValue.longAttributeValue(id));
-      span.addAnnotation(GC_EVENT, attributes);
+      span.log(GC_EVENT + " " + ID + " (" + id + ") " + TIME + "(" + (end - start) + ")");
     }
   }
+
+  public static void traceLog(String event) {
+    TRACER.activeSpan()
+          .log(event);
+  }
+
 }

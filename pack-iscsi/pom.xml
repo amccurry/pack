@@ -45,14 +45,6 @@
 			<artifactId>commons-cli</artifactId>
 		</dependency>
 		<dependency>
-			<groupId>io.opencensus</groupId>
-			<artifactId>opencensus-impl</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>io.opencensus</groupId>
-			<artifactId>opencensus-exporter-trace-jaeger</artifactId>
-		</dependency>
-		<dependency>
 			<groupId>pack</groupId>
 			<artifactId>pack-s3-block-storage-module</artifactId>
 			<classifier>tests</classifier>

@@ -27,7 +27,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Weigher;
 
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import pack.iscsi.block.AlreadyClosedException;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
@@ -53,6 +53,10 @@ import pack.util.ExecutorUtil;
 import pack.util.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
+
+  private static final String PRELOAD = "preload-";
+
+  private static final String SYNC = "sync-";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModule.class);
 
@@ -97,7 +101,7 @@ public class BlockStorageModule implements StorageModule {
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _flushExecutor = Executors.newSingleThreadExecutor();
-    _cachePreloadExecutor = config.getCachePreloadExecutor();
+    _cachePreloadExecutor = Utils.executor(PRELOAD + config.getVolumeId(), config.getCachePreloadExecutorThreadCount());
     _blockStateStore = config.getBlockStateStore();
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
@@ -118,8 +122,8 @@ public class BlockStorageModule implements StorageModule {
     _volumeId = config.getVolumeId();
     _blockSize = config.getBlockSize();
     _blockCount.set(config.getBlockCount());
-    _syncExecutor = config.getSyncExecutor();
-    _syncTimer = new Timer("sync-" + _volumeId);
+    _syncExecutor = Utils.executor(SYNC + config.getVolumeId(), config.getSyncExecutorThreadCount());
+    _syncTimer = new Timer(SYNC + _volumeId);
 
     long period = config.getSyncTimeAfterIdleTimeUnit()
                         .toMillis(config.getSyncTimeAfterIdle());
@@ -165,7 +169,14 @@ public class BlockStorageModule implements StorageModule {
 
   private void preloadBlockCache(long[] blockIds) {
     LOGGER.info("preloading volume id {}", _volumeId);
-    for (long blockId : blockIds) {
+    long start = System.nanoTime();
+
+    for (int i = 0; i < blockIds.length; i++) {
+      if (start + TimeUnit.SECONDS.toNanos(5) < System.nanoTime()) {
+        LOGGER.info("preload status {} of {} blocks loaded", i, blockIds.length);
+        start = System.nanoTime();
+      }
+      long blockId = blockIds[i];
       BlockKey blockKey = BlockKey.builder()
                                   .blockId(blockId)
                                   .volumeId(_volumeId)
@@ -201,6 +212,7 @@ public class BlockStorageModule implements StorageModule {
     IOUtils.close(LOGGER, _randomAccessIO);
     _file.delete();
     _blockStateStore.destroyBlockMetadataStore(_volumeId);
+    IOUtils.close(LOGGER, _syncExecutor, _cachePreloadExecutor);
     LOGGER.info("finished close of storage module for {}", _volumeId);
   }
 
@@ -310,7 +322,8 @@ public class BlockStorageModule implements StorageModule {
     long writeCount = _writesCount.getAndSet(0);
     long start = System.nanoTime();
 
-    AsyncCompletableFuture future = AsyncCompletableFuture.exec(_flushExecutor, () -> _randomAccessIO.flush());
+    AsyncCompletableFuture future = AsyncCompletableFuture.exec(BlockStorageModule.class, "flush", _flushExecutor,
+        () -> _randomAccessIO.flush());
     try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, "flushWrites")) {
       for (AsyncCompletableFuture result : _results) {
         result.get();
@@ -449,7 +462,7 @@ public class BlockStorageModule implements StorageModule {
   }
 
   private long getBlockCount() {
-    return getLengthInBytes() / VIRTUAL_BLOCK_SIZE;
+    return getLengthInBytes() / getBlockSize();
   }
 
   private void checkClosed() throws IOException {

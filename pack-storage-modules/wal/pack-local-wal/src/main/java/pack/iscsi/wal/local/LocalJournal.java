@@ -15,7 +15,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock.WriteLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;

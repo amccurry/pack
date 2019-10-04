@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -32,14 +31,11 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModuleFactory.class);
 
-  private static final String SYNC = "sync";
-
   private final BlockGenerationStore _blockGenerationStore;
   private final BlockWriteAheadLog _writeAheadLog;
   private final File _blockDataDir;
   private final PackVolumeStore _packVolumeStore;
   private final BlockIOFactory _externalBlockStoreFactory;
-  private final ExecutorService _syncExecutor;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final MetricsFactory _metricsFactory;
@@ -48,7 +44,6 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final Object _lock = new Object();
   private final BlockStateStore _blockStateStore;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
-  private final ExecutorService _cachePreloadExecutor;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
@@ -60,8 +55,6 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
-    _syncExecutor = Utils.executor(SYNC, config.getSyncThreads());
-    _cachePreloadExecutor = Utils.executor("preload", config.getPreloadThreads());
     _metricsFactory = config.getMetricsFactory();
     _maxCacheSizeInBytes = config.getMaxCacheSizeInBytes();
     _packVolumeStore.register(this);
@@ -92,7 +85,6 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       long blockCount = Utils.getBlockCount(lengthInBytes, blockSize);
 
       BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
-                                                                .cachePreloadExecutor(_cachePreloadExecutor)
                                                                 .blockCacheMetadataStore(_blockCacheMetadataStore)
                                                                 .blockDataDir(_blockDataDir)
                                                                 .blockGenerationStore(_blockGenerationStore)
@@ -104,7 +96,6 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
                                                                 .volumeId(volumeId)
                                                                 .syncTimeAfterIdle(_syncTimeAfterIdle)
                                                                 .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
-                                                                .syncExecutor(_syncExecutor)
                                                                 .metricsFactory(_metricsFactory)
                                                                 .writeAheadLog(_writeAheadLog)
                                                                 .maxCacheSizeInBytes(getMaxCacheSizeInBytes())
@@ -120,7 +111,6 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   public void close() throws IOException {
     LOGGER.info("starting close of storage module factory");
     IOUtils.close(LOGGER, _blockStorageModules.values());
-    IOUtils.close(LOGGER, _syncExecutor);
   }
 
   private StorageModule referenceCounter(String name, PackVolumeMetadata volumeMetadata,

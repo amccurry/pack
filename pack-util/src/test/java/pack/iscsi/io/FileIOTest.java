@@ -66,6 +66,7 @@ public class FileIOTest {
         reader.readFully(1000, buffer2);
         assertTrue(Arrays.equals(buffer1, buffer2));
       }
+      assertEquals(1000 + buffer1.length, randomAccessIO.length());
     }
   }
 

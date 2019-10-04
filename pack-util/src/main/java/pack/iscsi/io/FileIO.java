@@ -1,11 +1,7 @@
 package pack.iscsi.io;
 
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
@@ -16,7 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import com.sun.jna.Platform;
 
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import net.smacke.jaydio.DirectRandomAccessFile;
 import net.smacke.jaydio.align.DirectIoByteChannelAligner;
 import pack.iscsi.io.util.DirectRandomAccessFileUtil;
@@ -28,30 +24,22 @@ import pack.util.TracerUtil;
 
 public abstract class FileIO implements RandomAccessIO {
 
-  private static final String RW = "rw";
   private static boolean _directIOEnabled = true;
 
   public static RandomAccessIO openRandomAccess(File file, int bufferSize, String mode) throws IOException {
-    if (isDirectIOSupported()) {
+    return openRandomAccess(file, bufferSize, mode, _directIOEnabled);
+  }
+
+  public static RandomAccessIO openRandomAccess(File file, int bufferSize, String mode, boolean direct)
+      throws IOException {
+    if (isDirectIOSupported() && direct) {
+
       return new FileIODirectRandomAccessFile(file, new DirectRandomAccessFile(file, mode));
+
+      // return new DirectIO(file);
+
     } else {
       return new FileIORandomAccessFile(new RandomAccessFile(file, mode));
-    }
-  }
-
-  public static InputStream openStream(File file, int bufferSize) throws IOException {
-    if (isDirectIOSupported()) {
-      return new DirectInputStream(file, bufferSize);
-    } else {
-      return new FileInputStream(file);
-    }
-  }
-
-  public static OutputStream createStream(File file, int bufferSize) throws IOException {
-    if (isDirectIOSupported()) {
-      return new DirectOutputStream(file, bufferSize);
-    } else {
-      return new FileOutputStream(file);
     }
   }
 
@@ -157,6 +145,7 @@ public abstract class FileIO implements RandomAccessIO {
         }
       }
     }
+
   }
 
   private static class FileIODirectRandomAccessFileReader implements RandomAccessIOReader {
@@ -252,62 +241,6 @@ public abstract class FileIO implements RandomAccessIO {
 
     }
 
-  }
-
-  private static class DirectInputStream extends InputStream {
-
-    private static final String R = "r";
-    private final DirectRandomAccessFile _draf;
-
-    public DirectInputStream(File file, int bufferSize) throws IOException {
-      _draf = new DirectRandomAccessFile(file, R, bufferSize);
-    }
-
-    @Override
-    public int read() throws IOException {
-      return _draf.read();
-    }
-
-    @Override
-    public int read(byte[] b, int off, int len) throws IOException {
-      _draf.read(b, off, len);
-      return len;
-    }
-
-    @Override
-    public void close() throws IOException {
-      _draf.close();
-    }
-
-  }
-
-  private static class DirectOutputStream extends OutputStream {
-
-    private static final Logger LOGGER = LoggerFactory.getLogger(DirectOutputStream.class);
-
-    private final DirectRandomAccessFile _draf;
-
-    public DirectOutputStream(File file, int bufferSize) throws IOException {
-      try (RandomAccessFile raf = new RandomAccessFile(file, RW)) {
-        raf.setLength(0);
-      }
-      _draf = new DirectRandomAccessFile(file, RW, bufferSize);
-    }
-
-    @Override
-    public void write(int b) throws IOException {
-      _draf.write(b);
-    }
-
-    @Override
-    public void write(byte[] b, int off, int len) throws IOException {
-      _draf.write(b, off, len);
-    }
-
-    @Override
-    public void close() throws IOException {
-      IOUtils.close(LOGGER, _draf);
-    }
   }
 
   public static void setDirectIOEnabled(boolean directIOEnabled) {

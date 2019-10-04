@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockIOFactory;

@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
 import pack.iscsi.spi.BlockKey;

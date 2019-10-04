@@ -24,7 +24,7 @@ import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.IOUtils;

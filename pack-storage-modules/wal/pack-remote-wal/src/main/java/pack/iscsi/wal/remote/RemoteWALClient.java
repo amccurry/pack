@@ -19,7 +19,7 @@ import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import io.opencensus.common.Scope;
+import io.opentracing.Scope;
 import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.IOUtils;
@@ -91,7 +91,7 @@ public class RemoteWALClient implements BlockWriteAheadLog {
     ByteBuffer byteBuffer = (ByteBuffer) ByteBuffer.allocate(len)
                                                    .put(bytes, offset, len)
                                                    .flip();
-    return AsyncCompletableFuture.exec(_executor, () -> execute(client -> {
+    return AsyncCompletableFuture.exec(RemoteWALClient.class, "write", _executor, () -> execute(client -> {
       try (Scope scope1 = TracerUtil.trace(RemoteWALClient.class, "wal write")) {
         WriteRequest writeRequest = new WriteRequest(volumeId, blockId, generation, position, byteBuffer);
         try (Scope scope2 = TracerUtil.trace(RemoteWALClient.class, "wal client write")) {
