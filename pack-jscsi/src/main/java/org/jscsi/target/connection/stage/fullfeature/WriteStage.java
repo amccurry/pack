@@ -41,6 +41,8 @@ public final class WriteStage extends ReadOrWriteStage {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(WriteStage.class);
 
+  private static final boolean CHOPPED_UP = false;
+
   /**
    * The <code>DataSN</code> value the next Data-Out PDU must carry.
    */
@@ -134,6 +136,11 @@ public final class WriteStage extends ReadOrWriteStage {
       final int transferLengthInBytes = transferLength * blockSize;
       long storageIndex = logicalBlockAddress * blockSize;
 
+      byte[] buffer = null;
+      if (!CHOPPED_UP) {
+        buffer = new byte[transferLengthInBytes];
+      }
+
       // check if requested blocks are out of bounds
       // (might add FPSKSD to the CDB's list to be detected in the next step)
       checkOverAndUnderflow(cdb);
@@ -155,7 +162,8 @@ public final class WriteStage extends ReadOrWriteStage {
         // create and send error PDU and leave stage
         final ProtocolDataUnit responsePdu = createFixedFormatErrorPdu(cdb.getIllegalFieldPointers(), // senseKeySpecificData
             initiatorTaskTag, parser.getExpectedDataTransferLength());
-        flushIfNeeded(needsFlush);
+        // this may need work on the flush during error.
+        flushIfNeeded(needsFlush, buffer, storageModule, storageIndex);
         connection.sendPdu(responsePdu);
         return;
       }
@@ -168,8 +176,12 @@ public final class WriteStage extends ReadOrWriteStage {
         final byte[] immediateDataArray = pdu.getDataSegment()
                                              .array();
         int commandSequenceNumber = parser.getCommandSequenceNumber();
-        storageModule.write(immediateDataArray, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber,
-            null, null);
+        if (CHOPPED_UP) {
+          storageModule.write(immediateDataArray, storageIndex, address, port, initiatorTaskTag, commandSequenceNumber,
+              null, null);
+        } else {
+          System.arraycopy(immediateDataArray, 0, buffer, 0, immediateDataArray.length);
+        }
         needsFlush.set(true);
         bytesReceived = immediateDataArray.length;
 
@@ -196,10 +208,15 @@ public final class WriteStage extends ReadOrWriteStage {
           int dataSequenceNumber = dataOutParser.getDataSequenceNumber();
           int targetTransferTag = dataOutParser.getTargetTransferTag();
           int commandSequenceNumber = dataOutParser.getCommandSequenceNumber();
-          storageModule.write(pdu.getDataSegment()
-                                 .array(),
-              storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag, commandSequenceNumber,
-              dataSequenceNumber, targetTransferTag);
+          byte[] data = pdu.getDataSegment()
+                           .array();
+          if (CHOPPED_UP) {
+            storageModule.write(data, storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag,
+                commandSequenceNumber, dataSequenceNumber, targetTransferTag);
+          } else {
+            System.arraycopy(data, 0, buffer, dataOutParser.getBufferOffset(), data.length);
+          }
+
           needsFlush.set(true);
           bytesReceived += bhs.getDataSegmentLength();
 
@@ -252,7 +269,7 @@ public final class WriteStage extends ReadOrWriteStage {
                   0, // bidirectionalReadResidualCount
                   0, // residualCount
                   ScsiResponseDataSegment.EMPTY_DATA_SEGMENT);// dataSegment
-              flushIfNeeded(needsFlush);
+              flushIfNeeded(needsFlush, buffer, storageModule, storageIndex);
               connection.sendPdu(pdu);
               return;
             } else if (bhs.getParser() instanceof DataOutParser) {
@@ -260,10 +277,15 @@ public final class WriteStage extends ReadOrWriteStage {
               int dataSequenceNumber = dataOutParser.getDataSequenceNumber();
               int targetTransferTag = dataOutParser.getTargetTransferTag();
               int commandSequenceNumber = dataOutParser.getCommandSequenceNumber();
-              storageModule.write(pdu.getDataSegment()
-                                     .array(),
-                  storageIndex + dataOutParser.getBufferOffset(), address, port, initiatorTaskTag,
-                  commandSequenceNumber, dataSequenceNumber, targetTransferTag);
+              byte[] data = pdu.getDataSegment()
+                               .array();
+              if (CHOPPED_UP) {
+                storageModule.write(data, storageIndex + dataOutParser.getBufferOffset(), address, port,
+                    initiatorTaskTag, commandSequenceNumber, dataSequenceNumber, targetTransferTag);
+              } else {
+                System.arraycopy(data, 0, buffer, dataOutParser.getBufferOffset(), data.length);
+              }
+
               needsFlush.set(true);
               bytesReceivedThisCycle += bhs.getDataSegmentLength();
 
@@ -295,15 +317,18 @@ public final class WriteStage extends ReadOrWriteStage {
           0, // bidirectionalReadResidualCount
           0, // residualCount
           ScsiResponseDataSegment.EMPTY_DATA_SEGMENT);// dataSegment
-      flushIfNeeded(needsFlush);
+      flushIfNeeded(needsFlush, buffer, storageModule, storageIndex);
       connection.sendPdu(pdu);
     }
   }
 
-  private void flushIfNeeded(AtomicBoolean needsFlush) throws IOException {
+  private void flushIfNeeded(AtomicBoolean needsFlush, byte[] buffer, IStorageModule storageModule, long storageIndex)
+      throws IOException {
+    if (!CHOPPED_UP) {
+      storageModule.write(buffer, storageIndex);
+    }
     if (needsFlush.get()) {
-      session.getStorageModule()
-             .flushWrites();
+      storageModule.flushWrites();
       needsFlush.set(false);
     }
   }

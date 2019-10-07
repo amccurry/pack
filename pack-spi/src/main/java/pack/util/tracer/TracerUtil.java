@@ -113,11 +113,30 @@ public class TracerUtil {
     };
   }
 
-  public static Scope trace(Class<?> clazz, String name) {
+  public static Scope trace(Class<?> clazz, String name, Tag... tags) {
     Span activeSpan = TRACER.activeSpan();
     Span span = getSpan(clazz, name, activeSpan);
+    addTags(span, tags);
     Scope scope = TRACER.activateSpan(span);
     return trace(span, scope);
+  }
+
+  private static void addTags(Span span, Tag... tags) {
+    for (Tag tag : tags) {
+      switch (tag.getType()) {
+      case NUMBER:
+        span.setTag(tag.getName(), (Number) tag.getValue());
+        break;
+      case BOOLEAN:
+        span.setTag(tag.getName(), (Boolean) tag.getValue());
+        break;
+      case STRING:
+        span.setTag(tag.getName(), (String) tag.getValue());
+        break;
+      default:
+        break;
+      }
+    }
   }
 
   private static Scope trace(Span span, Scope scope) {

@@ -50,6 +50,7 @@ import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
 import pack.iscsi.volume.cache.BlockRemovalListener;
 import pack.iscsi.volume.cache.BlockRemovalListenerConfig;
 import pack.util.ExecutorUtil;
+import pack.util.tracer.Tag;
 import pack.util.tracer.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
@@ -294,7 +295,7 @@ public class BlockStorageModule implements StorageModule {
     _writeIOMeter.mark();
     int offset = 0;
     try (Closeable time = _writeTimer.time()) {
-      try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE)) {
+      try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE, Tag.create("length", bytes.length))) {
         while (length > 0) {
           long blockId = getBlockId(position);
           int blockOffset = getBlockOffset(position);
@@ -305,7 +306,8 @@ public class BlockStorageModule implements StorageModule {
                                       .blockId(blockId)
                                       .build();
           Block block = getBlockId(blockKey);
-          try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write")) {
+          try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write",
+              Tag.create("length", len))) {
             trackResult(block.writeFully(blockOffset, bytes, offset, len, false));
           }
           length -= len;
