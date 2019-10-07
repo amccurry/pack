@@ -19,7 +19,7 @@ import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class S3BlockReader implements BlockIOExecutor {
 

@@ -40,7 +40,7 @@ import pack.iscsi.wal.remote.generated.ReleaseRequest;
 import pack.iscsi.wal.remote.generated.WriteRequest;
 import pack.iscsi.wal.remote.thrift.PackWalServiceClient;
 import pack.iscsi.wal.remote.thrift.PackWalServiceClientImpl;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class RemoteWALClient implements BlockWriteAheadLog {
 

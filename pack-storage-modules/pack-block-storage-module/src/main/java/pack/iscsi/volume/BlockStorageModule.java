@@ -50,7 +50,7 @@ import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
 import pack.iscsi.volume.cache.BlockRemovalListener;
 import pack.iscsi.volume.cache.BlockRemovalListenerConfig;
 import pack.util.ExecutorUtil;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
 

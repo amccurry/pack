@@ -28,7 +28,7 @@ import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.util.LockUtil;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class LocalBlock implements Closeable, Block {
 

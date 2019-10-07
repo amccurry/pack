@@ -22,7 +22,7 @@ import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery;
 import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery.BlockWriteAheadLogRecoveryConfig;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 

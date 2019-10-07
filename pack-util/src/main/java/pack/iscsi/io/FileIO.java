@@ -20,7 +20,7 @@ import pack.iscsi.io.util.NativeFileUtil;
 import pack.iscsi.io.util.NativeFileUtil.FallocateMode;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.RandomAccessIOReader;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public abstract class FileIO implements RandomAccessIO {
 

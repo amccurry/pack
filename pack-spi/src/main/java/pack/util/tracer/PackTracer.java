@@ -145,14 +145,20 @@ public class PackTracer implements Tracer {
 
     @Override
     public PackSpan start() {
+      long startNanos;
+      long startTsMicros;
       if (_startMicros == 0) {
-        _startMicros = PackSpan.nowMicros();
+        startNanos = System.nanoTime();
+        startTsMicros = PackSpan.nowMicrosViaMillisTime();
+      } else {
+        startNanos = _startMicros * 1000;
+        startTsMicros = _startMicros;
       }
       SpanContext activeSpanContext = activeSpanContext();
       if (_references.isEmpty() && !_ignoringActiveSpan && activeSpanContext != null) {
         _references.add(new PackSpan.Reference((PackSpan.PackContext) activeSpanContext, References.CHILD_OF));
       }
-      return new PackSpan(_operationName, _startMicros, _initialTags, _references);
+      return new PackSpan(_operationName, startTsMicros, startNanos, _initialTags, _references);
     }
   }
 }

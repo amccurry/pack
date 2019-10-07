@@ -25,7 +25,7 @@ import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.util.ExecutorUtil;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class S3GenerationBlockStore implements BlockGenerationStore {
 

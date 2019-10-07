@@ -15,7 +15,7 @@ import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.util.Utils;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
 

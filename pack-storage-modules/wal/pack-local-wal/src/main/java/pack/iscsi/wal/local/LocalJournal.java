@@ -22,7 +22,7 @@ import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.wal.local.LocalJournalReader.LocalLogReaderConfig;
 import pack.iscsi.wal.local.LocalJournalWriter.LocalLogWriterConfig;
 import pack.util.LockUtil;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class LocalJournal implements Closeable {
 

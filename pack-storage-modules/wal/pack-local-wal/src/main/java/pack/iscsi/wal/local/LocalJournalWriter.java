@@ -17,7 +17,7 @@ import lombok.Builder;
 import lombok.Value;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.spi.RandomAccessIO;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 public class LocalJournalWriter implements Closeable {
 

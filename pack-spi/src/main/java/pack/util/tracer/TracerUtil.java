@@ -1,4 +1,4 @@
-package pack.util;
+package pack.util.tracer;
 
 import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
@@ -16,23 +16,16 @@ import javax.management.NotificationEmitter;
 import javax.management.NotificationListener;
 import javax.management.openmbean.CompositeData;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.sun.management.GarbageCollectionNotificationInfo;
 import com.sun.management.GcInfo;
 
 import io.opentracing.Scope;
 import io.opentracing.Span;
 import io.opentracing.Tracer;
-import io.opentracing.contrib.reporter.Reporter;
-import io.opentracing.contrib.reporter.TracerR;
-import io.opentracing.contrib.reporter.slf4j.Slf4jReporter;
 import io.opentracing.util.ThreadLocalScopeManager;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
-import pack.util.tracer.PackTracer;
 
 @SuppressWarnings("restriction")
 public class TracerUtil {
@@ -154,11 +147,9 @@ public class TracerUtil {
   }
 
   static {
-    Logger logger = LoggerFactory.getLogger("TRACER");
     ThreadLocalScopeManager scopeManager = new ThreadLocalScopeManager();
     Tracer backend = new PackTracer(scopeManager);
-    Reporter reporter = new Slf4jReporter(logger, true);
-    TRACER = new TracerR(backend, reporter, scopeManager);
+    TRACER = backend;
   }
 
   private static final ConcurrentMap<Class<?>, String> NAME_CACHE = new ConcurrentHashMap<>();

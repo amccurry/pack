@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import io.opentracing.Scope;
-import pack.util.TracerUtil;
+import pack.util.tracer.TracerUtil;
 
 /**
  * A stage for processing <code>READ (6)</code> and <code>READ (10)</code> SCSI

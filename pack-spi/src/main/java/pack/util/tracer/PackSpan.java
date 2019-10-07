@@ -1,27 +1,28 @@
 package pack.util.tracer;
 
-import io.opentracing.References;
-import io.opentracing.Span;
-import io.opentracing.SpanContext;
-import io.opentracing.tag.Tag;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
+
+import io.opentracing.References;
+import io.opentracing.Span;
+import io.opentracing.SpanContext;
+import io.opentracing.tag.Tag;
 
 public final class PackSpan implements Span {
   private static AtomicLong nextId = new AtomicLong(0);
 
   private PackContext _context;
-  private final long _parentId; // 0 if there's no parent.
-  private final long _startMicros;
+  private final UUID _parentId; // 0 if there's no parent.
+  private final long _startNanos;
   private boolean _finished;
-  private long _finishMicros;
+  private long _finishNanos;
   private final Map<String, Object> _tags;
-  private final List<LogEntry> _logEntries = new ArrayList<>();
   private String _operationName;
   private final List<Reference> _references;
   private final List<RuntimeException> errors = new ArrayList<>();
@@ -37,25 +38,8 @@ public final class PackSpan implements Span {
     return this;
   }
 
-  public long parentId() {
-    return _parentId;
-  }
-
-  public long startMicros() {
-    return _startMicros;
-  }
-
-  public long finishMicros() {
-    assert _finishMicros > 0 : "must call finish() before finishMicros()";
-    return _finishMicros;
-  }
-
   public Map<String, Object> tags() {
     return new HashMap<>(_tags);
-  }
-
-  public List<LogEntry> logEntries() {
-    return new ArrayList<>(_logEntries);
   }
 
   public List<RuntimeException> generatedErrors() {
@@ -73,14 +57,18 @@ public final class PackSpan implements Span {
 
   @Override
   public void finish() {
-    finish(nowMicros());
+    finishedCheck("Finishing already finished span");
+    _finishNanos = System.nanoTime();
+    _finished = true;
+    LoggerReporter.finish(nowMicrosViaMillisTime(), this);
   }
 
   @Override
   public synchronized void finish(long finishMicros) {
     finishedCheck("Finishing already finished span");
-    _finishMicros = finishMicros;
+    _finishNanos = finishMicros * 1000;
     _finished = true;
+    LoggerReporter.finish(finishMicros, this);
   }
 
   @Override
@@ -112,19 +100,19 @@ public final class PackSpan implements Span {
 
   @Override
   public final Span log(Map<String, ?> fields) {
-    return log(nowMicros(), fields);
+    return log(nowMicrosViaMillisTime(), fields);
   }
 
   @Override
   public final synchronized PackSpan log(long timestampMicros, Map<String, ?> fields) {
     finishedCheck("Adding logs %s at %d to already finished span", fields, timestampMicros);
-    _logEntries.add(new LogEntry(timestampMicros, fields));
+    LoggerReporter.log(timestampMicros, this, fields);
     return this;
   }
 
   @Override
   public PackSpan log(String event) {
-    return log(nowMicros(), event);
+    return log(nowMicrosViaMillisTime(), event);
   }
 
   @Override
@@ -145,11 +133,11 @@ public final class PackSpan implements Span {
   }
 
   public static final class PackContext implements SpanContext {
-    private final long _traceId;
+    private final UUID _traceId;
     private final Map<String, String> _baggage;
-    private final long _spanId;
+    private final UUID _spanId;
 
-    public PackContext(long traceId, long spanId, Map<String, String> baggage) {
+    public PackContext(UUID traceId, UUID spanId, Map<String, String> baggage) {
       _baggage = baggage;
       _traceId = traceId;
       _spanId = spanId;
@@ -167,11 +155,11 @@ public final class PackSpan implements Span {
       return String.valueOf(_spanId);
     }
 
-    public long traceId() {
+    public UUID traceId() {
       return _traceId;
     }
 
-    public long spanId() {
+    public UUID spanId() {
       return _spanId;
     }
 
@@ -184,24 +172,6 @@ public final class PackSpan implements Span {
     @Override
     public Iterable<Map.Entry<String, String>> baggageItems() {
       return _baggage.entrySet();
-    }
-  }
-
-  public static final class LogEntry {
-    private final long _timestampMicros;
-    private final Map<String, ?> _fields;
-
-    public LogEntry(long timestampMicros, Map<String, ?> fields) {
-      _timestampMicros = timestampMicros;
-      _fields = fields;
-    }
-
-    public long timestampMicros() {
-      return _timestampMicros;
-    }
-
-    public Map<String, ?> fields() {
-      return _fields;
     }
   }
 
@@ -238,9 +208,10 @@ public final class PackSpan implements Span {
     }
   }
 
-  public PackSpan(String operationName, long startMicros, Map<String, Object> initialTags, List<Reference> refs) {
+  public PackSpan(String operationName, long startTsMicros, long startNanos, Map<String, Object> initialTags,
+      List<Reference> refs) {
     _operationName = operationName;
-    _startMicros = startMicros;
+    _startNanos = startNanos;
     if (initialTags == null) {
       _tags = new HashMap<>();
     } else {
@@ -254,13 +225,14 @@ public final class PackSpan implements Span {
     PackContext parent = findPreferredParentRef(_references);
     if (parent == null) {
       // We're a root Span.
-      _context = new PackContext(nextId(), nextId(), new HashMap<String, String>());
-      _parentId = 0;
+      _context = new PackContext(UUID.randomUUID(), UUID.randomUUID(), new HashMap<String, String>());
+      _parentId = null;
     } else {
       // We're a child Span.
-      _context = new PackContext(parent._traceId, nextId(), mergeBaggages(_references));
+      _context = new PackContext(parent._traceId, UUID.randomUUID(), mergeBaggages(_references));
       _parentId = parent._spanId;
     }
+    LoggerReporter.start(startTsMicros, this);
   }
 
   private static PackContext findPreferredParentRef(List<Reference> references) {
@@ -290,7 +262,11 @@ public final class PackSpan implements Span {
     return nextId.addAndGet(1);
   }
 
-  static long nowMicros() {
+  static long nowMicrosViaNanoTime() {
+    return System.nanoTime() / 1000;
+  }
+
+  static long nowMicrosViaMillisTime() {
     return System.currentTimeMillis() * 1000;
   }
 
@@ -306,5 +282,12 @@ public final class PackSpan implements Span {
   public String toString() {
     return "{" + "traceId:" + _context.traceId() + ", spanId:" + _context.spanId() + ", parentId:" + _parentId
         + ", operationName:\"" + _operationName + "\"}";
+  }
+
+  public long elapsedMicros() {
+    if (_finishNanos == 0) {
+      return 0;
+    }
+    return (_finishNanos - _startNanos) / 1000;
   }
 }

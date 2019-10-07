@@ -43,9 +43,9 @@ import pack.iscsi.wal.remote.generated.JournalRangeResponse;
 import pack.iscsi.wal.remote.generated.PackException;
 import pack.iscsi.wal.remote.generated.PackWalService;
 import pack.iscsi.wal.remote.generated.PackWalService.Processor;
+import pack.util.tracer.TracerUtil;
 import pack.iscsi.wal.remote.generated.ReleaseRequest;
 import pack.iscsi.wal.remote.generated.WriteRequest;
-import pack.util.TracerUtil;
 
 public class RemoteWALServer implements Closeable, PackWalService.Iface {
 

@@ -51,7 +51,7 @@
 	</appender>
 	<logger name="TRACER" additivity="false">
 		<level value="trace"></level>
-		<appender-ref ref="tracerconsole" />
+		<appender-ref ref="tracerfile" />
 	</logger>
 	<root>
 		<priority value="info" />
