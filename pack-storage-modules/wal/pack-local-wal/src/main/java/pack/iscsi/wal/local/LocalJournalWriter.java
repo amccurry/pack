@@ -77,7 +77,7 @@ public class LocalJournalWriter implements Closeable {
 
   private void write(byte[] array) throws IOException {
     long pos = _raPosition.get();
-    _ra.writeFully(pos, array);
+    _ra.write(pos, array);
     _raPosition.set(pos + array.length);
   }
 

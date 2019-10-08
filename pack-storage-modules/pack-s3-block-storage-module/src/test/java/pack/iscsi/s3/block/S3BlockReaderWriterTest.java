@@ -82,7 +82,7 @@ public class S3BlockReaderWriterTest {
       assertEquals(1, response.getLastStoredGeneration());
 
       byte[] buffer2 = new byte[blockSize];
-      randomAccessIO.readFully(0, buffer2);
+      randomAccessIO.read(0, buffer2);
       assertTrue(Arrays.equals(getPartial(buffer, blockSize), buffer2));
     }
     assertEquals(blockSize, file2.length());

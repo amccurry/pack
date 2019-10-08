@@ -72,7 +72,7 @@ public class S3BlockReader implements BlockIOExecutor {
         while (length > 0) {
           int len = Math.min(length, buffer.length);
           int read = inputStream.read(buffer, 0, len);
-          randomAccessIO.writeFully(pos, buffer, 0, read);
+          randomAccessIO.write(pos, buffer, 0, read);
           pos += read;
           length -= read;
         }

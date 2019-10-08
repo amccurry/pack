@@ -89,20 +89,20 @@ public class LocalJournalReader implements Comparable<LocalJournalReader>, Close
 
   private void readFully(byte[] bytes, int offset, int length) throws IOException {
     long pos = _raPosition.get();
-    _ra.readFully(pos, bytes, offset, length);
+    _ra.read(pos, bytes, offset, length);
     _raPosition.set(pos + length);
   }
 
   private int readInt() throws IOException {
     long pos = _raPosition.get();
-    _ra.readFully(pos, _buffer.array(), 0, 4);
+    _ra.read(pos, _buffer.array(), 0, 4);
     _raPosition.set(pos + 4);
     return _buffer.getInt(0);
   }
 
   private long readLong() throws IOException {
     long pos = _raPosition.get();
-    _ra.readFully(pos, _buffer.array(), 0, 8);
+    _ra.read(pos, _buffer.array(), 0, 8);
     _raPosition.set(pos + 8);
     return _buffer.getLong(0);
   }
@@ -147,16 +147,16 @@ public class LocalJournalReader implements Comparable<LocalJournalReader>, Close
   private static long getMinGeneration(RandomAccessIO ra) throws IOException {
     byte[] buffer = new byte[8];
     ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-    ra.readFully(0, buffer, 0, 8);
+    ra.read(0, buffer, 0, 8);
     return byteBuffer.getLong(0);
   }
 
   private static long getMaxGeneration(RandomAccessIO ra) throws IOException {
     byte[] buffer = new byte[8];
     ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-    ra.readFully(ra.length() - 4, buffer, 0, 4);
+    ra.read(ra.length() - 4, buffer, 0, 4);
     long position = byteBuffer.getInt(0);
-    ra.readFully(position, buffer, 0, 8);
+    ra.read(position, buffer, 0, 8);
     return byteBuffer.getLong(0);
   }
 

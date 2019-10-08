@@ -57,7 +57,7 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
             int len = Math.min(buffer.length, length);
             LOGGER.info("readFully position {} buffer {} len {}", position, buffer.length, len);
             try {
-              randomAccessIO.readFully(position, buffer, 0, len);
+              randomAccessIO.read(position, buffer, 0, len);
             } catch (Throwable t) {
               LOGGER.error("Unknown error", t);
               throw t;
@@ -109,7 +109,7 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
             int length = request.getBlockSize();
             while (length > 0) {
               int read = input.read(buffer);
-              randomAccessIO.writeFully(position, buffer, 0, read);
+              randomAccessIO.write(position, buffer, 0, read);
               position += read;
               length -= read;
             }

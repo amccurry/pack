@@ -48,10 +48,10 @@ public abstract class FileIO implements RandomAccessIO {
   }
 
   @Override
-  public abstract void writeFully(long position, byte[] buffer, int offset, int length) throws IOException;
+  public abstract void write(long position, byte[] buffer, int offset, int length) throws IOException;
 
   @Override
-  public abstract void readFully(long position, byte[] buffer, int offset, int length) throws IOException;
+  public abstract void read(long position, byte[] buffer, int offset, int length) throws IOException;
 
   private static class FileIODirectRandomAccessFile implements RandomAccessIO {
 
@@ -67,7 +67,7 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     @Override
-    public void writeFully(long position, byte[] buffer, int offset, int length) throws IOException {
+    public void write(long position, byte[] buffer, int offset, int length) throws IOException {
       try (Scope scope1 = TracerUtil.trace(FileIODirectRandomAccessFile.class, "writeFully")) {
         synchronized (_lock) {
           seekIfNeeded(position);
@@ -79,7 +79,7 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     @Override
-    public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
+    public void read(long position, byte[] buffer, int offset, int length) throws IOException {
       try (Scope scope1 = TracerUtil.trace(FileIODirectRandomAccessFile.class, "readFully")) {
         synchronized (_lock) {
           seekIfNeeded(position);
@@ -162,7 +162,7 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     @Override
-    public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
+    public void read(long position, byte[] buffer, int offset, int length) throws IOException {
       synchronized (_lock) {
         seekIfNeeded(position);
         _draf.read(buffer, offset, length);
@@ -200,7 +200,7 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     @Override
-    public void writeFully(long position, byte[] buffer, int offset, int length) throws IOException {
+    public void write(long position, byte[] buffer, int offset, int length) throws IOException {
       ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, length);
       while (byteBuffer.hasRemaining()) {
         position += _channel.write(byteBuffer, position);
@@ -208,7 +208,7 @@ public abstract class FileIO implements RandomAccessIO {
     }
 
     @Override
-    public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
+    public void read(long position, byte[] buffer, int offset, int length) throws IOException {
       ByteBuffer byteBuffer = ByteBuffer.wrap(buffer, offset, length);
       while (byteBuffer.hasRemaining()) {
         position += _channel.read(byteBuffer, position);

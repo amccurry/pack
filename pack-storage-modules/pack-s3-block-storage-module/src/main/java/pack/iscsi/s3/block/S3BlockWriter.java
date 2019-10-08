@@ -80,7 +80,7 @@ public class S3BlockWriter implements BlockIOExecutor {
           return -1;
         }
         byte[] buffer = new byte[1];
-        reader.readFully(_position + startingPositionOfBlock, buffer);
+        reader.read(_position + startingPositionOfBlock, buffer);
         _position++;
         return buffer[0];
       }
@@ -91,7 +91,7 @@ public class S3BlockWriter implements BlockIOExecutor {
           return -1;
         }
         int length = (int) Math.min(len, blockSize - _position);
-        reader.readFully(_position + startingPositionOfBlock, b, off, length);
+        reader.read(_position + startingPositionOfBlock, b, off, length);
         _position += length;
         return length;
       }

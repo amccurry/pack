@@ -8,7 +8,7 @@ public interface BlockRecoveryWriter {
 
   public static BlockRecoveryWriter toBlockRecoveryWriter(long startingPositionOfBlock, RandomAccessIO randomAccessIO) {
     return (generation, position, buffer, offset, length) -> {
-      randomAccessIO.writeFully(startingPositionOfBlock + position, buffer, offset, length);
+      randomAccessIO.write(startingPositionOfBlock + position, buffer, offset, length);
       return true;
     };
   }

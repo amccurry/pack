@@ -44,7 +44,7 @@ public class DirectIO implements RandomAccessIO {
   }
 
   @Override
-  public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
+  public void read(long position, byte[] buffer, int offset, int length) throws IOException {
     long blockStart = _lib.blockStart(position);
     long blockEnd = _lib.blockEnd(position + length);
     int blength = (int) (blockEnd - blockStart);
@@ -70,7 +70,7 @@ public class DirectIO implements RandomAccessIO {
   }
 
   @Override
-  public void writeFully(long position, byte[] buffer, int offset, int length) throws IOException {
+  public void write(long position, byte[] buffer, int offset, int length) throws IOException {
     long blockStart = _lib.blockStart(position);
     long blockEnd = _lib.blockEnd(position + length);
     int blength = (int) (blockEnd - blockStart);
@@ -150,8 +150,8 @@ public class DirectIO implements RandomAccessIO {
       }
 
       @Override
-      public void readFully(long position, byte[] buffer, int offset, int length) throws IOException {
-        DirectIO.this.readFully(position, buffer, offset, length);
+      public void read(long position, byte[] buffer, int offset, int length) throws IOException {
+        DirectIO.this.read(position, buffer, offset, length);
       }
 
       @Override

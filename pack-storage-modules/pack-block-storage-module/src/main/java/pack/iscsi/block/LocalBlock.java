@@ -88,7 +88,7 @@ public class LocalBlock implements Closeable, Block {
       checkPositionAndLength(blockPosition, len);
       checkGenerations();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio read")) {
-        _randomAccessIO.readFully(getFilePosition(blockPosition), bytes, offset, len);
+        _randomAccessIO.read(getFilePosition(blockPosition), bytes, offset, len);
       }
     }
   }
@@ -112,7 +112,7 @@ public class LocalBlock implements Closeable, Block {
       }
       writeMetadata();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio write")) {
-        _randomAccessIO.writeFully(getFilePosition(blockPosition), bytes, offset, len);
+        _randomAccessIO.write(getFilePosition(blockPosition), bytes, offset, len);
       }
       if (autoFlush) {
         AsyncCompletableFuture comFlush = AsyncCompletableFuture.exec(getClass(), "flush", _executor,

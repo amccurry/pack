@@ -18,6 +18,7 @@ import org.jscsi.target.scsi.cdb.Read6Cdb;
 import org.jscsi.target.scsi.cdb.ReadCdb;
 import org.jscsi.target.scsi.cdb.ScsiOperationCode;
 import org.jscsi.target.settings.SettingsException;
+import org.jscsi.target.storage.IStorageModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,8 +92,8 @@ public class ReadStage extends ReadOrWriteStage {
         return;
       }
 
-      int blockSize = session.getStorageModule()
-                             .getBlockSize();
+      IStorageModule storageModule = session.getStorageModule();
+      int blockSize = storageModule.getBlockSize();
 
       final int totalTransferLength = blockSize * cdb.getTransferLength();
       final long storageOffset = blockSize * cdb.getLogicalBlockAddress();
@@ -129,9 +130,8 @@ public class ReadStage extends ReadOrWriteStage {
       while (bytesSent < totalTransferLength - settings.getMaxRecvDataSegmentLength()) {
 
         // get data and prepare data segment
-        session.getStorageModule()
-               .read(dataSegmentArray, storageOffset + bytesSent, address, port, initiatorTaskTag,
-                   commandSequenceNumber);
+        storageModule.read(dataSegmentArray, storageOffset + bytesSent, address, port, initiatorTaskTag,
+            commandSequenceNumber);
 
         // create and send PDU
         responsePdu = TargetPduFactory.createDataInPdu(false, // finalFlag,
@@ -171,8 +171,8 @@ public class ReadStage extends ReadOrWriteStage {
       // get data and prepare data segment
       final int bytesRemaining = totalTransferLength - bytesSent;
       dataSegmentArray = connection.getDataInArray(bytesRemaining);
-      session.getStorageModule()
-             .read(dataSegmentArray, storageOffset + bytesSent, address, port, initiatorTaskTag, commandSequenceNumber);
+      storageModule.read(dataSegmentArray, storageOffset + bytesSent, address, port, initiatorTaskTag,
+          commandSequenceNumber);
       dataSegment = ByteBuffer.wrap(dataSegmentArray);
 
       // create and send PDU (with or without status)

@@ -30,14 +30,14 @@ public class FileIOTest {
 
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
       randomAccessIO.setLength(1);
-      randomAccessIO.writeFully(0, new byte[] { 1 });
+      randomAccessIO.write(0, new byte[] { 1 });
       assertEquals(1, randomAccessIO.length());
     }
 
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
       randomAccessIO.setLength(1000);
       byte[] buf = new byte[1000];
-      randomAccessIO.readFully(0, buf);
+      randomAccessIO.read(0, buf);
       assertEquals((byte) 1, buf[0]);
       assertEquals(1000, randomAccessIO.length());
     }
@@ -60,10 +60,10 @@ public class FileIOTest {
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
       byte[] buffer1 = new byte[blockSize];
       random.nextBytes(buffer1);
-      randomAccessIO.writeFully(1000, buffer1);
+      randomAccessIO.write(1000, buffer1);
       try (RandomAccessIOReader reader = randomAccessIO.cloneReadOnly()) {
         byte[] buffer2 = new byte[blockSize];
-        reader.readFully(1000, buffer2);
+        reader.read(1000, buffer2);
         assertTrue(Arrays.equals(buffer1, buffer2));
       }
       assertEquals(1000 + buffer1.length, randomAccessIO.length());
