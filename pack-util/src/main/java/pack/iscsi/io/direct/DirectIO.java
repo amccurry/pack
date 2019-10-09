@@ -2,8 +2,6 @@ package pack.iscsi.io.direct;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
@@ -27,15 +25,12 @@ public class DirectIO implements RandomAccessIO {
   private final DirectIoLib _lib;
   private final int _fd;
   private final AtomicLong _length = new AtomicLong();
-  private final BlockingQueue<AlignedDirectByteBuffer> _buffers = new ArrayBlockingQueue<>(10);
-  private final int _bufferSize;
 
   public DirectIO(File file) throws IOException {
     _file = file;
     _lib = DirectIoLib.getLibForPath(_file.getAbsolutePath());
     _fd = _lib.oDirectOpen(_file.getAbsolutePath(), false);
     _length.set(_file.length());
-    _bufferSize = _lib.blockSize() * 1024;
   }
 
   @Override
@@ -60,24 +55,12 @@ public class DirectIO implements RandomAccessIO {
     }
   }
 
-  private void readInternal(long offset, AlignedDirectByteBuffer buf, int remaining) throws IOException {
-    while (remaining > 0) {
-      int pread = _lib.pread(_fd, buf, offset);
-      buf.position(buf.position() + pread);
-      offset += pread;
-      remaining -= pread;
-    }
-  }
-
   @Override
   public void write(long position, byte[] buffer, int offset, int length) throws IOException {
     long blockStart = _lib.blockStart(position);
     long blockEnd = _lib.blockEnd(position + length);
     int blength = (int) (blockEnd - blockStart);
-    long potentialNewLength = position + length;
-    if (potentialNewLength > _length.get()) {
-      setLength(potentialNewLength);
-    }
+    long potentialNewLength = position + blength;
     AlignedDirectByteBuffer buf = getAlignedDirectByteBuffer(blength);
     try {
       if (!isBlockAligned(position, length, blockStart, blockEnd)) {
@@ -88,40 +71,14 @@ public class DirectIO implements RandomAccessIO {
       buf.position((int) (position - blockStart));
       buf.put(buffer, offset, length);
       buf.position(0);
+      buf.limit(blength);
       writeInternal(blockStart, buf);
     } finally {
       release(buf);
+      if (potentialNewLength > _length.get()) {
+        setLength(position + length);
+      }
     }
-  }
-
-  private void writeInternal(long offset, AlignedDirectByteBuffer buf) throws IOException {
-    int remaining = buf.limit();
-    while (remaining > 0) {
-      int pwrite = _lib.pwrite(_fd, buf, offset);
-      buf.position(Math.min(buf.position() + pwrite, remaining));
-      offset += pwrite;
-      remaining -= pwrite;
-    }
-  }
-
-  private boolean isBlockAligned(long position, int length, long blockStart, long blockEnd) {
-    return blockStart == position && position + length <= blockEnd;
-  }
-
-  private void release(AlignedDirectByteBuffer buf) {
-    if (!_buffers.offer(buf)) {
-      buf.close();
-    }
-  }
-
-  private AlignedDirectByteBuffer getAlignedDirectByteBuffer(int length) {
-    AlignedDirectByteBuffer buffer = _buffers.poll();
-    if (buffer == null) {
-      buffer = AlignedDirectByteBuffer.allocate(_lib, _bufferSize);
-    }
-    buffer.clear();
-    buffer.limit(length);
-    return buffer;
   }
 
   @Override
@@ -169,4 +126,34 @@ public class DirectIO implements RandomAccessIO {
     }
   }
 
+  private void readInternal(long offset, AlignedDirectByteBuffer buf, int remaining) throws IOException {
+    while (remaining > 0) {
+      int pread = _lib.pread(_fd, buf, offset);
+      buf.position(buf.position() + pread);
+      offset += pread;
+      remaining -= pread;
+    }
+  }
+
+  private void writeInternal(long offset, AlignedDirectByteBuffer buf) throws IOException {
+    int remaining = buf.limit();
+    while (remaining > 0) {
+      int pwrite = _lib.pwrite(_fd, buf, offset);
+      buf.position(Math.min(buf.position() + pwrite, remaining));
+      offset += pwrite;
+      remaining -= pwrite;
+    }
+  }
+
+  private boolean isBlockAligned(long position, int length, long blockStart, long blockEnd) {
+    return blockStart == position && position + length <= blockEnd;
+  }
+
+  private void release(AlignedDirectByteBuffer buf) {
+    buf.close();
+  }
+
+  private AlignedDirectByteBuffer getAlignedDirectByteBuffer(int length) {
+    return AlignedDirectByteBuffer.allocate(_lib, length);
+  }
 }

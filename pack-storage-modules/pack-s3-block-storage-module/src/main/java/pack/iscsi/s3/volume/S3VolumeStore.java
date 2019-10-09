@@ -1,6 +1,5 @@
 package pack.iscsi.s3.volume;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -9,6 +8,8 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -23,14 +24,14 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import consistent.s3.ConsistentAmazonS3;
-import pack.iscsi.io.IOUtils;
 import pack.iscsi.s3.util.S3Utils;
+import pack.iscsi.s3.util.S3Utils.ListResultProcessor;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
@@ -72,19 +73,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public PackVolumeMetadata getVolumeMetadata(long volumeId) throws IOException {
     String key = getVolumeMetadataKey(volumeId);
-    return readVolumeMetadata(key);
-  }
-
-  private PackVolumeMetadata readVolumeMetadata(String key) throws IOException {
-    try {
-      String json = _consistentAmazonS3.getObjectAsString(_bucket, key);
-      return OBJECT_MAPPER.readValue(json, PackVolumeMetadata.class);
-    } catch (AmazonServiceException e) {
-      if (e.getStatusCode() == 404) {
-        return null;
-      }
-      throw e;
-    }
+    return S3Utils.readVolumeMetadata(_consistentAmazonS3, _bucket, key);
   }
 
   @Override
@@ -164,13 +153,8 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
                                                     .volumeId(volumeId)
                                                     .build();
     String key = getVolumeMetadataKey(metadata.getVolumeId());
-    writeVolumeMetadata(key, metadata);
+    S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, key, metadata);
     createVolumeNamePointer(name, volumeId);
-  }
-
-  private void writeVolumeMetadata(String key, PackVolumeMetadata metadata) throws IOException {
-    byte[] bs = OBJECT_MAPPER.writeValueAsBytes(metadata);
-    putByteArray(bs, key);
   }
 
   @Override
@@ -207,9 +191,10 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     _consistentAmazonS3.putObject(_bucket, key, _hostname);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     String metadataKey = getVolumeMetadataKey(metadata.getVolumeId());
-    writeVolumeMetadata(metadataKey, metadata.toBuilder()
+    PackVolumeMetadata newMetadata = metadata.toBuilder()
                                              .attachedHostname(_hostname)
-                                             .build());
+                                             .build();
+    S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, metadataKey, newMetadata);
   }
 
   @Override
@@ -220,9 +205,10 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     _consistentAmazonS3.deleteObject(_bucket, key);
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     String metadataKey = getVolumeMetadataKey(metadata.getVolumeId());
-    writeVolumeMetadata(metadataKey, metadata.toBuilder()
+    PackVolumeMetadata newMetadata = metadata.toBuilder()
                                              .attachedHostname(null)
-                                             .build());
+                                             .build();
+    S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, metadataKey, newMetadata);
   }
 
   @Override
@@ -253,7 +239,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   public void setCachedBlockIds(long volumeId, long... blockIds) throws IOException {
     byte[] bs = toByteArray(blockIds);
     String key = S3Utils.getCachedBlockInfo(_objectPrefix, volumeId);
-    putByteArray(bs, key);
+    S3Utils.putByteArray(_consistentAmazonS3, _bucket, key, bs);
   }
 
   @Override
@@ -274,9 +260,11 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   }
 
   @Override
-  public void createSnapshot(String name, String snapshotName) throws IOException {
+  public void createSnapshot(String name, String snapshotId) throws IOException {
     checkExistence(name);
     checkAttached(name);
+    checkNoExistence(name, snapshotId);
+
     PackVolumeMetadata metadata = getVolumeMetadata(name);
     long volumeId = metadata.getVolumeId();
     VolumeListener listener = getListener(metadata);
@@ -284,19 +272,20 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
 
     // Store block info
     byte[] bs = toByteArray(generations);
-    String snapshotBlockInfoKey = S3Utils.getVolumeSnapshotBlockInfoKey(_objectPrefix, volumeId, snapshotName);
-    putByteArray(bs, snapshotBlockInfoKey);
+    String snapshotBlockInfoKey = S3Utils.getVolumeSnapshotBlockInfoKey(_objectPrefix, volumeId, snapshotId);
+    S3Utils.putByteArray(_consistentAmazonS3, _bucket, snapshotBlockInfoKey, bs);
 
     // Store metadata
-    String snapshotMetadataKey = S3Utils.getVolumeSnapshotMetadataKey(_objectPrefix, volumeId, snapshotName);
-    writeVolumeMetadata(snapshotMetadataKey, metadata.toBuilder()
-                                                     .attachedHostname(null)
-                                                     .build());
+    String snapshotMetadataKey = S3Utils.getVolumeSnapshotMetadataKey(_objectPrefix, volumeId, snapshotId);
+    PackVolumeMetadata snapshotMetadata = metadata.toBuilder()
+                                                  .attachedHostname(null)
+                                                  .build();
+    S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, snapshotMetadataKey, snapshotMetadata);
 
     // Store cached block info
     String existingCachedBlockInfoKey = S3Utils.getCachedBlockInfo(_objectPrefix, volumeId);
     String snapshotCachedBlockInfoKey = S3Utils.getVolumeSnapshotCachedBlockInfoKey(_objectPrefix, volumeId,
-        snapshotName);
+        snapshotId);
 
     S3Utils.copy(_consistentAmazonS3, _bucket, existingCachedBlockInfoKey, snapshotCachedBlockInfoKey);
   }
@@ -363,7 +352,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
                                                           .build();
 
     String key = getVolumeMetadataKey(cloneVolumeId);
-    writeVolumeMetadata(key, metadata);
+    S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, key, metadata);
     createVolumeNamePointer(name, cloneVolumeId);
     copyVolumeData(cloneVolumeId, existingVolumeId, snapshotId);
   }
@@ -377,22 +366,16 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     S3Utils.copy(_consistentAmazonS3, _bucket, snapshotCachedBlockInfoKey, cloneCachedBlockInfoKey);
     // copy blocks themselves
     String snapshotBlockInfoKey = S3Utils.getVolumeSnapshotBlockInfoKey(_objectPrefix, existingVolumeId, snapshotId);
-    byte[] bs = getByteArray(snapshotBlockInfoKey);
-    try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bs))) {
-      int count = input.readInt();
-      for (int i = 0; i < count; i++) {
-        long blockId = input.readLong();
-        long generation = input.readLong();
-        if (generation == 0) {
-          continue;
-        }
-        LOGGER.info("Copying src volumeId {} dst volumeId {} blockId {} generation {}", existingVolumeId, cloneVolumeId,
-            blockId, generation);
-        String srcKey = S3Utils.getBlockGenerationKey(_objectPrefix, existingVolumeId, blockId, generation);
-        String dstKey = S3Utils.getBlockGenerationKey(_objectPrefix, cloneVolumeId, blockId, generation);
-        S3Utils.copy(_consistentAmazonS3, _bucket, srcKey, dstKey);
-      }
-    }
+    // byte[] bs = S3Utils.getByteArray(_consistentAmazonS3, _bucket,
+    // snapshotBlockInfoKey);
+
+    S3Utils.readVolumeSnapshotBlockInfo(_consistentAmazonS3, _bucket, snapshotBlockInfoKey, (blockId, generation) -> {
+      LOGGER.info("Copying src volumeId {} dst volumeId {} blockId {} generation {}", existingVolumeId, cloneVolumeId,
+          blockId, generation);
+      String srcKey = S3Utils.getBlockGenerationKey(_objectPrefix, existingVolumeId, blockId, generation);
+      String dstKey = S3Utils.getBlockGenerationKey(_objectPrefix, cloneVolumeId, blockId, generation);
+      S3Utils.copy(_consistentAmazonS3, _bucket, srcKey, dstKey);
+    });
   }
 
   @Override
@@ -407,7 +390,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public PackVolumeMetadata getVolumeMetadata(long volumeId, String snapshotId) throws IOException {
     String key = S3Utils.getVolumeSnapshotMetadataKey(_objectPrefix, volumeId, snapshotId);
-    return readVolumeMetadata(key);
+    return S3Utils.readVolumeMetadata(_consistentAmazonS3, _bucket, key);
   }
 
   private VolumeListener getListener(PackVolumeMetadata metadata) throws IOException {
@@ -438,18 +421,66 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     return bs;
   }
 
-  private void putByteArray(byte[] bs, String key) throws IOException {
-    try (ByteArrayInputStream input = new ByteArrayInputStream(bs)) {
-      ObjectMetadata objectMetadata = new ObjectMetadata();
-      objectMetadata.setContentLength(bs.length);
-      _consistentAmazonS3.putObject(_bucket, key, input, objectMetadata);
+  @Override
+  public void gc(String name) throws IOException {
+
+    // gather all block and generations from snapshots
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    long volumeId = metadata.getVolumeId();
+    Map<Long, Set<Long>> snapshotsBlockToGensMap = new HashMap<>();
+    List<String> listSnapshots = listSnapshots(name);
+    for (String snapshotId : listSnapshots) {
+      String snapshotBlockInfoKey = S3Utils.getVolumeSnapshotBlockInfoKey(_objectPrefix, volumeId, snapshotId);
+      S3Utils.readVolumeSnapshotBlockInfo(_consistentAmazonS3, _bucket, snapshotBlockInfoKey, (blockId, generation) -> {
+        Set<Long> ids = snapshotsBlockToGensMap.get(blockId);
+        if (ids == null) {
+          snapshotsBlockToGensMap.put(blockId, ids = new HashSet<>());
+        }
+        ids.add(generation);
+      });
     }
+
+    Map<Long, Long> oldestGenerationPerBlock = new HashMap<>();
+    String blocksPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix, volumeId);
+    S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blocksPrefix, new ListResultProcessor() {
+      @Override
+      public void addResult(S3ObjectSummary summary) {
+        String key = summary.getKey();
+        LOGGER.info("gc processing key {}", key);
+        long blockId = S3Utils.getBlockIdFromKey(key);
+        long generation = S3Utils.getBlockGenerationFromKey(key);
+        if (isOldestGeneration(oldestGenerationPerBlock, blockId, generation)) {
+          // keep around might not be the oldest once the block is complete
+          Long oldGeneration = oldestGenerationPerBlock.put(blockId, generation);
+          if (oldGeneration != null) {
+            if (!isInUse(snapshotsBlockToGensMap, blockId, oldGeneration)) {
+              String deleteKey = S3Utils.getBlockGenerationKey(_objectPrefix, volumeId, blockId, oldGeneration);
+              LOGGER.info("gc delete object {}", deleteKey);
+              _consistentAmazonS3.deleteObject(_bucket, deleteKey);
+            }
+          }
+        } else {
+          // remove
+          if (!isInUse(snapshotsBlockToGensMap, blockId, generation)) {
+            LOGGER.info("gc delete object {}", key);
+            _consistentAmazonS3.deleteObject(_bucket, key);
+          }
+        }
+      }
+    });
+
   }
 
-  private byte[] getByteArray(String key) throws IOException {
-    S3Object object = _consistentAmazonS3.getObject(_bucket, key);
-    try (InputStream input = object.getObjectContent()) {
-      return IOUtils.toByteArray(input);
+  protected boolean isInUse(Map<Long, Set<Long>> snapshotsBlockToGensMap, long blockId, long generation) {
+    Set<Long> gens = snapshotsBlockToGensMap.get(blockId);
+    if (gens == null) {
+      return false;
     }
+    return gens.contains(generation);
+  }
+
+  protected boolean isOldestGeneration(Map<Long, Long> oldestGenerationPerBlock, long blockId, long generation) {
+    Long currentMaxGen = oldestGenerationPerBlock.get(blockId);
+    return currentMaxGen == null || generation > currentMaxGen;
   }
 }

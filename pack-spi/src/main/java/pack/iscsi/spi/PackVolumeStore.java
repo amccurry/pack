@@ -40,6 +40,8 @@ public interface PackVolumeStore extends Closeable {
 
   void sync(String name) throws IOException;
 
+  void gc(String name) throws IOException;
+
   default void register(VolumeListener listener) {
 
   }
@@ -54,6 +56,13 @@ public interface PackVolumeStore extends Closeable {
     checkAttached(name);
     if (!listSnapshots(name).contains(snapshotId)) {
       throw new IOException("Volume " + name + " with snapshot " + snapshotId + " does not exist");
+    }
+  }
+  
+  default void checkNoExistence(String name, String snapshotId) throws IOException {
+    checkAttached(name);
+    if (listSnapshots(name).contains(snapshotId)) {
+      throw new IOException("Volume " + name + " with snapshot " + snapshotId + " alreadt exists");
     }
   }
 

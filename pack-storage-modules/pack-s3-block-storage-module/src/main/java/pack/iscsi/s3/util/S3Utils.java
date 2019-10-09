@@ -1,5 +1,9 @@
 package pack.iscsi.s3.util;
 
+import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -7,17 +11,21 @@ import java.util.List;
 import org.apache.curator.shaded.com.google.common.collect.ImmutableList;
 import org.slf4j.Logger;
 
+import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
+import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.ObjectListing;
 import com.amazonaws.services.s3.model.ObjectMetadata;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectSummary;
-import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Joiner;
 import com.google.common.base.Splitter;
 
 import consistent.s3.ConsistentAmazonS3;
+import pack.iscsi.io.IOUtils;
+import pack.iscsi.spi.PackVolumeMetadata;
 
 public class S3Utils {
 
@@ -32,10 +40,17 @@ public class S3Utils {
   private static final String BLOCK = "block";
   private static final Splitter SPLITTER = Splitter.on(SEPARATOR);
   private static final Joiner JOINER = Joiner.on(SEPARATOR);
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   public static interface ListResultProcessor {
 
     void addResult(S3ObjectSummary summary);
+
+  }
+
+  public interface ReadVolumeSnapshotBlockInfo {
+
+    void read(long blockId, long generation) throws IOException;
 
   }
 
@@ -139,6 +154,23 @@ public class S3Utils {
     return list.get(list.size() - 2);
   }
 
+  public static long getBlockGenerationFromKey(String blockWithGenerationKey) {
+    List<String> parts = getBlockIdAndGenerationParts(blockWithGenerationKey);
+    return Long.parseLong(parts.get(1));
+  }
+
+  public static long getBlockIdFromKey(String blockWithGenerationKey) {
+    List<String> parts = getBlockIdAndGenerationParts(blockWithGenerationKey);
+    return Long.parseLong(parts.get(0));
+  }
+
+  private static List<String> getBlockIdAndGenerationParts(String blockWithGenerationKey) {
+    int indexOfBlockMarker = blockWithGenerationKey.indexOf("/block/") + "/block/".length();
+    String str = blockWithGenerationKey.substring(indexOfBlockMarker);
+    List<String> list = SPLITTER.splitToList(str);
+    return list;
+  }
+
   private static String join(String objectPrefix, Object... parts) {
     if (objectPrefix == null || objectPrefix.trim()
                                             .isEmpty()) {
@@ -158,6 +190,58 @@ public class S3Utils {
     ObjectMetadata metadata = new ObjectMetadata();
     metadata.setContentLength(length);
     consistentAmazonS3.putObject(bucket, dst, s3Object.getObjectContent(), metadata);
+  }
+
+  public static void putByteArray(ConsistentAmazonS3 consistentAmazonS3, String bucket, String key, byte[] bs)
+      throws IOException {
+    try (ByteArrayInputStream input = new ByteArrayInputStream(bs)) {
+      ObjectMetadata objectMetadata = new ObjectMetadata();
+      objectMetadata.setContentLength(bs.length);
+      consistentAmazonS3.putObject(bucket, key, input, objectMetadata);
+    }
+  }
+
+  public static byte[] getByteArray(ConsistentAmazonS3 consistentAmazonS3, String bucket, String key)
+      throws IOException {
+    S3Object object = consistentAmazonS3.getObject(bucket, key);
+    try (InputStream input = object.getObjectContent()) {
+      return IOUtils.toByteArray(input);
+    }
+  }
+
+  public static void writeVolumeMetadata(ConsistentAmazonS3 consistentAmazonS3, String bucket, String key,
+      PackVolumeMetadata metadata) throws IOException {
+    byte[] bs = OBJECT_MAPPER.writeValueAsBytes(metadata);
+    S3Utils.putByteArray(consistentAmazonS3, bucket, key, bs);
+  }
+
+  public static PackVolumeMetadata readVolumeMetadata(ConsistentAmazonS3 consistentAmazonS3, String bucket, String key)
+      throws IOException {
+    try {
+      String json = consistentAmazonS3.getObjectAsString(bucket, key);
+      return OBJECT_MAPPER.readValue(json, PackVolumeMetadata.class);
+    } catch (AmazonServiceException e) {
+      if (e.getStatusCode() == 404) {
+        return null;
+      }
+      throw e;
+    }
+  }
+
+  public static void readVolumeSnapshotBlockInfo(ConsistentAmazonS3 consistentAmazonS3, String bucket,
+      String snapshotBlockInfoKey, ReadVolumeSnapshotBlockInfo readVolumeSnapshotBlockInfo) throws IOException {
+    byte[] bs = S3Utils.getByteArray(consistentAmazonS3, bucket, snapshotBlockInfoKey);
+    try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bs))) {
+      int count = input.readInt();
+      for (int i = 0; i < count; i++) {
+        long blockId = input.readLong();
+        long generation = input.readLong();
+        if (generation == 0) {
+          continue;
+        }
+        readVolumeSnapshotBlockInfo.read(blockId, generation);
+      }
+    }
   }
 
 }
