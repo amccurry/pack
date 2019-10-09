@@ -264,6 +264,11 @@ public class PackVolumeAdminServer {
         return getVolumeMetadata(volumeId);
       }
 
+      @Override
+      public void gc(String name) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
     };
     PackVolumeAdminServer server = new PackVolumeAdminServer(service, packAdmin, actionTable1.getLink(), actionTable1,
         actionTable2);

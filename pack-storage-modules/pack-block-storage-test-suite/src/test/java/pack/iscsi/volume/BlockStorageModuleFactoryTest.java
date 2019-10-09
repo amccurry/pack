@@ -362,6 +362,11 @@ public abstract class BlockStorageModuleFactoryTest {
         throw new RuntimeException("not impl");
       }
 
+      @Override
+      public void gc(String name) throws IOException {
+        throw new RuntimeException("not impl");
+      }
+
     };
   }
 }

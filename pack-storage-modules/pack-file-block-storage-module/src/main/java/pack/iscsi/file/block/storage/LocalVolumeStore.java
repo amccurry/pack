@@ -92,4 +92,9 @@ public class LocalVolumeStore implements PackVolumeStore {
   public PackVolumeMetadata getVolumeMetadata(long volumeId, String snapshotId) throws IOException {
     throw new RuntimeException("not impl");
   }
+
+  @Override
+  public void gc(String name) throws IOException {
+    throw new RuntimeException("not impl");
+  }
 }
