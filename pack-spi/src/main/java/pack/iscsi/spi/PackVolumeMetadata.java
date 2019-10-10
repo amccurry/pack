@@ -17,5 +17,6 @@ public class PackVolumeMetadata {
   int blockSizeInBytes;
   long lengthInBytes;
   String attachedHostname;
+  boolean readOnly;
 
 }

@@ -26,6 +26,7 @@ set -- "${POSITIONAL[@]}" # restore positional parameters
 if [ "$#" -ne 1 ]; then
   echo "Usage:"
   echo "${0} [--length <length in bytes>] [--blocksize <block size in bytes>] <volumename>"
+  exit 1
 fi
 
 VOLUME_NAME="${1}"

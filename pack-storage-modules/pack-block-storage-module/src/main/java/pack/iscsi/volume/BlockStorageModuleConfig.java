@@ -23,6 +23,8 @@ public class BlockStorageModuleConfig {
   int blockSize;
 
   long blockCount;
+  
+  boolean readOnly;
 
   BlockIOFactory externalBlockStoreFactory;
 

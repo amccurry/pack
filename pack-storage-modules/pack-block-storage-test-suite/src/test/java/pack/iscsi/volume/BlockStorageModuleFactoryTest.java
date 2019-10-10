@@ -348,7 +348,8 @@ public abstract class BlockStorageModuleFactoryTest {
       }
 
       @Override
-      public void cloneVolume(String name, String existingVolume, String snapshotId) throws IOException {
+      public void cloneVolume(String name, String existingVolume, String snapshotId, boolean readOnly)
+          throws IOException {
         throw new RuntimeException("not impl");
       }
 

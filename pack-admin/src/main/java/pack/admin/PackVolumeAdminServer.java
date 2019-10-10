@@ -43,6 +43,7 @@ import spark.template.freemarker.FreeMarkerEngine;
 
 public class PackVolumeAdminServer {
 
+  private static final String READ_ONLY = "readOnly";
   private static final Logger LOGGER = LoggerFactory.getLogger(PackVolumeAdminServer.class);
   private static final String VOLUME_PREFIX = "/api/v1.0/volume";
   private static final String CLONE_VOLUME_NAME_PARAM = ":cloneVolumeName";
@@ -243,13 +244,15 @@ public class PackVolumeAdminServer {
       }
 
       @Override
-      public void cloneVolume(String name, String existingVolume, String snapshotId) throws IOException {
+      public void cloneVolume(String name, String existingVolume, String snapshotId, boolean readOnly)
+          throws IOException {
         checkNonExistence(name);
         checkExistence(existingVolume);
         checkExistence(existingVolume, snapshotId);
         PackVolumeMetadata metadata = getVolumeMetadata(existingVolume, snapshotId);
         allVolumes.put(name, metadata.toBuilder()
                                      .name(name)
+                                     .readOnly(readOnly)
                                      .volumeId(new Random().nextLong())
                                      .build());
       }
@@ -471,7 +474,9 @@ public class PackVolumeAdminServer {
       String volumeName = request.params(VOLUME_NAME_PARAM);
       String snapshotId = request.params(SNAPSHOT_ID_PARAM);
       String cloneVolumeName = request.params(CLONE_VOLUME_NAME_PARAM);
-      _packAdmin.cloneVolume(cloneVolumeName, volumeName, snapshotId);
+      String roValue = request.queryParams(READ_ONLY);
+      boolean readOnly = roValue != null && Boolean.parseBoolean(roValue.toLowerCase());
+      _packAdmin.cloneVolume(cloneVolumeName, volumeName, snapshotId, readOnly);
       return OKResponse.builder()
                        .message("Volume " + cloneVolumeName + " cloned from " + volumeName + "/" + snapshotId)
                        .build();
@@ -518,7 +523,7 @@ public class PackVolumeAdminServer {
     long sizeInBytes = 107374182400L;// 100 GiB
 
     @Builder.Default
-    int blockSize = 1048576;// 1 MiB
+    int blockSize = 16 * 1048576;// 16 MiB
   }
 
   @Value

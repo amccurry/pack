@@ -85,6 +85,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       long blockCount = Utils.getBlockCount(lengthInBytes, blockSize);
 
       BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
+                                                                .readOnly(volumeMetadata.isReadOnly())
                                                                 .blockCacheMetadataStore(_blockCacheMetadataStore)
                                                                 .blockDataDir(_blockDataDir)
                                                                 .blockGenerationStore(_blockGenerationStore)

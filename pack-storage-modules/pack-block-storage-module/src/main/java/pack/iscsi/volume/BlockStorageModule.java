@@ -98,8 +98,10 @@ public class BlockStorageModule implements StorageModule {
   private final ExecutorService _flushExecutor;
   private final ExecutorService _cachePreloadExecutor;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
+  private final boolean _readOnly;
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
+    _readOnly = config.isReadOnly();
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _flushExecutor = Executors.newSingleThreadExecutor();
     _cachePreloadExecutor = Utils.executor(PRELOAD + config.getVolumeId(), config.getCachePreloadExecutorThreadCount());
@@ -128,7 +130,9 @@ public class BlockStorageModule implements StorageModule {
 
     long period = config.getSyncTimeAfterIdleTimeUnit()
                         .toMillis(config.getSyncTimeAfterIdle());
-    _syncTimer.schedule(getTask(), period, period);
+    if (!_readOnly) {
+      _syncTimer.schedule(getTask(), period, period);
+    }
 
     _blockDataDir.mkdirs();
 
@@ -202,12 +206,14 @@ public class BlockStorageModule implements StorageModule {
     _syncTimer.cancel();
     _syncTimer.purge();
     _closed.set(true);
-    try {
-      List<Future<Void>> syncs = sync(false);
-      LOGGER.info("waiting for syncs to complete");
-      waitForSyncs(syncs);
-    } catch (InterruptedException e) {
-      throw new IOException(e);
+    if (!_readOnly) {
+      try {
+        List<Future<Void>> syncs = sync(false);
+        LOGGER.info("waiting for syncs to complete");
+        waitForSyncs(syncs);
+      } catch (InterruptedException e) {
+        throw new IOException(e);
+      }
     }
     IOUtils.close(LOGGER, _flushExecutor);
     IOUtils.close(LOGGER, _randomAccessIO);
@@ -226,6 +232,8 @@ public class BlockStorageModule implements StorageModule {
   }
 
   public void setBlockClount(long newBlockCount) throws IOException {
+    checkReadOnly();
+    checkClosed();
     long current = _blockCount.get();
     if (newBlockCount < current) {
       throw new IOException("new block count of " + newBlockCount + " is less than current block count " + current);
@@ -237,6 +245,8 @@ public class BlockStorageModule implements StorageModule {
   }
 
   public void setLengthInBytes(long lengthInBytes) throws IOException {
+    checkReadOnly();
+    checkClosed();
     long newBlockCount = Utils.getBlockCount(lengthInBytes, _blockSize);
     setBlockClount(newBlockCount);
   }
@@ -287,6 +297,7 @@ public class BlockStorageModule implements StorageModule {
 
   @Override
   public void write(byte[] bytes, long position) throws IOException {
+    checkReadOnly();
     checkClosed();
     LOGGER.debug("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
     _writesCount.addAndGet(bytes.length);
@@ -318,8 +329,16 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
+  private void checkReadOnly() throws IOException {
+    if (_readOnly) {
+      throw new IOException("Read only volume.");
+    }
+  }
+
   @Override
   public void flushWrites() throws IOException {
+    checkReadOnly();
+    checkClosed();
     int size = _results.size();
     long writeCount = _writesCount.getAndSet(0);
     long start = System.nanoTime();
@@ -360,6 +379,10 @@ public class BlockStorageModule implements StorageModule {
   }
 
   public void sync(boolean blocking, boolean onlyIfIdleWrites) throws IOException {
+    checkClosed();
+    if (_readOnly) {
+      return;
+    }
     try {
       List<Future<Void>> syncs = sync(onlyIfIdleWrites);
       if (blocking) {

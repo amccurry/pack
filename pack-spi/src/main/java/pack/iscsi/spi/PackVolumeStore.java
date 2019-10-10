@@ -12,7 +12,7 @@ public interface PackVolumeStore extends Closeable {
 
   void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException;
 
-  void cloneVolume(String name, String existingVolume, String snapshotId) throws IOException;
+  void cloneVolume(String name, String existingVolume, String snapshotId, boolean readOnly) throws IOException;
 
   void deleteVolume(String name) throws IOException;
 

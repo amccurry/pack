@@ -3,6 +3,7 @@ set -e
 if [ "$#" -ne 1 ]; then
   echo "Usage:"
   echo "${0} <volumename>"
+  exit 1
 fi
 VOLUME_NAME="${1}"
 curl -X POST localhost:4567/api/v1.0/volume/attach/${VOLUME_NAME} 2>/dev/null | jq -r '.'

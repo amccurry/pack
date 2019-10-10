@@ -338,7 +338,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   }
 
   @Override
-  public void cloneVolume(String name, String existingVolume, String snapshotId) throws IOException {
+  public void cloneVolume(String name, String existingVolume, String snapshotId, boolean readOnly) throws IOException {
     checkNonExistence(name);
     checkExistence(existingVolume);
     checkExistence(existingVolume, snapshotId);
@@ -347,6 +347,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     PackVolumeMetadata existingSnapshotMetadata = getVolumeMetadata(existingVolume, snapshotId);
     long existingVolumeId = existingSnapshotMetadata.getVolumeId();
     PackVolumeMetadata metadata = existingSnapshotMetadata.toBuilder()
+                                                          .readOnly(readOnly)
                                                           .volumeId(cloneVolumeId)
                                                           .name(name)
                                                           .build();

@@ -1,12 +1,36 @@
 #!/bin/bash
 set -e
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+key="$1"
+case $key in
+    -r|--readonly)
+    READ_ONLY="true"
+    shift # past argument
+    ;;
+    *)    # unknown option
+    POSITIONAL+=("$1") # save it in an array for later
+    shift # past argument
+    ;;
+esac
+done
+set -- "${POSITIONAL[@]}" # restore positional parameters
+
 if [ "$#" -ne 3 ]; then
   echo "Usage:"
-  echo "${0} <existing volumename> <snapshot id> <new volumename>"
+  echo "${0} ${1} ${2} ${3} ${4}"
+  echo "${0} [--readonly] <existing volumename> <snapshot id> <new volumename>"
+  exit 1
 fi
 
 EXISTING_VOLUME_NAME="${1}"
 EXISTING_SNAPSHOT_ID="${2}"
 NEW_VOLUME_NAME="${3}"
 
-curl -X POST localhost:4567/api/v1.0/volume/clone/${EXISTING_VOLUME_NAME}/${EXISTING_SNAPSHOT_ID}/${NEW_VOLUME_NAME} 2>/dev/null | jq -r '.'
+READ_ONLY_ARGS=""
+if ! test -z "${READ_ONLY}" ; then
+  READ_ONLY_ARGS="?readOnly=true"
+fi
+
+curl -X POST localhost:4567/api/v1.0/volume/clone/${EXISTING_VOLUME_NAME}/${EXISTING_SNAPSHOT_ID}/${NEW_VOLUME_NAME}${READ_ONLY_ARGS} 2>/dev/null | jq -r '.'

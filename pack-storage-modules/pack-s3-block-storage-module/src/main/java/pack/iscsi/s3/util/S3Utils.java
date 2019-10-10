@@ -190,6 +190,9 @@ public class S3Utils {
     ObjectMetadata metadata = new ObjectMetadata();
     metadata.setContentLength(length);
     consistentAmazonS3.putObject(bucket, dst, s3Object.getObjectContent(), metadata);
+
+    // AmazonS3 client = consistentAmazonS3.getClient();
+    // client.copyObject(bucket, src, bucket, dst);
   }
 
   public static void putByteArray(ConsistentAmazonS3 consistentAmazonS3, String bucket, String key, byte[] bs)
