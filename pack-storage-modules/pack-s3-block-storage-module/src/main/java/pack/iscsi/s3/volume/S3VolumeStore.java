@@ -186,13 +186,20 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public void attachVolume(String name) throws IOException {
     checkExistence(name);
-    checkDetached(name);
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    if (!metadata.isReadOnly()) {
+      checkDetached(name);
+    }
     String key = S3Utils.getAttachedVolumeNameKey(_objectPrefix, _hostname, name);
     _consistentAmazonS3.putObject(_bucket, key, _hostname);
-    PackVolumeMetadata metadata = getVolumeMetadata(name);
     String metadataKey = getVolumeMetadataKey(metadata.getVolumeId());
+
+    List<String> attachedHostnames = metadata.getAttachedHostnames();
+    if (!attachedHostnames.contains(_hostname)) {
+      attachedHostnames.add(_hostname);
+    }
     PackVolumeMetadata newMetadata = metadata.toBuilder()
-                                             .attachedHostname(_hostname)
+                                             .attachedHostnames(attachedHostnames)
                                              .build();
     S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, metadataKey, newMetadata);
   }
@@ -200,13 +207,19 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public void detachVolume(String name) throws IOException {
     checkExistence(name);
-    checkAttached(name);
+    PackVolumeMetadata metadata = getVolumeMetadata(name);
+    if (!metadata.isReadOnly()) {
+      checkAttached(name);
+    }
     String key = S3Utils.getAttachedVolumeNameKey(_objectPrefix, _hostname, name);
     _consistentAmazonS3.deleteObject(_bucket, key);
-    PackVolumeMetadata metadata = getVolumeMetadata(name);
+
+    List<String> attachedHostnames = metadata.getAttachedHostnames();
+    attachedHostnames.remove(_hostname);
+
     String metadataKey = getVolumeMetadataKey(metadata.getVolumeId());
     PackVolumeMetadata newMetadata = metadata.toBuilder()
-                                             .attachedHostname(null)
+                                             .attachedHostnames(attachedHostnames.isEmpty() ? null : attachedHostnames)
                                              .build();
     S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, metadataKey, newMetadata);
   }
@@ -278,7 +291,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     // Store metadata
     String snapshotMetadataKey = S3Utils.getVolumeSnapshotMetadataKey(_objectPrefix, volumeId, snapshotId);
     PackVolumeMetadata snapshotMetadata = metadata.toBuilder()
-                                                  .attachedHostname(null)
+                                                  .attachedHostnames(null)
                                                   .build();
     S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, snapshotMetadataKey, snapshotMetadata);
 

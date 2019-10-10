@@ -35,7 +35,7 @@ public abstract class VolumeActionTable implements ActionTable {
 
   @Override
   public List<String> getHeaders() throws IOException {
-    return Arrays.asList("Name", "Attached Host", "Length", "Id");
+    return Arrays.asList("Name", "Attached Host", "Read Only", "Length", "Id");
   }
 
   @Override
@@ -63,7 +63,11 @@ public abstract class VolumeActionTable implements ActionTable {
                       .build());
 
     columns.add(Column.builder()
-                      .value(metadata.getAttachedHostname())
+                      .value(toString(metadata.getAttachedHostnames()))
+                      .build());
+
+    columns.add(Column.builder()
+                      .value(Boolean.toString(metadata.isReadOnly()))
                       .build());
 
     columns.add(Column.builder()
@@ -74,5 +78,12 @@ public abstract class VolumeActionTable implements ActionTable {
                       .value(Long.toString(metadata.getVolumeId()))
                       .build());
     return columns;
+  }
+
+  private static String toString(List<String> attachedHostnames) {
+    if (attachedHostnames == null) {
+      return "";
+    }
+    return attachedHostnames.toString();
   }
 }

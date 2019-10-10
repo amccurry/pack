@@ -68,6 +68,8 @@ public class PackVolumeAdminServer {
     Map<String, PackVolumeMetadata> allVolumes = new ConcurrentHashMap<>();
     List<String> attachedVolumes = new ArrayList<String>();
 
+    Map<String, List<String>> snapshots = new ConcurrentHashMap<>();
+
     ActionTable actionTable1 = new ActionTable() {
 
       @Override
@@ -184,7 +186,7 @@ public class PackVolumeAdminServer {
         attachedVolumes.add(name);
         PackVolumeMetadata metadata = getVolumeMetadata(name);
         allVolumes.put(name, metadata.toBuilder()
-                                     .attachedHostname(hostname)
+                                     .attachedHostnames(Arrays.asList(hostname))
                                      .build());
       }
 
@@ -223,14 +225,21 @@ public class PackVolumeAdminServer {
       }
 
       @Override
-      public void createSnapshot(String name, String snapshotName) throws IOException {
-        LOGGER.info("createSnapshot {} {}", name, snapshotName);
+      public void createSnapshot(String name, String snapshotId) throws IOException {
+        checkExistence(name);
+        checkNoExistence(name, snapshotId);
+        List<String> list = snapshots.get(name);
+        if (list == null) {
+          snapshots.put(name, list = new ArrayList<>());
+        }
+        list.add(snapshotId);
       }
 
       @Override
       public List<String> listSnapshots(String name) throws IOException {
-        LOGGER.info("listSnapshots {} {}", name);
-        return Arrays.asList();
+        checkExistence(name);
+        List<String> list = snapshots.get(name);
+        return list == null ? Arrays.asList() : list;
       }
 
       @Override
@@ -254,6 +263,7 @@ public class PackVolumeAdminServer {
                                      .name(name)
                                      .readOnly(readOnly)
                                      .volumeId(new Random().nextLong())
+                                     .attachedHostnames(null)
                                      .build());
       }
 

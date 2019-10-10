@@ -1,5 +1,7 @@
 package pack.iscsi.spi;
 
+import java.util.List;
+
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,7 +18,7 @@ public class PackVolumeMetadata {
   long volumeId;
   int blockSizeInBytes;
   long lengthInBytes;
-  String attachedHostname;
   boolean readOnly;
+  List<String> attachedHostnames;
 
 }
