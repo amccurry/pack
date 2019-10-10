@@ -195,6 +195,9 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     String metadataKey = getVolumeMetadataKey(metadata.getVolumeId());
 
     List<String> attachedHostnames = metadata.getAttachedHostnames();
+    if (attachedHostnames == null) {
+      attachedHostnames = new ArrayList<>();
+    }
     if (!attachedHostnames.contains(_hostname)) {
       attachedHostnames.add(_hostname);
     }
@@ -215,6 +218,9 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     _consistentAmazonS3.deleteObject(_bucket, key);
 
     List<String> attachedHostnames = metadata.getAttachedHostnames();
+    if (attachedHostnames == null) {
+      attachedHostnames = new ArrayList<>();
+    }
     attachedHostnames.remove(_hostname);
 
     String metadataKey = getVolumeMetadataKey(metadata.getVolumeId());
@@ -380,9 +386,6 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     S3Utils.copy(_consistentAmazonS3, _bucket, snapshotCachedBlockInfoKey, cloneCachedBlockInfoKey);
     // copy blocks themselves
     String snapshotBlockInfoKey = S3Utils.getVolumeSnapshotBlockInfoKey(_objectPrefix, existingVolumeId, snapshotId);
-    // byte[] bs = S3Utils.getByteArray(_consistentAmazonS3, _bucket,
-    // snapshotBlockInfoKey);
-
     S3Utils.readVolumeSnapshotBlockInfo(_consistentAmazonS3, _bucket, snapshotBlockInfoKey, (blockId, generation) -> {
       LOGGER.info("Copying src volumeId {} dst volumeId {} blockId {} generation {}", existingVolumeId, cloneVolumeId,
           blockId, generation);

@@ -184,15 +184,14 @@ public class S3Utils {
   }
 
   public static void copy(ConsistentAmazonS3 consistentAmazonS3, String bucket, String src, String dst) {
-    S3Object s3Object = consistentAmazonS3.getObject(bucket, src);
-    long length = s3Object.getObjectMetadata()
-                          .getContentLength();
-    ObjectMetadata metadata = new ObjectMetadata();
-    metadata.setContentLength(length);
-    consistentAmazonS3.putObject(bucket, dst, s3Object.getObjectContent(), metadata);
-
-    // AmazonS3 client = consistentAmazonS3.getClient();
-    // client.copyObject(bucket, src, bucket, dst);
+//    S3Object s3Object = consistentAmazonS3.getObject(bucket, src);
+//    long length = s3Object.getObjectMetadata()
+//                          .getContentLength();
+//    ObjectMetadata metadata = new ObjectMetadata();
+//    metadata.setContentLength(length);
+//    consistentAmazonS3.putObject(bucket, dst, s3Object.getObjectContent(), metadata);
+    AmazonS3 client = consistentAmazonS3.getClient();
+    client.copyObject(bucket, src, bucket, dst);
   }
 
   public static void putByteArray(ConsistentAmazonS3 consistentAmazonS3, String bucket, String key, byte[] bs)

@@ -360,6 +360,7 @@ public class PackVolumeAdminServer {
     _service.post("/", portActionTable(defaultActionTable), _engine);
 
     _service.exception(Exception.class, (exception, request, response) -> {
+      LOGGER.error("Unknown error", exception);
       ErrorResponse errorResponse = ErrorResponse.builder()
                                                  .error(exception.getMessage())
                                                  .build();
@@ -443,7 +444,7 @@ public class PackVolumeAdminServer {
       String volumeName = request.params(VOLUME_NAME_PARAM);
       _packAdmin.detachVolume(volumeName);
       return OKResponse.builder()
-                       .message("Volume " + volumeName + " unattached")
+                       .message("Volume " + volumeName + " detached")
                        .build();
     };
   }
