@@ -51,10 +51,10 @@ public class LocalBlock implements Closeable, Block {
   private final RandomAccessIO _randomAccessIO;
   private final BlockStateStore _blockStateStore;
   private final long _startingPositionOfBlock;
-  private final Executor _executor;
+  private final Executor _blockIOExecutor;
 
   public LocalBlock(LocalBlockConfig config) throws IOException {
-    _executor = config.getExecutor();
+    _blockIOExecutor = config.getBlockIOExecutor();
     _randomAccessIO = config.getRandomAccessIO();
     _blockStore = config.getBlockGenerationStore();
     _wal = config.getWal();
@@ -115,7 +115,7 @@ public class LocalBlock implements Closeable, Block {
         _randomAccessIO.write(getFilePosition(blockPosition), bytes, offset, len);
       }
       if (autoFlush) {
-        AsyncCompletableFuture comFlush = AsyncCompletableFuture.exec(getClass(), "flush", _executor,
+        AsyncCompletableFuture comFlush = AsyncCompletableFuture.exec(getClass(), "flush", _blockIOExecutor,
             () -> _randomAccessIO.flush());
         return AsyncCompletableFuture.allOf(comFlush, comWalWrite);
       } else {

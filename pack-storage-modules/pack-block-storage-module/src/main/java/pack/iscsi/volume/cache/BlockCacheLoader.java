@@ -1,5 +1,6 @@
 package pack.iscsi.volume.cache;
 
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -10,6 +11,7 @@ import com.github.benmanes.caffeine.cache.CacheLoader;
 import io.opentracing.Scope;
 import pack.iscsi.block.LocalBlock;
 import pack.iscsi.block.LocalBlockConfig;
+import pack.iscsi.concurrent.ConcurrentUtils;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.Block;
@@ -19,7 +21,6 @@ import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery;
 import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery.BlockWriteAheadLogRecoveryConfig;
 import pack.util.tracer.TracerUtil;
@@ -38,6 +39,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private final int _blockSize;
   private final BlockStateStore _blockStateStore;
   private final RandomAccessIO _randomAccessIO;
+  private final Executor _blockIOExecutor;
 
   public BlockCacheLoader(BlockCacheLoaderConfig config) {
     _blockStateStore = config.getBlockStateStore();
@@ -50,6 +52,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _removalListener = config.getRemovalListener();
     _randomAccessIO = config.getRandomAccessIO();
+    _blockIOExecutor = config.getBlockIOExecutor();
   }
 
   @Override
@@ -60,6 +63,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
         return stolenBlock;
       }
       LocalBlockConfig config = LocalBlockConfig.builder()
+                                                .blockIOExecutor(_blockIOExecutor)
                                                 .randomAccessIO(_randomAccessIO)
                                                 .blockStateStore(_blockStateStore)
                                                 .volumeId(_volumeId)
@@ -86,7 +90,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 
   private void pullBlockFromExternalStore(LocalBlock localBlock) {
     try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block external read")) {
-      Utils.runUntilSuccess(LOGGER, () -> {
+      ConcurrentUtils.runUntilSuccess(LOGGER, () -> {
         localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
         return null;
       });
@@ -95,7 +99,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
 
   private void recoverFromWal(LocalBlock localBlock) {
     try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block recover")) {
-      Utils.runUntilSuccess(LOGGER, () -> {
+      ConcurrentUtils.runUntilSuccess(LOGGER, () -> {
         // recover if needed
         BlockWriteAheadLogRecoveryConfig config = BlockWriteAheadLogRecoveryConfig.builder()
                                                                                   .blockWriteAheadLog(_writeAheadLog)

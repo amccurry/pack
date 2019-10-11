@@ -29,6 +29,7 @@ import com.github.benmanes.caffeine.cache.Weigher;
 
 import io.opentracing.Scope;
 import pack.iscsi.block.AlreadyClosedException;
+import pack.iscsi.concurrent.ConcurrentUtils;
 import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.BlockKey;
@@ -55,12 +56,11 @@ import pack.util.tracer.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
 
-  private static final String PRELOAD = "preload-";
-
-  private static final String SYNC = "sync-";
-
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModule.class);
 
+  private static final String BLOCKIO = "blockio-";
+  private static final String PRELOAD = "preload-";
+  private static final String SYNC = "sync-";
   private static final String RW = "rw";
   private static final String WRITE_TIMER = "write-timer";
   private static final String READ_TIMER = "read-timer";
@@ -99,12 +99,16 @@ public class BlockStorageModule implements StorageModule {
   private final ExecutorService _cachePreloadExecutor;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
   private final boolean _readOnly;
+  private final ExecutorService _blockIOExecutor;
+  private final AtomicLong _prefetchRemaining = new AtomicLong();
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
     _readOnly = config.isReadOnly();
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _flushExecutor = Executors.newSingleThreadExecutor();
-    _cachePreloadExecutor = Utils.executor(PRELOAD + config.getVolumeId(), config.getCachePreloadExecutorThreadCount());
+    _cachePreloadExecutor = ConcurrentUtils.executor(PRELOAD + config.getVolumeId(),
+        config.getCachePreloadExecutorThreadCount());
+    _blockIOExecutor = ConcurrentUtils.executor(BLOCKIO + config.getVolumeId(), config.getBlockExecutorThreadCount());
     _blockStateStore = config.getBlockStateStore();
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
@@ -125,7 +129,7 @@ public class BlockStorageModule implements StorageModule {
     _volumeId = config.getVolumeId();
     _blockSize = config.getBlockSize();
     _blockCount.set(config.getBlockCount());
-    _syncExecutor = Utils.executor(SYNC + config.getVolumeId(), config.getSyncExecutorThreadCount());
+    _syncExecutor = ConcurrentUtils.executor(SYNC + config.getVolumeId(), config.getSyncExecutorThreadCount());
     _syncTimer = new Timer(SYNC + _volumeId);
 
     long period = config.getSyncTimeAfterIdleTimeUnit()
@@ -174,13 +178,12 @@ public class BlockStorageModule implements StorageModule {
 
   private void preloadBlockCache(long[] blockIds) {
     LOGGER.info("preloading volume id {}", _volumeId);
-    long start = System.nanoTime();
+    AtomicLong start = new AtomicLong(System.nanoTime());
 
+    _prefetchRemaining.set((long) blockIds.length * _blockSize);
+    Object lock = new Object();
     for (int i = 0; i < blockIds.length; i++) {
-      if (start + TimeUnit.SECONDS.toNanos(5) < System.nanoTime()) {
-        LOGGER.info("preload status {} of {} blocks loaded", i, blockIds.length);
-        start = System.nanoTime();
-      }
+      int index = i;
       long blockId = blockIds[i];
       BlockKey blockKey = BlockKey.builder()
                                   .blockId(blockId)
@@ -189,6 +192,15 @@ public class BlockStorageModule implements StorageModule {
       _cachePreloadExecutor.submit(() -> {
         LOGGER.debug("preloading volume id {} block id {}", _volumeId, blockId);
         _cache.get(blockKey);
+        _prefetchRemaining.addAndGet(-_blockSize);
+
+        synchronized (lock) {
+          if (start.get() + TimeUnit.SECONDS.toNanos(5) < System.nanoTime()) {
+            LOGGER.info("preload status {} of {} blocks loaded, prefetch remaining total {}", index, blockIds.length,
+                _prefetchRemaining.get());
+            start.set(System.nanoTime());
+          }
+        }
         return null;
       });
     }
@@ -217,9 +229,9 @@ public class BlockStorageModule implements StorageModule {
     }
     IOUtils.close(LOGGER, _flushExecutor);
     IOUtils.close(LOGGER, _randomAccessIO);
+    IOUtils.close(LOGGER, _syncExecutor, _cachePreloadExecutor, _blockIOExecutor);
     _file.delete();
     _blockStateStore.destroyBlockMetadataStore(_volumeId);
-    IOUtils.close(LOGGER, _syncExecutor, _cachePreloadExecutor);
     LOGGER.info("finished close of storage module for {}", _volumeId);
   }
 
@@ -454,7 +466,7 @@ public class BlockStorageModule implements StorageModule {
     if (block == null) {
       return;
     }
-    Utils.runUntilSuccess(LOGGER, () -> {
+    ConcurrentUtils.runUntilSuccess(LOGGER, () -> {
       LOGGER.debug("volume sync volumeId {} blockId {}", _volumeId, block.getBlockId());
       try {
         block.execIO(_externalBlockStoreFactory.getBlockWriter());
@@ -526,6 +538,7 @@ public class BlockStorageModule implements StorageModule {
 
   private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
     return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
+                                                      .blockIOExecutor(_blockIOExecutor)
                                                       .randomAccessIO(_randomAccessIO)
                                                       .blockStateStore(_blockStateStore)
                                                       .blockGenerationStore(_blockGenerationStore)

@@ -15,9 +15,11 @@ import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 
+import pack.iscsi.spi.RandomAccessIO;
+
 public class DirectIOTest {
 
-  private File _root = new File("./target/tmp/DirectIOTest");
+  protected File _root = new File("./target/tmp/" + getClass().getName());
 
   @Before
   public void setup() {
@@ -42,11 +44,15 @@ public class DirectIOTest {
                                     .toString());
     file.getParentFile()
         .mkdirs();
-    try (DirectIO directIO = new DirectIO(file)) {
-      byte[] buffer = new byte[100000];
+    try (RandomAccessIO directIO = getRandomAccessIO(file)) {
+      byte[] buffer = new byte[getBufferSize()];
       directIO.write(0, buffer);
     }
-    assertEquals(100000, file.length());
+    assertEquals(getBufferSize(), file.length());
+  }
+
+  protected RandomAccessIO getRandomAccessIO(File file) throws IOException {
+    return new DirectIO(file);
   }
 
   @Test
@@ -55,11 +61,11 @@ public class DirectIOTest {
                                     .toString());
     file.getParentFile()
         .mkdirs();
-    byte[] buffer = new byte[100000];
+    byte[] buffer = new byte[getBufferSize()];
     Random random = new Random(1);
-    int blocks = 100;
+    int blocks = getBlockCount();
     random.nextBytes(buffer);
-    try (DirectIO directIO = new DirectIO(file)) {
+    try (RandomAccessIO directIO = getRandomAccessIO(file)) {
       directIO.setLength(blocks * buffer.length);
       for (int i = 0; i < blocks; i++) {
         long position = buffer.length * i;
@@ -69,7 +75,7 @@ public class DirectIOTest {
     try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
       try (FileChannel channel = raf.getChannel()) {
         for (int i = 0; i < blocks; i++) {
-          byte[] readBuffer = new byte[100000];
+          byte[] readBuffer = new byte[getBufferSize()];
           long position = i * readBuffer.length;
           ByteBuffer dst = ByteBuffer.wrap(readBuffer);
           while (dst.hasRemaining()) {
@@ -83,9 +89,9 @@ public class DirectIOTest {
         }
       }
     }
-    try (DirectIO directIO = new DirectIO(file)) {
+    try (RandomAccessIO directIO = getRandomAccessIO(file)) {
       for (int i = 0; i < blocks; i++) {
-        byte[] readBuffer = new byte[100000];
+        byte[] readBuffer = new byte[getBufferSize()];
         long position = i * readBuffer.length;
         directIO.read(position, readBuffer);
         // for (int j = 0; j < buffer.length; j++) {
@@ -104,13 +110,13 @@ public class DirectIOTest {
                                     .toString());
     file.getParentFile()
         .mkdirs();
-    byte[] buffer = new byte[100000];
+    byte[] buffer = new byte[getBufferSize()];
     Random random = new Random(1);
-    int blocks = 100;
+    int blocks = getBlockCount();
     int passes = 10000;
     random.nextBytes(buffer);
     for (int t = 0; t < 3; t++) {
-      try (DirectIO directIO = new DirectIO(file)) {
+      try (RandomAccessIO directIO = getRandomAccessIO(file)) {
         directIO.setLength(blocks * buffer.length);
         long start = System.nanoTime();
         for (int i = 0; i < passes; i++) {
@@ -121,6 +127,14 @@ public class DirectIOTest {
         System.out.println((end - start) / 1_000_000.0 + " ms");
       }
     }
+  }
+
+  protected int getBlockCount() {
+    return 100;
+  }
+
+  protected int getBufferSize() {
+    return 100000;
   }
 
 }

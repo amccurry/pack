@@ -23,7 +23,7 @@ public class BlockStorageModuleConfig {
   int blockSize;
 
   long blockCount;
-  
+
   boolean readOnly;
 
   BlockIOFactory externalBlockStoreFactory;
@@ -39,6 +39,9 @@ public class BlockStorageModuleConfig {
 
   @Builder.Default
   int cachePreloadExecutorThreadCount = 5;
+
+  @Builder.Default
+  int blockExecutorThreadCount = 5;
 
   MetricsFactory metricsFactory;
 

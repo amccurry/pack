@@ -15,6 +15,7 @@ import com.sun.jna.Platform;
 import io.opentracing.Scope;
 import net.smacke.jaydio.DirectRandomAccessFile;
 import net.smacke.jaydio.align.DirectIoByteChannelAligner;
+import pack.iscsi.io.direct.BlockParitionedDirectIO;
 import pack.iscsi.io.util.DirectRandomAccessFileUtil;
 import pack.iscsi.io.util.NativeFileUtil;
 import pack.iscsi.io.util.NativeFileUtil.FallocateMode;
@@ -26,17 +27,18 @@ public abstract class FileIO implements RandomAccessIO {
 
   private static boolean _directIOEnabled = true;
 
-  public static RandomAccessIO openRandomAccess(File file, int bufferSize, String mode) throws IOException {
-    return openRandomAccess(file, bufferSize, mode, _directIOEnabled);
+  public static RandomAccessIO openRandomAccess(File file, int blockSize, String mode) throws IOException {
+    return openRandomAccess(file, blockSize, mode, _directIOEnabled);
   }
 
-  public static RandomAccessIO openRandomAccess(File file, int bufferSize, String mode, boolean direct)
+  public static RandomAccessIO openRandomAccess(File file, int blockSize, String mode, boolean direct)
       throws IOException {
     if (isDirectIOSupported() && direct) {
 
-      return new FileIODirectRandomAccessFile(file, new DirectRandomAccessFile(file, mode));
+      // return new FileIODirectRandomAccessFile(file, new
+      // DirectRandomAccessFile(file, mode));
 
-      // return new DirectIO(file);
+      return new BlockParitionedDirectIO(file, blockSize);
 
     } else {
       return new FileIORandomAccessFile(new RandomAccessFile(file, mode));

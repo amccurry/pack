@@ -59,7 +59,7 @@ public abstract class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactory() throws Exception {
-    PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
+    PackVolumeStore volumeStore = getPackVolumeStore(12345, getBlockSize(), getVolumeSize());
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
@@ -85,7 +85,7 @@ public abstract class BlockStorageModuleFactoryTest {
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       volumeStore.attachVolume(volumeName);
       StorageModule storageModule = factory.getStorageModule(volumeName);
-      assertEquals(195311, storageModule.getSizeInBlocks());
+      assertEquals(25599, storageModule.getSizeInBlocks());
       long seed = new Random().nextLong();
       long length = 51_000_000;
       readsAndWritesTest(storageModule, seed, length);
@@ -96,7 +96,7 @@ public abstract class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpen() throws Exception {
-    PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
+    PackVolumeStore volumeStore = getPackVolumeStore(12345, getBlockSize(), getVolumeSize());
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
@@ -125,11 +125,11 @@ public abstract class BlockStorageModuleFactoryTest {
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       volumeStore.attachVolume(volumeName);
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(195311, storageModule.getSizeInBlocks());
+        assertEquals(25599, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
       }
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(195311, storageModule.getSizeInBlocks());
+        assertEquals(25599, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
       }
       volumeStore.detachVolume(volumeName);
@@ -138,7 +138,7 @@ public abstract class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactoryWithClosingAndReOpenWithClearedBlocks() throws Exception {
-    PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
+    PackVolumeStore volumeStore = getPackVolumeStore(12345, getBlockSize(), getVolumeSize());
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
@@ -168,7 +168,7 @@ public abstract class BlockStorageModuleFactoryTest {
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       volumeStore.attachVolume(volumeName);
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(195311, storageModule.getSizeInBlocks());
+        assertEquals(25599, storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
       }
     }
@@ -176,7 +176,7 @@ public abstract class BlockStorageModuleFactoryTest {
     clearStateData();
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(195311, storageModule.getSizeInBlocks());
+        assertEquals(25599, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
       }
       volumeStore.detachVolume(volumeName);
@@ -185,7 +185,7 @@ public abstract class BlockStorageModuleFactoryTest {
 
   @Test
   public void testBlockStorageModuleFactoryRecoverBlockThatOnlyExistsInWal() throws Exception {
-    PackVolumeStore volumeStore = getPackVolumeStore(12345, 100_000, 100_000_000L);
+    PackVolumeStore volumeStore = getPackVolumeStore(12345, getBlockSize(), getVolumeSize());
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
@@ -217,20 +217,28 @@ public abstract class BlockStorageModuleFactoryTest {
       volumeStore.attachVolume(volumeName);
       StorageModule storageModule = factory.getStorageModule("test");
       closeList.add(storageModule);
-      assertEquals(195311, storageModule.getSizeInBlocks());
+      assertEquals(25599, storageModule.getSizeInBlocks());
       readsAndWritesTest(storageModule, seed, 9876);
     }
     clearBlockData();
     clearStateData();
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(195311, storageModule.getSizeInBlocks());
+        assertEquals(25599, storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, 9876);
       }
       volumeStore.detachVolume(volumeName);
     }
 
     IOUtils.close(LOGGER, closeList);
+  }
+
+  private long getVolumeSize() {
+    return 100L * getBlockSize();
+  }
+
+  private int getBlockSize() {
+    return 128 * 1024;
   }
 
   private void readsAndWritesTest(StorageModule storageModule, long seed, long length) throws IOException {

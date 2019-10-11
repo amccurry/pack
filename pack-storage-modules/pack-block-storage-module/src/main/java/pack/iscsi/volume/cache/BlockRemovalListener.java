@@ -11,10 +11,10 @@ import com.github.benmanes.caffeine.cache.RemovalCause;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 
 import io.opentracing.Scope;
+import pack.iscsi.concurrent.ConcurrentUtils;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockIOFactory;
-import pack.iscsi.util.Utils;
 import pack.util.tracer.TracerUtil;
 
 public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
@@ -77,7 +77,7 @@ public class BlockRemovalListener implements RemovalListener<BlockKey, Block> {
     if (block == null) {
       return false;
     }
-    Utils.runUntilSuccess(LOGGER, () -> {
+    ConcurrentUtils.runUntilSuccess(LOGGER, () -> {
       block.execIO(_externalBlockStoreFactory.getBlockWriter());
       return null;
     });

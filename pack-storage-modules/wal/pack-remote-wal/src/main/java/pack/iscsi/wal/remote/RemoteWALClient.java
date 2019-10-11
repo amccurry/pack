@@ -7,8 +7,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.curator.framework.CuratorFramework;
@@ -22,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import io.opentracing.Scope;
 import lombok.Builder;
 import lombok.Value;
+import pack.iscsi.concurrent.ConcurrentUtils;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.wal.BlockJournalRange;
@@ -44,6 +44,7 @@ import pack.util.tracer.TracerUtil;
 
 public class RemoteWALClient implements BlockWriteAheadLog {
 
+  private static final String WAL = "wal";
   private static final Logger LOGGER = LoggerFactory.getLogger(RemoteWALClient.class);
 
   @Value
@@ -63,7 +64,8 @@ public class RemoteWALClient implements BlockWriteAheadLog {
     String zkPrefix;
 
     @Builder.Default
-    Executor executor = Executors.newSingleThreadExecutor();
+    int walExecutorThreadCount = 5;
+
   }
 
   private final String _hostname;
@@ -73,15 +75,20 @@ public class RemoteWALClient implements BlockWriteAheadLog {
   private final String _zkPrefix;
   private final BlockingQueue<PackWalServiceClientImpl> _clients = new ArrayBlockingQueue<>(10);
   private final int _retries = 10;
-  private final Executor _executor;
+  private final ExecutorService _walExecutor;
 
   public RemoteWALClient(RemoteWALClientConfig config) {
-    _executor = config.getExecutor();
+    _walExecutor = ConcurrentUtils.executor(WAL, config.getWalExecutorThreadCount());
     _zkPrefix = config.getZkPrefix();
     _curatorFramework = config.getCuratorFramework();
     _hostname = config.getHostname();
     _port = config.getPort();
     _timeout = (int) config.getTimeout();
+  }
+
+  @Override
+  public void close() throws IOException {
+    IOUtils.close(LOGGER, _walExecutor);
   }
 
   @Override
@@ -91,7 +98,7 @@ public class RemoteWALClient implements BlockWriteAheadLog {
     ByteBuffer byteBuffer = (ByteBuffer) ByteBuffer.allocate(len)
                                                    .put(bytes, offset, len)
                                                    .flip();
-    return AsyncCompletableFuture.exec(RemoteWALClient.class, "write", _executor, () -> execute(client -> {
+    return AsyncCompletableFuture.exec(RemoteWALClient.class, "write", _walExecutor, () -> execute(client -> {
       try (Scope scope1 = TracerUtil.trace(RemoteWALClient.class, "wal write")) {
         WriteRequest writeRequest = new WriteRequest(volumeId, blockId, generation, position, byteBuffer);
         try (Scope scope2 = TracerUtil.trace(RemoteWALClient.class, "wal client write")) {
@@ -145,11 +152,6 @@ public class RemoteWALClient implements BlockWriteAheadLog {
         }
       }
     });
-  }
-
-  @Override
-  public void close() throws IOException {
-
   }
 
   private long applyJournalEntries(BlockRecoveryWriter writer, long onDiskGeneration,
