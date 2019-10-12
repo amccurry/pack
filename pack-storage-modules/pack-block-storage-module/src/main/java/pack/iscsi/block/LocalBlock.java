@@ -164,7 +164,6 @@ public class LocalBlock implements Closeable, Block {
       if (!_closed.get()) {
         _closed.set(true);
       }
-
       _blockStateStore.removeBlockMetadata(_volumeId, _blockId);
       long position = _blockId * (long) _blockSize;
       LOGGER.info("punching hole in volume id {} for block id {}", _volumeId, _blockId);

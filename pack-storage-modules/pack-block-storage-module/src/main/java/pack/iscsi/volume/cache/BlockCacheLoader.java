@@ -60,6 +60,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     try (Scope blockLoader = TracerUtil.trace(BlockCacheLoader.class, "block loader")) {
       Block stolenBlock = _removalListener.stealBlock(key);
       if (stolenBlock != null) {
+        LOGGER.info("volumeId {} blockId {} stolen from cache", _volumeId, stolenBlock.getBlockId());
         return stolenBlock;
       }
       LocalBlockConfig config = LocalBlockConfig.builder()

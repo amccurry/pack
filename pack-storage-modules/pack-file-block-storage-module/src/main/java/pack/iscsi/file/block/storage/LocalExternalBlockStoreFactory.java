@@ -40,7 +40,7 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
         }
         long volumeId = request.getVolumeId();
         long blockId = request.getBlockId();
-        LOGGER.info("write request {} onDiskGeneration {}", blockId, onDiskGeneration);
+        LOGGER.debug("write request {} onDiskGeneration {}", blockId, onDiskGeneration);
 
         File dstVolDir = new File(_storeDir, Long.toString(volumeId));
         File dstBlockDir = new File(dstVolDir, Long.toString(blockId));
@@ -55,7 +55,7 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
           int length = request.getBlockSize();
           while (length > 0) {
             int len = Math.min(buffer.length, length);
-            LOGGER.info("readFully position {} buffer {} len {}", position, buffer.length, len);
+            LOGGER.debug("readFully position {} buffer {} len {}", position, buffer.length, len);
             try {
               randomAccessIO.read(position, buffer, 0, len);
             } catch (Throwable t) {

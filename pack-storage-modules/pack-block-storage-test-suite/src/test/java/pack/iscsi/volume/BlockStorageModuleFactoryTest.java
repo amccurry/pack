@@ -85,13 +85,17 @@ public abstract class BlockStorageModuleFactoryTest {
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       volumeStore.attachVolume(volumeName);
       StorageModule storageModule = factory.getStorageModule(volumeName);
-      assertEquals(25599, storageModule.getSizeInBlocks());
+      assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
       long seed = new Random().nextLong();
       long length = 51_000_000;
       readsAndWritesTest(storageModule, seed, length);
       readsOnlyTest(storageModule, seed, length);
       volumeStore.detachVolume(volumeName);
     }
+  }
+
+  private long getSizeInBlocks(StorageModule storageModule) {
+    return getVolumeSize() / storageModule.getBlockSize() - 1;
   }
 
   @Test
@@ -125,11 +129,11 @@ public abstract class BlockStorageModuleFactoryTest {
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       volumeStore.attachVolume(volumeName);
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(25599, storageModule.getSizeInBlocks());
+        assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
       }
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(25599, storageModule.getSizeInBlocks());
+        assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
       }
       volumeStore.detachVolume(volumeName);
@@ -168,7 +172,7 @@ public abstract class BlockStorageModuleFactoryTest {
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       volumeStore.attachVolume(volumeName);
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(25599, storageModule.getSizeInBlocks());
+        assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
         readsAndWritesTest(storageModule, seed, length);
       }
     }
@@ -176,7 +180,7 @@ public abstract class BlockStorageModuleFactoryTest {
     clearStateData();
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(25599, storageModule.getSizeInBlocks());
+        assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, length);
       }
       volumeStore.detachVolume(volumeName);
@@ -217,14 +221,14 @@ public abstract class BlockStorageModuleFactoryTest {
       volumeStore.attachVolume(volumeName);
       StorageModule storageModule = factory.getStorageModule("test");
       closeList.add(storageModule);
-      assertEquals(25599, storageModule.getSizeInBlocks());
+      assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
       readsAndWritesTest(storageModule, seed, 9876);
     }
     clearBlockData();
     clearStateData();
     try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
       try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(25599, storageModule.getSizeInBlocks());
+        assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
         readsOnlyTest(storageModule, seed, 9876);
       }
       volumeStore.detachVolume(volumeName);
@@ -238,7 +242,7 @@ public abstract class BlockStorageModuleFactoryTest {
   }
 
   private int getBlockSize() {
-    return 128 * 1024;
+    return 1024 * 1024;
   }
 
   private void readsAndWritesTest(StorageModule storageModule, long seed, long length) throws IOException {
@@ -266,7 +270,15 @@ public abstract class BlockStorageModuleFactoryTest {
     Random random = new Random(seed);
     for (long pos = 0; pos < length; pos += buffer1.length) {
       random.nextBytes(buffer1);
-      storageModule.read(buffer2, pos);
+      try {
+        if (pos == 23060460) {
+          System.out.println();
+        }
+        storageModule.read(buffer2, pos);
+      } catch (IOException e) {
+        System.out.println();
+        throw e;
+      }
       for (int i = 0; i < buffer1.length; i++) {
         assertEquals("pos " + pos + " " + i, buffer1[i], buffer2[i]);
       }

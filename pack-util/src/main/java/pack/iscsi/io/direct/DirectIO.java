@@ -2,6 +2,7 @@ package pack.iscsi.io.direct;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.BufferOverflowException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
@@ -66,10 +67,14 @@ public class DirectIO implements RandomAccessIO {
       if (!isBlockAligned(position, length, blockStart, blockEnd)) {
         int remaining = (int) Math.min(buf.limit(), _length.get() - blockStart);
         readInternal(blockStart, buf, remaining);
-        buf.flip();
       }
       buf.position((int) (position - blockStart));
-      buf.put(buffer, offset, length);
+      try {
+        buf.put(buffer, offset, length);
+      } catch (BufferOverflowException e) {
+        System.out.println();
+        throw e;
+      }
       buf.position(0);
       buf.limit(blength);
       writeInternal(blockStart, buf);

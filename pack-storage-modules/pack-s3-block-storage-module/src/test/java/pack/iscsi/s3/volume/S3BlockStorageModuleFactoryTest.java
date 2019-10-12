@@ -27,7 +27,7 @@ import pack.iscsi.wal.local.LocalBlockWriteAheadLog.LocalBlockWriteAheadLogConfi
 public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTest {
 
   public static final File WAL_DATA_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/wal");
-  public static final File EXTERNAL_BLOCK_DATA_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/external");
+  public static final File BLOCK_DATA_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/block");
   public static final File BLOCK_STATE_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/state");
   private ConsistentAmazonS3 _consistentAmazonS3;
   private String _bucket;
@@ -44,7 +44,7 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
 
   @Override
   protected void clearBlockData() {
-    IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
+    IOUtils.rmr(BLOCK_DATA_DIR);
   }
 
   @Override
@@ -59,7 +59,7 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
 
   @Override
   protected File getBlockDataDir() {
-    return EXTERNAL_BLOCK_DATA_DIR;
+    return BLOCK_DATA_DIR;
   }
 
   @Override

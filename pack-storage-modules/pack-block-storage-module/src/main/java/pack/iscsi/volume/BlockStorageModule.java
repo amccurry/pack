@@ -1,6 +1,7 @@
 package pack.iscsi.volume;
 
 import java.io.Closeable;
+import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -278,6 +279,7 @@ public class BlockStorageModule implements StorageModule {
   @Override
   public void read(byte[] bytes, long position) throws IOException {
     checkClosed();
+    checkLength(bytes, position);
     LOGGER.debug("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
     int length = bytes.length;
     _readMeter.mark(length);
@@ -295,7 +297,6 @@ public class BlockStorageModule implements StorageModule {
                                       .blockId(blockId)
                                       .build();
           Block block = getBlockId(blockKey);
-
           try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block read")) {
             block.readFully(blockOffset, bytes, offset, len);
           }
@@ -311,6 +312,7 @@ public class BlockStorageModule implements StorageModule {
   public void write(byte[] bytes, long position) throws IOException {
     checkReadOnly();
     checkClosed();
+    checkLength(bytes, position);
     LOGGER.debug("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
     _writesCount.addAndGet(bytes.length);
     int length = bytes.length;
@@ -338,6 +340,14 @@ public class BlockStorageModule implements StorageModule {
           offset += len;
         }
       }
+    }
+  }
+
+  private void checkLength(byte[] bs, long position) throws EOFException {
+    long lengthInBytes = getLengthInBytes();
+    if (bs.length + position > lengthInBytes) {
+      throw new EOFException(
+          "bs len " + bs.length + " at pos " + position + " beyond end of volume with length " + lengthInBytes);
     }
   }
 
@@ -373,7 +383,10 @@ public class BlockStorageModule implements StorageModule {
   }
 
   private Block getBlockId(BlockKey blockKey) {
-    try (Scope scope = TracerUtil.trace(BlockStorageModule.class, "get block")) {
+    try (Scope scope1 = TracerUtil.trace(BlockStorageModule.class, "get block")) {
+      try (Scope scope2 = TracerUtil.trace(BlockStorageModule.class, "cache cleanup")) {
+        _cache.cleanUp();
+      }
       return _cache.get(blockKey);
     }
   }

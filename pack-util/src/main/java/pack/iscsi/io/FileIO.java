@@ -35,8 +35,7 @@ public abstract class FileIO implements RandomAccessIO {
       throws IOException {
     if (isDirectIOSupported() && direct) {
 
-      // return new FileIODirectRandomAccessFile(file, new
-      // DirectRandomAccessFile(file, mode));
+//      return new FileIODirectRandomAccessFile(file, new DirectRandomAccessFile(file, mode));
 
       return new BlockParitionedDirectIO(file, blockSize);
 
