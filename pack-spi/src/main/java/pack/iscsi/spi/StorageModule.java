@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 
 public interface StorageModule extends Closeable {
+  
   public static final int VIRTUAL_BLOCK_SIZE = 512;
 
   /**

@@ -286,7 +286,7 @@ public class BlockStorageModule implements StorageModule {
     _readIOMeter.mark();
     int offset = 0;
     try (Closeable time = _readTimer.time()) {
-      try (Scope readScope = TracerUtil.trace(BlockStorageModule.class, READ)) {
+      try (Scope readScope = TracerUtil.trace(BlockStorageModule.class, READ, createTags(bytes, position))) {
         while (length > 0) {
           long blockId = getBlockId(position);
           int blockOffset = getBlockOffset(position);
@@ -308,6 +308,10 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
+  private Tag[] createTags(byte[] bytes, long position) {
+    return new Tag[] { Tag.create("position", position), Tag.create("length", bytes.length) };
+  }
+
   @Override
   public void write(byte[] bytes, long position) throws IOException {
     checkReadOnly();
@@ -320,7 +324,7 @@ public class BlockStorageModule implements StorageModule {
     _writeIOMeter.mark();
     int offset = 0;
     try (Closeable time = _writeTimer.time()) {
-      try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE, Tag.create("length", bytes.length))) {
+      try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE, createTags(bytes, position))) {
         while (length > 0) {
           long blockId = getBlockId(position);
           int blockOffset = getBlockOffset(position);
@@ -499,6 +503,11 @@ public class BlockStorageModule implements StorageModule {
     } else {
       return 0;
     }
+  }
+
+  @Override
+  public int getBlockSize() {
+    return 4096;
   }
 
   @Override
