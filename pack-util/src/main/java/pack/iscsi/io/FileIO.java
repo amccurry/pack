@@ -34,11 +34,7 @@ public abstract class FileIO implements RandomAccessIO {
   public static RandomAccessIO openRandomAccess(File file, int blockSize, String mode, boolean direct)
       throws IOException {
     if (isDirectIOSupported() && direct) {
-
-//      return new FileIODirectRandomAccessFile(file, new DirectRandomAccessFile(file, mode));
-
       return new BlockParitionedDirectIO(file, blockSize);
-
     } else {
       return new FileIORandomAccessFile(new RandomAccessFile(file, mode));
     }

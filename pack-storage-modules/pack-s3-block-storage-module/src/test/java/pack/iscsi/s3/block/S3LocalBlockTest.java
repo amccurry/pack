@@ -174,10 +174,9 @@ public class S3LocalBlockTest {
   }
 
   private RandomAccessIO getRandomAccessIO(File dir, long length) throws IOException {
-    int bufferSize = 1024 * 1024;
     File file = new File(dir, UUID.randomUUID()
                                   .toString());
-    RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, bufferSize, "rw");
+    RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, _blockSize, "rw");
     randomAccessIO.setLength(length);
     return randomAccessIO;
   }

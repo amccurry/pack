@@ -214,11 +214,13 @@ public class BlockStorageModule implements StorageModule {
 
   @Override
   public void close() throws IOException {
+    if (_closed.get()) {
+      return;
+    }
+    _closed.set(true);
     LOGGER.info("starting close of storage module for {}", _volumeId);
-    checkClosed();
     _syncTimer.cancel();
     _syncTimer.purge();
-    _closed.set(true);
     if (!_readOnly) {
       try {
         List<Future<Void>> syncs = sync(false);
@@ -228,9 +230,8 @@ public class BlockStorageModule implements StorageModule {
         throw new IOException(e);
       }
     }
-    IOUtils.close(LOGGER, _flushExecutor);
     IOUtils.close(LOGGER, _randomAccessIO);
-    IOUtils.close(LOGGER, _syncExecutor, _cachePreloadExecutor, _blockIOExecutor);
+    IOUtils.close(LOGGER, _flushExecutor, _syncExecutor, _cachePreloadExecutor, _blockIOExecutor);
     _file.delete();
     _blockStateStore.destroyBlockMetadataStore(_volumeId);
     LOGGER.info("finished close of storage module for {}", _volumeId);
@@ -337,7 +338,7 @@ public class BlockStorageModule implements StorageModule {
           Block block = getBlockId(blockKey);
           try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write",
               Tag.create("length", len))) {
-            trackResult(block.writeFully(blockOffset, bytes, offset, len, false));
+            trackResult(block.writeFully(blockOffset, bytes, offset, len));
           }
           length -= len;
           position += len;
@@ -368,7 +369,6 @@ public class BlockStorageModule implements StorageModule {
     int size = _results.size();
     long writeCount = _writesCount.getAndSet(0);
     long start = System.nanoTime();
-
     AsyncCompletableFuture future = AsyncCompletableFuture.exec(BlockStorageModule.class, "flush", _flushExecutor,
         () -> _randomAccessIO.flush());
     try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, "flushWrites")) {

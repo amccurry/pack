@@ -29,21 +29,21 @@ public class FileIOTest {
     FileIO.setDirectIOEnabled(true);
 
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
-      randomAccessIO.setLength(1);
+//      randomAccessIO.setLength(1);
       randomAccessIO.write(0, new byte[] { 1 });
       assertEquals(1, randomAccessIO.length());
     }
 
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
-      randomAccessIO.setLength(1000);
-      byte[] buf = new byte[1000];
+      randomAccessIO.setLength(blockSize);
+      byte[] buf = new byte[blockSize];
       randomAccessIO.read(0, buf);
       assertEquals((byte) 1, buf[0]);
-      assertEquals(1000, randomAccessIO.length());
+      assertEquals(blockSize, randomAccessIO.length());
     }
 
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(file, blockSize, "rw")) {
-      assertEquals(1000, randomAccessIO.length());
+      assertEquals(blockSize, randomAccessIO.length());
     }
     file.delete();
   }

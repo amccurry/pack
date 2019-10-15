@@ -55,7 +55,9 @@ public class RemoteWriteAheadLogTest {
 
   @After
   public void teardown() throws Exception {
-    _server.stop();
+    if (_server != null) {
+      _server.stop();
+    }
   }
 
   @Test
@@ -106,11 +108,14 @@ public class RemoteWriteAheadLogTest {
 
   private void runTest(RemoteWALClient client, long volumeId, long blockId, File dir)
       throws IOException, InterruptedException, FileNotFoundException {
+
+//    FileIO.setDirectIOEnabled(false);
     long generation = 0;
     long position = 1000;
     int length = 10_000_000;
     byte[] bytes = new byte[8192];
     long seed = getSeed();
+    seed = -6045049710333444935L;
     Random random = new Random(seed);
     File expected = new File(dir, UUID.randomUUID()
                                       .toString());
@@ -175,7 +180,15 @@ public class RemoteWriteAheadLogTest {
           int len = (int) Math.min(length, buffer1.length);
           expected.readFully(buffer1, 0, len);
           actual.readFully(buffer2, 0, len);
-          assertTrue("seed=" + seed, Arrays.equals(buffer1, buffer2));
+          try {
+            for (int i = 0; i < len; i++) {
+              assertEquals("seed=" + seed + " epos=" + expected.getFilePointer() + " apos " + actual.getFilePointer()
+                  + " i=" + i, buffer1[i], buffer2[i]);
+            }
+          } catch (AssertionError e) {
+            System.out.println();
+            throw e;
+          }
           length -= len;
         }
       }

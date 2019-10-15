@@ -94,8 +94,7 @@ public class LocalBlock implements Closeable, Block {
   }
 
   @Override
-  public AsyncCompletableFuture writeFully(long blockPosition, byte[] bytes, int offset, int len, boolean autoFlush)
-      throws IOException {
+  public AsyncCompletableFuture writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
     try (Closeable lock = LockUtil.getCloseableLock(_writeLock)) {
       checkIfClosed();
       checkState();
@@ -114,13 +113,7 @@ public class LocalBlock implements Closeable, Block {
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio write")) {
         _randomAccessIO.write(getFilePosition(blockPosition), bytes, offset, len);
       }
-      if (autoFlush) {
-        AsyncCompletableFuture comFlush = AsyncCompletableFuture.exec(getClass(), "flush", _blockIOExecutor,
-            () -> _randomAccessIO.flush());
-        return AsyncCompletableFuture.allOf(comFlush, comWalWrite);
-      } else {
-        return comWalWrite;
-      }
+      return comWalWrite;
     }
   }
 

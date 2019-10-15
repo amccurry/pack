@@ -53,14 +53,12 @@ public final class WriteStage extends ReadOrWriteStage {
   }
 
   /**
-   * Is used for checking if the PDUs received in a Data-Out sequence actually
-   * are Data-Out PDU and if the PDUs have been received in order.
+   * Is used for checking if the PDUs received in a Data-Out sequence actually are
+   * Data-Out PDU and if the PDUs have been received in order.
    * 
-   * @param parser
-   *          the {@link AbstractMessageParser} subclass instance retrieved from
-   *          the {@link ProtocolDataUnit}'s {@link BasicHeaderSegment}
-   * @throws InternetSCSIException
-   *           if an unexpected PDU has been received
+   * @param parser the {@link AbstractMessageParser} subclass instance retrieved
+   *               from the {@link ProtocolDataUnit}'s {@link BasicHeaderSegment}
+   * @throws InternetSCSIException if an unexpected PDU has been received
    */
   private void checkDataOutParser(final AbstractMessageParser parser) throws InternetSCSIException {
     if (parser instanceof DataOutParser) {
@@ -147,12 +145,12 @@ public final class WriteStage extends ReadOrWriteStage {
 
       if (cdb.getIllegalFieldPointers() != null) {
         /*
-         * CDB is invalid, inform initiator by closing the connection. Sending
-         * an error status SCSI Response PDU will not work reliably, since the
-         * initiator may not be expecting a response so soon. Also, if the
-         * WriteStage is simply left early (without closing the connection), the
-         * initiator may send additional unsolicited Data-Out PDUs, which the
-         * jSCSI Target is currently unable to ignore or process properly.
+         * CDB is invalid, inform initiator by closing the connection. Sending an error
+         * status SCSI Response PDU will not work reliably, since the initiator may not
+         * be expecting a response so soon. Also, if the WriteStage is simply left early
+         * (without closing the connection), the initiator may send additional
+         * unsolicited Data-Out PDUs, which the jSCSI Target is currently unable to
+         * ignore or process properly.
          */
         LOGGER.debug("illegal field in Write CDB");
         LOGGER.debug("CDB:\n" + Debug.byteBufferToString(parser.getCDB()));
@@ -164,7 +162,9 @@ public final class WriteStage extends ReadOrWriteStage {
             initiatorTaskTag, parser.getExpectedDataTransferLength());
         // this may need work on the flush during error.
         flushIfNeeded(needsFlush, buffer, storageModule, storageIndex);
-        connection.sendPdu(responsePdu);
+        try (Scope s1 = TracerUtil.trace(getClass(), "sendPdu")) {
+          connection.sendPdu(responsePdu);
+        }
         return;
       }
 
@@ -242,7 +242,9 @@ public final class WriteStage extends ReadOrWriteStage {
               initiatorTaskTag, TargetServer.getNextTargetTransferTag(), // targetTransferTag
               readyToTransferSequenceNumber++, bytesReceived, // bufferOffset
               desiredDataTransferLength);
-          connection.sendPdu(pdu);
+          try (Scope s1 = TracerUtil.trace(getClass(), "sendPdu")) {
+            connection.sendPdu(pdu);
+          }
 
           // receive DataOut PDUs
           expectedDataSequenceNumber = 0;// reset sequence counter//FIXME
@@ -270,7 +272,9 @@ public final class WriteStage extends ReadOrWriteStage {
                   0, // residualCount
                   ScsiResponseDataSegment.EMPTY_DATA_SEGMENT);// dataSegment
               flushIfNeeded(needsFlush, buffer, storageModule, storageIndex);
-              connection.sendPdu(pdu);
+              try (Scope s1 = TracerUtil.trace(getClass(), "sendPdu")) {
+                connection.sendPdu(pdu);
+              }
               return;
             } else if (bhs.getParser() instanceof DataOutParser) {
               final DataOutParser dataOutParser = (DataOutParser) bhs.getParser();
@@ -290,12 +294,10 @@ public final class WriteStage extends ReadOrWriteStage {
               bytesReceivedThisCycle += bhs.getDataSegmentLength();
 
               /*
-               * Checking the final flag should be enough, but is not, when
-               * dealing with the jSCSI Initiator. This is also one of the
-               * reasons, why the contents of this while loop, though very
-               * similar to what is happening during the receiving of the
-               * unsolicited data PDU sequence, has not been put into a
-               * dedicated method.
+               * Checking the final flag should be enough, but is not, when dealing with the
+               * jSCSI Initiator. This is also one of the reasons, why the contents of this
+               * while loop, though very similar to what is happening during the receiving of
+               * the unsolicited data PDU sequence, has not been put into a dedicated method.
                */
               if (bhs.isFinalFlag() || bytesReceivedThisCycle >= desiredDataTransferLength)
                 solicitedDataCycleOver = true;
@@ -318,18 +320,22 @@ public final class WriteStage extends ReadOrWriteStage {
           0, // residualCount
           ScsiResponseDataSegment.EMPTY_DATA_SEGMENT);// dataSegment
       flushIfNeeded(needsFlush, buffer, storageModule, storageIndex);
-      connection.sendPdu(pdu);
+      try (Scope s1 = TracerUtil.trace(getClass(), "sendPdu")) {
+        connection.sendPdu(pdu);
+      }
     }
   }
 
   private void flushIfNeeded(AtomicBoolean needsFlush, byte[] buffer, IStorageModule storageModule, long storageIndex)
       throws IOException {
-    if (!CHOPPED_UP) {
-      storageModule.write(buffer, storageIndex);
-    }
-    if (needsFlush.get()) {
-      storageModule.flushWrites();
-      needsFlush.set(false);
+    try (Scope s0 = TracerUtil.trace(getClass(), "flushIfNeeded")) {
+      if (!CHOPPED_UP) {
+        storageModule.write(buffer, storageIndex);
+      }
+      if (needsFlush.get()) {
+        storageModule.flushWrites();
+        needsFlush.set(false);
+      }
     }
   }
 }

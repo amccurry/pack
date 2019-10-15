@@ -32,6 +32,10 @@
 				value="%d{yyyy-MM-dd HH:mm:ss} %-5p %c{1}:%L - %m%n" />
 		</layout>
 	</appender>
+	<appender name="asynctracerfile"
+		class="org.apache.log4j.AsyncAppender">
+		<appender-ref ref="tracerfile" />
+	</appender>
 	<appender name="tracerfile"
 		class="org.apache.log4j.RollingFileAppender">
 		<param name="append" value="true" />
@@ -51,7 +55,7 @@
 	</appender>
 	<logger name="TRACER" additivity="false">
 		<level value="trace"></level>
-		<appender-ref ref="tracerfile" />
+		<appender-ref ref="asynctracerfile" />
 	</logger>
 	<root>
 		<priority value="info" />

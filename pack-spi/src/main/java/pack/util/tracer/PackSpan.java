@@ -60,7 +60,7 @@ public final class PackSpan implements Span {
     finishedCheck("Finishing already finished span");
     _finishNanos = System.nanoTime();
     _finished = true;
-    LoggerReporter.finish(nowMicrosViaMillisTime(), this);
+    LoggerReporter.finish(nowMicrosViaNanoTime(), this);
   }
 
   @Override
@@ -100,7 +100,7 @@ public final class PackSpan implements Span {
 
   @Override
   public final Span log(Map<String, ?> fields) {
-    return log(nowMicrosViaMillisTime(), fields);
+    return log(nowMicrosViaNanoTime(), fields);
   }
 
   @Override
@@ -112,7 +112,7 @@ public final class PackSpan implements Span {
 
   @Override
   public PackSpan log(String event) {
-    return log(nowMicrosViaMillisTime(), event);
+    return log(nowMicrosViaNanoTime(), event);
   }
 
   @Override
@@ -264,10 +264,6 @@ public final class PackSpan implements Span {
 
   static long nowMicrosViaNanoTime() {
     return System.nanoTime() / 1000;
-  }
-
-  static long nowMicrosViaMillisTime() {
-    return System.currentTimeMillis() * 1000;
   }
 
   private synchronized void finishedCheck(String format, Object... args) {

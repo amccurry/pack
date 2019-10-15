@@ -69,12 +69,7 @@ public class DirectIO implements RandomAccessIO {
         readInternal(blockStart, buf, remaining);
       }
       buf.position((int) (position - blockStart));
-      try {
-        buf.put(buffer, offset, length);
-      } catch (BufferOverflowException e) {
-        System.out.println();
-        throw e;
-      }
+      buf.put(buffer, offset, length);
       buf.position(0);
       buf.limit(blength);
       writeInternal(blockStart, buf);

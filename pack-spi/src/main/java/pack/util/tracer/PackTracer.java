@@ -149,7 +149,7 @@ public class PackTracer implements Tracer {
       long startTsMicros;
       if (_startMicros == 0) {
         startNanos = System.nanoTime();
-        startTsMicros = PackSpan.nowMicrosViaMillisTime();
+        startTsMicros = PackSpan.nowMicrosViaNanoTime();
       } else {
         startNanos = _startMicros * 1000;
         startTsMicros = _startMicros;

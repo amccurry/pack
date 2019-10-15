@@ -271,12 +271,8 @@ public abstract class BlockStorageModuleFactoryTest {
     for (long pos = 0; pos < length; pos += buffer1.length) {
       random.nextBytes(buffer1);
       try {
-        if (pos == 23060460) {
-          System.out.println();
-        }
         storageModule.read(buffer2, pos);
       } catch (IOException e) {
-        System.out.println();
         throw e;
       }
       for (int i = 0; i < buffer1.length; i++) {

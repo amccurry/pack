@@ -69,7 +69,7 @@ public class LocalLogTest {
       }
     }
 
-    try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(recover, 4096, "rw")) {
+    try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(recover, bufferSize, "rw")) {
       randomAccessIO.setLength(length);
       try (LocalJournal log = new LocalJournal(DIR, 0, 0)) {
         long generation = 0;

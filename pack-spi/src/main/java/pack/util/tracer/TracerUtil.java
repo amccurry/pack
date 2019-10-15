@@ -30,6 +30,7 @@ import lombok.Value;
 @SuppressWarnings("restriction")
 public class TracerUtil {
 
+  private static final NoOpScope NO_OP_SCOPE = new NoOpScope();
   private static final String GC_EVENT = "gc event";
   private static final String ID = "id";
   private static final String TIME = "time";
@@ -94,6 +95,9 @@ public class TracerUtil {
   }
 
   public static <T> Supplier<T> traceSupplier(Class<?> clazz, String name, Supplier<T> supplier) {
+    if (!isEnabled()) {
+      return supplier;
+    }
     Span activeSpan = TRACER.activeSpan();
     return () -> {
       Span span = getSpan(clazz, name, activeSpan);
@@ -104,6 +108,9 @@ public class TracerUtil {
   }
 
   public static <T> Callable<T> traceCallable(Class<?> clazz, String name, Callable<T> callable) {
+    if (!isEnabled()) {
+      return callable;
+    }
     Span activeSpan = TRACER.activeSpan();
     return () -> {
       Span span = getSpan(clazz, name, activeSpan);
@@ -114,11 +121,18 @@ public class TracerUtil {
   }
 
   public static Scope trace(Class<?> clazz, String name, Tag... tags) {
+    if (!isEnabled()) {
+      return NO_OP_SCOPE;
+    }
     Span activeSpan = TRACER.activeSpan();
     Span span = getSpan(clazz, name, activeSpan);
     addTags(span, tags);
     Scope scope = TRACER.activateSpan(span);
     return trace(span, scope);
+  }
+
+  private static boolean isEnabled() {
+    return false;
   }
 
   private static void addTags(Span span, Tag... tags) {
@@ -228,6 +242,9 @@ public class TracerUtil {
   }
 
   public static void traceLog(String event) {
+    if (!isEnabled()) {
+      return;
+    }
     TRACER.activeSpan()
           .log(event);
   }

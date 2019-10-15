@@ -52,7 +52,7 @@ public class BlockParitionedDirectIO implements RandomAccessIO {
   @Override
   public void setLength(long length) throws IOException {
     if (length % _blockSize != 0) {
-      throw new IOException("New length is not a multiple of blockSize " + _blockSize);
+      throw new IOException("New length " + length + " is not a multiple of blockSize " + _blockSize);
     }
     _directIO.setLength(length);
   }

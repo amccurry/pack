@@ -17,15 +17,7 @@ public interface Block extends Closeable {
   /**
    * Position is relative to the block.
    */
-  default AsyncCompletableFuture writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException {
-    return writeFully(blockPosition, bytes, offset, len, true);
-  }
-
-  /**
-   * Position is relative to the block.
-   */
-  AsyncCompletableFuture writeFully(long blockPosition, byte[] bytes, int offset, int len, boolean autoFlush)
-      throws IOException;
+  AsyncCompletableFuture writeFully(long blockPosition, byte[] bytes, int offset, int len) throws IOException;
 
   void execIO(BlockIOExecutor executor) throws IOException;
 
