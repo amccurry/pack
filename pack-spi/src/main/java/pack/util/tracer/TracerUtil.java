@@ -132,7 +132,7 @@ public class TracerUtil {
   }
 
   private static boolean isEnabled() {
-    return false;
+    return true;
   }
 
   private static void addTags(Span span, Tag... tags) {

@@ -1,6 +1,5 @@
 package pack.iscsi.volume.cache;
 
-import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
@@ -37,5 +36,4 @@ public class BlockCacheLoaderConfig {
 
   BlockRemovalListener removalListener;
 
-  Executor blockIOExecutor;
 }

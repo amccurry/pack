@@ -53,12 +53,14 @@ public final class WriteStage extends ReadOrWriteStage {
   }
 
   /**
-   * Is used for checking if the PDUs received in a Data-Out sequence actually are
-   * Data-Out PDU and if the PDUs have been received in order.
+   * Is used for checking if the PDUs received in a Data-Out sequence actually
+   * are Data-Out PDU and if the PDUs have been received in order.
    * 
-   * @param parser the {@link AbstractMessageParser} subclass instance retrieved
-   *               from the {@link ProtocolDataUnit}'s {@link BasicHeaderSegment}
-   * @throws InternetSCSIException if an unexpected PDU has been received
+   * @param parser
+   *          the {@link AbstractMessageParser} subclass instance retrieved from
+   *          the {@link ProtocolDataUnit}'s {@link BasicHeaderSegment}
+   * @throws InternetSCSIException
+   *           if an unexpected PDU has been received
    */
   private void checkDataOutParser(final AbstractMessageParser parser) throws InternetSCSIException {
     if (parser instanceof DataOutParser) {
@@ -136,7 +138,9 @@ public final class WriteStage extends ReadOrWriteStage {
 
       byte[] buffer = null;
       if (!CHOPPED_UP) {
-        buffer = new byte[transferLengthInBytes];
+        try (Scope s1 = TracerUtil.trace(getClass(), "allocate")) {
+          buffer = new byte[transferLengthInBytes];
+        }
       }
 
       // check if requested blocks are out of bounds
@@ -145,12 +149,12 @@ public final class WriteStage extends ReadOrWriteStage {
 
       if (cdb.getIllegalFieldPointers() != null) {
         /*
-         * CDB is invalid, inform initiator by closing the connection. Sending an error
-         * status SCSI Response PDU will not work reliably, since the initiator may not
-         * be expecting a response so soon. Also, if the WriteStage is simply left early
-         * (without closing the connection), the initiator may send additional
-         * unsolicited Data-Out PDUs, which the jSCSI Target is currently unable to
-         * ignore or process properly.
+         * CDB is invalid, inform initiator by closing the connection. Sending
+         * an error status SCSI Response PDU will not work reliably, since the
+         * initiator may not be expecting a response so soon. Also, if the
+         * WriteStage is simply left early (without closing the connection), the
+         * initiator may send additional unsolicited Data-Out PDUs, which the
+         * jSCSI Target is currently unable to ignore or process properly.
          */
         LOGGER.debug("illegal field in Write CDB");
         LOGGER.debug("CDB:\n" + Debug.byteBufferToString(parser.getCDB()));
@@ -294,10 +298,12 @@ public final class WriteStage extends ReadOrWriteStage {
               bytesReceivedThisCycle += bhs.getDataSegmentLength();
 
               /*
-               * Checking the final flag should be enough, but is not, when dealing with the
-               * jSCSI Initiator. This is also one of the reasons, why the contents of this
-               * while loop, though very similar to what is happening during the receiving of
-               * the unsolicited data PDU sequence, has not been put into a dedicated method.
+               * Checking the final flag should be enough, but is not, when
+               * dealing with the jSCSI Initiator. This is also one of the
+               * reasons, why the contents of this while loop, though very
+               * similar to what is happening during the receiving of the
+               * unsolicited data PDU sequence, has not been put into a
+               * dedicated method.
                */
               if (bhs.isFinalFlag() || bytesReceivedThisCycle >= desiredDataTransferLength)
                 solicitedDataCycleOver = true;

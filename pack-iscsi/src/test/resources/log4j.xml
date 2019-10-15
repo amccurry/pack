@@ -55,7 +55,7 @@
 	</appender>
 	<logger name="TRACER" additivity="false">
 		<level value="trace"></level>
-		<appender-ref ref="asynctracerfile" />
+		<appender-ref ref="tracerfile" />
 	</logger>
 	<root>
 		<priority value="info" />

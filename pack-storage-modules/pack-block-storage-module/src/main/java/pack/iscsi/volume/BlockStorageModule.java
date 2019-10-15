@@ -59,7 +59,6 @@ public class BlockStorageModule implements StorageModule {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModule.class);
 
-  private static final String BLOCKIO = "blockio-";
   private static final String PRELOAD = "preload-";
   private static final String SYNC = "sync-";
   private static final String RW = "rw";
@@ -100,7 +99,6 @@ public class BlockStorageModule implements StorageModule {
   private final ExecutorService _cachePreloadExecutor;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
   private final boolean _readOnly;
-  private final ExecutorService _blockIOExecutor;
   private final AtomicLong _prefetchRemaining = new AtomicLong();
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
@@ -109,7 +107,6 @@ public class BlockStorageModule implements StorageModule {
     _flushExecutor = Executors.newSingleThreadExecutor();
     _cachePreloadExecutor = ConcurrentUtils.executor(PRELOAD + config.getVolumeId(),
         config.getCachePreloadExecutorThreadCount());
-    _blockIOExecutor = ConcurrentUtils.executor(BLOCKIO + config.getVolumeId(), config.getBlockExecutorThreadCount());
     _blockStateStore = config.getBlockStateStore();
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
@@ -231,7 +228,7 @@ public class BlockStorageModule implements StorageModule {
       }
     }
     IOUtils.close(LOGGER, _randomAccessIO);
-    IOUtils.close(LOGGER, _flushExecutor, _syncExecutor, _cachePreloadExecutor, _blockIOExecutor);
+    IOUtils.close(LOGGER, _flushExecutor, _syncExecutor, _cachePreloadExecutor);
     _file.delete();
     _blockStateStore.destroyBlockMetadataStore(_volumeId);
     LOGGER.info("finished close of storage module for {}", _volumeId);
@@ -560,7 +557,6 @@ public class BlockStorageModule implements StorageModule {
 
   private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
     return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
-                                                      .blockIOExecutor(_blockIOExecutor)
                                                       .randomAccessIO(_randomAccessIO)
                                                       .blockStateStore(_blockStateStore)
                                                       .blockGenerationStore(_blockGenerationStore)
