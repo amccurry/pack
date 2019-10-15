@@ -29,10 +29,10 @@ public class BlockStorageModuleConfig {
   BlockIOFactory externalBlockStoreFactory;
 
   @Builder.Default
-  long syncTimeAfterIdle = 1;
+  long syncTimeAfterIdle = 5;
 
   @Builder.Default
-  TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.MINUTES;
+  TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
 
   @Builder.Default
   int syncExecutorThreadCount = 5;
@@ -41,7 +41,7 @@ public class BlockStorageModuleConfig {
   int cachePreloadExecutorThreadCount = 5;
 
   @Builder.Default
-  int blockExecutorThreadCount = 5;
+  int readAheadExecutorThreadCount = 20;
 
   MetricsFactory metricsFactory;
 
@@ -53,11 +53,11 @@ public class BlockStorageModuleConfig {
 
   long maxCacheSizeInBytes;
 
-  @Builder.Default
-  long bufferSize = 1024 * 1024;
-
   BlockStateStore blockStateStore;
 
   BlockCacheMetadataStore blockCacheMetadataStore;
+
+  @Builder.Default
+  int readAheadBlockLimit = 20;
 
 }

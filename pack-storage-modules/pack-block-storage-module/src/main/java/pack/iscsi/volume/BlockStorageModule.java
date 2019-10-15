@@ -5,12 +5,17 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Queue;
+import java.util.Set;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -24,6 +29,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.Weigher;
@@ -56,6 +62,8 @@ import pack.util.tracer.Tag;
 import pack.util.tracer.TracerUtil;
 
 public class BlockStorageModule implements StorageModule {
+
+  private static final String READAHEAD = "readahead-";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModule.class);
 
@@ -99,14 +107,24 @@ public class BlockStorageModule implements StorageModule {
   private final ExecutorService _cachePreloadExecutor;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
   private final boolean _readOnly;
-  private final AtomicLong _prefetchRemaining = new AtomicLong();
+  // private final AtomicLong _prefetchRemaining = new AtomicLong();
+  private final Cache<BlockKey, Boolean> _recentlyAccessedCache;
+  private final int _readAheadBlockLimit;
+  private final Queue<BlockKey> _readAheadQueue = new ConcurrentLinkedQueue<>();
+  private final AtomicBoolean _running = new AtomicBoolean(true);
+  private final Set<BlockKey> _readAheadPullingInProgress = Collections.newSetFromMap(new ConcurrentHashMap<>());
+  private final Object _readAheadLock = new Object();
+  private final ExecutorService _readAheadExecutor;
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
+    _readAheadBlockLimit = config.getReadAheadBlockLimit();
     _readOnly = config.isReadOnly();
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _flushExecutor = Executors.newSingleThreadExecutor();
     _cachePreloadExecutor = ConcurrentUtils.executor(PRELOAD + config.getVolumeId(),
         config.getCachePreloadExecutorThreadCount());
+    _readAheadExecutor = ConcurrentUtils.executor(READAHEAD + config.getVolumeId(),
+        config.getReadAheadExecutorThreadCount());
     _blockStateStore = config.getBlockStateStore();
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
@@ -159,50 +177,67 @@ public class BlockStorageModule implements StorageModule {
                      .maximumWeight(config.getMaxCacheSizeInBytes())
                      .build(loader);
 
-    preloadBlockInfo();
-    preloadBlockCache();
-  }
+    _recentlyAccessedCache = Caffeine.newBuilder()
+                                     .expireAfterWrite(10, TimeUnit.SECONDS)
+                                     .build();
 
-  private void preloadBlockCache() {
-    _cachePreloadExecutor.submit(() -> {
-      try {
-        preloadBlockCache(_blockCacheMetadataStore.getCachedBlockIds(_volumeId));
-      } catch (Exception e) {
-        LOGGER.error("Unknown error trying to preload block cache", e);
-      }
-      return null;
-    });
-  }
-
-  private void preloadBlockCache(long[] blockIds) {
-    LOGGER.info("preloading volume id {}", _volumeId);
-    AtomicLong start = new AtomicLong(System.nanoTime());
-
-    _prefetchRemaining.set((long) blockIds.length * _blockSize);
-    Object lock = new Object();
-    for (int i = 0; i < blockIds.length; i++) {
-      int index = i;
-      long blockId = blockIds[i];
-      BlockKey blockKey = BlockKey.builder()
-                                  .blockId(blockId)
-                                  .volumeId(_volumeId)
-                                  .build();
-      _cachePreloadExecutor.submit(() -> {
-        LOGGER.debug("preloading volume id {} block id {}", _volumeId, blockId);
-        _cache.get(blockKey);
-        _prefetchRemaining.addAndGet(-_blockSize);
-
-        synchronized (lock) {
-          if (start.get() + TimeUnit.SECONDS.toNanos(5) < System.nanoTime()) {
-            LOGGER.info("preload status {} of {} blocks loaded, prefetch remaining total {}", index, blockIds.length,
-                _prefetchRemaining.get());
-            start.set(System.nanoTime());
-          }
-        }
-        return null;
-      });
+    Callable<Void> callable = readAheadCallable();
+    for (int i = 0; i < config.getReadAheadExecutorThreadCount(); i++) {
+      _readAheadExecutor.submit(callable);
     }
+
+    // preloadBlockInfo();
+    // preloadBlockCache();
   }
+
+  // private void preloadBlockCache() {
+  // _cachePreloadExecutor.submit(() -> {
+  // try {
+  // preloadBlockCache(_blockCacheMetadataStore.getCachedBlockIds(_volumeId));
+  // } catch (Exception e) {
+  // LOGGER.error("Unknown error trying to preload block cache", e);
+  // }
+  // return null;
+  // });
+  // }
+
+  // private void preloadBlockCache(long[] blockIds) {
+  // if (true) {
+  // return;
+  // }
+  // LOGGER.info("preloading volume id {}", _volumeId);
+  // AtomicLong start = new AtomicLong(System.nanoTime());
+  // _prefetchRemaining.set((long) blockIds.length * _blockSize);
+  // Object lock = new Object();
+  // AtomicInteger count = new AtomicInteger();
+  // for (int i = 0; i < blockIds.length; i++) {
+  // long blockId = blockIds[i];
+  // BlockKey blockKey = BlockKey.builder()
+  // .blockId(blockId)
+  // .volumeId(_volumeId)
+  // .build();
+  // _cachePreloadExecutor.submit(() -> {
+  // if (_closed.get()) {
+  // return null;
+  // }
+  // LOGGER.debug("preloading volume id {} block id {}", _volumeId, blockId);
+  // _cache.get(blockKey);
+  // _prefetchRemaining.addAndGet(-_blockSize);
+  // int completedCount = count.incrementAndGet();
+  //
+  // synchronized (lock) {
+  // if (start.get() + TimeUnit.SECONDS.toNanos(5) < System.nanoTime() ||
+  // completedCount == blockIds.length) {
+  // LOGGER.info("preload status {} of {} blocks loaded, prefetch remaining
+  // total {}", completedCount,
+  // blockIds.length, _prefetchRemaining.get());
+  // start.set(System.nanoTime());
+  // }
+  // }
+  // return null;
+  // });
+  // }
+  // }
 
   public synchronized Map<BlockKey, Long> createSnapshot() throws IOException {
     sync(true, false);
@@ -228,7 +263,7 @@ public class BlockStorageModule implements StorageModule {
       }
     }
     IOUtils.close(LOGGER, _randomAccessIO);
-    IOUtils.close(LOGGER, _flushExecutor, _syncExecutor, _cachePreloadExecutor);
+    IOUtils.close(LOGGER, _flushExecutor, _syncExecutor, _cachePreloadExecutor, _readAheadExecutor);
     _file.delete();
     _blockStateStore.destroyBlockMetadataStore(_volumeId);
     LOGGER.info("finished close of storage module for {}", _volumeId);
@@ -388,8 +423,46 @@ public class BlockStorageModule implements StorageModule {
       try (Scope scope2 = TracerUtil.trace(BlockStorageModule.class, "cache cleanup")) {
         _cache.cleanUp();
       }
-      return _cache.get(blockKey);
+      try {
+        return _cache.get(blockKey);
+      } finally {
+        tryToDetectReadAhead(blockKey);
+      }
     }
+  }
+
+  private void tryToDetectReadAhead(BlockKey blockKey) {
+    if (hasPreviousBlockBeenReadRecently(blockKey.toBuilder()
+                                                 .blockId(blockKey.getBlockId() == 0 ? 0L : blockKey.getBlockId() - 1L)
+                                                 .build())) {
+      readNextBlocks(blockKey);
+    }
+    _recentlyAccessedCache.put(blockKey, Boolean.TRUE);
+  }
+
+  private void readNextBlocks(BlockKey blockKey) {
+    for (int i = 1; i <= _readAheadBlockLimit; i++) {
+      BlockKey readAheadBlockKey = blockKey.toBuilder()
+                                           .blockId(blockKey.getBlockId() + (long) i)
+                                           .build();
+      tryToAddBlockToReadAhead(readAheadBlockKey);
+    }
+  }
+
+  private void tryToAddBlockToReadAhead(BlockKey readAheadBlockKey) {
+    if (_cache.getIfPresent(readAheadBlockKey) != null) {
+      return;
+    }
+    synchronized (_readAheadLock) {
+      if (_readAheadPullingInProgress.contains(readAheadBlockKey) || _readAheadQueue.contains(readAheadBlockKey)) {
+        return;
+      }
+      _readAheadQueue.offer(readAheadBlockKey);
+    }
+  }
+
+  private boolean hasPreviousBlockBeenReadRecently(BlockKey blockKey) {
+    return _recentlyAccessedCache.getIfPresent(blockKey) != null;
   }
 
   private void waitForSyncs(List<Future<Void>> syncs) {
@@ -570,4 +643,30 @@ public class BlockStorageModule implements StorageModule {
                                                       .build());
   }
 
+  private Callable<Void> readAheadCallable() {
+    return () -> {
+      while (_running.get()) {
+        BlockKey blockKey;
+        synchronized (_readAheadLock) {
+          blockKey = _readAheadQueue.poll();
+          if (blockKey != null) {
+            _readAheadPullingInProgress.add(blockKey);
+          }
+        }
+        if (blockKey == null) {
+          Thread.sleep(1);
+          continue;
+        }
+        try {
+          LOGGER.info("Read ahead volumeId {} blockId {}", blockKey.getVolumeId(), blockKey.getBlockId());
+          _cache.get(blockKey);
+        } catch (Exception e) {
+          LOGGER.error("Unknown error during read ahead fetch", e);
+        } finally {
+          _readAheadPullingInProgress.remove(blockKey);
+        }
+      }
+      return null;
+    };
+  }
 }
