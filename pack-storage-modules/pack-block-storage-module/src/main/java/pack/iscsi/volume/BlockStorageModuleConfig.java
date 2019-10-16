@@ -16,6 +16,18 @@ import pack.iscsi.spi.wal.BlockWriteAheadLog;
 @Builder
 public class BlockStorageModuleConfig {
 
+  MetricsFactory metricsFactory;
+
+  BlockGenerationStore blockGenerationStore;
+
+  BlockWriteAheadLog writeAheadLog;
+
+  BlockStateStore blockStateStore;
+
+  BlockCacheMetadataStore blockCacheMetadataStore;
+
+  BlockIOFactory externalBlockStoreFactory;
+
   String volumeName;
 
   long volumeId;
@@ -26,7 +38,9 @@ public class BlockStorageModuleConfig {
 
   boolean readOnly;
 
-  BlockIOFactory externalBlockStoreFactory;
+  File blockDataDir;
+
+  long maxCacheSizeInBytes;
 
   @Builder.Default
   long syncTimeAfterIdle = 5;
@@ -42,20 +56,6 @@ public class BlockStorageModuleConfig {
 
   @Builder.Default
   int readAheadExecutorThreadCount = 20;
-
-  MetricsFactory metricsFactory;
-
-  BlockGenerationStore blockGenerationStore;
-
-  BlockWriteAheadLog writeAheadLog;
-
-  File blockDataDir;
-
-  long maxCacheSizeInBytes;
-
-  BlockStateStore blockStateStore;
-
-  BlockCacheMetadataStore blockCacheMetadataStore;
 
   @Builder.Default
   int readAheadBlockLimit = 20;

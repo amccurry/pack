@@ -107,7 +107,6 @@ public class BlockStorageModule implements StorageModule {
   private final ExecutorService _cachePreloadExecutor;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
   private final boolean _readOnly;
-  // private final AtomicLong _prefetchRemaining = new AtomicLong();
   private final Cache<BlockKey, Boolean> _recentlyAccessedCache;
   private final int _readAheadBlockLimit;
   private final Queue<BlockKey> _readAheadQueue = new ConcurrentLinkedQueue<>();
@@ -186,58 +185,8 @@ public class BlockStorageModule implements StorageModule {
       _readAheadExecutor.submit(callable);
     }
 
-    // preloadBlockInfo();
-    // preloadBlockCache();
+    preloadBlockInfo();
   }
-
-  // private void preloadBlockCache() {
-  // _cachePreloadExecutor.submit(() -> {
-  // try {
-  // preloadBlockCache(_blockCacheMetadataStore.getCachedBlockIds(_volumeId));
-  // } catch (Exception e) {
-  // LOGGER.error("Unknown error trying to preload block cache", e);
-  // }
-  // return null;
-  // });
-  // }
-
-  // private void preloadBlockCache(long[] blockIds) {
-  // if (true) {
-  // return;
-  // }
-  // LOGGER.info("preloading volume id {}", _volumeId);
-  // AtomicLong start = new AtomicLong(System.nanoTime());
-  // _prefetchRemaining.set((long) blockIds.length * _blockSize);
-  // Object lock = new Object();
-  // AtomicInteger count = new AtomicInteger();
-  // for (int i = 0; i < blockIds.length; i++) {
-  // long blockId = blockIds[i];
-  // BlockKey blockKey = BlockKey.builder()
-  // .blockId(blockId)
-  // .volumeId(_volumeId)
-  // .build();
-  // _cachePreloadExecutor.submit(() -> {
-  // if (_closed.get()) {
-  // return null;
-  // }
-  // LOGGER.debug("preloading volume id {} block id {}", _volumeId, blockId);
-  // _cache.get(blockKey);
-  // _prefetchRemaining.addAndGet(-_blockSize);
-  // int completedCount = count.incrementAndGet();
-  //
-  // synchronized (lock) {
-  // if (start.get() + TimeUnit.SECONDS.toNanos(5) < System.nanoTime() ||
-  // completedCount == blockIds.length) {
-  // LOGGER.info("preload status {} of {} blocks loaded, prefetch remaining
-  // total {}", completedCount,
-  // blockIds.length, _prefetchRemaining.get());
-  // start.set(System.nanoTime());
-  // }
-  // }
-  // return null;
-  // });
-  // }
-  // }
 
   public synchronized Map<BlockKey, Long> createSnapshot() throws IOException {
     sync(true, false);
@@ -262,6 +211,7 @@ public class BlockStorageModule implements StorageModule {
         throw new IOException(e);
       }
     }
+    _running.set(false);
     IOUtils.close(LOGGER, _randomAccessIO);
     IOUtils.close(LOGGER, _flushExecutor, _syncExecutor, _cachePreloadExecutor, _readAheadExecutor);
     _file.delete();
