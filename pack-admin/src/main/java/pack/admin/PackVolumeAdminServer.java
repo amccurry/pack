@@ -43,9 +43,10 @@ import spark.template.freemarker.FreeMarkerEngine;
 
 public class PackVolumeAdminServer {
 
+  private static final String GC = "gc";
   private static final String READ_ONLY = "readOnly";
   private static final Logger LOGGER = LoggerFactory.getLogger(PackVolumeAdminServer.class);
-  private static final String VOLUME_PREFIX = "/api/v1.0/volume";
+  private static final String API_PREFIX = "/api/v1.0/volume";
   private static final String CLONE_VOLUME_NAME_PARAM = ":cloneVolumeName";
   private static final String SNAPSHOT_ID_PARAM = ":snapshotId";
   private static final String VOLUME_NAME_PARAM = ":volumeName";
@@ -339,20 +340,21 @@ public class PackVolumeAdminServer {
 
   public void setup() {
     ResponseTransformer transformer = model -> OBJECT_MAPPER.writeValueAsString(model);
-    _service.get(toPath(VOLUME_PREFIX), getAllVolumes(), transformer);
-    _service.get(toPath(VOLUME_PREFIX, ATTACHED), getAttachedVolumes(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, CREATE, VOLUME_NAME_PARAM), createVolume(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, CLONE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM, CLONE_VOLUME_NAME_PARAM),
+    _service.get(toPath(API_PREFIX), getAllVolumes(), transformer);
+    _service.get(toPath(API_PREFIX, ATTACHED), getAttachedVolumes(), transformer);
+    _service.post(toPath(API_PREFIX, CREATE, VOLUME_NAME_PARAM), createVolume(), transformer);
+    _service.post(toPath(API_PREFIX, CLONE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM, CLONE_VOLUME_NAME_PARAM),
         cloneVolume(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, GROW, VOLUME_NAME_PARAM), growVolume(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, DELETE, VOLUME_NAME_PARAM), deleteVolume(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, ATTACH, VOLUME_NAME_PARAM), attachVolume(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, DETACH, VOLUME_NAME_PARAM), detachVolume(), transformer);
-    _service.get(toPath(VOLUME_PREFIX, VOLUME_NAME_PARAM), getVolumeInfo(), transformer);
-    _service.get(toPath(VOLUME_PREFIX, SNAPSHOT, VOLUME_NAME_PARAM), getSnapshots(), transformer);
-    _service.post(toPath(VOLUME_PREFIX, SNAPSHOT, CREATE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM), createSnapshot(),
+    _service.post(toPath(API_PREFIX, GC, VOLUME_NAME_PARAM), gcVolume(), transformer);
+    _service.post(toPath(API_PREFIX, GROW, VOLUME_NAME_PARAM), growVolume(), transformer);
+    _service.post(toPath(API_PREFIX, DELETE, VOLUME_NAME_PARAM), deleteVolume(), transformer);
+    _service.post(toPath(API_PREFIX, ATTACH, VOLUME_NAME_PARAM), attachVolume(), transformer);
+    _service.post(toPath(API_PREFIX, DETACH, VOLUME_NAME_PARAM), detachVolume(), transformer);
+    _service.get(toPath(API_PREFIX, VOLUME_NAME_PARAM), getVolumeInfo(), transformer);
+    _service.get(toPath(API_PREFIX, SNAPSHOT, VOLUME_NAME_PARAM), getSnapshots(), transformer);
+    _service.post(toPath(API_PREFIX, SNAPSHOT, CREATE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM), createSnapshot(),
         transformer);
-    _service.post(toPath(VOLUME_PREFIX, SNAPSHOT, DELETE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM), deleteSnapshot(),
+    _service.post(toPath(API_PREFIX, SNAPSHOT, DELETE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM), deleteSnapshot(),
         transformer);
 
     ActionTable defaultActionTable = getActionTable(_defaultActionTable);
@@ -410,6 +412,16 @@ public class PackVolumeAdminServer {
       model.put("rows", actionTable.getRows());
       model.put("actions", actionTable.getActions());
       return new ModelAndView(model, "table.ftl");
+    };
+  }
+
+  private Route gcVolume() {
+    return (request, response) -> {
+      String volumeName = request.params(VOLUME_NAME_PARAM);
+      _packAdmin.gc(volumeName);
+      return OKResponse.builder()
+                       .message("Volume " + volumeName + " gc complete")
+                       .build();
     };
   }
 

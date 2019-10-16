@@ -26,12 +26,10 @@ import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.s3.util.S3Utils;
-import pack.iscsi.s3.util.S3Utils.ListResultProcessor;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
@@ -459,29 +457,26 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
 
     Map<Long, Long> oldestGenerationPerBlock = new HashMap<>();
     String blocksPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix, volumeId);
-    S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blocksPrefix, new ListResultProcessor() {
-      @Override
-      public void addResult(S3ObjectSummary summary) {
-        String key = summary.getKey();
-        LOGGER.info("gc processing key {}", key);
-        long blockId = S3Utils.getBlockIdFromKey(key);
-        long generation = S3Utils.getBlockGenerationFromKey(key);
-        if (isOldestGeneration(oldestGenerationPerBlock, blockId, generation)) {
-          // keep around might not be the oldest once the block is complete
-          Long oldGeneration = oldestGenerationPerBlock.put(blockId, generation);
-          if (oldGeneration != null) {
-            if (!isInUse(snapshotsBlockToGensMap, blockId, oldGeneration)) {
-              String deleteKey = S3Utils.getBlockGenerationKey(_objectPrefix, volumeId, blockId, oldGeneration);
-              LOGGER.info("gc delete object {}", deleteKey);
-              _consistentAmazonS3.deleteObject(_bucket, deleteKey);
-            }
+    S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blocksPrefix, summary -> {
+      String key = summary.getKey();
+      LOGGER.debug("gc processing key {}", key);
+      long blockId = S3Utils.getBlockIdFromKey(key);
+      long generation = S3Utils.getBlockGenerationFromKey(key);
+      if (isOldestGeneration(oldestGenerationPerBlock, blockId, generation)) {
+        // keep around might not be the oldest once the block is complete
+        Long oldGeneration = oldestGenerationPerBlock.put(blockId, generation);
+        if (oldGeneration != null) {
+          if (!isInUse(snapshotsBlockToGensMap, blockId, oldGeneration)) {
+            String deleteKey = S3Utils.getBlockGenerationKey(_objectPrefix, volumeId, blockId, oldGeneration);
+            LOGGER.info("gc delete object {}", deleteKey);
+            _consistentAmazonS3.deleteObject(_bucket, deleteKey);
           }
-        } else {
-          // remove
-          if (!isInUse(snapshotsBlockToGensMap, blockId, generation)) {
-            LOGGER.info("gc delete object {}", key);
-            _consistentAmazonS3.deleteObject(_bucket, key);
-          }
+        }
+      } else {
+        // remove
+        if (!isInUse(snapshotsBlockToGensMap, blockId, generation)) {
+          LOGGER.info("gc delete object {}", key);
+          _consistentAmazonS3.deleteObject(_bucket, key);
         }
       }
     });

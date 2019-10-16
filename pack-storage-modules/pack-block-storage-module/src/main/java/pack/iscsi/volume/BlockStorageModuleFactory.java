@@ -3,15 +3,22 @@ package pack.iscsi.volume;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.iscsi.concurrent.ConcurrentUtils;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.PackVolumeMetadata;
@@ -44,8 +51,16 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final Object _lock = new Object();
   private final BlockStateStore _blockStateStore;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
+  private final int _syncExecutorThreadCount;
+  private final int _readAheadExecutorThreadCount;
+  private final int _readAheadBlockLimit;
+  private final Timer _gcTimer;
+  private final ExecutorService _gcExecutor;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
+    _syncExecutorThreadCount = config.getSyncExecutorThreadCount();
+    _readAheadExecutorThreadCount = config.getReadAheadExecutorThreadCount();
+    _readAheadBlockLimit = config.getReadAheadBlockLimit();
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _blockStateStore = config.getBlockStateStore();
     _packVolumeStore = config.getPackVolumeStore();
@@ -57,6 +72,11 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _metricsFactory = config.getMetricsFactory();
     _maxCacheSizeInBytes = config.getMaxCacheSizeInBytes();
+    _gcExecutor = ConcurrentUtils.executor("gc", config.getGcExecutorThreadCount());
+    _gcTimer = new Timer("gc-driver", true);
+    long gcPeriod = config.getGcDriverTimeUnit()
+                          .toMillis(config.getGcDriver());
+    _gcTimer.schedule(getGcTask(), gcPeriod, gcPeriod);
     _packVolumeStore.register(this);
   }
 
@@ -100,6 +120,10 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
                                                                 .metricsFactory(_metricsFactory)
                                                                 .writeAheadLog(_writeAheadLog)
                                                                 .maxCacheSizeInBytes(getMaxCacheSizeInBytes())
+                                                                .syncExecutorThreadCount(_syncExecutorThreadCount)
+                                                                .readAheadExecutorThreadCount(
+                                                                    _readAheadExecutorThreadCount)
+                                                                .readAheadBlockLimit(_readAheadBlockLimit)
                                                                 .build();
       LOGGER.info("open storage module for {}({})", name, volumeId);
       storageModule = new BlockStorageModule(config);
@@ -111,6 +135,9 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   @Override
   public void close() throws IOException {
     LOGGER.info("starting close of storage module factory");
+    _gcTimer.purge();
+    _gcTimer.cancel();
+    IOUtils.close(LOGGER, _gcExecutor);
     IOUtils.close(LOGGER, _blockStorageModules.values());
   }
 
@@ -168,5 +195,39 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       throw new IOException("Storage module " + name + " not found");
     }
     return module;
+  }
+
+  private TimerTask getGcTask() {
+    return new TimerTask() {
+      @Override
+      public void run() {
+        try {
+          runGc();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error", t);
+        }
+      }
+    };
+  }
+
+  private void runGc() throws IOException {
+    List<String> volumes = _packVolumeStore.getAttachedVolumes();
+    List<Future<Void>> futures = new ArrayList<>();
+    for (String volume : volumes) {
+      futures.add(_gcExecutor.submit(() -> {
+        _packVolumeStore.gc(volume);
+        return null;
+      }));
+    }
+    for (Future<Void> future : futures) {
+      try {
+        future.get();
+      } catch (InterruptedException e) {
+        LOGGER.error(e.getMessage(), e);
+      } catch (ExecutionException e) {
+        Throwable cause = e.getCause();
+        LOGGER.error(cause.getMessage(), cause);
+      }
+    }
   }
 }

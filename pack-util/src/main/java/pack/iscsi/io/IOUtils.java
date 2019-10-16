@@ -170,4 +170,23 @@ public class IOUtils {
     return output.toByteArray();
   }
 
+  public static void close(Logger logger, Thread... threads) {
+    if (threads == null) {
+      return;
+    }
+    for (Thread t : threads) {
+      Thread thread = t;
+      if (t != null) {
+        close(logger, () -> {
+          thread.interrupt();
+          try {
+            thread.join();
+          } catch (InterruptedException e) {
+            throw new IOException(e);
+          }
+        });
+      }
+    }
+  }
+
 }

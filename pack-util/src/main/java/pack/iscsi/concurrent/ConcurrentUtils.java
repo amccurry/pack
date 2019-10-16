@@ -2,8 +2,9 @@ package pack.iscsi.concurrent;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -12,7 +13,8 @@ import org.slf4j.Logger;
 public class ConcurrentUtils {
 
   public static ExecutorService executor(String name, int threads) {
-    return Executors.newFixedThreadPool(threads, new PackThreadFactory(name));
+    return new ThreadPoolExecutor(threads, threads, 0L, TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>(),
+        new PackThreadFactory(name));
   }
 
   public static void sleep(TimeUnit unit, long sleep) {

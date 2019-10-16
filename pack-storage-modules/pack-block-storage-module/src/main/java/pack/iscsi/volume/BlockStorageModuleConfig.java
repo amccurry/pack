@@ -49,15 +49,12 @@ public class BlockStorageModuleConfig {
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
 
   @Builder.Default
-  int syncExecutorThreadCount = 5;
-
-  @Builder.Default
-  int cachePreloadExecutorThreadCount = 5;
-
-  @Builder.Default
-  int readAheadExecutorThreadCount = 20;
+  int syncExecutorThreadCount = 20;
 
   @Builder.Default
   int readAheadBlockLimit = 20;
+
+  @Builder.Default
+  int readAheadExecutorThreadCount = 20;
 
 }
