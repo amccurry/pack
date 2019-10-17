@@ -214,6 +214,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     if (!metadata.isReadOnly()) {
       checkAttached(name);
     }
+    checkInUse(metadata);
     String key = S3Utils.getAttachedVolumeNameKey(_objectPrefix, _hostname, name);
     _consistentAmazonS3.deleteObject(_bucket, key);
 
@@ -228,6 +229,14 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
                                              .attachedHostnames(attachedHostnames.isEmpty() ? null : attachedHostnames)
                                              .build();
     S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, metadataKey, newMetadata);
+  }
+
+  private void checkInUse(PackVolumeMetadata metadata) throws IOException {
+    for (VolumeListener listener : _listeners) {
+      if (listener.isInUse(metadata)) {
+        throw new IOException("Volume " + metadata.getName() + " is still in use.");
+      }
+    }
   }
 
   @Override

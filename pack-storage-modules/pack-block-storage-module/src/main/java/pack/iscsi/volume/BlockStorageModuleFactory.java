@@ -201,6 +201,11 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   }
 
   @Override
+  public boolean isInUse(PackVolumeMetadata metadata) throws IOException {
+    return _blockStorageModules.containsKey(metadata.getName());
+  }
+
+  @Override
   public boolean hasVolume(PackVolumeMetadata metadata) throws IOException {
     String name = metadata.getName();
     return _blockStorageModules.containsKey(name);

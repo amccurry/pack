@@ -21,5 +21,9 @@ public interface VolumeListener {
   default boolean hasVolume(PackVolumeMetadata metadata) throws IOException {
     throw new IOException("Does not implement has volume");
   }
+  
+  default boolean isInUse(PackVolumeMetadata metadata) throws IOException {
+    throw new IOException("Does not implement is in use");
+  }
 
 }
