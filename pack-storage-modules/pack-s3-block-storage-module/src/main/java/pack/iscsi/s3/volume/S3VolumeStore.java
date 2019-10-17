@@ -143,6 +143,8 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException {
     checkNonExistence(name);
+    checkLength(lengthInBytes);
+    checkBlockSize(blockSizeInBytes);
     long volumeId = createVolumeId(name);
     PackVolumeMetadata metadata = PackVolumeMetadata.builder()
                                                     .name(name)

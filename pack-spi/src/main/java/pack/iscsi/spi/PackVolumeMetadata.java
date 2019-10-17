@@ -1,6 +1,7 @@
 package pack.iscsi.spi;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -20,5 +21,12 @@ public class PackVolumeMetadata {
   long lengthInBytes;
   boolean readOnly;
   List<String> attachedHostnames;
+
+  // Default overrides
+  Long syncTimeAfterIdle;
+  TimeUnit syncTimeAfterIdleTimeUnit;
+  Integer syncExecutorThreadCount;
+  Integer readAheadExecutorThreadCount;
+  Integer readAheadBlockLimit;
 
 }

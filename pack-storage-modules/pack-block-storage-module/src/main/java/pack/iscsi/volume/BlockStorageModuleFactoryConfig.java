@@ -34,30 +34,30 @@ public class BlockStorageModuleFactoryConfig {
   long maxCacheSizeInBytes;
 
   @Builder.Default
-  long syncTimeAfterIdle = 5;
-
-  @Builder.Default
-  TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
-
-  @Builder.Default
   MetricsFactory metricsFactory = MetricsFactory.NO_OP;
 
   @Builder.Default
-  int syncExecutorThreadCount = 20;
-
-  @Builder.Default
-  int readAheadExecutorThreadCount = 20;
-
-  @Builder.Default
-  int readAheadBlockLimit = 20;
-
-  @Builder.Default
-  long gcDriver = 1;
+  long gcDriverTime = 1;
 
   @Builder.Default
   TimeUnit gcDriverTimeUnit = TimeUnit.MINUTES;
-  
+
   @Builder.Default
   int gcExecutorThreadCount = 10;
+
+  @Builder.Default
+  long defaultSyncTimeAfterIdle = 5;
+
+  @Builder.Default
+  TimeUnit defaultSyncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
+
+  @Builder.Default
+  int defaultSyncExecutorThreadCount = 20;
+
+  @Builder.Default
+  int defaultReadAheadExecutorThreadCount = 20;
+
+  @Builder.Default
+  int defaultReadAheadBlockLimit = 20;
 
 }

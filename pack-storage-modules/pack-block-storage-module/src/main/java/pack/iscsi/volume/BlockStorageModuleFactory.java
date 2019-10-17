@@ -43,24 +43,27 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final File _blockDataDir;
   private final PackVolumeStore _packVolumeStore;
   private final BlockIOFactory _externalBlockStoreFactory;
-  private final long _syncTimeAfterIdle;
-  private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final MetricsFactory _metricsFactory;
   private final long _maxCacheSizeInBytes;
   private final ConcurrentMap<String, BlockStorageModule> _blockStorageModules = new ConcurrentHashMap<>();
   private final Object _lock = new Object();
   private final BlockStateStore _blockStateStore;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
-  private final int _syncExecutorThreadCount;
-  private final int _readAheadExecutorThreadCount;
-  private final int _readAheadBlockLimit;
   private final Timer _gcTimer;
   private final ExecutorService _gcExecutor;
+  private final int _defaultSyncExecutorThreadCount;
+  private final int _defaultReadAheadExecutorThreadCount;
+  private final int _defaultReadAheadBlockLimit;
+  private final long _defaultSyncTimeAfterIdle;
+  private final TimeUnit _defaultSyncTimeAfterIdleTimeUnit;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
-    _syncExecutorThreadCount = config.getSyncExecutorThreadCount();
-    _readAheadExecutorThreadCount = config.getReadAheadExecutorThreadCount();
-    _readAheadBlockLimit = config.getReadAheadBlockLimit();
+    _defaultSyncExecutorThreadCount = config.getDefaultSyncExecutorThreadCount();
+    _defaultReadAheadExecutorThreadCount = config.getDefaultReadAheadExecutorThreadCount();
+    _defaultReadAheadBlockLimit = config.getDefaultReadAheadBlockLimit();
+    _defaultSyncTimeAfterIdle = config.getDefaultSyncTimeAfterIdle();
+    _defaultSyncTimeAfterIdleTimeUnit = config.getDefaultSyncTimeAfterIdleTimeUnit();
+
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _blockStateStore = config.getBlockStateStore();
     _packVolumeStore = config.getPackVolumeStore();
@@ -68,14 +71,13 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _blockGenerationStore = config.getBlockStore();
     _writeAheadLog = config.getWriteAheadLog();
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
-    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
-    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
+
     _metricsFactory = config.getMetricsFactory();
     _maxCacheSizeInBytes = config.getMaxCacheSizeInBytes();
     _gcExecutor = ConcurrentUtils.executor("gc", config.getGcExecutorThreadCount());
     _gcTimer = new Timer("gc-driver", true);
     long gcPeriod = config.getGcDriverTimeUnit()
-                          .toMillis(config.getGcDriver());
+                          .toMillis(config.getGcDriverTime());
     _gcTimer.schedule(getGcTask(), gcPeriod, gcPeriod);
     _packVolumeStore.register(this);
   }
@@ -93,6 +95,15 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       if (!_packVolumeStore.isAttached(name)) {
         throw new IOException("Volume " + name + " is not attached to this host.");
       }
+
+      long syncTimeAfterIdle = getValue(volumeMetadata.getSyncTimeAfterIdle(), _defaultSyncTimeAfterIdle);
+      TimeUnit syncTimeAfterIdleTimeUnit = getValue(volumeMetadata.getSyncTimeAfterIdleTimeUnit(),
+          _defaultSyncTimeAfterIdleTimeUnit);
+      int syncExecutorThreadCount = getValue(volumeMetadata.getSyncExecutorThreadCount(),
+          _defaultSyncExecutorThreadCount);
+      int readAheadExecutorThreadCount = getValue(volumeMetadata.getReadAheadExecutorThreadCount(),
+          _defaultReadAheadExecutorThreadCount);
+      int readAheadBlockLimit = getValue(volumeMetadata.getReadAheadBlockLimit(), _defaultReadAheadBlockLimit);
 
       BlockStorageModule storageModule = _blockStorageModules.get(name);
       if (storageModule != null) {
@@ -115,21 +126,28 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
                                                                 .blockCount(blockCount)
                                                                 .volumeName(name)
                                                                 .volumeId(volumeId)
-                                                                .syncTimeAfterIdle(_syncTimeAfterIdle)
-                                                                .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
+                                                                .syncTimeAfterIdle(syncTimeAfterIdle)
+                                                                .syncTimeAfterIdleTimeUnit(syncTimeAfterIdleTimeUnit)
                                                                 .metricsFactory(_metricsFactory)
                                                                 .writeAheadLog(_writeAheadLog)
                                                                 .maxCacheSizeInBytes(getMaxCacheSizeInBytes())
-                                                                .syncExecutorThreadCount(_syncExecutorThreadCount)
+                                                                .syncExecutorThreadCount(syncExecutorThreadCount)
                                                                 .readAheadExecutorThreadCount(
-                                                                    _readAheadExecutorThreadCount)
-                                                                .readAheadBlockLimit(_readAheadBlockLimit)
+                                                                    readAheadExecutorThreadCount)
+                                                                .readAheadBlockLimit(readAheadBlockLimit)
                                                                 .build();
       LOGGER.info("open storage module for {}({})", name, volumeId);
       storageModule = new BlockStorageModule(config);
       _blockStorageModules.put(name, storageModule);
       return referenceCounter(name, volumeMetadata, storageModule);
     }
+  }
+
+  private static <T> T getValue(T overrideValue, T defaultValue) {
+    if (overrideValue != null) {
+      return overrideValue;
+    }
+    return defaultValue;
   }
 
   @Override
