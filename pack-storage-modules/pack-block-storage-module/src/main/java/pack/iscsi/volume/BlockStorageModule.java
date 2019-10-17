@@ -485,7 +485,9 @@ public class BlockStorageModule implements StorageModule {
     try {
       List<Future<Void>> syncs = sync(onlyIfIdleWrites);
       if (blocking) {
-        waitForSyncs(syncs);
+        if (syncs.size() > 0) {
+          waitForSyncs(syncs);
+        }
       }
     } catch (InterruptedException e) {
       throw new IOException(e);

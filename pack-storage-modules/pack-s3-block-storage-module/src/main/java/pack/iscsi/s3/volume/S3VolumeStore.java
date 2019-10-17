@@ -17,6 +17,11 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.WeakHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.curator.shaded.com.google.common.collect.ImmutableList;
 import org.slf4j.Logger;
@@ -29,6 +34,7 @@ import com.amazonaws.services.s3.model.S3ObjectInputStream;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import consistent.s3.ConsistentAmazonS3;
+import pack.iscsi.concurrent.ConcurrentUtils;
 import pack.iscsi.s3.util.S3Utils;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.PackVolumeMetadata;
@@ -383,10 +389,11 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     String key = getVolumeMetadataKey(cloneVolumeId);
     S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, key, metadata);
     createVolumeNamePointer(name, cloneVolumeId);
-    copyVolumeData(cloneVolumeId, existingVolumeId, snapshotId);
+    copyVolumeData(cloneVolumeId, existingVolumeId, snapshotId, metadata.getBlockSizeInBytes());
   }
 
-  private void copyVolumeData(long cloneVolumeId, long existingVolumeId, String snapshotId) throws IOException {
+  private void copyVolumeData(long cloneVolumeId, long existingVolumeId, String snapshotId, int bufferSize)
+      throws IOException {
     // metadata already written
     // copy cache block info
     String cloneCachedBlockInfoKey = S3Utils.getCachedBlockInfo(_objectPrefix, cloneVolumeId);
@@ -395,13 +402,42 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     S3Utils.copy(_consistentAmazonS3, _bucket, snapshotCachedBlockInfoKey, cloneCachedBlockInfoKey);
     // copy blocks themselves
     String snapshotBlockInfoKey = S3Utils.getVolumeSnapshotBlockInfoKey(_objectPrefix, existingVolumeId, snapshotId);
-    S3Utils.readVolumeSnapshotBlockInfo(_consistentAmazonS3, _bucket, snapshotBlockInfoKey, (blockId, generation) -> {
-      LOGGER.info("Copying src volumeId {} dst volumeId {} blockId {} generation {}", existingVolumeId, cloneVolumeId,
-          blockId, generation);
-      String srcKey = S3Utils.getBlockGenerationKey(_objectPrefix, existingVolumeId, blockId, generation);
-      String dstKey = S3Utils.getBlockGenerationKey(_objectPrefix, cloneVolumeId, blockId, generation);
-      S3Utils.copy(_consistentAmazonS3, _bucket, srcKey, dstKey);
-    });
+
+    int threads = 10;
+    ExecutorService executorService = ConcurrentUtils.executor("copy-" + existingVolumeId, threads);
+    List<Future<Void>> futures = new ArrayList<>();
+    AtomicLong start = new AtomicLong(System.nanoTime());
+    AtomicLong totalTransfered = new AtomicLong();
+    AtomicLong objectTotal = new AtomicLong();
+    try {
+      S3Utils.readVolumeSnapshotBlockInfo(_consistentAmazonS3, _bucket, snapshotBlockInfoKey, (blockId, generation) -> {
+        String srcKey = S3Utils.getBlockGenerationKey(_objectPrefix, existingVolumeId, blockId, generation);
+        String dstKey = S3Utils.getBlockGenerationKey(_objectPrefix, cloneVolumeId, blockId, generation);
+        futures.add(executorService.submit(() -> {
+          if (start.get() + TimeUnit.SECONDS.toNanos(5) < System.nanoTime()) {
+            LOGGER.info("Clone volume data copy progress, object total {} total bytes {}", objectTotal.get(), totalTransfered.get());
+            start.set(System.nanoTime());
+          }
+          LOGGER.debug("Copying src volumeId {} dst volumeId {} blockId {} generation {}", existingVolumeId,
+              cloneVolumeId, blockId, generation);
+          S3Utils.copy(_consistentAmazonS3, _bucket, srcKey, dstKey);
+          totalTransfered.addAndGet(bufferSize);
+          objectTotal.incrementAndGet();
+          return null;
+        }));
+      });
+    } finally {
+      for (Future<Void> future : futures) {
+        try {
+          future.get();
+        } catch (InterruptedException e) {
+          throw new IOException(e);
+        } catch (ExecutionException e) {
+          throw new IOException(e.getCause());
+        }
+      }
+      executorService.shutdownNow();
+    }
   }
 
   @Override

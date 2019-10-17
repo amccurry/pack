@@ -195,7 +195,8 @@ public class IscsiConfigUtil {
   private static BlockWriteAheadLog getBlockWriteAheadLog(Properties properties, File configFile,
       CuratorFramework curatorFramework) throws Exception {
     return noOpWAL();
-//    return getRemoteBlockWriteAheadLog(properties, configFile, curatorFramework);
+    // return getRemoteBlockWriteAheadLog(properties, configFile,
+    // curatorFramework);
   }
 
   private static BlockWriteAheadLog noOpWAL() {
@@ -268,9 +269,9 @@ public class IscsiConfigUtil {
     String zkPrefix = getPropertyNotNull(properties, CONSISTENT_S3_ZK_PREFIX, configFile);
     AmazonS3 client = AmazonS3ClientBuilder.defaultClient();
     ConsistentAmazonS3 consistentAmazonS3 = ConsistentAmazonS3.create(client, curatorFramework,
-        ConsistentAmazonS3Config.builder()
-                                .zkPrefix(zkPrefix)
-                                .build());
+        ConsistentAmazonS3Config.DEFAULT.toBuilder()
+                                        .zkPrefix(zkPrefix)
+                                        .build());
     return consistentAmazonS3;
   }
 
