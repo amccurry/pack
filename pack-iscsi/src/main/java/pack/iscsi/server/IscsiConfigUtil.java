@@ -19,15 +19,12 @@ import org.slf4j.LoggerFactory;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Timer;
-import com.codahale.metrics.Timer.Context;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
 import pack.admin.PackVolumeAdminServer;
-import pack.iscsi.admin.ActionTable;
 import pack.iscsi.block.LocalBlockStateStore;
 import pack.iscsi.block.LocalBlockStateStoreConfig;
 import pack.iscsi.file.block.storage.LocalExternalBlockStoreFactory;
@@ -39,8 +36,9 @@ import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
 import pack.iscsi.server.admin.AllVolumeActionTable;
 import pack.iscsi.server.admin.AttachedVolumeActionTable;
+import pack.iscsi.server.admin.CreateVolume;
+import pack.iscsi.server.admin.GrowVolume;
 import pack.iscsi.server.admin.MeterMetricsActionTable;
-import pack.iscsi.server.admin.TimerMetricsActionTable;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
@@ -49,7 +47,6 @@ import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.spi.metric.TimerContext;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
@@ -57,6 +54,10 @@ import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 import pack.iscsi.wal.remote.RemoteWALClient;
 import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 import spark.Service;
+import swa.SimpleWebApplication;
+import swa.spi.Form;
+import swa.spi.Menu;
+import swa.spi.Table;
 
 public class IscsiConfigUtil {
 
@@ -108,14 +109,27 @@ public class IscsiConfigUtil {
 
     Service service = getSparkServiceIfNeeded(properties, configFile);
     if (service != null) {
-      ActionTable allVolumeActionTable = new AllVolumeActionTable(volumeStore);
-      ActionTable attachedVolumeActionTable = new AttachedVolumeActionTable(volumeStore);
+      Table allVolumeActionTable = new AllVolumeActionTable(volumeStore);
+      Table attachedVolumeActionTable = new AttachedVolumeActionTable(volumeStore);
       MeterMetricsActionTable meterMetricsActionTable = new MeterMetricsActionTable(metricsFactory);
-      TimerMetricsActionTable timerMetricsActionTable = new TimerMetricsActionTable(metricsFactory);
 
-      PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore,
-          attachedVolumeActionTable.getLink(), allVolumeActionTable, attachedVolumeActionTable, meterMetricsActionTable,
-          timerMetricsActionTable);
+      CreateVolume createVolume = new CreateVolume(volumeStore);
+
+      GrowVolume growVolume = new GrowVolume(volumeStore);
+
+      PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore);
+
+      List<Menu> menus = new ArrayList<>();
+      menus.add(Menu.create(attachedVolumeActionTable));
+      menus.add(Menu.create(meterMetricsActionTable));
+      menus.add(Menu.create(allVolumeActionTable));
+      menus.add(Menu.create(createVolume));
+
+      List<Table> tables = Arrays.asList(attachedVolumeActionTable, allVolumeActionTable, meterMetricsActionTable);
+      List<Form> forms = Arrays.asList(createVolume, growVolume);
+
+      SimpleWebApplication.setup(service, attachedVolumeActionTable.getLink(), menus, tables, forms);
+
       adminServer.setup();
     }
 
@@ -171,15 +185,6 @@ public class IscsiConfigUtil {
       public Meter meter(Class<?> clazz, String... name) {
         com.codahale.metrics.Meter meter = metricRegistry.meter(getName(clazz, name));
         return count -> meter.mark(count);
-      }
-
-      @Override
-      public TimerContext timer(Class<?> clazz, String... name) {
-        Timer timer = metricRegistry.timer(getName(clazz, name));
-        return () -> {
-          Context context = timer.time();
-          return () -> context.close();
-        };
       }
     };
   }

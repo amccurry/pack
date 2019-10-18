@@ -1,6 +1,5 @@
 package pack.iscsi.volume;
 
-import java.io.Closeable;
 import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
@@ -52,7 +51,6 @@ import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.spi.metric.TimerContext;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.BlockCacheLoader;
@@ -70,8 +68,6 @@ public class BlockStorageModule implements StorageModule {
   private static final String READAHEAD = "readahead-";
   private static final String SYNC = "sync-";
   private static final String RW = "rw";
-  private static final String WRITE_TIMER = "write-timer";
-  private static final String READ_TIMER = "read-timer";
   private static final String WRITE = "write-bytes";
   private static final String READ = "read-bytes";
   private static final String READ_IOPS = "read-iops";
@@ -96,8 +92,6 @@ public class BlockStorageModule implements StorageModule {
   private final AtomicInteger _refCounter = new AtomicInteger();
   private final Meter _readIOMeter;
   private final Meter _writeIOMeter;
-  private final TimerContext _readTimer;
-  private final TimerContext _writeTimer;
   private final RandomAccessIO _randomAccessIO;
   private final BlockStateStore _blockStateStore;
   private final File _file;
@@ -134,8 +128,6 @@ public class BlockStorageModule implements StorageModule {
     _readIOMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, READ_IOPS);
     _writeMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE);
     _writeIOMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE_IOPS);
-    _readTimer = _metricsFactory.timer(BlockStorageModule.class, volumeName, READ_TIMER);
-    _writeTimer = _metricsFactory.timer(BlockStorageModule.class, volumeName, WRITE_TIMER);
 
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
 
@@ -317,25 +309,23 @@ public class BlockStorageModule implements StorageModule {
     _readMeter.mark(length);
     _readIOMeter.mark();
     int offset = 0;
-    try (Closeable time = _readTimer.time()) {
-      try (Scope readScope = TracerUtil.trace(BlockStorageModule.class, READ, createTags(bytes, position))) {
-        while (length > 0) {
-          long blockId = getBlockId(position);
-          int blockOffset = getBlockOffset(position);
-          int remaining = _blockSize - blockOffset;
-          int len = Math.min(remaining, length);
-          BlockKey blockKey = BlockKey.builder()
-                                      .volumeId(_volumeId)
-                                      .blockId(blockId)
-                                      .build();
-          Block block = getBlock(blockKey);
-          try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block read")) {
-            block.readFully(blockOffset, bytes, offset, len);
-          }
-          length -= len;
-          position += len;
-          offset += len;
+    try (Scope readScope = TracerUtil.trace(BlockStorageModule.class, READ, createTags(bytes, position))) {
+      while (length > 0) {
+        long blockId = getBlockId(position);
+        int blockOffset = getBlockOffset(position);
+        int remaining = _blockSize - blockOffset;
+        int len = Math.min(remaining, length);
+        BlockKey blockKey = BlockKey.builder()
+                                    .volumeId(_volumeId)
+                                    .blockId(blockId)
+                                    .build();
+        Block block = getBlock(blockKey);
+        try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block read")) {
+          block.readFully(blockOffset, bytes, offset, len);
         }
+        length -= len;
+        position += len;
+        offset += len;
       }
     }
   }
@@ -355,26 +345,24 @@ public class BlockStorageModule implements StorageModule {
     _writeMeter.mark(length);
     _writeIOMeter.mark();
     int offset = 0;
-    try (Closeable time = _writeTimer.time()) {
-      try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE, createTags(bytes, position))) {
-        while (length > 0) {
-          long blockId = getBlockId(position);
-          int blockOffset = getBlockOffset(position);
-          int remaining = _blockSize - blockOffset;
-          int len = Math.min(remaining, length);
-          BlockKey blockKey = BlockKey.builder()
-                                      .volumeId(_volumeId)
-                                      .blockId(blockId)
-                                      .build();
-          Block block = getBlock(blockKey);
-          try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write",
-              Tag.create("length", len))) {
-            trackResult(block.writeFully(blockOffset, bytes, offset, len));
-          }
-          length -= len;
-          position += len;
-          offset += len;
+    try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, WRITE, createTags(bytes, position))) {
+      while (length > 0) {
+        long blockId = getBlockId(position);
+        int blockOffset = getBlockOffset(position);
+        int remaining = _blockSize - blockOffset;
+        int len = Math.min(remaining, length);
+        BlockKey blockKey = BlockKey.builder()
+                                    .volumeId(_volumeId)
+                                    .blockId(blockId)
+                                    .build();
+        Block block = getBlock(blockKey);
+        try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write",
+            Tag.create("length", len))) {
+          trackResult(block.writeFully(blockOffset, bytes, offset, len));
         }
+        length -= len;
+        position += len;
+        offset += len;
       }
     }
   }

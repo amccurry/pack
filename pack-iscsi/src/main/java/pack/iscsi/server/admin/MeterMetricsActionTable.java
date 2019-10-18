@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Formatter;
 import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.SortedMap;
@@ -19,12 +20,12 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.ScheduledReporter;
 import com.codahale.metrics.Timer;
 
-import pack.iscsi.admin.ActionTable;
-import pack.iscsi.admin.Column;
-import pack.iscsi.admin.Row;
 import pack.iscsi.spi.metric.MetricsFactory;
+import swa.spi.Column;
+import swa.spi.Row;
+import swa.spi.Table;
 
-public class MeterMetricsActionTable extends ScheduledReporter implements ActionTable {
+public class MeterMetricsActionTable extends ScheduledReporter implements PackHtml, Table {
 
   private final AtomicReference<List<Row>> _rowsRef = new AtomicReference<>(new ArrayList<>());
 
@@ -37,10 +38,10 @@ public class MeterMetricsActionTable extends ScheduledReporter implements Action
   private static MetricRegistry toMetricRegistry(Object metricRegistry) {
     return (MetricRegistry) metricRegistry;
   }
-  
+
   @Override
   public String getName() throws IOException {
-    return "meters";
+    return "Attached Volumes Metrics";
   }
 
   @Override
@@ -49,7 +50,12 @@ public class MeterMetricsActionTable extends ScheduledReporter implements Action
   }
 
   @Override
-  public List<Row> getRows() throws IOException {
+  public String getIcon() {
+    return "bar-chart-2";
+  }
+
+  @Override
+  public List<Row> getRows(Map<String, String[]> queryParams) throws IOException {
     return _rowsRef.get();
   }
 
@@ -69,7 +75,7 @@ public class MeterMetricsActionTable extends ScheduledReporter implements Action
   }
 
   @Override
-  public List<String> getHeaders() throws IOException {
+  public List<String> getHeaders(Map<String, String[]> queryParams) throws IOException {
     return Arrays.asList("Name", "Count", "Mean", "1 Minute", "5 Minute", "15 Minute");
   }
 

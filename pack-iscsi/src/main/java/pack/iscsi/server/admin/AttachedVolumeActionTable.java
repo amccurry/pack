@@ -3,12 +3,14 @@ package pack.iscsi.server.admin;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 
 public class AttachedVolumeActionTable extends VolumeActionTable {
 
+  private static final String GROW = "Grow";
   private static final String ATTACHED = "attached";
   private static final String ATTACHED_VOLUMES = "Attached Volumes";
   private static final String DETACH_ACTION = "Detach";
@@ -23,12 +25,12 @@ public class AttachedVolumeActionTable extends VolumeActionTable {
   }
 
   @Override
-  public List<String> getActions() throws IOException {
-    return Arrays.asList(DETACH_ACTION);
+  public List<String> getActions(Map<String, String[]> queryParams) throws IOException {
+    return Arrays.asList(DETACH_ACTION, GROW);
   }
 
   @Override
-  public void execute(String action, String[] ids) throws IOException {
+  public String execute(String action, String[] ids) throws IOException {
     for (String idStr : ids) {
       long id = Long.parseLong(idStr);
       PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(id);
@@ -36,10 +38,13 @@ public class AttachedVolumeActionTable extends VolumeActionTable {
       case DETACH_ACTION:
         _volumeStore.detachVolume(metadata.getName());
         break;
+      case GROW:
+        return GrowVolume.LINK + "?volumename=" + metadata.getName();
       default:
         break;
       }
     }
+    return getLink();
   }
 
 }

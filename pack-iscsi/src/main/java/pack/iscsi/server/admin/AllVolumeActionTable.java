@@ -3,6 +3,7 @@ package pack.iscsi.server.admin;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
@@ -24,12 +25,12 @@ public class AllVolumeActionTable extends VolumeActionTable {
   }
 
   @Override
-  public List<String> getActions() throws IOException {
+  public List<String> getActions(Map<String, String[]> queryParams) throws IOException {
     return Arrays.asList(ATTACH, DELETE);
   }
 
   @Override
-  public void execute(String action, String[] ids) throws IOException {
+  public String execute(String action, String[] ids) throws IOException {
     for (String idStr : ids) {
       long id = Long.parseLong(idStr);
       PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(id);
@@ -44,6 +45,7 @@ public class AllVolumeActionTable extends VolumeActionTable {
         break;
       }
     }
+    return getLink();
   }
 
 }

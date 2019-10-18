@@ -45,6 +45,14 @@
 			<artifactId>commons-cli</artifactId>
 		</dependency>
 		<dependency>
+			<groupId>commons-io</groupId>
+			<artifactId>commons-io</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>swa</groupId>
+			<artifactId>swa-app</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>pack</groupId>
 			<artifactId>pack-s3-block-storage-module</artifactId>
 			<classifier>tests</classifier>
