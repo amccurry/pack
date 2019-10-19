@@ -26,6 +26,11 @@
 			<name>bintray</name>
 			<url>http://jcenter.bintray.com</url>
 		</repository>
+		<repository>
+			<id>swa</id>
+			<name>swa</name>
+			<url>https://raw.githubusercontent.com/amccurry/simple-web-application/repository/</url>
+		</repository>
 	</repositories>
 
 	<modules>
@@ -135,12 +140,12 @@
 			<dependency>
 				<groupId>swa</groupId>
 				<artifactId>swa-spi</artifactId>
-				<version>1.0-SNAPSHOT</version>
+				<version>1.0</version>
 			</dependency>
 			<dependency>
 				<groupId>swa</groupId>
 				<artifactId>swa-app</artifactId>
-				<version>1.0-SNAPSHOT</version>
+				<version>1.0</version>
 			</dependency>
 			<dependency>
 				<groupId>org.apache.thrift</groupId>
