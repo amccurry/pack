@@ -38,8 +38,9 @@ import pack.iscsi.server.admin.AllVolumeTable;
 import pack.iscsi.server.admin.AttachedVolumeTable;
 import pack.iscsi.server.admin.CreateVolume;
 import pack.iscsi.server.admin.GrowVolume;
-import pack.iscsi.server.admin.MeterMetricsActionTable;
-import pack.iscsi.server.admin.VolumePage;
+import pack.iscsi.server.admin.MeterMetricsTable;
+import pack.iscsi.server.admin.VolumeInfoPage;
+import pack.iscsi.server.metrics.PackScheduledReporter;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
@@ -101,6 +102,8 @@ public class IscsiConfigUtil {
 
     MetricsFactory metricsFactory = getMetricsFactoryIfNeeded();
 
+    PackScheduledReporter reporter = new PackScheduledReporter(metricsFactory);
+
     File blockDataDir = new File(getPropertyNotNull(properties, BLOCK_CACHE_DIR, configFile));
     long maxCacheSizeInBytes = Long.parseLong(getPropertyNotNull(properties, BLOCK_CACHE_SIZE_IN_BYTES, configFile));
 
@@ -110,13 +113,10 @@ public class IscsiConfigUtil {
     if (service != null) {
       Table allVolumeActionTable = new AllVolumeTable(volumeStore);
       Table attachedVolumeActionTable = new AttachedVolumeTable(volumeStore);
-      VolumePage volumePage = new VolumePage(volumeStore);
-      MeterMetricsActionTable meterMetricsActionTable = new MeterMetricsActionTable(metricsFactory);
-
+      VolumeInfoPage volumePage = new VolumeInfoPage(volumeStore);
+      MeterMetricsTable meterMetricsActionTable = new MeterMetricsTable(reporter);
       CreateVolume createVolume = new CreateVolume(volumeStore);
-
       GrowVolume growVolume = new GrowVolume(volumeStore);
-
       PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore);
 
       SWABuilder.create(service)

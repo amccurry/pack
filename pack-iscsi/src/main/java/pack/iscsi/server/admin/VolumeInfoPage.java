@@ -1,9 +1,11 @@
 package pack.iscsi.server.admin;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.FileUtils;
@@ -14,15 +16,19 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
+import swa.spi.ChartDataset;
 import swa.spi.ChartElement;
 import swa.spi.Page;
+import swa.spi.PageAction;
+import swa.spi.PageButton;
 import swa.spi.PageElement;
+import swa.spi.PageSection;
 
-public class VolumePage implements PackHtml, Page {
+public class VolumeInfoPage implements PackHtml, Page {
 
   private final PackVolumeStore _packVolumeStore;
 
-  public VolumePage(PackVolumeStore packVolumeStore) {
+  public VolumeInfoPage(PackVolumeStore packVolumeStore) {
     _packVolumeStore = packVolumeStore;
   }
 
@@ -33,7 +39,7 @@ public class VolumePage implements PackHtml, Page {
 
   @Override
   public String getName() throws IOException {
-    return "Volume";
+    return "Volume Info";
   }
 
   @Override
@@ -42,7 +48,7 @@ public class VolumePage implements PackHtml, Page {
   }
 
   @Override
-  public List<PageElement> getElements(Map<String, String[]> queryParams, String[] splat) throws Exception {
+  public List<PageSection> getPagesSections(Map<String, String[]> queryParams, String[] splat) throws Exception {
     if (splat.length != 1) {
       throw new IOException("Volume name not specified.");
     }
@@ -118,12 +124,65 @@ public class VolumePage implements PackHtml, Page {
                            .value(syncTimeAfterIdleTimeUnit == null ? "" : syncTimeAfterIdleTimeUnit.toString())
                            .build());
 
-    return builder.build();
+    PageButton growButton = PageButton.builder()
+                                      .link("/growvolume?volumename=" + name)
+                                      .name("Grow")
+                                      .build();
+
+    List<PageAction> pageActions = Arrays.asList(growButton);
+
+    ChartElement bytes = getBytesChart();
+    List<ChartElement> chartElements = Arrays.asList(bytes);
+    return Arrays.asList(PageSection.builder()
+                                    .pageElements(builder.build())
+                                    .pageActions(pageActions)
+                                    .chartElements(chartElements)
+                                    .build());
   }
 
-  @Override
-  public List<ChartElement> getCharts(Map<String, String[]> queryParams, String[] splat) throws Exception {
-    return Arrays.asList();
+  private ChartElement getBytesChart() {
+    
+    //mock up for now
+
+    List<String> chartLabels = Arrays.asList("4:00", "4:01", "4:02", "4:03", "4:04", "4:05", "4:06", "4:07", "4:08",
+        "4:09", "4:10", "4:11", "4:12", "4:13", "4:14", "4:15", "4:16", "4:17", "4:18", "4:19", "4:20", "4:21", "4:22",
+        "4:23", "4:24", "4:25", "4:26", "4:27", "4:28", "4:29");
+
+    ChartDataset written;
+    ChartDataset read;
+    {
+      List<Number> values = new ArrayList<>();
+      Random random = new Random();
+      for (int i = 0; i < chartLabels.size(); i++) {
+        values.add((long) random.nextInt(40_000_000) + 80_000_000);
+      }
+
+      written = ChartDataset.builder()
+                            .color("red")
+                            .label("Bytes Written")
+                            .values(values)
+                            .build();
+    }
+    {
+      List<Number> values = new ArrayList<>();
+      Random random = new Random();
+      for (int i = 0; i < chartLabels.size(); i++) {
+        values.add((long) random.nextInt(40_000_000) + 80_000_000);
+      }
+
+      read = ChartDataset.builder()
+                         .color("blue")
+                         .label("Bytes Read")
+                         .values(values)
+                         .build();
+    }
+
+    List<ChartDataset> datasets = Arrays.asList(written, read);
+    ChartElement bytes = ChartElement.builder()
+                                     .chartLabels(chartLabels)
+                                     .datasets(datasets)
+                                     .build();
+    return bytes;
   }
 
 }

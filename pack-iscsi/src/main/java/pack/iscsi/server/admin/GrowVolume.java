@@ -46,7 +46,12 @@ public class GrowVolume implements Form {
   public List<FormElement> getElements(Map<String, String[]> queryParams, String[] splat) throws Exception {
     Builder<FormElement> builder = ImmutableList.builder();
 
-    String volumeName = getValue("volumename", queryParams, "Volume Name Missing");
+    String volumeName;
+    if (splat != null && splat.length > 0) {
+      volumeName = splat[0];
+    } else {
+      volumeName = getValue("volumename", queryParams, "Volume Name Missing");
+    }
 
     builder.add(ReadOnlyFormElement.builder()
                                    .label("Volume Name")

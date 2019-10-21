@@ -11,7 +11,6 @@ import swa.spi.Link;
 
 public class AttachedVolumeTable extends VolumeTable {
 
-  private static final String GROW = "Grow";
   private static final String ATTACHED = "attached";
   private static final String ATTACHED_VOLUMES = "Attached Volumes";
   private static final String DETACH_ACTION = "Detach";
@@ -27,7 +26,7 @@ public class AttachedVolumeTable extends VolumeTable {
 
   @Override
   public List<String> getActions(Map<String, String[]> queryParams) throws IOException {
-    return Arrays.asList(DETACH_ACTION, GROW);
+    return Arrays.asList(DETACH_ACTION);
   }
 
   @Override
@@ -39,8 +38,6 @@ public class AttachedVolumeTable extends VolumeTable {
       case DETACH_ACTION:
         _volumeStore.detachVolume(metadata.getName());
         break;
-      case GROW:
-        return Link.create(GrowVolume.LINK, "?volumename=", metadata.getName());
       default:
         break;
       }
