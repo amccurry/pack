@@ -11,16 +11,17 @@ import org.apache.commons.io.FileUtils;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import swa.spi.Column;
+import swa.spi.Link;
 import swa.spi.Row;
 import swa.spi.Table;
 
-public abstract class VolumeActionTable implements PackHtml, Table {
+public abstract class VolumeTable implements PackHtml, Table {
 
   protected final PackVolumeStore _volumeStore;
   protected final String _name;
   protected final String _link;
 
-  public VolumeActionTable(String name, String link, PackVolumeStore volumeStore) {
+  public VolumeTable(String name, String link, PackVolumeStore volumeStore) {
     _volumeStore = volumeStore;
     _name = name;
     _link = link;
@@ -32,7 +33,7 @@ public abstract class VolumeActionTable implements PackHtml, Table {
   }
 
   @Override
-  public String getLink() throws IOException {
+  public String getLinkName() throws IOException {
     return _link;
   }
 
@@ -68,6 +69,7 @@ public abstract class VolumeActionTable implements PackHtml, Table {
     List<Column> columns = new ArrayList<>();
     columns.add(Column.builder()
                       .value(metadata.getName())
+                      .link(Link.create("volume/", metadata.getName()))
                       .build());
 
     columns.add(Column.builder()

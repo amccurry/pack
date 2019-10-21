@@ -11,6 +11,7 @@ import pack.iscsi.spi.PackVolumeStore;
 import swa.spi.CheckBoxFormElement;
 import swa.spi.Form;
 import swa.spi.FormElement;
+import swa.spi.Link;
 import swa.spi.TextFormElement;
 
 public class CreateVolume implements Form {
@@ -36,12 +37,12 @@ public class CreateVolume implements Form {
   }
 
   @Override
-  public String getLink() throws IOException {
+  public String getLinkName() throws IOException {
     return "createvolume";
   }
 
   @Override
-  public List<FormElement> getElements(Map<String, String[]> queryParams) {
+  public List<FormElement> getElements(Map<String, String[]> queryParams, String[] splat) {
     Builder<FormElement> builder = ImmutableList.builder();
 
     builder.add(TextFormElement.builder()
@@ -72,7 +73,7 @@ public class CreateVolume implements Form {
   }
 
   @Override
-  public String execute(Map<String, String[]> queryParams) throws Exception {
+  public Link execute(Map<String, String[]> queryParams) throws Exception {
     String volumeName = getValue("volumename", queryParams, "Volume Name Missing");
     String volumeSizeStr = getValue("volumesize", queryParams, "Volume Size Missing");
     String blockSizeStr = getValue("blocksize", queryParams, "Block Size Missing");
@@ -84,9 +85,9 @@ public class CreateVolume implements Form {
     _store.createVolume(volumeName, lengthInBytes, blockSizeInBytes);
     if (attach) {
       _store.attachVolume(volumeName);
-      return "attached";
+      return Link.create("attached");
     }
-    return "all";
+    return Link.create("all");
   }
 
   @Override

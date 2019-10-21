@@ -41,11 +41,11 @@ public class MeterMetricsActionTable extends ScheduledReporter implements PackHt
 
   @Override
   public String getName() throws IOException {
-    return "Attached Volumes Metrics";
+    return "Volume Metrics";
   }
 
   @Override
-  public String getLink() throws IOException {
+  public String getLinkName() throws IOException {
     return "metermetrics";
   }
 

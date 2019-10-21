@@ -34,11 +34,12 @@ import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
-import pack.iscsi.server.admin.AllVolumeActionTable;
-import pack.iscsi.server.admin.AttachedVolumeActionTable;
+import pack.iscsi.server.admin.AllVolumeTable;
+import pack.iscsi.server.admin.AttachedVolumeTable;
 import pack.iscsi.server.admin.CreateVolume;
 import pack.iscsi.server.admin.GrowVolume;
 import pack.iscsi.server.admin.MeterMetricsActionTable;
+import pack.iscsi.server.admin.VolumePage;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
@@ -54,9 +55,7 @@ import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 import pack.iscsi.wal.remote.RemoteWALClient;
 import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 import spark.Service;
-import swa.SimpleWebApplication;
-import swa.spi.Form;
-import swa.spi.Menu;
+import swa.SWABuilder;
 import swa.spi.Table;
 
 public class IscsiConfigUtil {
@@ -109,8 +108,9 @@ public class IscsiConfigUtil {
 
     Service service = getSparkServiceIfNeeded(properties, configFile);
     if (service != null) {
-      Table allVolumeActionTable = new AllVolumeActionTable(volumeStore);
-      Table attachedVolumeActionTable = new AttachedVolumeActionTable(volumeStore);
+      Table allVolumeActionTable = new AllVolumeTable(volumeStore);
+      Table attachedVolumeActionTable = new AttachedVolumeTable(volumeStore);
+      VolumePage volumePage = new VolumePage(volumeStore);
       MeterMetricsActionTable meterMetricsActionTable = new MeterMetricsActionTable(metricsFactory);
 
       CreateVolume createVolume = new CreateVolume(volumeStore);
@@ -119,16 +119,19 @@ public class IscsiConfigUtil {
 
       PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore);
 
-      List<Menu> menus = new ArrayList<>();
-      menus.add(Menu.create(attachedVolumeActionTable));
-      menus.add(Menu.create(meterMetricsActionTable));
-      menus.add(Menu.create(allVolumeActionTable));
-      menus.add(Menu.create(createVolume));
-
-      List<Table> tables = Arrays.asList(attachedVolumeActionTable, allVolumeActionTable, meterMetricsActionTable);
-      List<Form> forms = Arrays.asList(createVolume, growVolume);
-
-      SimpleWebApplication.setup(service, attachedVolumeActionTable.getLink(), menus, tables, forms);
+      SWABuilder.create(service)
+                .startMenu()
+                .addHtml(attachedVolumeActionTable)
+                .addHtml(allVolumeActionTable)
+                .addHtml(createVolume)
+                .stopMenu()
+                .startMenu("Metrics")
+                .addHtml(meterMetricsActionTable)
+                .stopMenu()
+                .addHtml(growVolume)
+                .addHtml(volumePage)
+                .setApplicationName("Pack")
+                .build(attachedVolumeActionTable.getLinkName());
 
       adminServer.setup();
     }

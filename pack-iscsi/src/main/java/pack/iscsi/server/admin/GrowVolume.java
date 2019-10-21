@@ -11,6 +11,7 @@ import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import swa.spi.Form;
 import swa.spi.FormElement;
+import swa.spi.Link;
 import swa.spi.ReadOnlyFormElement;
 import swa.spi.TextFormElement;
 
@@ -37,12 +38,12 @@ public class GrowVolume implements Form {
   }
 
   @Override
-  public String getLink() throws IOException {
+  public String getLinkName() throws IOException {
     return LINK;
   }
 
   @Override
-  public List<FormElement> getElements(Map<String, String[]> queryParams) throws Exception {
+  public List<FormElement> getElements(Map<String, String[]> queryParams, String[] splat) throws Exception {
     Builder<FormElement> builder = ImmutableList.builder();
 
     String volumeName = getValue("volumename", queryParams, "Volume Name Missing");
@@ -72,12 +73,12 @@ public class GrowVolume implements Form {
   }
 
   @Override
-  public String execute(Map<String, String[]> queryParams) throws Exception {
+  public Link execute(Map<String, String[]> queryParams) throws Exception {
     String volumeName = getValue("volumename", queryParams, "Volume Name Missing");
     String volumeSizeStr = getValue("volumesize", queryParams, "Volume Size Missing");
     long lengthInBytes = Integer.parseInt(volumeSizeStr.trim()) * GIB;
     _store.growVolume(volumeName, lengthInBytes);
-    return "attached";
+    return Link.create("attached");
   }
 
   @Override

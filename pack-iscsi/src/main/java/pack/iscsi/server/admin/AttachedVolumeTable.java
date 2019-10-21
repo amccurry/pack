@@ -7,15 +7,16 @@ import java.util.Map;
 
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
+import swa.spi.Link;
 
-public class AttachedVolumeActionTable extends VolumeActionTable {
+public class AttachedVolumeTable extends VolumeTable {
 
   private static final String GROW = "Grow";
   private static final String ATTACHED = "attached";
   private static final String ATTACHED_VOLUMES = "Attached Volumes";
   private static final String DETACH_ACTION = "Detach";
 
-  public AttachedVolumeActionTable(PackVolumeStore volumeStore) {
+  public AttachedVolumeTable(PackVolumeStore volumeStore) {
     super(ATTACHED_VOLUMES, ATTACHED, volumeStore);
   }
 
@@ -30,7 +31,7 @@ public class AttachedVolumeActionTable extends VolumeActionTable {
   }
 
   @Override
-  public String execute(String action, String[] ids) throws IOException {
+  public Link execute(String action, String[] ids) throws IOException {
     for (String idStr : ids) {
       long id = Long.parseLong(idStr);
       PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(id);
@@ -39,12 +40,12 @@ public class AttachedVolumeActionTable extends VolumeActionTable {
         _volumeStore.detachVolume(metadata.getName());
         break;
       case GROW:
-        return GrowVolume.LINK + "?volumename=" + metadata.getName();
+        return Link.create(GrowVolume.LINK, "?volumename=", metadata.getName());
       default:
         break;
       }
     }
-    return getLink();
+    return Link.create(getLinkName());
   }
 
 }
