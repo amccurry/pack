@@ -68,10 +68,10 @@ public class BlockStorageModule implements StorageModule {
   private static final String READAHEAD = "readahead-";
   private static final String SYNC = "sync-";
   private static final String RW = "rw";
-  private static final String WRITE = "write-bytes";
-  private static final String READ = "read-bytes";
-  private static final String READ_IOPS = "read-iops";
-  private static final String WRITE_IOPS = "write-iops";
+  private static final String WRITE = "bytes|write";
+  private static final String READ = "bytes|read";
+  private static final String READ_IOPS = "iops|read";
+  private static final String WRITE_IOPS = "iops|write";
 
   private final long _volumeId;
   private final int _blockSize;
@@ -100,7 +100,8 @@ public class BlockStorageModule implements StorageModule {
   private final ExecutorService _flushExecutor;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
   private final boolean _readOnly;
-  private final Cache<BlockKey, Boolean> _recentlyAccessedCache;
+  private final Cache<BlockKey, Boolean> _recentlyAccessedCacheReads;
+  private final Cache<BlockKey, Boolean> _recentlyAccessedCacheWrites;
   private final int _readAheadBlockLimit;
   private final BlockingQueue<BlockKey> _readAheadQueue = new LinkedBlockingQueue<>();
   private final AtomicBoolean _running = new AtomicBoolean(true);
@@ -110,6 +111,9 @@ public class BlockStorageModule implements StorageModule {
   private final Thread _readAheadDriver;
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
+    _volumeId = config.getVolumeId();
+    _blockSize = config.getBlockSize();
+    _blockCount.set(config.getBlockCount());
     _readAheadBlockLimit = config.getReadAheadBlockLimit();
     _readOnly = config.isReadOnly();
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
@@ -123,17 +127,13 @@ public class BlockStorageModule implements StorageModule {
     _blockDataDir = config.getBlockDataDir();
     _writeAheadLog = config.getWriteAheadLog();
     _metricsFactory = config.getMetricsFactory();
-    String volumeName = config.getVolumeName();
-    _readMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, READ);
-    _readIOMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, READ_IOPS);
-    _writeMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE);
-    _writeIOMeter = _metricsFactory.meter(BlockStorageModule.class, volumeName, WRITE_IOPS);
+    _readMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(_volumeId), READ);
+    _readIOMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(_volumeId), READ_IOPS);
+    _writeMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(_volumeId), WRITE);
+    _writeIOMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(_volumeId), WRITE_IOPS);
 
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
 
-    _volumeId = config.getVolumeId();
-    _blockSize = config.getBlockSize();
-    _blockCount.set(config.getBlockCount());
     _syncExecutor = ConcurrentUtils.executor(SYNC + config.getVolumeId(), config.getSyncExecutorThreadCount());
     _syncTimer = new Timer(SYNC + _volumeId);
 
@@ -167,9 +167,12 @@ public class BlockStorageModule implements StorageModule {
                      .maximumWeight(config.getMaxCacheSizeInBytes())
                      .build(loader);
 
-    _recentlyAccessedCache = Caffeine.newBuilder()
-                                     .expireAfterWrite(10, TimeUnit.SECONDS)
-                                     .build();
+    _recentlyAccessedCacheWrites = Caffeine.newBuilder()
+                                           .expireAfterWrite(10, TimeUnit.SECONDS)
+                                           .build();
+    _recentlyAccessedCacheReads = Caffeine.newBuilder()
+                                          .expireAfterWrite(10, TimeUnit.SECONDS)
+                                          .build();
 
     _readAheadDriver = new Thread(() -> {
       while (_running.get()) {
@@ -319,7 +322,7 @@ public class BlockStorageModule implements StorageModule {
                                     .volumeId(_volumeId)
                                     .blockId(blockId)
                                     .build();
-        Block block = getBlock(blockKey);
+        Block block = getBlock(blockKey, _recentlyAccessedCacheReads);
         try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block read")) {
           block.readFully(blockOffset, bytes, offset, len);
         }
@@ -355,7 +358,7 @@ public class BlockStorageModule implements StorageModule {
                                     .volumeId(_volumeId)
                                     .blockId(blockId)
                                     .build();
-        Block block = getBlock(blockKey);
+        Block block = getBlock(blockKey, _recentlyAccessedCacheWrites);
         try (Scope blockWriterScope = TracerUtil.trace(BlockStorageModule.class, "block write",
             Tag.create("length", len))) {
           trackResult(block.writeFully(blockOffset, bytes, offset, len));
@@ -405,7 +408,7 @@ public class BlockStorageModule implements StorageModule {
     _results.add(completableFuture);
   }
 
-  private Block getBlock(BlockKey blockKey) {
+  private Block getBlock(BlockKey blockKey, Cache<BlockKey, Boolean> recentlyAccessedCache) {
     try (Scope scope1 = TracerUtil.trace(BlockStorageModule.class, "get block")) {
       try (Scope scope2 = TracerUtil.trace(BlockStorageModule.class, "cache cleanup")) {
         _cache.cleanUp();
@@ -413,18 +416,19 @@ public class BlockStorageModule implements StorageModule {
       try {
         return _cache.get(blockKey);
       } finally {
-        tryToDetectReadAhead(blockKey);
+        tryToDetectReadAhead(blockKey, recentlyAccessedCache);
       }
     }
   }
 
-  private void tryToDetectReadAhead(BlockKey blockKey) {
+  private void tryToDetectReadAhead(BlockKey blockKey, Cache<BlockKey, Boolean> recentlyAccessedCache) {
     if (hasPreviousBlockBeenReadRecently(blockKey.toBuilder()
                                                  .blockId(blockKey.getBlockId() == 0 ? 0L : blockKey.getBlockId() - 1L)
-                                                 .build())) {
+                                                 .build(),
+        recentlyAccessedCache)) {
       readNextBlocks(blockKey);
     }
-    _recentlyAccessedCache.put(blockKey, Boolean.TRUE);
+    recentlyAccessedCache.put(blockKey, Boolean.TRUE);
   }
 
   private void readNextBlocks(BlockKey blockKey) {
@@ -448,8 +452,8 @@ public class BlockStorageModule implements StorageModule {
     }
   }
 
-  private boolean hasPreviousBlockBeenReadRecently(BlockKey blockKey) {
-    return _recentlyAccessedCache.getIfPresent(blockKey) != null;
+  private boolean hasPreviousBlockBeenReadRecently(BlockKey blockKey, Cache<BlockKey, Boolean> recentlyAccessedCache) {
+    return recentlyAccessedCache.getIfPresent(blockKey) != null;
   }
 
   private void waitForSyncs(List<Future<Void>> syncs) {

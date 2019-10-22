@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import com.sun.jna.Platform;
 
+import io.opentracing.Scope;
 import net.smacke.jaydio.DirectIoLib;
 import net.smacke.jaydio.buffer.AlignedDirectByteBuffer;
 import pack.iscsi.io.IOUtils;
@@ -16,6 +17,7 @@ import pack.iscsi.io.util.NativeFileUtil;
 import pack.iscsi.io.util.NativeFileUtil.FallocateMode;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.RandomAccessIOReader;
+import pack.util.tracer.TracerUtil;
 
 public class DirectIO implements RandomAccessIO {
 
@@ -40,42 +42,46 @@ public class DirectIO implements RandomAccessIO {
 
   @Override
   public void read(long position, byte[] buffer, int offset, int length) throws IOException {
-    long blockStart = _lib.blockStart(position);
-    long blockEnd = _lib.blockEnd(position + length);
-    int blength = (int) (blockEnd - blockStart);
-    AlignedDirectByteBuffer buf = getAlignedDirectByteBuffer(blength);
-    try {
-      int remaining = (int) Math.min(buf.limit(), _length.get() - blockStart);
-      readInternal(blockStart, buf, remaining);
-      buf.flip();
-      buf.position((int) (position - blockStart));
-      buf.get(buffer, offset, length);
-    } finally {
-      release(buf);
+    try (Scope scope = TracerUtil.trace(getClass(), "read")) {
+      long blockStart = _lib.blockStart(position);
+      long blockEnd = _lib.blockEnd(position + length);
+      int blength = (int) (blockEnd - blockStart);
+      AlignedDirectByteBuffer buf = getAlignedDirectByteBuffer(blength);
+      try {
+        int remaining = (int) Math.min(buf.limit(), _length.get() - blockStart);
+        readInternal(blockStart, buf, remaining);
+        buf.flip();
+        buf.position((int) (position - blockStart));
+        buf.get(buffer, offset, length);
+      } finally {
+        release(buf);
+      }
     }
   }
 
   @Override
   public void write(long position, byte[] buffer, int offset, int length) throws IOException {
-    long blockStart = _lib.blockStart(position);
-    long blockEnd = _lib.blockEnd(position + length);
-    int blength = (int) (blockEnd - blockStart);
-    long potentialNewLength = position + blength;
-    AlignedDirectByteBuffer buf = getAlignedDirectByteBuffer(blength);
-    try {
-      if (!isBlockAligned(position, length, blockStart, blockEnd)) {
-        int remaining = (int) Math.min(buf.limit(), _length.get() - blockStart);
-        readInternal(blockStart, buf, remaining);
-      }
-      buf.position((int) (position - blockStart));
-      buf.put(buffer, offset, length);
-      buf.position(0);
-      buf.limit(blength);
-      writeInternal(blockStart, buf);
-    } finally {
-      release(buf);
-      if (potentialNewLength > _length.get()) {
-        setLength(position + length);
+    try (Scope scope = TracerUtil.trace(getClass(), "write")) {
+      long blockStart = _lib.blockStart(position);
+      long blockEnd = _lib.blockEnd(position + length);
+      int blength = (int) (blockEnd - blockStart);
+      long potentialNewLength = position + blength;
+      AlignedDirectByteBuffer buf = getAlignedDirectByteBuffer(blength);
+      try {
+        if (!isBlockAligned(position, length, blockStart, blockEnd)) {
+          int remaining = (int) Math.min(buf.limit(), _length.get() - blockStart);
+          readInternal(blockStart, buf, remaining);
+        }
+        buf.position((int) (position - blockStart));
+        buf.put(buffer, offset, length);
+        buf.position(0);
+        buf.limit(blength);
+        writeInternal(blockStart, buf);
+      } finally {
+        release(buf);
+        if (potentialNewLength > _length.get()) {
+          setLength(position + length);
+        }
       }
     }
   }
@@ -126,21 +132,25 @@ public class DirectIO implements RandomAccessIO {
   }
 
   private void readInternal(long offset, AlignedDirectByteBuffer buf, int remaining) throws IOException {
-    while (remaining > 0) {
-      int pread = _lib.pread(_fd, buf, offset);
-      buf.position(buf.position() + pread);
-      offset += pread;
-      remaining -= pread;
+    try (Scope scope = TracerUtil.trace(getClass(), "read internal")) {
+      while (remaining > 0) {
+        int pread = _lib.pread(_fd, buf, offset);
+        buf.position(buf.position() + pread);
+        offset += pread;
+        remaining -= pread;
+      }
     }
   }
 
   private void writeInternal(long offset, AlignedDirectByteBuffer buf) throws IOException {
-    int remaining = buf.limit();
-    while (remaining > 0) {
-      int pwrite = _lib.pwrite(_fd, buf, offset);
-      buf.position(Math.min(buf.position() + pwrite, remaining));
-      offset += pwrite;
-      remaining -= pwrite;
+    try (Scope scope = TracerUtil.trace(getClass(), "write internal")) {
+      int remaining = buf.limit();
+      while (remaining > 0) {
+        int pwrite = _lib.pwrite(_fd, buf, offset);
+        buf.position(Math.min(buf.position() + pwrite, remaining));
+        offset += pwrite;
+        remaining -= pwrite;
+      }
     }
   }
 
@@ -149,10 +159,14 @@ public class DirectIO implements RandomAccessIO {
   }
 
   private void release(AlignedDirectByteBuffer buf) {
-    buf.close();
+    try (Scope scope = TracerUtil.trace(getClass(), "close buffer")) {
+      buf.close();
+    }
   }
 
   private AlignedDirectByteBuffer getAlignedDirectByteBuffer(int length) {
-    return AlignedDirectByteBuffer.allocate(_lib, length);
+    try (Scope scope = TracerUtil.trace(getClass(), "allocate buffer")) {
+      return AlignedDirectByteBuffer.allocate(_lib, length);
+    }
   }
 }

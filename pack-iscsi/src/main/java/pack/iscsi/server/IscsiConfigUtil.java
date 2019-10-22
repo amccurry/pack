@@ -18,8 +18,6 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.codahale.metrics.MetricRegistry;
-import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
 import consistent.s3.ConsistentAmazonS3;
@@ -38,23 +36,19 @@ import pack.iscsi.server.admin.AllVolumeTable;
 import pack.iscsi.server.admin.AttachedVolumeTable;
 import pack.iscsi.server.admin.CreateVolume;
 import pack.iscsi.server.admin.GrowVolume;
-import pack.iscsi.server.admin.MeterMetricsTable;
+import pack.iscsi.server.admin.MetricsTable;
 import pack.iscsi.server.admin.VolumeInfoPage;
-import pack.iscsi.server.metrics.PackScheduledReporter;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
-import pack.iscsi.wal.remote.RemoteWALClient;
-import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 import spark.Service;
 import swa.SWABuilder;
 import swa.spi.Table;
@@ -63,7 +57,7 @@ public class IscsiConfigUtil {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(IscsiConfigUtil.class);
 
-  private static final String WAL_ZK_PREFIX = "wal.zk.prefix";
+  // private static final String WAL_ZK_PREFIX = "wal.zk.prefix";
   private static final String EXTERNAL_BLOCK_LOCAL_DIR = "external.block.local.dir";
   private static final String EXTERNAL_BLOCK_TYPE = "external.block.type";
   private static final String BLOCK_CACHE_SIZE_IN_BYTES = "block.cache.size.in.bytes";
@@ -73,8 +67,6 @@ public class IscsiConfigUtil {
   private static final String CONSISTENT_S3_ZK_PREFIX = "consistent.s3.zk.prefix";
   private static final String S3_OBJECTPREFIX = "s3.objectprefix";
   private static final String S3_BUCKET = "s3.bucket";
-
-  private static final Joiner JOINER_DOT = Joiner.on('.');
 
   public static List<BlockStorageModuleFactoryConfig> getConfigs(File file) throws Exception {
     if (!file.exists()) {
@@ -100,21 +92,19 @@ public class IscsiConfigUtil {
   private static BlockStorageModuleFactoryConfig getConfig(Properties properties, File configFile) throws Exception {
     ConsistentAmazonS3 consistentAmazonS3 = getConsistentAmazonS3IfNeeded(properties, configFile);
 
-    MetricsFactory metricsFactory = getMetricsFactoryIfNeeded();
+    PackVolumeStore volumeStore = getVolumeStore(properties, configFile, consistentAmazonS3);
 
-    PackScheduledReporter reporter = new PackScheduledReporter(metricsFactory);
+    MetricsTable metricsTable = new MetricsTable(30, 10, TimeUnit.SECONDS, volumeStore);
 
     File blockDataDir = new File(getPropertyNotNull(properties, BLOCK_CACHE_DIR, configFile));
     long maxCacheSizeInBytes = Long.parseLong(getPropertyNotNull(properties, BLOCK_CACHE_SIZE_IN_BYTES, configFile));
-
-    PackVolumeStore volumeStore = getVolumeStore(properties, configFile, consistentAmazonS3);
 
     Service service = getSparkServiceIfNeeded(properties, configFile);
     if (service != null) {
       Table allVolumeActionTable = new AllVolumeTable(volumeStore);
       Table attachedVolumeActionTable = new AttachedVolumeTable(volumeStore);
-      VolumeInfoPage volumePage = new VolumeInfoPage(volumeStore);
-      MeterMetricsTable meterMetricsActionTable = new MeterMetricsTable(reporter);
+      VolumeInfoPage volumePage = new VolumeInfoPage(volumeStore, metricsTable);
+
       CreateVolume createVolume = new CreateVolume(volumeStore);
       GrowVolume growVolume = new GrowVolume(volumeStore);
       PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore);
@@ -126,7 +116,7 @@ public class IscsiConfigUtil {
                 .addHtml(createVolume)
                 .stopMenu()
                 .startMenu("Metrics")
-                .addHtml(meterMetricsActionTable)
+                .addHtml(metricsTable)
                 .stopMenu()
                 .addHtml(growVolume)
                 .addHtml(volumePage)
@@ -141,7 +131,8 @@ public class IscsiConfigUtil {
     BlockGenerationStore blockStore = getBlockStore(properties, configFile, consistentAmazonS3);
     BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, configFile,
         consistentAmazonS3.getCuratorFramework());
-    BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3);
+    BlockIOFactory externalBlockStoreFactory = getExternalBlockIOFactory(properties, configFile, consistentAmazonS3,
+        metricsTable);
     BlockStateStore blockStateStore = getBlockStateStore(properties, configFile);
 
     return BlockStorageModuleFactoryConfig.builder()
@@ -153,7 +144,7 @@ public class IscsiConfigUtil {
                                           .externalBlockStoreFactory(externalBlockStoreFactory)
                                           .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                           .writeAheadLog(writeAheadLog)
-                                          .metricsFactory(metricsFactory)
+                                          .metricsFactory(metricsTable)
                                           .build();
   }
 
@@ -173,27 +164,6 @@ public class IscsiConfigUtil {
                                                                   .blockStateDir(blockStateDir)
                                                                   .build();
     return new LocalBlockStateStore(config);
-  }
-
-  private static MetricsFactory getMetricsFactoryIfNeeded() {
-    MetricRegistry metricRegistry = new MetricRegistry();
-    return new MetricsFactory() {
-
-      @Override
-      public Object getMetricRegistry() {
-        return metricRegistry;
-      }
-
-      @Override
-      public Meter meter(Class<?> clazz, String... name) {
-        com.codahale.metrics.Meter meter = metricRegistry.meter(getName(clazz, name));
-        return count -> meter.mark(count);
-      }
-    };
-  }
-
-  private static String getName(Class<?> clazz, String... names) {
-    return clazz.getSimpleName() + '.' + JOINER_DOT.join(names);
   }
 
   private static Service getSparkServiceIfNeeded(Properties properties, File configFile) {
@@ -234,17 +204,19 @@ public class IscsiConfigUtil {
       }
     };
   }
-
-  private static BlockWriteAheadLog getRemoteBlockWriteAheadLog(Properties properties, File configFile,
-      CuratorFramework curatorFramework) throws Exception {
-    String zkPrefix = getPropertyNotNull(properties, WAL_ZK_PREFIX, configFile);
-    RemoteWALClientConfig config = RemoteWALClientConfig.builder()
-                                                        .curatorFramework(curatorFramework)
-                                                        .zkPrefix(zkPrefix)
-                                                        .timeout(TimeUnit.MINUTES.toMillis(10))
-                                                        .build();
-    return new RemoteWALClient(config);
-  }
+  //
+  // private static BlockWriteAheadLog getRemoteBlockWriteAheadLog(Properties
+  // properties, File configFile,
+  // CuratorFramework curatorFramework) throws Exception {
+  // String zkPrefix = getPropertyNotNull(properties, WAL_ZK_PREFIX,
+  // configFile);
+  // RemoteWALClientConfig config = RemoteWALClientConfig.builder()
+  // .curatorFramework(curatorFramework)
+  // .zkPrefix(zkPrefix)
+  // .timeout(TimeUnit.MINUTES.toMillis(10))
+  // .build();
+  // return new RemoteWALClient(config);
+  // }
 
   private static PackVolumeStore getVolumeStore(Properties properties, File configFile,
       ConsistentAmazonS3 consistentAmazonS3) {
@@ -317,13 +289,13 @@ public class IscsiConfigUtil {
   }
 
   private static BlockIOFactory getExternalBlockIOFactory(Properties properties, File configFile,
-      ConsistentAmazonS3 consistentAmazonS3) throws Exception {
+      ConsistentAmazonS3 consistentAmazonS3, MetricsFactory metricsFactory) throws Exception {
     String type = getPropertyNotNull(properties, EXTERNAL_BLOCK_TYPE, configFile);
     switch (type) {
     case "local":
       return getLocalExternalBlockStoreFactory(properties, configFile);
     case "s3":
-      return getS3ExternalBlockStoreFactory(properties, configFile, consistentAmazonS3);
+      return getS3ExternalBlockStoreFactory(properties, configFile, consistentAmazonS3, metricsFactory);
     default:
       throw new IllegalArgumentException("external block type " + type + " unknown");
     }
@@ -336,7 +308,7 @@ public class IscsiConfigUtil {
   }
 
   private static BlockIOFactory getS3ExternalBlockStoreFactory(Properties properties, File configFile,
-      ConsistentAmazonS3 consistentAmazonS3) throws Exception {
+      ConsistentAmazonS3 consistentAmazonS3, MetricsFactory metricsFactory) throws Exception {
     String bucket = getPropertyNotNull(properties, S3_BUCKET, configFile);
     String objectPrefix = getPropertyNotNull(properties, S3_OBJECTPREFIX, configFile);
 
@@ -344,6 +316,7 @@ public class IscsiConfigUtil {
                                                                                 .bucket(bucket)
                                                                                 .consistentAmazonS3(consistentAmazonS3)
                                                                                 .objectPrefix(objectPrefix)
+                                                                                .metricsFactory(metricsFactory)
                                                                                 .build();
     return new S3ExternalBlockStoreFactory(config);
   }

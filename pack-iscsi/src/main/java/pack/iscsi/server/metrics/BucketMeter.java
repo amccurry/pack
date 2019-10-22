@@ -1,8 +1,15 @@
-package pack.iscsi.spi.metric;
+package pack.iscsi.server.metrics;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
+
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
+import lombok.Value;
+import pack.iscsi.spi.metric.Meter;
 
 public class BucketMeter implements Meter {
 
@@ -12,6 +19,15 @@ public class BucketMeter implements Meter {
   private final long _bucketSpanInMillis;
   private final TimeUnit _bucketSpanUnit;
   private final long _bucketSpan;
+
+  @Value
+  @NoArgsConstructor(force = true, access = AccessLevel.PRIVATE)
+  @AllArgsConstructor
+  @Builder(toBuilder = true)
+  public static class BucketEntry {
+    long tsMillis;
+    long count;
+  }
 
   public BucketMeter(int maxBuckets, long bucketSpan, TimeUnit bucketSpanUnit) {
     _maxBuckets = maxBuckets;
@@ -47,13 +63,16 @@ public class BucketMeter implements Meter {
     bucket._count.add(count);
   }
 
-  public long[] getValues() {
-    long[] values = new long[_maxBuckets];
+  public BucketEntry[] getEntries() {
+    BucketEntry[] values = new BucketEntry[_maxBuckets];
     Bucket[] buckets = _oldBuckets.get();
     for (int i = 0; i < _maxBuckets; i++) {
       Bucket bucket = buckets[i];
       if (bucket != null) {
-        values[i] = bucket._count.longValue();
+        values[i] = BucketEntry.builder()
+                               .count(bucket._count.longValue())
+                               .tsMillis(bucket._bucketId * _bucketSpanInMillis)
+                               .build();
       }
     }
     return values;

@@ -20,6 +20,9 @@ import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
+import pack.iscsi.spi.metric.Meter;
+import pack.iscsi.spi.metric.MetricsFactory;
+import pack.iscsi.volume.BlockStorageModule;
 import pack.util.tracer.TracerUtil;
 
 public class S3BlockWriter implements BlockIOExecutor {
@@ -30,18 +33,24 @@ public class S3BlockWriter implements BlockIOExecutor {
     ConsistentAmazonS3 consistentAmazonS3;
     String bucket;
     String objectPrefix;
+    @Builder.Default
+    MetricsFactory metricsFactory = MetricsFactory.NO_OP;
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(S3BlockWriter.class);
 
+  private static final String WRITE = "s3-bytes|write";
+
   private final ConsistentAmazonS3 _consistentAmazonS3;
   private final String _bucket;
   private final String _objectPrefix;
+  private final MetricsFactory _metricsFactory;
 
   public S3BlockWriter(S3BlockWriterConfig config) {
     _consistentAmazonS3 = config.getConsistentAmazonS3();
     _bucket = config.getBucket();
     _objectPrefix = config.getObjectPrefix();
+    _metricsFactory = config.getMetricsFactory();
   }
 
   @Override
@@ -62,7 +71,10 @@ public class S3BlockWriter implements BlockIOExecutor {
         InputStream input = getInputStream(reader, request.getBlockSize(), request.getStartingPositionOfBlock());
         ObjectMetadata metadata = new ObjectMetadata();
         metadata.setContentLength(request.getBlockSize());
+
         _consistentAmazonS3.putObject(_bucket, key, input, metadata);
+        Meter writeMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(request.getVolumeId()), WRITE);
+        writeMeter.mark(request.getBlockSize());
       }
       LOGGER.debug("finished write bucket {} key {}", _bucket, key);
       return BlockIOResponse.newBlockIOResult(onDiskGeneration, BlockState.CLEAN, onDiskGeneration);

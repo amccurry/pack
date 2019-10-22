@@ -19,6 +19,9 @@ import pack.iscsi.spi.block.BlockIOExecutor;
 import pack.iscsi.spi.block.BlockIORequest;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
+import pack.iscsi.spi.metric.Meter;
+import pack.iscsi.spi.metric.MetricsFactory;
+import pack.iscsi.volume.BlockStorageModule;
 import pack.util.tracer.TracerUtil;
 
 public class S3BlockReader implements BlockIOExecutor {
@@ -29,18 +32,24 @@ public class S3BlockReader implements BlockIOExecutor {
     ConsistentAmazonS3 consistentAmazonS3;
     String bucket;
     String objectPrefix;
+    @Builder.Default
+    MetricsFactory metricsFactory = MetricsFactory.NO_OP;
   }
 
   private static final Logger LOGGER = LoggerFactory.getLogger(S3BlockReader.class);
 
+  private static final String READ = "s3-bytes|read";
+
   private final ConsistentAmazonS3 _consistentAmazonS3;
   private final String _bucket;
   private final String _objectPrefix;
+  private final MetricsFactory _metricsFactory;
 
   public S3BlockReader(S3BlockReaderConfig config) {
     _consistentAmazonS3 = config.getConsistentAmazonS3();
     _bucket = config.getBucket();
     _objectPrefix = config.getObjectPrefix();
+    _metricsFactory = config.getMetricsFactory();
   }
 
   @Override
@@ -69,6 +78,7 @@ public class S3BlockReader implements BlockIOExecutor {
         throw new IOException("object size wrong");
       }
       try (Scope s1 = TracerUtil.trace(getClass(), "s3 read content")) {
+        Meter readMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(request.getVolumeId()), READ);
         try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
           byte[] buffer = new byte[128 * 1024];
           long pos = request.getStartingPositionOfBlock();
@@ -82,6 +92,7 @@ public class S3BlockReader implements BlockIOExecutor {
             try (Scope s2 = TracerUtil.trace(getClass(), "write content")) {
               randomAccessIO.write(pos, buffer, 0, read);
             }
+            readMeter.mark(read);
             pos += read;
             length -= read;
           }

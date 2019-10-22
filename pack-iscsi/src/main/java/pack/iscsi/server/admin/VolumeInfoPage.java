@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.io.FileUtils;
@@ -16,20 +15,24 @@ import com.google.common.collect.ImmutableList.Builder;
 
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
-import swa.spi.ChartDataset;
 import swa.spi.ChartElement;
+import swa.spi.Column;
 import swa.spi.Page;
 import swa.spi.PageAction;
 import swa.spi.PageButton;
 import swa.spi.PageElement;
 import swa.spi.PageSection;
+import swa.spi.Row;
+import swa.spi.TableElement;
 
 public class VolumeInfoPage implements PackHtml, Page {
 
   private final PackVolumeStore _packVolumeStore;
+  private final MetricsTable _metricsTable;
 
-  public VolumeInfoPage(PackVolumeStore packVolumeStore) {
+  public VolumeInfoPage(PackVolumeStore packVolumeStore, MetricsTable metricsTable) {
     _packVolumeStore = packVolumeStore;
+    _metricsTable = metricsTable;
   }
 
   @Override
@@ -56,6 +59,47 @@ public class VolumeInfoPage implements PackHtml, Page {
 
     PackVolumeMetadata volumeMetadata = _packVolumeStore.getVolumeMetadata(name);
 
+    List<PageElement> pageElements = getPageElements(name, volumeMetadata);
+
+    PageButton growButton = PageButton.builder()
+                                      .link("/growvolume?volumename=" + name)
+                                      .name("Grow Size")
+                                      .build();
+
+    List<PageAction> pageActions = Arrays.asList(growButton);
+
+    List<ChartElement> chartElements = _metricsTable.getChartElements(name);
+
+    List<TableElement> tableElements = Arrays.asList(getSnapshotTable(name));
+    PageSection section = PageSection.builder()
+                                     .pageElements(pageElements)
+                                     .pageActions(pageActions)
+                                     .chartElements(chartElements)
+                                     .tableElements(tableElements)
+                                     .build();
+    return Arrays.asList(section);
+  }
+
+  private TableElement getSnapshotTable(String name) throws IOException {
+    List<String> headers = Arrays.asList("Snapshot");
+    List<Row> rows = new ArrayList<>();
+    List<String> listSnapshots = _packVolumeStore.listSnapshots(name);
+
+    for (String snapshot : listSnapshots) {
+      rows.add(Row.builder()
+                  .columns(Arrays.asList(Column.builder()
+                                               .value(snapshot)
+                                               .build()))
+                  .build());
+    }
+
+    return TableElement.builder()
+                       .headers(headers)
+                       .rows(rows)
+                       .build();
+  }
+
+  private List<PageElement> getPageElements(String name, PackVolumeMetadata volumeMetadata) {
     Builder<PageElement> builder = ImmutableList.builder();
 
     builder.add(PageElement.builder()
@@ -124,65 +168,8 @@ public class VolumeInfoPage implements PackHtml, Page {
                            .value(syncTimeAfterIdleTimeUnit == null ? "" : syncTimeAfterIdleTimeUnit.toString())
                            .build());
 
-    PageButton growButton = PageButton.builder()
-                                      .link("/growvolume?volumename=" + name)
-                                      .name("Grow")
-                                      .build();
-
-    List<PageAction> pageActions = Arrays.asList(growButton);
-
-    ChartElement bytes = getBytesChart();
-    List<ChartElement> chartElements = Arrays.asList(bytes);
-    return Arrays.asList(PageSection.builder()
-                                    .pageElements(builder.build())
-                                    .pageActions(pageActions)
-                                    .chartElements(chartElements)
-                                    .build());
-  }
-
-  private ChartElement getBytesChart() {
-    
-    //mock up for now
-
-    List<String> chartLabels = Arrays.asList("4:00", "4:01", "4:02", "4:03", "4:04", "4:05", "4:06", "4:07", "4:08",
-        "4:09", "4:10", "4:11", "4:12", "4:13", "4:14", "4:15", "4:16", "4:17", "4:18", "4:19", "4:20", "4:21", "4:22",
-        "4:23", "4:24", "4:25", "4:26", "4:27", "4:28", "4:29");
-
-    ChartDataset written;
-    ChartDataset read;
-    {
-      List<Number> values = new ArrayList<>();
-      Random random = new Random();
-      for (int i = 0; i < chartLabels.size(); i++) {
-        values.add((long) random.nextInt(40_000_000) + 80_000_000);
-      }
-
-      written = ChartDataset.builder()
-                            .color("red")
-                            .label("Bytes Written")
-                            .values(values)
-                            .build();
-    }
-    {
-      List<Number> values = new ArrayList<>();
-      Random random = new Random();
-      for (int i = 0; i < chartLabels.size(); i++) {
-        values.add((long) random.nextInt(40_000_000) + 80_000_000);
-      }
-
-      read = ChartDataset.builder()
-                         .color("blue")
-                         .label("Bytes Read")
-                         .values(values)
-                         .build();
-    }
-
-    List<ChartDataset> datasets = Arrays.asList(written, read);
-    ChartElement bytes = ChartElement.builder()
-                                     .chartLabels(chartLabels)
-                                     .datasets(datasets)
-                                     .build();
-    return bytes;
+    List<PageElement> pageElements = builder.build();
+    return pageElements;
   }
 
 }
