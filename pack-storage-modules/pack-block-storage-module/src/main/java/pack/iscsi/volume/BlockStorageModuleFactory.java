@@ -3,15 +3,22 @@ package pack.iscsi.volume;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.iscsi.concurrent.ConcurrentUtils;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.PackVolumeMetadata;
@@ -36,16 +43,27 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private final File _blockDataDir;
   private final PackVolumeStore _packVolumeStore;
   private final BlockIOFactory _externalBlockStoreFactory;
-  private final long _syncTimeAfterIdle;
-  private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final MetricsFactory _metricsFactory;
   private final long _maxCacheSizeInBytes;
   private final ConcurrentMap<String, BlockStorageModule> _blockStorageModules = new ConcurrentHashMap<>();
   private final Object _lock = new Object();
   private final BlockStateStore _blockStateStore;
   private final BlockCacheMetadataStore _blockCacheMetadataStore;
+  private final Timer _gcTimer;
+  private final ExecutorService _gcExecutor;
+  private final int _defaultSyncExecutorThreadCount;
+  private final int _defaultReadAheadExecutorThreadCount;
+  private final int _defaultReadAheadBlockLimit;
+  private final long _defaultSyncTimeAfterIdle;
+  private final TimeUnit _defaultSyncTimeAfterIdleTimeUnit;
 
   public BlockStorageModuleFactory(BlockStorageModuleFactoryConfig config) {
+    _defaultSyncExecutorThreadCount = config.getDefaultSyncExecutorThreadCount();
+    _defaultReadAheadExecutorThreadCount = config.getDefaultReadAheadExecutorThreadCount();
+    _defaultReadAheadBlockLimit = config.getDefaultReadAheadBlockLimit();
+    _defaultSyncTimeAfterIdle = config.getDefaultSyncTimeAfterIdle();
+    _defaultSyncTimeAfterIdleTimeUnit = config.getDefaultSyncTimeAfterIdleTimeUnit();
+
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _blockStateStore = config.getBlockStateStore();
     _packVolumeStore = config.getPackVolumeStore();
@@ -53,10 +71,14 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _blockGenerationStore = config.getBlockStore();
     _writeAheadLog = config.getWriteAheadLog();
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
-    _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
-    _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
+
     _metricsFactory = config.getMetricsFactory();
     _maxCacheSizeInBytes = config.getMaxCacheSizeInBytes();
+    _gcExecutor = ConcurrentUtils.executor("gc", config.getGcExecutorThreadCount());
+    _gcTimer = new Timer("gc-driver", true);
+    long gcPeriod = config.getGcDriverTimeUnit()
+                          .toMillis(config.getGcDriverTime());
+    _gcTimer.schedule(getGcTask(), gcPeriod, gcPeriod);
     _packVolumeStore.register(this);
   }
 
@@ -73,6 +95,15 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       if (!_packVolumeStore.isAttached(name)) {
         throw new IOException("Volume " + name + " is not attached to this host.");
       }
+
+      long syncTimeAfterIdle = getValue(volumeMetadata.getSyncTimeAfterIdle(), _defaultSyncTimeAfterIdle);
+      TimeUnit syncTimeAfterIdleTimeUnit = getValue(volumeMetadata.getSyncTimeAfterIdleTimeUnit(),
+          _defaultSyncTimeAfterIdleTimeUnit);
+      int syncExecutorThreadCount = getValue(volumeMetadata.getSyncExecutorThreadCount(),
+          _defaultSyncExecutorThreadCount);
+      int readAheadExecutorThreadCount = getValue(volumeMetadata.getReadAheadExecutorThreadCount(),
+          _defaultReadAheadExecutorThreadCount);
+      int readAheadBlockLimit = getValue(volumeMetadata.getReadAheadBlockLimit(), _defaultReadAheadBlockLimit);
 
       BlockStorageModule storageModule = _blockStorageModules.get(name);
       if (storageModule != null) {
@@ -95,11 +126,15 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
                                                                 .blockCount(blockCount)
                                                                 .volumeName(name)
                                                                 .volumeId(volumeId)
-                                                                .syncTimeAfterIdle(_syncTimeAfterIdle)
-                                                                .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
+                                                                .syncTimeAfterIdle(syncTimeAfterIdle)
+                                                                .syncTimeAfterIdleTimeUnit(syncTimeAfterIdleTimeUnit)
                                                                 .metricsFactory(_metricsFactory)
                                                                 .writeAheadLog(_writeAheadLog)
                                                                 .maxCacheSizeInBytes(getMaxCacheSizeInBytes())
+                                                                .syncExecutorThreadCount(syncExecutorThreadCount)
+                                                                .readAheadExecutorThreadCount(
+                                                                    readAheadExecutorThreadCount)
+                                                                .readAheadBlockLimit(readAheadBlockLimit)
                                                                 .build();
       LOGGER.info("open storage module for {}({})", name, volumeId);
       storageModule = new BlockStorageModule(config);
@@ -108,9 +143,19 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     }
   }
 
+  private static <T> T getValue(T overrideValue, T defaultValue) {
+    if (overrideValue != null) {
+      return overrideValue;
+    }
+    return defaultValue;
+  }
+
   @Override
   public void close() throws IOException {
     LOGGER.info("starting close of storage module factory");
+    _gcTimer.purge();
+    _gcTimer.cancel();
+    IOUtils.close(LOGGER, _gcExecutor);
     IOUtils.close(LOGGER, _blockStorageModules.values());
   }
 
@@ -156,6 +201,11 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   }
 
   @Override
+  public boolean isInUse(PackVolumeMetadata metadata) throws IOException {
+    return _blockStorageModules.containsKey(metadata.getName());
+  }
+
+  @Override
   public boolean hasVolume(PackVolumeMetadata metadata) throws IOException {
     String name = metadata.getName();
     return _blockStorageModules.containsKey(name);
@@ -168,5 +218,39 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       throw new IOException("Storage module " + name + " not found");
     }
     return module;
+  }
+
+  private TimerTask getGcTask() {
+    return new TimerTask() {
+      @Override
+      public void run() {
+        try {
+          runGc();
+        } catch (Throwable t) {
+          LOGGER.error("Unknown error", t);
+        }
+      }
+    };
+  }
+
+  private void runGc() throws IOException {
+    List<String> volumes = _packVolumeStore.getAttachedVolumes();
+    List<Future<Void>> futures = new ArrayList<>();
+    for (String volume : volumes) {
+      futures.add(_gcExecutor.submit(() -> {
+        _packVolumeStore.gc(volume);
+        return null;
+      }));
+    }
+    for (Future<Void> future : futures) {
+      try {
+        future.get();
+      } catch (InterruptedException e) {
+        LOGGER.error(e.getMessage(), e);
+      } catch (ExecutionException e) {
+        Throwable cause = e.getCause();
+        LOGGER.error(cause.getMessage(), cause);
+      }
+    }
   }
 }

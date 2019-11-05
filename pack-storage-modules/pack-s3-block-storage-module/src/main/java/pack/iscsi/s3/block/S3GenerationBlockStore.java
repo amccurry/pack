@@ -135,7 +135,7 @@ public class S3GenerationBlockStore implements BlockGenerationStore {
                                   .build();
       Long existingGeneration = _cache.getIfPresent(blockKey);
       if (existingGeneration == null || currentGeneration > existingGeneration) {
-        LOGGER.info("preload {} with generation {}", blockKey, currentGeneration);
+        LOGGER.debug("preload {} with generation {}", blockKey, currentGeneration);
         _cache.put(blockKey, currentGeneration);
       }
     };

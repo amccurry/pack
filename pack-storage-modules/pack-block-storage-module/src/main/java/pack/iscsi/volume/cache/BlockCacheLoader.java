@@ -1,6 +1,5 @@
 package pack.iscsi.volume.cache;
 
-import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
@@ -39,7 +38,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private final int _blockSize;
   private final BlockStateStore _blockStateStore;
   private final RandomAccessIO _randomAccessIO;
-  private final Executor _blockIOExecutor;
 
   public BlockCacheLoader(BlockCacheLoaderConfig config) {
     _blockStateStore = config.getBlockStateStore();
@@ -52,7 +50,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _removalListener = config.getRemovalListener();
     _randomAccessIO = config.getRandomAccessIO();
-    _blockIOExecutor = config.getBlockIOExecutor();
   }
 
   @Override
@@ -64,7 +61,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
         return stolenBlock;
       }
       LocalBlockConfig config = LocalBlockConfig.builder()
-                                                .blockIOExecutor(_blockIOExecutor)
                                                 .randomAccessIO(_randomAccessIO)
                                                 .blockStateStore(_blockStateStore)
                                                 .volumeId(_volumeId)
@@ -79,12 +75,23 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
       try (Scope scope = TracerUtil.trace(BlockCacheLoader.class, "create local block")) {
         localBlock = new LocalBlock(config);
       }
-      if (localBlock.getLastStoredGeneration() != Block.MISSING_BLOCK_GENERATION) {
-        pullBlockFromExternalStore(localBlock);
-      } else {
-        localBlock.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
+      long onDiskGeneration = localBlock.getOnDiskGeneration();
+      long lastStoredGeneration = localBlock.getLastStoredGeneration();
+      if (onDiskGeneration == lastStoredGeneration) {
+        if (onDiskGeneration == Block.MISSING_BLOCK_GENERATION) {
+          // Initialize new block
+          localBlock.execIO(request -> BlockIOResponse.newBlockIOResult(0, BlockState.CLEAN, 0));
+        }
+      } else if (onDiskGeneration < lastStoredGeneration) {
+        // On disk behind last stored block, pull a newer version
+        try (Scope scope = TracerUtil.trace(BlockCacheLoader.class, "pull remote block")) {
+          pullBlockFromExternalStore(localBlock);
+        }
       }
-      recoverFromWal(localBlock);
+      // Always try to recover from WAL
+      try (Scope scope = TracerUtil.trace(BlockCacheLoader.class, "recover block from wal")) {
+        recoverFromWal(localBlock);
+      }
       return localBlock;
     }
   }

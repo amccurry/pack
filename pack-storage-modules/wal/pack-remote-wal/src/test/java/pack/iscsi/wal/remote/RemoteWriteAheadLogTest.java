@@ -1,14 +1,12 @@
 package pack.iscsi.wal.remote;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
@@ -108,14 +106,11 @@ public class RemoteWriteAheadLogTest {
 
   private void runTest(RemoteWALClient client, long volumeId, long blockId, File dir)
       throws IOException, InterruptedException, FileNotFoundException {
-
-//    FileIO.setDirectIOEnabled(false);
     long generation = 0;
     long position = 1000;
     int length = 10_000_000;
     byte[] bytes = new byte[8192];
     long seed = getSeed();
-    seed = -6045049710333444935L;
     Random random = new Random(seed);
     File expected = new File(dir, UUID.randomUUID()
                                       .toString());
@@ -180,14 +175,10 @@ public class RemoteWriteAheadLogTest {
           int len = (int) Math.min(length, buffer1.length);
           expected.readFully(buffer1, 0, len);
           actual.readFully(buffer2, 0, len);
-          try {
-            for (int i = 0; i < len; i++) {
-              assertEquals("seed=" + seed + " epos=" + expected.getFilePointer() + " apos " + actual.getFilePointer()
-                  + " i=" + i, buffer1[i], buffer2[i]);
-            }
-          } catch (AssertionError e) {
-            System.out.println();
-            throw e;
+          for (int i = 0; i < len; i++) {
+            assertEquals(
+                "seed=" + seed + " epos=" + expected.getFilePointer() + " apos " + actual.getFilePointer() + " i=" + i,
+                buffer1[i], buffer2[i]);
           }
           length -= len;
         }

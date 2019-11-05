@@ -3,18 +3,20 @@ package pack.iscsi.server.admin;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
+import swa.spi.Link;
 
-public class AllVolumeActionTable extends VolumeActionTable {
+public class AllVolumeTable extends VolumeTable {
 
   private static final String ALL = "all";
   private static final String ALL_VOLUMES = "All Volumes";
   private static final String DELETE = "Delete";
   private static final String ATTACH = "Attach";
 
-  public AllVolumeActionTable(PackVolumeStore volumeStore) {
+  public AllVolumeTable(PackVolumeStore volumeStore) {
     super(ALL_VOLUMES, ALL, volumeStore);
   }
 
@@ -24,12 +26,12 @@ public class AllVolumeActionTable extends VolumeActionTable {
   }
 
   @Override
-  public List<String> getActions() throws IOException {
+  public List<String> getActions(Map<String, String[]> queryParams) throws IOException {
     return Arrays.asList(ATTACH, DELETE);
   }
 
   @Override
-  public void execute(String action, String[] ids) throws IOException {
+  public Link execute(String action, String[] ids) throws IOException {
     for (String idStr : ids) {
       long id = Long.parseLong(idStr);
       PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(id);
@@ -44,6 +46,7 @@ public class AllVolumeActionTable extends VolumeActionTable {
         break;
       }
     }
+    return Link.create(getLinkName());
   }
 
 }

@@ -6,6 +6,8 @@ import java.util.List;
 
 public interface PackVolumeStore extends Closeable {
 
+  public static final int MIN_BLOCK_SIZE = 4096;
+
   List<String> getAllVolumes() throws IOException;
 
   List<String> getAttachedVolumes() throws IOException;
@@ -58,7 +60,7 @@ public interface PackVolumeStore extends Closeable {
       throw new IOException("Volume " + name + " with snapshot " + snapshotId + " does not exist");
     }
   }
-  
+
   default void checkNoExistence(String name, String snapshotId) throws IOException {
     checkAttached(name);
     if (listSnapshots(name).contains(snapshotId)) {
@@ -94,6 +96,18 @@ public interface PackVolumeStore extends Closeable {
   default void checkNoSnapshots(String name) throws IOException {
     if (!listSnapshots(name).isEmpty()) {
       throw new IOException("Volume " + name + " has snapshots");
+    }
+  }
+
+  default void checkBlockSize(int blockSizeInBytes) throws IOException {
+    if (blockSizeInBytes % 4096 != 0) {
+      throw new IOException("Block size has to be a multiple of " + 4096);
+    }
+  }
+
+  default void checkLength(long lengthInBytes) throws IOException {
+    if (lengthInBytes % 4096 != 0) {
+      throw new IOException("Length has to be a multiple of " + MIN_BLOCK_SIZE);
     }
   }
 

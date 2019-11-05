@@ -90,7 +90,7 @@ public class NativeFileUtil {
 
   public static void fallocate(int fd, long offset, long length, FallocateMode... modeArray) throws IOException {
     int mode = getMode(modeArray);
-    LOGGER.info("fallocate fd {} mode {}({}) offset {} length {}", fd, Arrays.asList(modeArray), mode, offset, length);
+    LOGGER.debug("fallocate fd {} mode {}({}) offset {} length {}", fd, Arrays.asList(modeArray), mode, offset, length);
     int result = FallocateHolder.fallocate(fd, mode, offset, length);
     if (result != 0) {
       throw new IOException("fallocate returned " + Native.getLastError());

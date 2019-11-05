@@ -1,6 +1,5 @@
 package pack.iscsi.block;
 
-import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
@@ -29,11 +28,9 @@ public class LocalBlockConfig {
   BlockWriteAheadLog wal;
 
   @Builder.Default
-  long syncTimeAfterIdle = 30;
+  long syncTimeAfterIdle = 5;
 
   @Builder.Default
   TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
-
-  Executor blockIOExecutor;
 
 }

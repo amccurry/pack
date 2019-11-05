@@ -2,7 +2,6 @@ package pack.iscsi.io.direct;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.BufferOverflowException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;

@@ -19,15 +19,12 @@ import org.slf4j.LoggerFactory;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
 import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Timer;
-import com.codahale.metrics.Timer.Context;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
 import pack.admin.PackVolumeAdminServer;
-import pack.iscsi.admin.ActionTable;
 import pack.iscsi.block.LocalBlockStateStore;
 import pack.iscsi.block.LocalBlockStateStoreConfig;
 import pack.iscsi.file.block.storage.LocalExternalBlockStoreFactory;
@@ -37,10 +34,13 @@ import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.s3.volume.S3VolumeStore;
 import pack.iscsi.s3.volume.S3VolumeStoreConfig;
-import pack.iscsi.server.admin.AllVolumeActionTable;
-import pack.iscsi.server.admin.AttachedVolumeActionTable;
-import pack.iscsi.server.admin.MeterMetricsActionTable;
-import pack.iscsi.server.admin.TimerMetricsActionTable;
+import pack.iscsi.server.admin.AllVolumeTable;
+import pack.iscsi.server.admin.AttachedVolumeTable;
+import pack.iscsi.server.admin.CreateVolume;
+import pack.iscsi.server.admin.GrowVolume;
+import pack.iscsi.server.admin.MeterMetricsTable;
+import pack.iscsi.server.admin.VolumeInfoPage;
+import pack.iscsi.server.metrics.PackScheduledReporter;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
@@ -49,7 +49,6 @@ import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.spi.metric.TimerContext;
 import pack.iscsi.spi.wal.BlockJournalRange;
 import pack.iscsi.spi.wal.BlockRecoveryWriter;
 import pack.iscsi.spi.wal.BlockWriteAheadLog;
@@ -57,6 +56,8 @@ import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 import pack.iscsi.wal.remote.RemoteWALClient;
 import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
 import spark.Service;
+import swa.SWABuilder;
+import swa.spi.Table;
 
 public class IscsiConfigUtil {
 
@@ -101,6 +102,8 @@ public class IscsiConfigUtil {
 
     MetricsFactory metricsFactory = getMetricsFactoryIfNeeded();
 
+    PackScheduledReporter reporter = new PackScheduledReporter(metricsFactory);
+
     File blockDataDir = new File(getPropertyNotNull(properties, BLOCK_CACHE_DIR, configFile));
     long maxCacheSizeInBytes = Long.parseLong(getPropertyNotNull(properties, BLOCK_CACHE_SIZE_IN_BYTES, configFile));
 
@@ -108,14 +111,28 @@ public class IscsiConfigUtil {
 
     Service service = getSparkServiceIfNeeded(properties, configFile);
     if (service != null) {
-      ActionTable allVolumeActionTable = new AllVolumeActionTable(volumeStore);
-      ActionTable attachedVolumeActionTable = new AttachedVolumeActionTable(volumeStore);
-      MeterMetricsActionTable meterMetricsActionTable = new MeterMetricsActionTable(metricsFactory);
-      TimerMetricsActionTable timerMetricsActionTable = new TimerMetricsActionTable(metricsFactory);
+      Table allVolumeActionTable = new AllVolumeTable(volumeStore);
+      Table attachedVolumeActionTable = new AttachedVolumeTable(volumeStore);
+      VolumeInfoPage volumePage = new VolumeInfoPage(volumeStore);
+      MeterMetricsTable meterMetricsActionTable = new MeterMetricsTable(reporter);
+      CreateVolume createVolume = new CreateVolume(volumeStore);
+      GrowVolume growVolume = new GrowVolume(volumeStore);
+      PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore);
 
-      PackVolumeAdminServer adminServer = new PackVolumeAdminServer(service, volumeStore,
-          attachedVolumeActionTable.getLink(), allVolumeActionTable, attachedVolumeActionTable, meterMetricsActionTable,
-          timerMetricsActionTable);
+      SWABuilder.create(service)
+                .startMenu()
+                .addHtml(attachedVolumeActionTable)
+                .addHtml(allVolumeActionTable)
+                .addHtml(createVolume)
+                .stopMenu()
+                .startMenu("Metrics")
+                .addHtml(meterMetricsActionTable)
+                .stopMenu()
+                .addHtml(growVolume)
+                .addHtml(volumePage)
+                .setApplicationName("Pack")
+                .build(attachedVolumeActionTable.getLinkName());
+
       adminServer.setup();
     }
 
@@ -172,15 +189,6 @@ public class IscsiConfigUtil {
         com.codahale.metrics.Meter meter = metricRegistry.meter(getName(clazz, name));
         return count -> meter.mark(count);
       }
-
-      @Override
-      public TimerContext timer(Class<?> clazz, String... name) {
-        Timer timer = metricRegistry.timer(getName(clazz, name));
-        return () -> {
-          Context context = timer.time();
-          return () -> context.close();
-        };
-      }
     };
   }
 
@@ -195,7 +203,8 @@ public class IscsiConfigUtil {
   private static BlockWriteAheadLog getBlockWriteAheadLog(Properties properties, File configFile,
       CuratorFramework curatorFramework) throws Exception {
     return noOpWAL();
-//    return getRemoteBlockWriteAheadLog(properties, configFile, curatorFramework);
+    // return getRemoteBlockWriteAheadLog(properties, configFile,
+    // curatorFramework);
   }
 
   private static BlockWriteAheadLog noOpWAL() {
@@ -268,9 +277,9 @@ public class IscsiConfigUtil {
     String zkPrefix = getPropertyNotNull(properties, CONSISTENT_S3_ZK_PREFIX, configFile);
     AmazonS3 client = AmazonS3ClientBuilder.defaultClient();
     ConsistentAmazonS3 consistentAmazonS3 = ConsistentAmazonS3.create(client, curatorFramework,
-        ConsistentAmazonS3Config.builder()
-                                .zkPrefix(zkPrefix)
-                                .build());
+        ConsistentAmazonS3Config.DEFAULT.toBuilder()
+                                        .zkPrefix(zkPrefix)
+                                        .build());
     return consistentAmazonS3;
   }
 

@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.model.CopyObjectResult;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest;
 import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
 import com.amazonaws.services.s3.model.ObjectListing;
@@ -183,15 +184,8 @@ public class S3Utils {
     }
   }
 
-  public static void copy(ConsistentAmazonS3 consistentAmazonS3, String bucket, String src, String dst) {
-//    S3Object s3Object = consistentAmazonS3.getObject(bucket, src);
-//    long length = s3Object.getObjectMetadata()
-//                          .getContentLength();
-//    ObjectMetadata metadata = new ObjectMetadata();
-//    metadata.setContentLength(length);
-//    consistentAmazonS3.putObject(bucket, dst, s3Object.getObjectContent(), metadata);
-    AmazonS3 client = consistentAmazonS3.getClient();
-    client.copyObject(bucket, src, bucket, dst);
+  public static CopyObjectResult copy(ConsistentAmazonS3 consistentAmazonS3, String bucket, String src, String dst) {
+    return consistentAmazonS3.copyObject(bucket, src, bucket, dst);
   }
 
   public static void putByteArray(ConsistentAmazonS3 consistentAmazonS3, String bucket, String key, byte[] bs)

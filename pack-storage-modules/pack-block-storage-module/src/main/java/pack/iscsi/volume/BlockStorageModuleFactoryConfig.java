@@ -1,7 +1,6 @@
 package pack.iscsi.volume;
 
 import java.io.File;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
@@ -25,9 +24,9 @@ public class BlockStorageModuleFactoryConfig {
   BlockWriteAheadLog writeAheadLog;
 
   BlockIOFactory externalBlockStoreFactory;
-  
+
   BlockStateStore blockStateStore;
-  
+
   BlockCacheMetadataStore blockCacheMetadataStore;
 
   File blockDataDir;
@@ -35,17 +34,30 @@ public class BlockStorageModuleFactoryConfig {
   long maxCacheSizeInBytes;
 
   @Builder.Default
-  long syncTimeAfterIdle = 1;
-
-  @Builder.Default
-  TimeUnit syncTimeAfterIdleTimeUnit = TimeUnit.MINUTES;
-
-  @Builder.Default
-  int syncThreads = ForkJoinPool.getCommonPoolParallelism();
-  
-  @Builder.Default
-  int preloadThreads = ForkJoinPool.getCommonPoolParallelism();
-
-  @Builder.Default
   MetricsFactory metricsFactory = MetricsFactory.NO_OP;
+
+  @Builder.Default
+  long gcDriverTime = 1;
+
+  @Builder.Default
+  TimeUnit gcDriverTimeUnit = TimeUnit.MINUTES;
+
+  @Builder.Default
+  int gcExecutorThreadCount = 10;
+
+  @Builder.Default
+  long defaultSyncTimeAfterIdle = 5;
+
+  @Builder.Default
+  TimeUnit defaultSyncTimeAfterIdleTimeUnit = TimeUnit.SECONDS;
+
+  @Builder.Default
+  int defaultSyncExecutorThreadCount = 20;
+
+  @Builder.Default
+  int defaultReadAheadExecutorThreadCount = 20;
+
+  @Builder.Default
+  int defaultReadAheadBlockLimit = 20;
+
 }

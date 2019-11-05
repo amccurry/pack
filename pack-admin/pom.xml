@@ -40,5 +40,9 @@
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>swa</groupId>
+			<artifactId>swa-app</artifactId>
+		</dependency>
 	</dependencies>
 </project>

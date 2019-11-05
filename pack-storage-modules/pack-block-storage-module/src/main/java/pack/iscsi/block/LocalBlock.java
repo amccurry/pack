@@ -3,7 +3,6 @@ package pack.iscsi.block;
 import java.io.Closeable;
 import java.io.EOFException;
 import java.io.IOException;
-import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -51,10 +50,8 @@ public class LocalBlock implements Closeable, Block {
   private final RandomAccessIO _randomAccessIO;
   private final BlockStateStore _blockStateStore;
   private final long _startingPositionOfBlock;
-  private final Executor _blockIOExecutor;
 
   public LocalBlock(LocalBlockConfig config) throws IOException {
-    _blockIOExecutor = config.getBlockIOExecutor();
     _randomAccessIO = config.getRandomAccessIO();
     _blockStore = config.getBlockGenerationStore();
     _wal = config.getWal();

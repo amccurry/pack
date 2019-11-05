@@ -17,6 +17,11 @@ import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.WeakHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.curator.shaded.com.google.common.collect.ImmutableList;
 import org.slf4j.Logger;
@@ -26,12 +31,11 @@ import com.amazonaws.AmazonServiceException;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.S3Object;
 import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.amazonaws.services.s3.model.S3ObjectSummary;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import consistent.s3.ConsistentAmazonS3;
+import pack.iscsi.concurrent.ConcurrentUtils;
 import pack.iscsi.s3.util.S3Utils;
-import pack.iscsi.s3.util.S3Utils.ListResultProcessor;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
@@ -145,6 +149,8 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
   @Override
   public void createVolume(String name, long lengthInBytes, int blockSizeInBytes) throws IOException {
     checkNonExistence(name);
+    checkLength(lengthInBytes);
+    checkBlockSize(blockSizeInBytes);
     long volumeId = createVolumeId(name);
     PackVolumeMetadata metadata = PackVolumeMetadata.builder()
                                                     .name(name)
@@ -214,6 +220,7 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     if (!metadata.isReadOnly()) {
       checkAttached(name);
     }
+    checkInUse(metadata);
     String key = S3Utils.getAttachedVolumeNameKey(_objectPrefix, _hostname, name);
     _consistentAmazonS3.deleteObject(_bucket, key);
 
@@ -228,6 +235,14 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
                                              .attachedHostnames(attachedHostnames.isEmpty() ? null : attachedHostnames)
                                              .build();
     S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, metadataKey, newMetadata);
+  }
+
+  private void checkInUse(PackVolumeMetadata metadata) throws IOException {
+    for (VolumeListener listener : _listeners) {
+      if (listener.isInUse(metadata)) {
+        throw new IOException("Volume " + metadata.getName() + " is still in use.");
+      }
+    }
   }
 
   @Override
@@ -374,10 +389,11 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     String key = getVolumeMetadataKey(cloneVolumeId);
     S3Utils.writeVolumeMetadata(_consistentAmazonS3, _bucket, key, metadata);
     createVolumeNamePointer(name, cloneVolumeId);
-    copyVolumeData(cloneVolumeId, existingVolumeId, snapshotId);
+    copyVolumeData(cloneVolumeId, existingVolumeId, snapshotId, metadata.getBlockSizeInBytes());
   }
 
-  private void copyVolumeData(long cloneVolumeId, long existingVolumeId, String snapshotId) throws IOException {
+  private void copyVolumeData(long cloneVolumeId, long existingVolumeId, String snapshotId, int bufferSize)
+      throws IOException {
     // metadata already written
     // copy cache block info
     String cloneCachedBlockInfoKey = S3Utils.getCachedBlockInfo(_objectPrefix, cloneVolumeId);
@@ -386,13 +402,42 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
     S3Utils.copy(_consistentAmazonS3, _bucket, snapshotCachedBlockInfoKey, cloneCachedBlockInfoKey);
     // copy blocks themselves
     String snapshotBlockInfoKey = S3Utils.getVolumeSnapshotBlockInfoKey(_objectPrefix, existingVolumeId, snapshotId);
-    S3Utils.readVolumeSnapshotBlockInfo(_consistentAmazonS3, _bucket, snapshotBlockInfoKey, (blockId, generation) -> {
-      LOGGER.info("Copying src volumeId {} dst volumeId {} blockId {} generation {}", existingVolumeId, cloneVolumeId,
-          blockId, generation);
-      String srcKey = S3Utils.getBlockGenerationKey(_objectPrefix, existingVolumeId, blockId, generation);
-      String dstKey = S3Utils.getBlockGenerationKey(_objectPrefix, cloneVolumeId, blockId, generation);
-      S3Utils.copy(_consistentAmazonS3, _bucket, srcKey, dstKey);
-    });
+
+    int threads = 10;
+    ExecutorService executorService = ConcurrentUtils.executor("copy-" + existingVolumeId, threads);
+    List<Future<Void>> futures = new ArrayList<>();
+    AtomicLong start = new AtomicLong(System.nanoTime());
+    AtomicLong totalTransfered = new AtomicLong();
+    AtomicLong objectTotal = new AtomicLong();
+    try {
+      S3Utils.readVolumeSnapshotBlockInfo(_consistentAmazonS3, _bucket, snapshotBlockInfoKey, (blockId, generation) -> {
+        String srcKey = S3Utils.getBlockGenerationKey(_objectPrefix, existingVolumeId, blockId, generation);
+        String dstKey = S3Utils.getBlockGenerationKey(_objectPrefix, cloneVolumeId, blockId, generation);
+        futures.add(executorService.submit(() -> {
+          if (start.get() + TimeUnit.SECONDS.toNanos(5) < System.nanoTime()) {
+            LOGGER.info("Clone volume data copy progress, object total {} total bytes {}", objectTotal.get(), totalTransfered.get());
+            start.set(System.nanoTime());
+          }
+          LOGGER.debug("Copying src volumeId {} dst volumeId {} blockId {} generation {}", existingVolumeId,
+              cloneVolumeId, blockId, generation);
+          S3Utils.copy(_consistentAmazonS3, _bucket, srcKey, dstKey);
+          totalTransfered.addAndGet(bufferSize);
+          objectTotal.incrementAndGet();
+          return null;
+        }));
+      });
+    } finally {
+      for (Future<Void> future : futures) {
+        try {
+          future.get();
+        } catch (InterruptedException e) {
+          throw new IOException(e);
+        } catch (ExecutionException e) {
+          throw new IOException(e.getCause());
+        }
+      }
+      executorService.shutdownNow();
+    }
   }
 
   @Override
@@ -459,29 +504,26 @@ public class S3VolumeStore implements PackVolumeStore, BlockCacheMetadataStore {
 
     Map<Long, Long> oldestGenerationPerBlock = new HashMap<>();
     String blocksPrefix = S3Utils.getVolumeBlocksPrefix(_objectPrefix, volumeId);
-    S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blocksPrefix, new ListResultProcessor() {
-      @Override
-      public void addResult(S3ObjectSummary summary) {
-        String key = summary.getKey();
-        LOGGER.info("gc processing key {}", key);
-        long blockId = S3Utils.getBlockIdFromKey(key);
-        long generation = S3Utils.getBlockGenerationFromKey(key);
-        if (isOldestGeneration(oldestGenerationPerBlock, blockId, generation)) {
-          // keep around might not be the oldest once the block is complete
-          Long oldGeneration = oldestGenerationPerBlock.put(blockId, generation);
-          if (oldGeneration != null) {
-            if (!isInUse(snapshotsBlockToGensMap, blockId, oldGeneration)) {
-              String deleteKey = S3Utils.getBlockGenerationKey(_objectPrefix, volumeId, blockId, oldGeneration);
-              LOGGER.info("gc delete object {}", deleteKey);
-              _consistentAmazonS3.deleteObject(_bucket, deleteKey);
-            }
+    S3Utils.listObjects(_consistentAmazonS3.getClient(), _bucket, blocksPrefix, summary -> {
+      String key = summary.getKey();
+      LOGGER.debug("gc processing key {}", key);
+      long blockId = S3Utils.getBlockIdFromKey(key);
+      long generation = S3Utils.getBlockGenerationFromKey(key);
+      if (isOldestGeneration(oldestGenerationPerBlock, blockId, generation)) {
+        // keep around might not be the oldest once the block is complete
+        Long oldGeneration = oldestGenerationPerBlock.put(blockId, generation);
+        if (oldGeneration != null) {
+          if (!isInUse(snapshotsBlockToGensMap, blockId, oldGeneration)) {
+            String deleteKey = S3Utils.getBlockGenerationKey(_objectPrefix, volumeId, blockId, oldGeneration);
+            LOGGER.info("gc delete object {}", deleteKey);
+            _consistentAmazonS3.deleteObject(_bucket, deleteKey);
           }
-        } else {
-          // remove
-          if (!isInUse(snapshotsBlockToGensMap, blockId, generation)) {
-            LOGGER.info("gc delete object {}", key);
-            _consistentAmazonS3.deleteObject(_bucket, key);
-          }
+        }
+      } else {
+        // remove
+        if (!isInUse(snapshotsBlockToGensMap, blockId, generation)) {
+          LOGGER.info("gc delete object {}", key);
+          _consistentAmazonS3.deleteObject(_bucket, key);
         }
       }
     });

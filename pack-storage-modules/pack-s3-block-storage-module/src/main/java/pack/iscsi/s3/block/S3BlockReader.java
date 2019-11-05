@@ -45,7 +45,7 @@ public class S3BlockReader implements BlockIOExecutor {
 
   @Override
   public BlockIOResponse exec(BlockIORequest request) throws IOException {
-    try (Scope scope = TracerUtil.trace(getClass(), "s3 read")) {
+    try (Scope s0 = TracerUtil.trace(getClass(), "s3 read")) {
       // @TODO partial reads may cause corruption, needs work
       long lastStoredGeneration = request.getLastStoredGeneration();
       if (lastStoredGeneration == Block.MISSING_BLOCK_GENERATION
@@ -55,8 +55,11 @@ public class S3BlockReader implements BlockIOExecutor {
       RandomAccessIO randomAccessIO = request.getRandomAccessIO();
       String key = S3Utils.getBlockGenerationKey(_objectPrefix, request.getVolumeId(), request.getBlockId(),
           lastStoredGeneration);
-      LOGGER.info("reading bucket {} key {}", _bucket, key);
-      S3Object s3Object = _consistentAmazonS3.getObject(_bucket, key);
+      LOGGER.debug("reading bucket {} key {}", _bucket, key);
+      S3Object s3Object;
+      try (Scope s1 = TracerUtil.trace(getClass(), "s3 read object")) {
+        s3Object = _consistentAmazonS3.getObject(_bucket, key);
+      }
       long contentLength = s3Object.getObjectMetadata()
                                    .getContentLength();
       int blockSize = request.getBlockSize();
@@ -65,16 +68,23 @@ public class S3BlockReader implements BlockIOExecutor {
             blockSize);
         throw new IOException("object size wrong");
       }
-      try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
-        byte[] buffer = new byte[1024 * 1024];
-        long pos = request.getStartingPositionOfBlock();
-        int length = blockSize;
-        while (length > 0) {
-          int len = Math.min(length, buffer.length);
-          int read = inputStream.read(buffer, 0, len);
-          randomAccessIO.write(pos, buffer, 0, read);
-          pos += read;
-          length -= read;
+      try (Scope s1 = TracerUtil.trace(getClass(), "s3 read content")) {
+        try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
+          byte[] buffer = new byte[128 * 1024];
+          long pos = request.getStartingPositionOfBlock();
+          int length = blockSize;
+          while (length > 0) {
+            int len = Math.min(length, buffer.length);
+            int read;
+            try (Scope s2 = TracerUtil.trace(getClass(), "s3 read content inputstream")) {
+              read = inputStream.read(buffer, 0, len);
+            }
+            try (Scope s2 = TracerUtil.trace(getClass(), "write content")) {
+              randomAccessIO.write(pos, buffer, 0, read);
+            }
+            pos += read;
+            length -= read;
+          }
         }
       }
       return BlockIOResponse.newBlockIOResult(lastStoredGeneration, BlockState.CLEAN, lastStoredGeneration);

@@ -5,12 +5,12 @@ import lombok.EqualsAndHashCode;
 import lombok.Value;
 
 @Value
-@Builder
+@Builder(toBuilder = true)
 @EqualsAndHashCode
 public class BlockKey {
 
   long volumeId;
-  
+
   long blockId;
 
 }

@@ -4,20 +4,24 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
-import pack.iscsi.admin.ActionTable;
-import pack.iscsi.admin.Column;
-import pack.iscsi.admin.Row;
+import org.apache.commons.io.FileUtils;
+
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
+import swa.spi.Column;
+import swa.spi.Link;
+import swa.spi.Row;
+import swa.spi.Table;
 
-public abstract class VolumeActionTable implements ActionTable {
+public abstract class VolumeTable implements PackHtml, Table {
 
   protected final PackVolumeStore _volumeStore;
   protected final String _name;
   protected final String _link;
 
-  public VolumeActionTable(String name, String link, PackVolumeStore volumeStore) {
+  public VolumeTable(String name, String link, PackVolumeStore volumeStore) {
     _volumeStore = volumeStore;
     _name = name;
     _link = link;
@@ -29,17 +33,22 @@ public abstract class VolumeActionTable implements ActionTable {
   }
 
   @Override
-  public String getLink() throws IOException {
+  public String getLinkName() throws IOException {
     return _link;
   }
 
   @Override
-  public List<String> getHeaders() throws IOException {
+  public String getIcon() {
+    return "layers";
+  }
+
+  @Override
+  public List<String> getHeaders(Map<String, String[]> queryParams) throws IOException {
     return Arrays.asList("Name", "Attached Host", "Read Only", "Length", "Id");
   }
 
   @Override
-  public List<Row> getRows() throws IOException {
+  public List<Row> getRows(Map<String, String[]> queryParams) throws IOException {
     List<String> volumes = getVolumeNames();
     List<Row> rows = new ArrayList<>();
     for (String attachedVolume : volumes) {
@@ -60,6 +69,7 @@ public abstract class VolumeActionTable implements ActionTable {
     List<Column> columns = new ArrayList<>();
     columns.add(Column.builder()
                       .value(metadata.getName())
+                      .link(Link.create("volume/", metadata.getName()))
                       .build());
 
     columns.add(Column.builder()
@@ -71,7 +81,7 @@ public abstract class VolumeActionTable implements ActionTable {
                       .build());
 
     columns.add(Column.builder()
-                      .value(Long.toString(metadata.getLengthInBytes()))
+                      .value(humanSize(metadata.getLengthInBytes()))
                       .build());
 
     columns.add(Column.builder()
@@ -80,10 +90,19 @@ public abstract class VolumeActionTable implements ActionTable {
     return columns;
   }
 
+  private static String humanSize(long lengthInBytes) {
+    return FileUtils.byteCountToDisplaySize(lengthInBytes);
+  }
+
   private static String toString(List<String> attachedHostnames) {
     if (attachedHostnames == null) {
       return "";
     }
-    return attachedHostnames.toString();
+    if (attachedHostnames.size() == 1) {
+      return attachedHostnames.get(0);
+    } else {
+      return attachedHostnames.get(0) + "(plus " + (attachedHostnames.size() - 1) + " more)";
+
+    }
   }
 }

@@ -1,8 +1,6 @@
-package pack.iscsi.server.admin;
+package pack.iscsi.server.metrics;
 
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Formatter;
 import java.util.List;
 import java.util.Map.Entry;
@@ -19,38 +17,26 @@ import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.ScheduledReporter;
 import com.codahale.metrics.Timer;
 
-import pack.iscsi.admin.ActionTable;
-import pack.iscsi.admin.Column;
-import pack.iscsi.admin.Row;
 import pack.iscsi.spi.metric.MetricsFactory;
+import swa.spi.Column;
+import swa.spi.Row;
 
-public class MeterMetricsActionTable extends ScheduledReporter implements ActionTable {
+public class PackScheduledReporter extends ScheduledReporter {
 
   private final AtomicReference<List<Row>> _rowsRef = new AtomicReference<>(new ArrayList<>());
 
-  public MeterMetricsActionTable(MetricsFactory metricsFactory) {
-    super(toMetricRegistry(metricsFactory.getMetricRegistry()), "actiontable-reporter", (name, metric) -> true,
+  public PackScheduledReporter(MetricsFactory metricsFactory) {
+    super(toMetricRegistry(metricsFactory.getMetricRegistry()), "pack-reporter", (name, metric) -> true,
         TimeUnit.SECONDS, TimeUnit.MILLISECONDS);
-    start(10, TimeUnit.SECONDS);
+    start(1, TimeUnit.MINUTES);
+  }
+
+  public List<Row> getRows() {
+    return _rowsRef.get();
   }
 
   private static MetricRegistry toMetricRegistry(Object metricRegistry) {
     return (MetricRegistry) metricRegistry;
-  }
-  
-  @Override
-  public String getName() throws IOException {
-    return "meters";
-  }
-
-  @Override
-  public String getLink() throws IOException {
-    return "metermetrics";
-  }
-
-  @Override
-  public List<Row> getRows() throws IOException {
-    return _rowsRef.get();
   }
 
   @SuppressWarnings("rawtypes")
@@ -60,17 +46,12 @@ public class MeterMetricsActionTable extends ScheduledReporter implements Action
     List<Row> rows = new ArrayList<>();
     Set<Entry<String, Meter>> entrySet = meters.entrySet();
     for (Entry<String, Meter> entry : entrySet) {
-      rows.add(Row.builder()
-                  .columns(meterToColumns(entry))
-                  .build());
+      Row row = Row.builder()
+                   .columns(meterToColumns(entry))
+                   .build();
+      rows.add(row);
     }
-
     _rowsRef.set(rows);
-  }
-
-  @Override
-  public List<String> getHeaders() throws IOException {
-    return Arrays.asList("Name", "Count", "Mean", "1 Minute", "5 Minute", "15 Minute");
   }
 
   private List<Column> meterToColumns(Entry<String, Meter> entry) {
@@ -118,5 +99,4 @@ public class MeterMetricsActionTable extends ScheduledReporter implements Action
                       .toString();
     }
   }
-
 }
