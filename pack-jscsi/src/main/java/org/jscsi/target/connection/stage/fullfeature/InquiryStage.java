@@ -88,7 +88,7 @@ public class InquiryStage extends TargetFullFeatureStage {
       if (!cdb.getEnableVitalProductData()) {
         // ... the device server shall return the standard INQUIRY
         // data."
-        responseData = StandardInquiryData.getInstance();
+        responseData = new StandardInquiryData();
       } else {
         /*
          * SCSI initiator is requesting either "device identification" or
@@ -103,10 +103,7 @@ public class InquiryStage extends TargetFullFeatureStage {
           responseData = SupportedVpdPages.getInstance();
           break;
         case DEVICE_IDENTIFICATION:
-          // responseData = session.getTargetServer()
-          // .getDeviceIdentificationVpdPage();
-          // bug with too many devices
-          responseData = StandardInquiryData.getInstance();
+          responseData = new StandardInquiryData();
           break;
         case UNIT_SERIAL_NUMBER:
           UUID uuid = session.getStorageModule()

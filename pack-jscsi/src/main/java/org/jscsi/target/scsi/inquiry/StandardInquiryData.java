@@ -22,7 +22,7 @@ public final class StandardInquiryData implements IResponseData {
   /**
    * The total length of the serialized Standard Inquiry Data.
    */
-  private static final int SIZE = 36;
+  private static final int SIZE = 44;
 
   private static final String VENDOR_ID = "disyUKon";
   private static final int VENDOR_ID_FIELD_POSITION = 8;
@@ -35,41 +35,24 @@ public final class StandardInquiryData implements IResponseData {
   private static final String PRODUCT_REVISION_LEVEL = "1.00";
   private static final int PRODUCT_REVISION_LEVEL_FIELD_POSITION = 32;
   private static final int PRODUCT_REVISION_LEVEL_FIELD_LENGTH = 4;
-
-  /**
-   * The singleton.
-   */
-  private static StandardInquiryData instance;
+  
+  private static final String DRIVE_SERIAL_NUMBER = "abc123";
+  private static final int DRIVE_SERIAL_NUMBER_FIELD_POSITION = 36;
+  private static final int DRIVE_SERIAL_NUMBER_FIELD_LENGTH = 8;
 
   private final String _vendorId;
   private final String _productId;
 
-  private StandardInquiryData(String vendorId, String productId) {
+  public StandardInquiryData() {
+    this(null, null);
+  }
+
+  public StandardInquiryData(String vendorId, String productId) {
     // singleton pattern
-    _vendorId = vendorId;
-    _productId = productId;
-  }
-
-  /**
-   * Returns the one and only {@link StandardInquiryData} object.
-   * 
-   * @return the one and only {@link StandardInquiryData} object
-   */
-  public static StandardInquiryData getInstance(String vendorId, String productId) {
-    if (instance == null)
-      instance = new StandardInquiryData(vendorId, productId);
-    return instance;
-  }
-
-  /**
-   * Returns the one and only {@link StandardInquiryData} object.
-   * 
-   * @return the one and only {@link StandardInquiryData} object
-   */
-  public static StandardInquiryData getInstance() {
-    if (instance == null)
-      instance = new StandardInquiryData(VENDOR_ID, PRODUCT_ID);
-    return instance;
+    _vendorId = vendorId == null ? VENDOR_ID
+        : vendorId.substring(0, Math.min(vendorId.length(), VENDOR_ID_FIELD_LENGTH));
+    _productId = productId == null ? PRODUCT_ID
+        : productId.substring(0, Math.min(productId.length(), PRODUCT_ID_FIELD_LENGTH));
   }
 
   public void serialize(ByteBuffer byteBuffer, int index) {
@@ -191,6 +174,10 @@ public final class StandardInquiryData implements IResponseData {
      */
     putString(byteBuffer, PRODUCT_REVISION_LEVEL, index + PRODUCT_REVISION_LEVEL_FIELD_POSITION,
         PRODUCT_REVISION_LEVEL_FIELD_LENGTH);
+
+    // *** bytes 36 to 43 ***
+    putString(byteBuffer, DRIVE_SERIAL_NUMBER, index + DRIVE_SERIAL_NUMBER_FIELD_POSITION,
+        DRIVE_SERIAL_NUMBER_FIELD_LENGTH);
   }
 
   /**
