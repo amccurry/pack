@@ -6,6 +6,7 @@ package org.jscsi.target.storage;
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.UUID;
 
 import org.jscsi.target.scsi.cdb.CommandDescriptorBlock;
 
@@ -26,10 +27,10 @@ public interface IStorageModule extends Closeable {
    * result in an {@link IOException} due to trying to access blocks outside the
    * medium's boundaries.
    * <p>
-   * The SCSI standard requires checking for these boundary violations right
-   * after receiving a read or write command, so that an appropriate error
-   * message can be returned to the initiator. Therefore this method must be
-   * called prior to each read or write sequence.
+   * The SCSI standard requires checking for these boundary violations right after
+   * receiving a read or write command, so that an appropriate error message can
+   * be returned to the initiator. Therefore this method must be called prior to
+   * each read or write sequence.
    * <p>
    * The values returned by this method and their meaning with regard to the
    * interval [0, {@link #getSizeInBlocks()} - 1] are shown in the following
@@ -58,13 +59,13 @@ public interface IStorageModule extends Closeable {
    * </tr>
    * </table>
    * <p>
-   * Note that the parameters of this method are referring to blocks, not to
-   * byte indices.
+   * Note that the parameters of this method are referring to blocks, not to byte
+   * indices.
    * 
-   * @param logicalBlockAddress
-   *          the index of the first block of data to be read or written
-   * @param transferLengthInBlocks
-   *          the total number of consecutive blocks about to be read or written
+   * @param logicalBlockAddress    the index of the first block of data to be read
+   *                               or written
+   * @param transferLengthInBlocks the total number of consecutive blocks about to
+   *                               be read or written
    * @return see table in description
    */
   int checkBounds(final long logicalBlockAddress, final int transferLengthInBlocks);
@@ -80,11 +81,9 @@ public interface IStorageModule extends Closeable {
   /**
    * Copies bytes from storage to the passed byte array.
    * 
-   * @param bytes
-   *          the array into which the data will be copied will be filled with
-   *          data from storage
-   * @param storageIndex
-   *          the position of the first byte to be copied
+   * @param bytes        the array into which the data will be copied will be
+   *                     filled with data from storage
+   * @param storageIndex the position of the first byte to be copied
    * @throws IOException
    */
   void read(byte[] bytes, long storageIndex) throws IOException;
@@ -99,10 +98,8 @@ public interface IStorageModule extends Closeable {
    * 
    * @param pdu
    * 
-   * @param bytes
-   *          the source of the data to be stored
-   * @param storageIndex
-   *          byte offset in the storage area
+   * @param bytes        the source of the data to be stored
+   * @param storageIndex byte offset in the storage area
    * @throws IOException
    */
   void write(byte[] bytes, long storageIndex) throws IOException;
@@ -115,8 +112,7 @@ public interface IStorageModule extends Closeable {
   /**
    * Closing the storage.
    * 
-   * @throws IOException
-   *           to be closed
+   * @throws IOException to be closed
    */
   void close() throws IOException;
 
@@ -125,5 +121,9 @@ public interface IStorageModule extends Closeable {
   }
 
   int getBlockSize();
+
+  default UUID getUnitSerialNumberUUID() {
+    return null;
+  }
 
 }

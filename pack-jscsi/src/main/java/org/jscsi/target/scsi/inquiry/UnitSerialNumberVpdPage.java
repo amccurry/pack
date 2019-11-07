@@ -16,14 +16,15 @@ public class UnitSerialNumberVpdPage implements IResponseData {
 
   private final byte pageCode = (byte) 0x80;
 
-  private final UUID uuid;
+  private final byte[] uuid;
 
   public UnitSerialNumberVpdPage(UUID uuid) {
-    this.uuid = uuid;
+    this.uuid = uuid.toString()
+                    .getBytes();
   }
 
   private short getPageLength() {
-    return 16;
+    return (short) uuid.length;
   }
 
   public void serialize(ByteBuffer byteBuffer, int index) {
@@ -33,8 +34,7 @@ public class UnitSerialNumberVpdPage implements IResponseData {
     byteBuffer.put(pageCode);
     ReadWrite.writeTwoByteInt(byteBuffer, // buffer
         getPageLength(), index + PAGE_LENGTH_FIELD_INDEX);// index
-    byteBuffer.putLong(uuid.getMostSignificantBits());
-    byteBuffer.putLong(uuid.getLeastSignificantBits());
+    byteBuffer.put(uuid);
   }
 
   public int size() {

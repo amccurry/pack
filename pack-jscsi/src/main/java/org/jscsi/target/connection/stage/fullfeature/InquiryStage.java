@@ -3,6 +3,7 @@ package org.jscsi.target.connection.stage.fullfeature;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.DigestException;
+import java.util.UUID;
 
 import org.jscsi.exception.InternetSCSIException;
 import org.jscsi.parser.BasicHeaderSegment;
@@ -14,6 +15,7 @@ import org.jscsi.target.scsi.cdb.InquiryCDB;
 import org.jscsi.target.scsi.inquiry.PageCode.VitalProductDataPageName;
 import org.jscsi.target.scsi.inquiry.StandardInquiryData;
 import org.jscsi.target.scsi.inquiry.SupportedVpdPages;
+import org.jscsi.target.scsi.inquiry.UnitSerialNumberVpdPage;
 import org.jscsi.target.scsi.sense.senseDataDescriptor.senseKeySpecific.FieldPointerSenseKeySpecificData;
 import org.jscsi.target.settings.SettingsException;
 import org.jscsi.target.util.Debug;
@@ -86,12 +88,12 @@ public class InquiryStage extends TargetFullFeatureStage {
       if (!cdb.getEnableVitalProductData()) {
         // ... the device server shall return the standard INQUIRY
         // data."
-        responseData = StandardInquiryData.getInstance();
+        responseData = new StandardInquiryData();
       } else {
         /*
          * SCSI initiator is requesting either "device identification" or
-         * "supported VPD pages" or this else block would not have been entered.
-         * (see {@link InquiryCDB#checkIntegrity(ByteBuffer dataSegment)})
+         * "supported VPD pages" or this else block would not have been entered. (see
+         * {@link InquiryCDB#checkIntegrity(ByteBuffer dataSegment)})
          */
         final VitalProductDataPageName pageName = cdb.getPageCode()
                                                      .getVitalProductDataPageName();
@@ -101,14 +103,17 @@ public class InquiryStage extends TargetFullFeatureStage {
           responseData = SupportedVpdPages.getInstance();
           break;
         case DEVICE_IDENTIFICATION:
-          // responseData = session.getTargetServer()
-          // .getDeviceIdentificationVpdPage();
-          // bug with too many devices
-          responseData = StandardInquiryData.getInstance();
+          responseData = new StandardInquiryData();
           break;
         case UNIT_SERIAL_NUMBER:
-          responseData = session.getTargetServer()
-                                .getUnitSerialNumber();
+          UUID uuid = session.getStorageModule()
+                             .getUnitSerialNumberUUID();
+          if (uuid == null) {
+            responseData = session.getTargetServer()
+                                  .getUnitSerialNumber();
+          } else {
+            responseData = new UnitSerialNumberVpdPage(uuid);
+          }
           break;
         default:
           // The initiator must not request unsupported mode pages.
