@@ -22,3 +22,6 @@ iscsi-test/
 iscsi-test-wal/
 logs/
 *.log
+*.jaas.conf
+*.keytab
+

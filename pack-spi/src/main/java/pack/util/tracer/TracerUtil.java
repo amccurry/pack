@@ -131,8 +131,8 @@ public class TracerUtil {
     return trace(span, scope);
   }
 
-  private static boolean isEnabled() {
-    return true;
+  public static boolean isEnabled() {
+    return false;
   }
 
   private static void addTags(Span span, Tag... tags) {

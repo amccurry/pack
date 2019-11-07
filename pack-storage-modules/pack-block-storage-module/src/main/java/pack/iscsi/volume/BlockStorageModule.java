@@ -307,7 +307,7 @@ public class BlockStorageModule implements StorageModule {
   public void read(byte[] bytes, long position) throws IOException {
     checkClosed();
     checkLength(bytes, position);
-    LOGGER.debug("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
+    LOGGER.info("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
     int length = bytes.length;
     _readMeter.mark(length);
     _readIOMeter.mark();
@@ -342,7 +342,7 @@ public class BlockStorageModule implements StorageModule {
     checkReadOnly();
     checkClosed();
     checkLength(bytes, position);
-    LOGGER.debug("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
+    LOGGER.info("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
     _writesCount.addAndGet(bytes.length);
     int length = bytes.length;
     _writeMeter.mark(length);
@@ -426,6 +426,10 @@ public class BlockStorageModule implements StorageModule {
                                                  .blockId(blockKey.getBlockId() == 0 ? 0L : blockKey.getBlockId() - 1L)
                                                  .build(),
         recentlyAccessedCache)) {
+      // LOGGER.info("Detecting readahead for volumeId {} blockId {} {}",
+      // _volumeId, blockKey.getBlockId(),
+      // recentlyAccessedCache == _recentlyAccessedCacheReads ? "read" :
+      // "write");
       readNextBlocks(blockKey);
     }
     recentlyAccessedCache.put(blockKey, Boolean.TRUE);

@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 import io.opentracing.Scope;
 import pack.iscsi.spi.RandomAccessIO;
+import pack.iscsi.spi.RandomAccessIOReader;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
@@ -85,7 +86,9 @@ public class LocalBlock implements Closeable, Block {
       checkPositionAndLength(blockPosition, len);
       checkGenerations();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio read")) {
-        _randomAccessIO.read(getFilePosition(blockPosition), bytes, offset, len);
+        try (RandomAccessIOReader readOnly = _randomAccessIO.cloneReadOnly()) {
+          readOnly.read(getFilePosition(blockPosition), bytes, offset, len);
+        }
       }
     }
   }

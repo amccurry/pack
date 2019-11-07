@@ -1,0 +1,1 @@
+-Djava.library.path="pack/pack-hdfs-3.0/native/:${current path}"
