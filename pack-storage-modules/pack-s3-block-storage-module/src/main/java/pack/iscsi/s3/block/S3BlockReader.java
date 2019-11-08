@@ -21,7 +21,6 @@ import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.volume.BlockStorageModule;
 import pack.util.tracer.TracerUtil;
 
 public class S3BlockReader implements BlockIOExecutor {
@@ -78,7 +77,7 @@ public class S3BlockReader implements BlockIOExecutor {
         throw new IOException("object size wrong");
       }
       try (Scope s1 = TracerUtil.trace(getClass(), "s3 read content")) {
-        Meter readMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(request.getVolumeId()), READ);
+        Meter readMeter = _metricsFactory.meter(S3BlockReader.class, Long.toString(request.getVolumeId()), READ);
         try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
           byte[] buffer = new byte[128 * 1024];
           long pos = request.getStartingPositionOfBlock();

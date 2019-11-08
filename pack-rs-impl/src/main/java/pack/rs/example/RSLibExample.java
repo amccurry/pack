@@ -1,4 +1,4 @@
-package test;
+package pack.rs.example;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -10,14 +10,14 @@ import org.apache.hadoop.io.erasurecode.ErasureCoderOptions;
 import org.apache.hadoop.io.erasurecode.rawcoder.RawErasureDecoder;
 import org.apache.hadoop.io.erasurecode.rawcoder.RawErasureEncoder;
 
-public class RSExample {
+public class RSLibExample {
 
   private static final String RS = "rs";
 
   public static void main(String[] args) throws IOException {
     int seed = 1;
-    int blockSize = 4096;
-    int inputSize = 2 * blockSize;
+    int blockSize = 1024;
+    int inputSize = 512 * blockSize;
     int dataPartCount = 4;
     int parityPartCount = 2;
     int byteBufferSize = inputSize / dataPartCount;

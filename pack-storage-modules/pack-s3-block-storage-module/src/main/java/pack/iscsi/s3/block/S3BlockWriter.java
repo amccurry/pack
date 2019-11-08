@@ -22,7 +22,6 @@ import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.volume.BlockStorageModule;
 import pack.util.tracer.TracerUtil;
 
 public class S3BlockWriter implements BlockIOExecutor {
@@ -73,7 +72,7 @@ public class S3BlockWriter implements BlockIOExecutor {
         metadata.setContentLength(request.getBlockSize());
 
         _consistentAmazonS3.putObject(_bucket, key, input, metadata);
-        Meter writeMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(request.getVolumeId()), WRITE);
+        Meter writeMeter = _metricsFactory.meter(S3BlockWriter.class, Long.toString(request.getVolumeId()), WRITE);
         writeMeter.mark(request.getBlockSize());
       }
       LOGGER.debug("finished write bucket {} key {}", _bucket, key);
