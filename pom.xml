@@ -46,10 +46,7 @@
 		<module>pack-storage-modules/pack-s3-block-storage-module</module>
 		<module>pack-storage-modules/wal/pack-local-wal</module>
 		<module>pack-storage-modules/wal/pack-remote-wal</module>
-		<module>pack-rs-impl</module>
-		<module>pack-rs-spi</module>
 		<module>pack-rs-shim</module>
-		<module>pack-rs-package</module>
 	</modules>
 
 	<dependencyManagement>
@@ -124,11 +121,6 @@
 			<dependency>
 				<groupId>pack</groupId>
 				<artifactId>pack-rs-package</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>pack</groupId>
-				<artifactId>pack-rs-impl</artifactId>
 				<version>${project.version}</version>
 			</dependency>
 			<dependency>

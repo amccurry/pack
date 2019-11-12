@@ -27,7 +27,7 @@ public class RSManagerTest {
     LOGGER.info("seed {} minStripeSize {} parts {} dataPartCount {} parityPartCount {}", seed, minStripeSize, parts,
         dataPartCount, parityPartCount);
 
-    RSManager manager = RSManager.create(parts * minStripeSize, dataPartCount, parityPartCount, minStripeSize);
+    RSProcessor manager = RSManager.create(parts * minStripeSize, dataPartCount, parityPartCount, minStripeSize);
 
     ByteBuffer input = ByteBuffer.allocate(parts * minStripeSize);
     byte[] buf = new byte[minStripeSize];

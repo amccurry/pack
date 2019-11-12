@@ -4,13 +4,17 @@
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>pack</groupId>
-		<artifactId>pack</artifactId>
+		<artifactId>pack-rs</artifactId>
 		<version>1.0-SNAPSHOT</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
 	<artifactId>pack-rs-shim</artifactId>
 	<packaging>jar</packaging>
 	<dependencies>
+		<dependency>
+			<groupId>pack</groupId>
+			<artifactId>pack-rs-spi</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
 			<artifactId>pack-rs-package</artifactId>

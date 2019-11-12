@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.util.Random;
 
 import pack.rs.RSManager;
+import pack.rs.RSProcessor;
 
 public class RSWriteThroughputExample {
 
@@ -14,7 +15,7 @@ public class RSWriteThroughputExample {
     int dataPartCount = 4;
     int parityPartCount = 2;
 
-    RSManager manager = RSManager.create(1024 * 1024, dataPartCount, parityPartCount, minStripeSize);
+    RSProcessor manager = RSManager.create(1024 * 1024, dataPartCount, parityPartCount, minStripeSize);
     Random random = new Random(seed);
 
     ByteBuffer input = ByteBuffer.allocate(524288);

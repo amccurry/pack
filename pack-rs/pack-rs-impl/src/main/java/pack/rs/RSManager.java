@@ -9,7 +9,7 @@ import org.apache.hadoop.io.erasurecode.ErasureCoderOptions;
 import org.apache.hadoop.io.erasurecode.rawcoder.RawErasureDecoder;
 import org.apache.hadoop.io.erasurecode.rawcoder.RawErasureEncoder;
 
-public class RSManager {
+public class RSManager implements RSProcessor {
 
   private static final String RS = "rs";
 
@@ -39,7 +39,7 @@ public class RSManager {
     _decoder = CodecUtil.createRawDecoder(_conf, RS, options);
   }
 
-  public static RSManager create(int byteBufferSize, int dataPartCount, int parityPartCount, int blockSize) {
+  public static RSProcessor create(int byteBufferSize, int dataPartCount, int parityPartCount, int blockSize) {
     return new RSManager(byteBufferSize, dataPartCount, parityPartCount, blockSize);
   }
 
@@ -51,12 +51,14 @@ public class RSManager {
     }
   }
 
+  @Override
   public void reset() {
     _dataBuffer.clear();
     _shuffleBuffer.clear();
     _parityBuffer.clear();
   }
 
+  @Override
   public void read(ByteBuffer[] inputs, ByteBuffer output) throws IOException {
     checkInputs(inputs);
     checkOutput(inputs, output);
@@ -65,10 +67,12 @@ public class RSManager {
     output.flip();
   }
 
+  @Override
   public void write(ByteBuffer buffer) {
     _dataBuffer.put(buffer);
   }
 
+  @Override
   public ByteBuffer[] finish() throws IOException {
     _dataBuffer.flip();
     checkBufferSize();

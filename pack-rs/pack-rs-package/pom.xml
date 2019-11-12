@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>pack</groupId>
-		<artifactId>pack</artifactId>
+		<artifactId>pack-rs</artifactId>
 		<version>1.0-SNAPSHOT</version>
 		<relativePath>../pom.xml</relativePath>
 	</parent>
@@ -14,10 +14,9 @@
 		<dependency>
 			<groupId>pack</groupId>
 			<artifactId>pack-rs-impl</artifactId>
-			<scope>provided</scope>
+			<scope>test</scope>
 		</dependency>
 	</dependencies>
-
 	<build>
 		<plugins>
 			<plugin>
@@ -32,7 +31,7 @@
 						</goals>
 						<configuration>
 							<outputDirectory>${project.build.directory}/classes/pack-rs-lib</outputDirectory>
-							<includeScope>provided</includeScope>
+							<includeScope>test</includeScope>
 						</configuration>
 					</execution>
 				</executions>
