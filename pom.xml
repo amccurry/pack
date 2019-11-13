@@ -38,6 +38,7 @@
 		<module>pack-util</module>
 		<module>pack-admin</module>
 		<module>pack-storage-modules/pack-block-storage-spi</module>
+		<module>pack-storage-modules/pack-brick</module>
 		<module>pack-storage-modules/pack-remote-brick</module>
 		<module>pack-storage-modules/pack-block-storage-module</module>
 		<module>pack-storage-modules/pack-block-storage-test-suite</module>

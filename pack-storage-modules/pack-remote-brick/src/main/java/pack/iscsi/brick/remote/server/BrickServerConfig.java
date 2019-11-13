@@ -1,7 +1,10 @@
-package pack.iscsi.brick.remote;
+package pack.iscsi.brick.remote.server;
 
 import java.io.File;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.curator.framework.CuratorFramework;
 
 import lombok.Builder;
 import lombok.Value;
@@ -10,11 +13,17 @@ import lombok.Value;
 @Builder(toBuilder = true)
 public class BrickServerConfig {
 
+  List<File> brickDirs;
+
   @Builder.Default
   String address = "0.0.0.0";
 
   @Builder.Default
-  int port = 8312;
+  int port = 0;
+
+  CuratorFramework curatorFramework;
+
+  String zkPrefix;
 
   @Builder.Default
   int clientTimeout = (int) TimeUnit.SECONDS.toMillis(1000);
@@ -61,5 +70,4 @@ public class BrickServerConfig {
 
   String sslTrustPass;
 
-  File brickDir;
 }

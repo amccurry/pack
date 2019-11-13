@@ -1,4 +1,4 @@
-package pack.iscsi.brick.remote;
+package pack.iscsi.brick.remote.client;
 
 import java.nio.ByteBuffer;
 import java.util.Random;
@@ -17,21 +17,23 @@ public class BrickClientMain {
 
     BrickClientConfig config = BrickClientConfig.builder()
                                                 .hostname("localhost")
+                                                .port(40575)
                                                 .build();
 
-    // int bufferSize = 512 * 1024 / 8;
+    Random random = new Random();
 
-    int bufferSize = 4 * 1024;
+    int bufferSize = 512 * 1024 / 4;
 
     try (BrickClient client = BrickClient.create(config)) {
       int length = 1_000_000_000;
-      int brickId = 0;
-      ListBricksResponse bricks = client.listBricks(new ListBricksRequest());
-      for (Long id : bricks.getBrickIds()) {
+      String brickId = "test:" + Math.abs(random.nextLong());
+      ListBricksResponse bricks = client.listBricks(new ListBricksRequest("test"));
+      for (String id : bricks.getBrickIds()) {
+        System.out.println("Deleteing " + id);
         client.destroy(new DestroyRequest(id));
       }
       client.create(new CreateRequest(brickId, length));
-      Random random = new Random();
+
       byte[] buffer = new byte[bufferSize];
       random.nextBytes(buffer);
       long start = System.nanoTime();
@@ -49,7 +51,7 @@ public class BrickClientMain {
         ByteBuffer data = ByteBuffer.wrap(buffer);
 
         try (Scope scope = TracerUtil.trace(BrickClientMain.class, "write")) {
-          client.write(new WriteRequest(brickId, position, data));
+          client.write(new WriteRequest(brickId, position, data, false, 0));
           total += buffer.length;
         }
       }

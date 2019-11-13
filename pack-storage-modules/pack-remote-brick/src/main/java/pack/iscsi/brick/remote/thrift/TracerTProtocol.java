@@ -1,4 +1,4 @@
-package pack.iscsi.brick.remote;
+package pack.iscsi.brick.remote.thrift;
 
 import java.nio.ByteBuffer;
 
@@ -20,7 +20,7 @@ public class TracerTProtocol extends TProtocol {
 
   private final TProtocol _protocol;
 
-  protected TracerTProtocol(TProtocol protocol) {
+  public TracerTProtocol(TProtocol protocol) {
     super(null);
     _protocol = protocol;
   }

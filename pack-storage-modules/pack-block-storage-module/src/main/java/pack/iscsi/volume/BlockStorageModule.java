@@ -307,7 +307,7 @@ public class BlockStorageModule implements StorageModule {
   public void read(byte[] bytes, long position) throws IOException {
     checkClosed();
     checkLength(bytes, position);
-    LOGGER.info("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
+    LOGGER.debug("read volumeId {} length {} position {}", _volumeId, bytes.length, position);
     int length = bytes.length;
     _readMeter.mark(length);
     _readIOMeter.mark();
@@ -342,7 +342,7 @@ public class BlockStorageModule implements StorageModule {
     checkReadOnly();
     checkClosed();
     checkLength(bytes, position);
-    LOGGER.info("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
+    LOGGER.debug("write volumeId {} length {} position {}", _volumeId, bytes.length, position);
     _writesCount.addAndGet(bytes.length);
     int length = bytes.length;
     _writeMeter.mark(length);

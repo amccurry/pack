@@ -1,4 +1,4 @@
-package pack.iscsi.brick.remote;
+package pack.iscsi.brick.remote.client;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -23,6 +23,8 @@ import org.slf4j.LoggerFactory;
 
 import io.opentracing.Scope;
 import pack.iscsi.brick.remote.generated.PackBrickService;
+import pack.iscsi.brick.remote.thrift.TracerTProtocol;
+import pack.iscsi.brick.remote.thrift.TracerTransport;
 import pack.iscsi.io.IOUtils;
 import pack.util.tracer.TracerUtil;
 

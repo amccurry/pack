@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -23,26 +23,31 @@ public class FileStorageModule implements StorageModule {
   public static class FileStorageModuleFactory implements StorageModuleFactory {
 
     private final File _volumeDir;
+    private final String _prefix;
 
-    public FileStorageModuleFactory(File volumeDir) {
+    public FileStorageModuleFactory(String name, File volumeDir) {
       _volumeDir = volumeDir;
       _volumeDir.mkdirs();
+      _prefix = name + ".";
     }
 
     @Override
     public List<String> getStorageModuleNames() {
-      return Arrays.asList(_volumeDir.list());
+      List<String> list = new ArrayList<>();
+      String[] filenames = _volumeDir.list();
+      for (String filename : filenames) {
+        list.add(_prefix + filename);
+      }
+      return list;
     }
 
     @Override
-    public StorageModule getStorageModule(String name) throws IOException {
-      return new FileStorageModule(new File(_volumeDir, name));
+    public StorageModule getStorageModule(String volumeName) throws IOException {
+      if (!volumeName.startsWith(_prefix)) {
+        throw new IOException("Volume " + volumeName + " not found");
+      }
+      return new FileStorageModule(new File(_volumeDir, volumeName.substring((_prefix).length() + 1)));
     }
-
-  }
-
-  public static FileStorageModuleFactory createFactory(File volumeDir) {
-    return new FileStorageModuleFactory(volumeDir);
   }
 
   private final RandomAccessFile _raf;

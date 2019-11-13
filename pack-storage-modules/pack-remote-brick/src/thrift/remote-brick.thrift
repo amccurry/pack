@@ -9,8 +9,8 @@ exception PackBrickException {
 }
 
 struct CreateRequest {
-  1:long brickId,
-  2:long length
+  1:string brickId,
+  2:int length
 }
 
 struct CreateResponse {
@@ -18,43 +18,50 @@ struct CreateResponse {
 }
 
 struct ReadRequest {
-  1:long brickId,
+  1:string brickId,
   2:long position,
   3:int length
 }
 
 struct ReadResponse {
-  1:binary data
+  1:long generationId,
+  2:binary data
 }
 
 struct WriteRequest {
-  1:long brickId,
+  1:string brickId,
   2:long position,
-  3:binary data
+  3:binary data,
+  4:bool initialize,
+  5:long generationId
 }
 
 struct WriteResponse {
-
+  1:long generationId
 }
 
 struct DestroyRequest {
-  1:long brickId
+  1:string brickId
 }
 
 struct DestroyResponse {
 
 }
 
-struct ListBricksRequest {
+struct ExistsRequest {
+  1:string brickId
+}
 
+struct ExistsResponse {
+  1:bool exists
+}
+
+struct ListBricksRequest {
+  1:string prefix
 }
 
 struct ListBricksResponse {
-  1:list<long> brickIds
-}
-
-struct TraceRequest {
-  1:string traceId
+  1:list<string> brickIds
 }
 
 service PackBrickService
@@ -65,11 +72,11 @@ service PackBrickService
 
   WriteResponse write(1:WriteRequest request) throws (1:PackBrickException pe)
 
-  oneway void writeNonBlocking(1:WriteRequest request)
-
   ListBricksResponse listBricks(1:ListBricksRequest request) throws (1:PackBrickException pe)
 
   DestroyResponse destroy(1:DestroyRequest request) throws (1:PackBrickException pe)
+
+  ExistsResponse exists(1:ExistsRequest request) throws (1:PackBrickException pe)
 
   void noop() throws (1:PackBrickException pe)
 

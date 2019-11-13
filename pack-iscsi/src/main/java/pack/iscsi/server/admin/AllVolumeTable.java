@@ -32,18 +32,20 @@ public class AllVolumeTable extends VolumeTable {
 
   @Override
   public Link execute(String action, String[] ids) throws IOException {
-    for (String idStr : ids) {
-      long id = Long.parseLong(idStr);
-      PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(id);
-      switch (action) {
-      case ATTACH:
-        _volumeStore.attachVolume(metadata.getName());
-        break;
-      case DELETE:
-        _volumeStore.deleteVolume(metadata.getName());
-        break;
-      default:
-        break;
+    if (ids != null) {
+      for (String idStr : ids) {
+        long id = Long.parseLong(idStr);
+        PackVolumeMetadata metadata = _volumeStore.getVolumeMetadata(id);
+        switch (action) {
+        case ATTACH:
+          _volumeStore.attachVolume(metadata.getName());
+          break;
+        case DELETE:
+          _volumeStore.deleteVolume(metadata.getName());
+          break;
+        default:
+          break;
+        }
       }
     }
     return Link.create(getLinkName());

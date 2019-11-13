@@ -1,8 +1,6 @@
 package pack.iscsi.server;
 
-import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -13,12 +11,9 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.io.Closer;
 
-import pack.iscsi.file.singlefile.FileStorageModule.FileStorageModuleFactory;
 import pack.iscsi.manager.BaseTargetManager;
 import pack.iscsi.manager.TargetManager;
 import pack.iscsi.spi.StorageModuleFactory;
-import pack.iscsi.volume.BlockStorageModuleFactory;
-import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 
 public class IscsiServerMain {
 
@@ -31,14 +26,8 @@ public class IscsiServerMain {
     String configDir = IscsiServerArgsUtil.getConfigDir(cmd);
 
     try (Closer closer = Closer.create()) {
-      List<StorageModuleFactory> factories = new ArrayList<>();
-//      List<BlockStorageModuleFactoryConfig> configs = IscsiConfigUtil.getConfigs(new File(configDir));
-//      for (BlockStorageModuleFactoryConfig config : configs) {
-//        factories.add(closer.register(new BlockStorageModuleFactory(config)));
-//      }
-      FileStorageModuleFactory factory = new FileStorageModuleFactory(new File("/home/amccurry/Development/git-projects/pack/iscsi-test/volumes"));
-      factories.add(factory);
-      TargetManager targetManager = new BaseTargetManager(factories);
+      List<StorageModuleFactory> storageModuleFactories = IscsiConfig.getStorageModuleFactories(configDir);
+      TargetManager targetManager = new BaseTargetManager(storageModuleFactories);
       IscsiServerConfig config = IscsiServerConfig.builder()
                                                   .addresses(addresses)
                                                   .port(port)

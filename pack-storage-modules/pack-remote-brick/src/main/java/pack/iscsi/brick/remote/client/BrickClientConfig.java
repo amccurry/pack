@@ -1,4 +1,4 @@
-package pack.iscsi.brick.remote;
+package pack.iscsi.brick.remote.client;
 
 import java.util.concurrent.TimeUnit;
 

@@ -1,4 +1,4 @@
-package pack.iscsi.brick.remote;
+package pack.iscsi.brick.remote.thrift;
 
 import org.apache.thrift.transport.TTransport;
 import org.apache.thrift.transport.TTransportException;
