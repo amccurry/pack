@@ -6,9 +6,9 @@ import pack.iscsi.spi.RandomAccessIO;
 
 public interface BlockRecoveryWriter {
 
-  public static BlockRecoveryWriter toBlockRecoveryWriter(long startingPositionOfBlock, RandomAccessIO randomAccessIO) {
+  public static BlockRecoveryWriter toBlockRecoveryWriter(RandomAccessIO randomAccessIO) {
     return (generation, position, buffer, offset, length) -> {
-      randomAccessIO.write(startingPositionOfBlock + position, buffer, offset, length);
+      randomAccessIO.write(position, buffer, offset, length);
       return true;
     };
   }

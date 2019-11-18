@@ -41,13 +41,11 @@ public class BlockWriteAheadLogRecovery implements BlockIOExecutor {
     long blockId = request.getBlockId();
     long onDiskGeneration = request.getOnDiskGeneration();
     long lastStoredGeneration = request.getLastStoredGeneration();
-    long startingPositionOfBlock = request.getStartingPositionOfBlock();
     if (onDiskGeneration < lastStoredGeneration) {
       throw new IOException("volumeId " + volumeId + " blockId " + blockId + " on disk generation " + onDiskGeneration
           + " less than last store generation " + lastStoredGeneration + " something is wrong");
     }
-    long generation = recover(startingPositionOfBlock, request.getRandomAccessIO(), volumeId, blockId,
-        request.getOnDiskGeneration());
+    long generation = recover(request.getRandomAccessIO(), volumeId, blockId, request.getOnDiskGeneration());
     return BlockIOResponse.builder()
                           .lastStoredGeneration(lastStoredGeneration)
                           .onDiskBlockState(BlockState.DIRTY)
@@ -59,22 +57,21 @@ public class BlockWriteAheadLogRecovery implements BlockIOExecutor {
    * Recover all changes from on disk generation and return the most generation
    * from the log.
    */
-  public long recover(long startingPositionOfBlock, RandomAccessIO randomAccessIO, long volumeId, long blockId,
-      long onDiskGeneration) throws IOException {
+  public long recover(RandomAccessIO randomAccessIO, long volumeId, long blockId, long onDiskGeneration)
+      throws IOException {
     List<BlockJournalRange> journalRanges = _blockWriteAheadLog.getJournalRanges(volumeId, blockId, onDiskGeneration,
         true);
     journalRanges = removeOldRanges(journalRanges, onDiskGeneration);
     journalRanges = removeDuplicates(journalRanges);
     Collections.sort(journalRanges);
     checkForGaps(journalRanges);
-    return applyJournals(startingPositionOfBlock, randomAccessIO, journalRanges, onDiskGeneration);
+    return applyJournals(randomAccessIO, journalRanges, onDiskGeneration);
   }
 
-  private long applyJournals(long startingPositionOfBlock, RandomAccessIO randomAccessIO,
-      List<BlockJournalRange> journalRanges, long onDiskGeneration) throws IOException {
+  private long applyJournals(RandomAccessIO randomAccessIO, List<BlockJournalRange> journalRanges,
+      long onDiskGeneration) throws IOException {
     for (BlockJournalRange range : journalRanges) {
-      onDiskGeneration = _blockWriteAheadLog.recoverFromJournal(startingPositionOfBlock, randomAccessIO, range,
-          onDiskGeneration);
+      onDiskGeneration = _blockWriteAheadLog.recoverFromJournal(randomAccessIO, range, onDiskGeneration);
     }
     return onDiskGeneration;
   }

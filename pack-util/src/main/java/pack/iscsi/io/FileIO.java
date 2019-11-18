@@ -86,11 +86,6 @@ public abstract class FileIO implements RandomAccessIO {
       _raf.setLength(length);
     }
 
-    @Override
-    public void flush() throws IOException {
-
-    }
-
   }
 
   public static void setDirectIOEnabled(boolean directIOEnabled) {

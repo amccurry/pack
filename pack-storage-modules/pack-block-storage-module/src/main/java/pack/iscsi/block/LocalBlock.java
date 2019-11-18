@@ -50,7 +50,6 @@ public class LocalBlock implements Closeable, Block {
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final RandomAccessIO _randomAccessIO;
   private final BlockStateStore _blockStateStore;
-  private final long _startingPositionOfBlock;
 
   public LocalBlock(LocalBlockConfig config) throws IOException {
     _randomAccessIO = config.getRandomAccessIO();
@@ -62,7 +61,6 @@ public class LocalBlock implements Closeable, Block {
     _blockSize = config.getBlockSize();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
-    _startingPositionOfBlock = _blockId * _blockSize;
 
     ReentrantReadWriteLock reentrantReadWriteLock = new ReentrantReadWriteLock(true);
     _writeLock = reentrantReadWriteLock.writeLock();
@@ -87,7 +85,7 @@ public class LocalBlock implements Closeable, Block {
       checkGenerations();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio read")) {
         try (RandomAccessIOReader readOnly = _randomAccessIO.cloneReadOnly()) {
-          readOnly.read(getFilePosition(blockPosition), bytes, offset, len);
+          readOnly.read(blockPosition, bytes, offset, len);
         }
       }
     }
@@ -111,14 +109,10 @@ public class LocalBlock implements Closeable, Block {
       }
       writeMetadata();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio write")) {
-        _randomAccessIO.write(getFilePosition(blockPosition), bytes, offset, len);
+        _randomAccessIO.write(blockPosition, bytes, offset, len);
       }
       return comWalWrite;
     }
-  }
-
-  private long getFilePosition(long blockPosition) {
-    return _startingPositionOfBlock + blockPosition;
   }
 
   @Override
@@ -133,7 +127,6 @@ public class LocalBlock implements Closeable, Block {
                                              .onDiskGeneration(_onDiskGeneration.get())
                                              .onDiskState(_onDiskState.get())
                                              .volumeId(_volumeId)
-                                             .startingPositionOfBlock(_startingPositionOfBlock)
                                              .build();
       LOGGER.debug("starting execIO volumeId {} blockId {}", _volumeId, _blockId);
       BlockIOResponse response = executor.exec(request);
@@ -158,9 +151,7 @@ public class LocalBlock implements Closeable, Block {
         _closed.set(true);
       }
       _blockStateStore.removeBlockMetadata(_volumeId, _blockId);
-      long position = _blockId * (long) _blockSize;
-      LOGGER.info("punching hole in volume id {} for block id {}", _volumeId, _blockId);
-      _randomAccessIO.punchHole(position, _blockSize);
+      _randomAccessIO.close();
     }
   }
 

@@ -17,6 +17,4 @@ public interface RandomAccessIOWriter extends Closeable {
 
   void setLength(long length) throws IOException;
 
-  void flush() throws IOException;
-
 }

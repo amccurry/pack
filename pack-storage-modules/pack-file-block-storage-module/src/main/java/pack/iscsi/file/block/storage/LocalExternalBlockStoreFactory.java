@@ -51,7 +51,7 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
         try (FileOutputStream output = new FileOutputStream(dst)) {
           RandomAccessIO randomAccessIO = request.getRandomAccessIO();
           byte[] buffer = new byte[4096];
-          long position = request.getStartingPositionOfBlock();
+          long position = 0;
           int length = request.getBlockSize();
           while (length > 0) {
             int len = Math.min(buffer.length, length);
@@ -105,7 +105,7 @@ public class LocalExternalBlockStoreFactory implements BlockIOFactory {
             RandomAccessIO randomAccessIO = request.getRandomAccessIO();
             byte[] buffer = new byte[4096];
 
-            long position = request.getStartingPositionOfBlock();
+            long position = 0;
             int length = request.getBlockSize();
             while (length > 0) {
               int read = input.read(buffer);

@@ -4,7 +4,6 @@ import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
@@ -18,7 +17,7 @@ public class BlockCacheLoaderConfig {
 
   int blockSize;
 
-  RandomAccessIO randomAccessIO;
+  LocalFileCacheFactory localFileCache;
 
   BlockStateStore blockStateStore;
 

@@ -37,7 +37,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private final long _volumeId;
   private final int _blockSize;
   private final BlockStateStore _blockStateStore;
-  private final RandomAccessIO _randomAccessIO;
+  private final LocalFileCacheFactory _localFileCache;
 
   public BlockCacheLoader(BlockCacheLoaderConfig config) {
     _blockStateStore = config.getBlockStateStore();
@@ -49,7 +49,7 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _removalListener = config.getRemovalListener();
-    _randomAccessIO = config.getRandomAccessIO();
+    _localFileCache = config.getLocalFileCache();
   }
 
   @Override
@@ -60,8 +60,9 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
         LOGGER.info("volumeId {} blockId {} stolen from cache", _volumeId, stolenBlock.getBlockId());
         return stolenBlock;
       }
+      RandomAccessIO randomAccessIO = _localFileCache.getRandomAccessIO(_volumeId, key.getBlockId());
       LocalBlockConfig config = LocalBlockConfig.builder()
-                                                .randomAccessIO(_randomAccessIO)
+                                                .randomAccessIO(randomAccessIO)
                                                 .blockStateStore(_blockStateStore)
                                                 .volumeId(_volumeId)
                                                 .blockSize(_blockSize)

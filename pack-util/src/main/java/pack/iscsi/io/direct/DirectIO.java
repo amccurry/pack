@@ -100,11 +100,6 @@ public class DirectIO implements RandomAccessIO {
   }
 
   @Override
-  public void flush() throws IOException {
-
-  }
-
-  @Override
   public long length() throws IOException {
     return _length.get();
   }

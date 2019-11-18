@@ -80,7 +80,7 @@ public class S3BlockReader implements BlockIOExecutor {
         Meter readMeter = _metricsFactory.meter(S3BlockReader.class, Long.toString(request.getVolumeId()), READ);
         try (S3ObjectInputStream inputStream = s3Object.getObjectContent()) {
           byte[] buffer = new byte[128 * 1024];
-          long pos = request.getStartingPositionOfBlock();
+          long pos = 0;
           int length = blockSize;
           while (length > 0) {
             int len = Math.min(length, buffer.length);

@@ -37,10 +37,9 @@ public interface BlockWriteAheadLog extends Closeable {
   List<BlockJournalRange> getJournalRanges(long volumeId, long blockId, long onDiskGeneration,
       boolean closeExistingWriter) throws IOException;
 
-  default long recoverFromJournal(long startingPositionOfBlock, RandomAccessIO randomAccessIO, BlockJournalRange range,
-      long onDiskGeneration) throws IOException {
-    return recoverFromJournal(BlockRecoveryWriter.toBlockRecoveryWriter(startingPositionOfBlock, randomAccessIO), range,
-        onDiskGeneration);
+  default long recoverFromJournal(RandomAccessIO randomAccessIO, BlockJournalRange range, long onDiskGeneration)
+      throws IOException {
+    return recoverFromJournal(BlockRecoveryWriter.toBlockRecoveryWriter(randomAccessIO), range, onDiskGeneration);
   }
 
   long recoverFromJournal(BlockRecoveryWriter writer, BlockJournalRange range, long onDiskGeneration)

@@ -36,10 +36,8 @@ import com.github.benmanes.caffeine.cache.Weigher;
 import io.opentracing.Scope;
 import pack.iscsi.block.AlreadyClosedException;
 import pack.iscsi.concurrent.ConcurrentUtils;
-import pack.iscsi.io.FileIO;
 import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.BlockKey;
-import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.StorageModule;
 import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
@@ -57,6 +55,8 @@ import pack.iscsi.volume.cache.BlockCacheLoader;
 import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
 import pack.iscsi.volume.cache.BlockRemovalListener;
 import pack.iscsi.volume.cache.BlockRemovalListenerConfig;
+import pack.iscsi.volume.cache.LocalFileCacheFactory;
+import pack.iscsi.volume.cache.SingleLocalCacheFileFactory;
 import pack.util.ExecutorUtil;
 import pack.util.tracer.Tag;
 import pack.util.tracer.TracerUtil;
@@ -67,7 +67,6 @@ public class BlockStorageModule implements StorageModule {
 
   private static final String READAHEAD = "readahead-";
   private static final String SYNC = "sync-";
-  private static final String RW = "rw";
   private static final String WRITE = "bytes|write";
   private static final String READ = "bytes|read";
   private static final String READ_IOPS = "iops|read";
@@ -92,7 +91,6 @@ public class BlockStorageModule implements StorageModule {
   private final AtomicInteger _refCounter = new AtomicInteger();
   private final Meter _readIOMeter;
   private final Meter _writeIOMeter;
-  private final RandomAccessIO _randomAccessIO;
   private final BlockStateStore _blockStateStore;
   private final File _file;
   private final List<AsyncCompletableFuture> _results = new ArrayList<>();
@@ -109,6 +107,7 @@ public class BlockStorageModule implements StorageModule {
   private final Object _readAheadLock = new Object();
   private final ExecutorService _readAheadExecutor;
   private final Thread _readAheadDriver;
+  private final LocalFileCacheFactory _localFileCache;
 
   public BlockStorageModule(BlockStorageModuleConfig config) throws IOException {
     _volumeId = config.getVolumeId();
@@ -148,8 +147,7 @@ public class BlockStorageModule implements StorageModule {
 
     _file = new File(_blockDataDir, Long.toString(_volumeId));
 
-    _randomAccessIO = FileIO.openRandomAccess(_file, config.getBlockSize(), RW);
-    _randomAccessIO.setLength(getLengthInBytes());
+    _localFileCache = new SingleLocalCacheFileFactory(config);
 
     _blockStateStore.createBlockMetadataStore(_volumeId);
     _blockStateStore.setMaxBlockCount(_volumeId, _blockCount.get());
@@ -179,7 +177,9 @@ public class BlockStorageModule implements StorageModule {
         try {
           runReadAhead();
         } catch (Throwable t) {
-          LOGGER.error("Unknown error", t);
+          if (_running.get()) {
+            LOGGER.error("Unknown error", t);
+          }
         }
       }
     });
@@ -256,7 +256,7 @@ public class BlockStorageModule implements StorageModule {
     }
     _running.set(false);
     IOUtils.close(LOGGER, _readAheadDriver);
-    IOUtils.close(LOGGER, _randomAccessIO);
+    IOUtils.close(LOGGER, _localFileCache);
     IOUtils.close(LOGGER, _flushExecutor, _syncExecutor, _readAheadExecutor);
     _file.delete();
     _blockStateStore.destroyBlockMetadataStore(_volumeId);
@@ -391,15 +391,12 @@ public class BlockStorageModule implements StorageModule {
     int size = _results.size();
     long writeCount = _writesCount.getAndSet(0);
     long start = System.nanoTime();
-    AsyncCompletableFuture future = AsyncCompletableFuture.exec(BlockStorageModule.class, "flush", _flushExecutor,
-        () -> _randomAccessIO.flush());
     try (Scope writeScope = TracerUtil.trace(BlockStorageModule.class, "flushWrites")) {
       for (AsyncCompletableFuture result : _results) {
         result.get();
       }
       _results.clear();
     }
-    future.get();
     long end = System.nanoTime();
     LOGGER.debug("flushWrites {} {} in {} ms", size, writeCount, (end - start) / 1_000_000.0);
   }
@@ -640,7 +637,7 @@ public class BlockStorageModule implements StorageModule {
 
   private BlockCacheLoader getCacheLoader(BlockRemovalListener removalListener) {
     return new BlockCacheLoader(BlockCacheLoaderConfig.builder()
-                                                      .randomAccessIO(_randomAccessIO)
+                                                      .localFileCache(_localFileCache)
                                                       .blockStateStore(_blockStateStore)
                                                       .blockGenerationStore(_blockGenerationStore)
                                                       .blockSize(_blockSize)

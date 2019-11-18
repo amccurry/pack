@@ -150,7 +150,7 @@ public class RemoteWriteAheadLogTest {
     }
     try (RandomAccessIO randomAccessIO = FileIO.openRandomAccess(actual, 4096, "rw")) {
       for (BlockJournalRange journalRange : journalRanges) {
-        onDiskGeneration = client.recoverFromJournal(BlockRecoveryWriter.toBlockRecoveryWriter(0, randomAccessIO),
+        onDiskGeneration = client.recoverFromJournal(BlockRecoveryWriter.toBlockRecoveryWriter(randomAccessIO),
             journalRange, onDiskGeneration);
       }
     }

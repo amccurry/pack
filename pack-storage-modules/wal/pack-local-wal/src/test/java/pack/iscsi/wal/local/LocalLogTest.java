@@ -77,7 +77,7 @@ public class LocalLogTest {
         assertEquals(1, journalRanges.size());
         long recoveredGeneration = log.recover(journalRanges.get(0)
                                                             .getUuid(),
-            BlockRecoveryWriter.toBlockRecoveryWriter(0, randomAccessIO), generation);
+            BlockRecoveryWriter.toBlockRecoveryWriter(randomAccessIO), generation);
         assertEquals(passes, recoveredGeneration);
       }
     }
