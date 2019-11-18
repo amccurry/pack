@@ -38,7 +38,7 @@ public abstract class BlockStorageModuleFactoryTest {
 
   protected abstract void clearStateData();
 
-  protected abstract File getBlockDataDir();
+  protected abstract File[] getBlockDataDirs();
 
   protected abstract BlockIOFactory getBlockIOFactory() throws Exception;
 
@@ -61,7 +61,7 @@ public abstract class BlockStorageModuleFactoryTest {
                                                                             .blockCacheMetadataStore(
                                                                                 blockCacheMetadataStore)
                                                                             .packVolumeStore(volumeStore)
-                                                                            .blockDataDir(getBlockDataDir())
+                                                                            .blockDataDirs(getBlockDataDirs())
                                                                             .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -100,7 +100,7 @@ public abstract class BlockStorageModuleFactoryTest {
                                                                             .blockCacheMetadataStore(
                                                                                 blockCacheMetadataStore)
                                                                             .packVolumeStore(volumeStore)
-                                                                            .blockDataDir(getBlockDataDir())
+                                                                            .blockDataDirs(getBlockDataDirs())
                                                                             .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
@@ -141,7 +141,7 @@ public abstract class BlockStorageModuleFactoryTest {
                                                                             .blockCacheMetadataStore(
                                                                                 blockCacheMetadataStore)
                                                                             .packVolumeStore(volumeStore)
-                                                                            .blockDataDir(getBlockDataDir())
+                                                                            .blockDataDirs(getBlockDataDirs())
                                                                             .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(

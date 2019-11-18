@@ -2,6 +2,7 @@ package pack.iscsi.server.module;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -14,6 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.google.common.base.Splitter;
 
 import consistent.s3.ConsistentAmazonS3;
 import consistent.s3.ConsistentAmazonS3Config;
@@ -76,7 +78,8 @@ public class S3StorageModuleLoader extends StorageModuleLoader {
 
     MetricsTable metricsTable = new MetricsTable(30, 10, TimeUnit.SECONDS, volumeStore);
 
-    File blockDataDir = new File(getPropertyNotNull(properties, BLOCK_CACHE_DIR, instanceName));
+    File[] blockDataDirs = getBlockDataDirs(instanceName, properties);
+
     long maxCacheSizeInBytes = Long.parseLong(getPropertyNotNull(properties, BLOCK_CACHE_SIZE_IN_BYTES, instanceName));
 
     Service service = getSparkServiceIfNeeded(properties, instanceName);
@@ -118,12 +121,26 @@ public class S3StorageModuleLoader extends StorageModuleLoader {
                                           .packVolumeStore(volumeStore)
                                           .blockCacheMetadataStore(blockCacheMetadataStore)
                                           .blockStateStore(blockStateStore)
-                                          .blockDataDir(blockDataDir)
+                                          .blockDataDirs(blockDataDirs)
                                           .blockStore(blockStore)
                                           .externalBlockStoreFactory(externalBlockStoreFactory)
                                           .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                           .metricsFactory(metricsTable)
                                           .build();
+  }
+
+  private static File[] getBlockDataDirs(String instanceName, Properties properties) {
+    String blockDataDirStr = getPropertyNotNull(properties, BLOCK_CACHE_DIR, instanceName);
+
+    List<String> list = Splitter.on(',')
+                                .splitToList(blockDataDirStr);
+
+    File[] blockDataDirs = new File[list.size()];
+
+    for (int i = 0; i < blockDataDirs.length; i++) {
+      blockDataDirs[i] = new File(list.get(i));
+    }
+    return blockDataDirs;
   }
 
   private static BlockGenerationStore getS3BlockStore(Properties properties, String instanceName,

@@ -1,7 +1,6 @@
 package pack.iscsi.volume;
 
 import java.io.EOFException;
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -55,7 +54,7 @@ import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
 import pack.iscsi.volume.cache.BlockRemovalListener;
 import pack.iscsi.volume.cache.BlockRemovalListenerConfig;
 import pack.iscsi.volume.cache.LocalFileCacheFactory;
-import pack.iscsi.volume.cache.SingleLocalCacheFileFactory;
+import pack.iscsi.volume.cache.MultiLocalCacheFileFactory;
 import pack.util.ExecutorUtil;
 import pack.util.tracer.Tag;
 import pack.util.tracer.TracerUtil;
@@ -82,7 +81,6 @@ public class BlockStorageModule implements StorageModule {
   private final MetricsFactory _metricsFactory;
   private final Meter _readMeter;
   private final Meter _writeMeter;
-  private final File _blockDataDir;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final BlockGenerationStore _blockGenerationStore;
@@ -90,7 +88,6 @@ public class BlockStorageModule implements StorageModule {
   private final Meter _readIOMeter;
   private final Meter _writeIOMeter;
   private final BlockStateStore _blockStateStore;
-  private final File _file;
   private final List<AsyncCompletableFuture> _results = new ArrayList<>();
   private final AtomicLong _writesCount = new AtomicLong();
   private final ExecutorService _flushExecutor;
@@ -121,7 +118,6 @@ public class BlockStorageModule implements StorageModule {
     _blockGenerationStore = config.getBlockGenerationStore();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
-    _blockDataDir = config.getBlockDataDir();
     _metricsFactory = config.getMetricsFactory();
     _readMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(_volumeId), READ);
     _readIOMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(_volumeId), READ_IOPS);
@@ -140,11 +136,7 @@ public class BlockStorageModule implements StorageModule {
       _syncTimer.schedule(getTask(), period, period);
     }
 
-    _blockDataDir.mkdirs();
-
-    _file = new File(_blockDataDir, Long.toString(_volumeId));
-
-    _localFileCache = new SingleLocalCacheFileFactory(config);
+    _localFileCache = new MultiLocalCacheFileFactory(config);
 
     _blockStateStore.createBlockMetadataStore(_volumeId);
     _blockStateStore.setMaxBlockCount(_volumeId, _blockCount.get());
@@ -255,7 +247,6 @@ public class BlockStorageModule implements StorageModule {
     IOUtils.close(LOGGER, _readAheadDriver);
     IOUtils.close(LOGGER, _localFileCache);
     IOUtils.close(LOGGER, _flushExecutor, _syncExecutor, _readAheadExecutor);
-    _file.delete();
     _blockStateStore.destroyBlockMetadataStore(_volumeId);
     LOGGER.info("finished close of storage module for {}", _volumeId);
   }

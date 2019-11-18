@@ -23,12 +23,14 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
   public static final File WAL_DATA_DIR = new File("./target/tmp/LocalBlockStorageModuleFactoryTest/wal");
   public static final File EXTERNAL_BLOCK_DATA_DIR = new File(
       "./target/tmp/LocalBlockStorageModuleFactoryTest/external");
-  public static final File BLOCK_DATA_DIR = new File("./target/tmp/LocalBlockStorageModuleFactoryTest/block");
+  public static final File[] BLOCK_DATA_DIRS = new File[] {
+      new File("./target/tmp/LocalBlockStorageModuleFactoryTest/block0"),
+      new File("./target/tmp/LocalBlockStorageModuleFactoryTest/block1") };
   public static final File BLOCK_STATE_DIR = new File("./target/tmp/LocalBlockStorageModuleFactoryTest/state");
 
   @Before
   public void setup() throws Exception {
-    IOUtils.rmr(BLOCK_DATA_DIR);
+    IOUtils.rmr(BLOCK_DATA_DIRS);
     IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
     IOUtils.rmr(WAL_DATA_DIR);
     IOUtils.rmr(BLOCK_STATE_DIR);
@@ -36,7 +38,7 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
 
   @Override
   protected void clearBlockData() {
-    IOUtils.rmr(BLOCK_DATA_DIR);
+    IOUtils.rmr(BLOCK_DATA_DIRS);
   }
 
   @Override
@@ -50,8 +52,8 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
   }
 
   @Override
-  protected File getBlockDataDir() {
-    return BLOCK_DATA_DIR;
+  protected File[] getBlockDataDirs() {
+    return BLOCK_DATA_DIRS;
   }
 
   @Override

@@ -24,8 +24,9 @@ import pack.iscsi.volume.BlockStorageModuleFactoryTest;
 public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTest {
 
   public static final File WAL_DATA_DIR = new File("./target/tmp/IntegrationBlockStorageModuleFactoryTest/wal");
-  public static final File EXTERNAL_BLOCK_DATA_DIR = new File(
-      "./target/tmp/IntegrationBlockStorageModuleFactoryTest/external");
+  public static final File[] EXTERNAL_BLOCK_DATA_DIRS = new File[] {
+      new File("./target/tmp/IntegrationBlockStorageModuleFactoryTest/external0"),
+      new File("./target/tmp/IntegrationBlockStorageModuleFactoryTest/external1") };
   public static final File BLOCK_STATE_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/state");
   private ConsistentAmazonS3 _consistentAmazonS3;
   private String _bucket;
@@ -33,7 +34,7 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
 
   @Override
   protected void clearBlockData() {
-    IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIR);
+    IOUtils.rmr(EXTERNAL_BLOCK_DATA_DIRS);
   }
 
   @Override
@@ -47,8 +48,8 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
   }
 
   @Override
-  protected File getBlockDataDir() {
-    return EXTERNAL_BLOCK_DATA_DIR;
+  protected File[] getBlockDataDirs() {
+    return EXTERNAL_BLOCK_DATA_DIRS;
   }
 
   @Before

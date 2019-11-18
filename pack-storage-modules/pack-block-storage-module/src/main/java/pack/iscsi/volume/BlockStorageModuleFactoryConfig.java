@@ -26,7 +26,7 @@ public class BlockStorageModuleFactoryConfig {
 
   BlockCacheMetadataStore blockCacheMetadataStore;
 
-  File blockDataDir;
+  File[] blockDataDirs;
 
   long maxCacheSizeInBytes;
 

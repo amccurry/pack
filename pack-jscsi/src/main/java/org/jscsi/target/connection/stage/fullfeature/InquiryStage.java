@@ -68,13 +68,16 @@ public class InquiryStage extends TargetFullFeatureStage {
                                                                              .getVitalProductDataPageName());
     }
 
-    LOGGER.info("cdb.getAllocationLength() = " + cdb.getAllocationLength());
-    LOGGER.info("cdb.getEnableVitalProductData() = " + cdb.getEnableVitalProductData());
-    LOGGER.info("cdb.isNormalACA() = " + cdb.isNormalACA());
-    LOGGER.info("cdb.getPageCode() = " + cdb.getPageCode());
-    LOGGER.info("cdb.getPageCode().getVitalProductDataPageName() = " + cdb.getPageCode()
-                                                                          .getVitalProductDataPageName());
-    LOGGER.info("parser.getExpectedDataTransferLength() = {}", parser.getExpectedDataTransferLength());
+    // LOGGER.info("cdb.getAllocationLength() = " + cdb.getAllocationLength());
+    // LOGGER.info("cdb.getEnableVitalProductData() = " +
+    // cdb.getEnableVitalProductData());
+    // LOGGER.info("cdb.isNormalACA() = " + cdb.isNormalACA());
+    // LOGGER.info("cdb.getPageCode() = " + cdb.getPageCode());
+    // LOGGER.info("cdb.getPageCode().getVitalProductDataPageName() = " +
+    // cdb.getPageCode()
+    // .getVitalProductDataPageName());
+    // LOGGER.info("parser.getExpectedDataTransferLength() = {}",
+    // parser.getExpectedDataTransferLength());
 
     if (illegalFieldPointers != null) {
       // an illegal request has been made

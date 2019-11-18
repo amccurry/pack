@@ -46,7 +46,7 @@ public class FileStorageModule implements StorageModule {
       if (!volumeName.startsWith(_prefix)) {
         throw new IOException("Volume " + volumeName + " not found");
       }
-      return new FileStorageModule(new File(_volumeDir, volumeName.substring((_prefix).length() + 1)));
+      return new FileStorageModule(new File(_volumeDir, volumeName.substring((_prefix).length())));
     }
   }
 
@@ -83,7 +83,8 @@ public class FileStorageModule implements StorageModule {
   @Override
   public void flushWrites() throws IOException {
     _writeEvents.incrementAndGet();
-    LOGGER.info("{} buffered writes {}", _writeEvents.get(), _writes.getAndSet(0));
+    // LOGGER.info("{} buffered writes {}", _writeEvents.get(),
+    // _writes.getAndSet(0));
   }
 
   @Override

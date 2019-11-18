@@ -28,16 +28,18 @@ public class IOUtils {
     return position / blockSize;
   }
 
-  public static void rmr(File file) {
-    if (!file.exists()) {
-      return;
-    }
-    if (file.isDirectory()) {
-      for (File f : file.listFiles()) {
-        rmr(f);
+  public static void rmr(File... files) {
+    for (File file : files) {
+      if (!file.exists()) {
+        return;
       }
+      if (file.isDirectory()) {
+        for (File f : file.listFiles()) {
+          rmr(f);
+        }
+      }
+      file.delete();
     }
-    file.delete();
   }
 
   public static void ls(Logger logger, File file) {
@@ -186,6 +188,12 @@ public class IOUtils {
           }
         });
       }
+    }
+  }
+
+  public static void mkdirs(File... files) {
+    for (File file : files) {
+      file.mkdirs();
     }
   }
 

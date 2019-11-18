@@ -3,13 +3,17 @@ namespace java pack.iscsi.brick.remote.generated
 typedef i32 int
 typedef i64 long
 
+struct BrickId {
+
+}
+
 exception PackBrickException {
   1: string message,
   2: string stackTraceStr
 }
 
 struct CreateRequest {
-  1:string brickId,
+  1:BrickId brickId,
   2:int length
 }
 
@@ -18,7 +22,7 @@ struct CreateResponse {
 }
 
 struct ReadRequest {
-  1:string brickId,
+  1:long volumeId,
   2:long position,
   3:int length
 }
@@ -29,11 +33,9 @@ struct ReadResponse {
 }
 
 struct WriteRequest {
-  1:string brickId,
+  1:long volumeId,
   2:long position,
-  3:binary data,
-  4:bool initialize,
-  5:long generationId
+  3:binary data
 }
 
 struct WriteResponse {
@@ -41,7 +43,7 @@ struct WriteResponse {
 }
 
 struct DestroyRequest {
-  1:string brickId
+  1:long volumeId
 }
 
 struct DestroyResponse {
@@ -49,7 +51,7 @@ struct DestroyResponse {
 }
 
 struct ExistsRequest {
-  1:string brickId
+  1:long volumeId
 }
 
 struct ExistsResponse {
@@ -57,11 +59,11 @@ struct ExistsResponse {
 }
 
 struct ListBricksRequest {
-  1:string prefix
+  1:long volumeId
 }
 
 struct ListBricksResponse {
-  1:list<string> brickIds
+  1:list<long> brickIds
 }
 
 service PackBrickService

@@ -22,6 +22,7 @@ import spark.Service;
 
 public class PackVolumeAdminServer {
 
+  private static final String SYNC = "sync";
   private static final Logger LOGGER = LoggerFactory.getLogger(PackVolumeAdminServer.class);
   private static final String GC = "gc";
   private static final String READ_ONLY = "readOnly";
@@ -65,6 +66,7 @@ public class PackVolumeAdminServer {
         transformer);
     _service.post(toPath(API_PREFIX, SNAPSHOT, DELETE, VOLUME_NAME_PARAM, SNAPSHOT_ID_PARAM), deleteSnapshot(),
         transformer);
+    _service.post(toPath(API_PREFIX, SYNC, VOLUME_NAME_PARAM), sync(), transformer);
 
     _service.exception(Exception.class, (exception, request, response) -> {
       LOGGER.error("Unknown error", exception);
@@ -204,6 +206,16 @@ public class PackVolumeAdminServer {
 
   private Route getAllVolumes() {
     return (request, response) -> _packAdmin.getAllVolumes();
+  }
+
+  private Route sync() {
+    return (request, response) -> {
+      String volumeName = request.params(VOLUME_NAME_PARAM);
+      _packAdmin.sync(volumeName);
+      return OKResponse.builder()
+                       .message("Volume " + volumeName + " was synced")
+                       .build();
+    };
   }
 
   @Value

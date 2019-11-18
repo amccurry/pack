@@ -83,7 +83,7 @@ public class IscsiMiniCluster implements Closeable {
     InternalIscsiMiniClusterConfig internalConfig = getInternalIscsiMiniClusterConfig(iscsiMiniClusterConfig);
 
     File storageDir = iscsiMiniClusterConfig.getStorageDir();
-    File blockDataDir = new File(storageDir, CACHE);
+    File[] blockDataDirs = new File[] { new File(storageDir, CACHE) };
 
     long maxCacheSizeInBytes = iscsiMiniClusterConfig.getMaxCacheSizeInBytes();
 
@@ -95,7 +95,7 @@ public class IscsiMiniCluster implements Closeable {
 
     PackVolumeStore packVolumeStore = getPackVolumeStore(internalConfig);
     BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
-                                                                            .blockDataDir(blockDataDir)
+                                                                            .blockDataDirs(blockDataDirs)
                                                                             .blockStateStore(blockStateStore)
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(

@@ -14,7 +14,7 @@ import pack.iscsi.spi.RandomAccessIOReader;
 
 public abstract class FileIO implements RandomAccessIO {
 
-  private static boolean _directIOEnabled = true;
+  private static boolean _directIOEnabled = false;
 
   public static RandomAccessIO openRandomAccess(File file, int blockSize, String mode) throws IOException {
     return openRandomAccess(file, blockSize, mode, _directIOEnabled);
@@ -78,7 +78,23 @@ public abstract class FileIO implements RandomAccessIO {
 
     @Override
     public RandomAccessIOReader cloneReadOnly() throws IOException {
-      return this;
+      return new RandomAccessIOReader() {
+
+        @Override
+        public void close() throws IOException {
+
+        }
+
+        @Override
+        public void read(long position, byte[] buffer, int offset, int length) throws IOException {
+          FileIORandomAccessFile.this.read(position, buffer, offset, length);
+        }
+
+        @Override
+        public long length() throws IOException {
+          return FileIORandomAccessFile.this.length();
+        }
+      };
     }
 
     @Override

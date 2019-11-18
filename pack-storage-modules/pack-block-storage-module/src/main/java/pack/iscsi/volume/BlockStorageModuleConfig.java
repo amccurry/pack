@@ -35,7 +35,7 @@ public class BlockStorageModuleConfig {
 
   boolean readOnly;
 
-  File blockDataDir;
+  File[] blockDataDirs;
 
   long maxCacheSizeInBytes;
 

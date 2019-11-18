@@ -38,7 +38,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModuleFactory.class);
 
   private final BlockGenerationStore _blockGenerationStore;
-  private final File _blockDataDir;
+  private final File[] _blockDataDirs;
   private final PackVolumeStore _packVolumeStore;
   private final BlockIOFactory _externalBlockStoreFactory;
   private final MetricsFactory _metricsFactory;
@@ -65,7 +65,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _blockCacheMetadataStore = config.getBlockCacheMetadataStore();
     _blockStateStore = config.getBlockStateStore();
     _packVolumeStore = config.getPackVolumeStore();
-    _blockDataDir = config.getBlockDataDir();
+    _blockDataDirs = config.getBlockDataDirs();
     _blockGenerationStore = config.getBlockStore();
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
 
@@ -115,7 +115,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       BlockStorageModuleConfig config = BlockStorageModuleConfig.builder()
                                                                 .readOnly(volumeMetadata.isReadOnly())
                                                                 .blockCacheMetadataStore(_blockCacheMetadataStore)
-                                                                .blockDataDir(_blockDataDir)
+                                                                .blockDataDirs(_blockDataDirs)
                                                                 .blockGenerationStore(_blockGenerationStore)
                                                                 .blockStateStore(_blockStateStore)
                                                                 .blockSize(blockSize)
@@ -135,7 +135,7 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
       LOGGER.info("open storage module for {}({})", name, volumeId);
       storageModule = new BlockStorageModule(config);
       _blockStorageModules.put(name, storageModule);
-      return referenceCounter(name, volumeMetadata, storageModule);
+      return new TimerStorageModule(referenceCounter(name, volumeMetadata, storageModule));
     }
   }
 

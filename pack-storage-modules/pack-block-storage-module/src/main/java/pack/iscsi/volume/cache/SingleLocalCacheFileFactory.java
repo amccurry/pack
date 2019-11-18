@@ -2,11 +2,13 @@ package pack.iscsi.volume.cache;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Random;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import pack.iscsi.io.FileIO;
+import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.RandomAccessIOReader;
 import pack.iscsi.volume.BlockStorageModuleConfig;
@@ -15,15 +17,19 @@ public class SingleLocalCacheFileFactory implements LocalFileCacheFactory {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SingleLocalCacheFileFactory.class);
 
+  private static final String RW = "rw";
+
   private final RandomAccessIO _randomAccessIO;
   private final int _blockSize;
   private final File _file;
 
   public SingleLocalCacheFileFactory(BlockStorageModuleConfig config) throws IOException {
-    File blockDataDir = config.getBlockDataDir();
-    blockDataDir.mkdirs();
+    File[] blockDataDirs = config.getBlockDataDirs();
+    IOUtils.mkdirs(blockDataDirs);
+    Random random = new Random();
+    File blockDataDir = blockDataDirs[random.nextInt(blockDataDirs.length)];
     _file = new File(blockDataDir, Long.toString(config.getVolumeId()));
-    _randomAccessIO = FileIO.openRandomAccess(_file, config.getBlockSize(), "rw");
+    _randomAccessIO = FileIO.openRandomAccess(_file, config.getBlockSize(), RW);
     _blockSize = config.getBlockSize();
     _randomAccessIO.setLength(config.getBlockCount() * _blockSize);
   }

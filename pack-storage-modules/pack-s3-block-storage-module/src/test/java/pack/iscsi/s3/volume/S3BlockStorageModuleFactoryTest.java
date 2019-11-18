@@ -23,7 +23,9 @@ import pack.iscsi.volume.BlockStorageModuleFactoryTest;
 public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTest {
 
   public static final File WAL_DATA_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/wal");
-  public static final File BLOCK_DATA_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/block");
+  public static final File[] BLOCK_DATA_DIRS = new File[] {
+      new File("./target/tmp/S3BlockStorageModuleFactoryTest/block0"),
+      new File("./target/tmp/S3BlockStorageModuleFactoryTest/block1") };
   public static final File BLOCK_STATE_DIR = new File("./target/tmp/S3BlockStorageModuleFactoryTest/state");
   private ConsistentAmazonS3 _consistentAmazonS3;
   private String _bucket;
@@ -40,7 +42,7 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
 
   @Override
   protected void clearBlockData() {
-    IOUtils.rmr(BLOCK_DATA_DIR);
+    IOUtils.rmr(BLOCK_DATA_DIRS);
   }
 
   @Override
@@ -54,8 +56,8 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
   }
 
   @Override
-  protected File getBlockDataDir() {
-    return BLOCK_DATA_DIR;
+  protected File[] getBlockDataDirs() {
+    return BLOCK_DATA_DIRS;
   }
 
   @Override

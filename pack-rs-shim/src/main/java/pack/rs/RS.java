@@ -31,20 +31,20 @@ public class RS {
   private static boolean SETUP = false;
   private static FileClassLoader CLASSLOADER;
 
-  public static RSProcessor create(int byteBufferSize, int dataPartCount, int parityPartCount, int blockSize)
+  public static RSProcessor create(int byteBufferSize, int dataPartCount, int parityPartCount, int minStripeSize)
       throws IOException {
     String classPath = System.getProperty(JAVA_CLASS_PATH);
     String[] classPathElements = classPath.split(System.getProperty(PATH_SEPARATOR));
     for (String path : classPathElements) {
       if (path.contains(PACK_RS_PACKAGE)) {
-        return create(path, byteBufferSize, dataPartCount, parityPartCount, blockSize);
+        return create(path, byteBufferSize, dataPartCount, parityPartCount, minStripeSize);
       }
     }
     throw new RuntimeException(PACK_RS_PACKAGE + " jar not found");
   }
 
   private static RSProcessor create(String path, int byteBufferSize, int dataPartCount, int parityPartCount,
-      int blockSize) throws IOException {
+      int minStripeSize) throws IOException {
     FileClassLoader classLoader = initClassLoader(path);
     Thread thread = Thread.currentThread();
     ClassLoader currentContextClassLoader = thread.getContextClassLoader();
@@ -53,7 +53,7 @@ public class RS {
       Class<?> clazz = classLoader.loadClass(PACK_RS_RS_MANAGER);
       Method method = clazz.getMethod(CREATE, new Class[] { Integer.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE });
       return (RSProcessor) method.invoke(null,
-          new Object[] { byteBufferSize, dataPartCount, parityPartCount, blockSize });
+          new Object[] { byteBufferSize, dataPartCount, parityPartCount, minStripeSize });
     } catch (ClassNotFoundException e) {
       throw new RuntimeException(PACK_RS_RS_MANAGER + " class not found");
     } catch (Exception e) {
