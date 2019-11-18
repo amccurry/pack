@@ -46,6 +46,7 @@
 		<module>pack-storage-modules/pack-file-block-storage-module</module>
 		<module>pack-storage-modules/pack-s3-block-storage-module</module>
 		<module>pack-rs-shim</module>
+		<module>pack-volume-service</module>
 	</modules>
 
 	<dependencyManagement>
