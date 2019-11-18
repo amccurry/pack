@@ -107,8 +107,8 @@ public class InquiryStage extends TargetFullFeatureStage {
       } else {
         /*
          * SCSI initiator is requesting either "device identification" or
-         * "supported VPD pages" or this else block would not have been entered. (see
-         * {@link InquiryCDB#checkIntegrity(ByteBuffer dataSegment)})
+         * "supported VPD pages" or this else block would not have been entered.
+         * (see {@link InquiryCDB#checkIntegrity(ByteBuffer dataSegment)})
          */
         final VitalProductDataPageName pageName = cdb.getPageCode()
                                                      .getVitalProductDataPageName();
@@ -131,9 +131,9 @@ public class InquiryStage extends TargetFullFeatureStage {
           }
           break;
 
-        case BLOCK_LIMITS:
-          responseData = new BlockLimits();
-          break;
+        // case BLOCK_LIMITS:
+        // responseData = new BlockLimits();
+        // break;
         default:
           // The initiator must not request unsupported mode pages.
           throw new InternetSCSIException();
