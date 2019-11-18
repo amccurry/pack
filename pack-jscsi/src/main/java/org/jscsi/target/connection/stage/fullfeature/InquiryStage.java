@@ -9,6 +9,7 @@ import org.jscsi.exception.InternetSCSIException;
 import org.jscsi.parser.BasicHeaderSegment;
 import org.jscsi.parser.ProtocolDataUnit;
 import org.jscsi.parser.scsi.SCSICommandParser;
+import org.jscsi.target.connection.TargetSession;
 import org.jscsi.target.connection.phase.TargetFullFeaturePhase;
 import org.jscsi.target.scsi.IResponseData;
 import org.jscsi.target.scsi.cdb.InquiryCDB;
@@ -18,6 +19,7 @@ import org.jscsi.target.scsi.inquiry.SupportedVpdPages;
 import org.jscsi.target.scsi.inquiry.UnitSerialNumberVpdPage;
 import org.jscsi.target.scsi.sense.senseDataDescriptor.senseKeySpecific.FieldPointerSenseKeySpecificData;
 import org.jscsi.target.settings.SettingsException;
+import org.jscsi.target.storage.IStorageModule;
 import org.jscsi.target.util.Debug;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +44,11 @@ public class InquiryStage extends TargetFullFeatureStage {
     final BasicHeaderSegment bhs = pdu.getBasicHeaderSegment();
     final SCSICommandParser parser = (SCSICommandParser) bhs.getParser();
 
+    TargetSession targetSession = connection.getTargetSession();
+    IStorageModule storageModule = targetSession.getStorageModule();
+    String vendorId = storageModule.getVendorId();
+    String productId = storageModule.getProductId();
+
     ProtocolDataUnit responsePdu = null;// the response PDU
 
     // get command details in CDB
@@ -60,6 +67,14 @@ public class InquiryStage extends TargetFullFeatureStage {
       LOGGER.debug("cdb.getPageCode().getVitalProductDataPageName() = " + cdb.getPageCode()
                                                                              .getVitalProductDataPageName());
     }
+
+    LOGGER.info("cdb.getAllocationLength() = " + cdb.getAllocationLength());
+    LOGGER.info("cdb.getEnableVitalProductData() = " + cdb.getEnableVitalProductData());
+    LOGGER.info("cdb.isNormalACA() = " + cdb.isNormalACA());
+    LOGGER.info("cdb.getPageCode() = " + cdb.getPageCode());
+    LOGGER.info("cdb.getPageCode().getVitalProductDataPageName() = " + cdb.getPageCode()
+                                                                          .getVitalProductDataPageName());
+    LOGGER.info("parser.getExpectedDataTransferLength() = {}", parser.getExpectedDataTransferLength());
 
     if (illegalFieldPointers != null) {
       // an illegal request has been made
@@ -88,7 +103,7 @@ public class InquiryStage extends TargetFullFeatureStage {
       if (!cdb.getEnableVitalProductData()) {
         // ... the device server shall return the standard INQUIRY
         // data."
-        responseData = new StandardInquiryData();
+        responseData = new StandardInquiryData(vendorId, productId, false);
       } else {
         /*
          * SCSI initiator is requesting either "device identification" or
@@ -103,7 +118,7 @@ public class InquiryStage extends TargetFullFeatureStage {
           responseData = SupportedVpdPages.getInstance();
           break;
         case DEVICE_IDENTIFICATION:
-          responseData = new StandardInquiryData();
+          responseData = new StandardInquiryData(vendorId, productId, false);
           break;
         case UNIT_SERIAL_NUMBER:
           UUID uuid = session.getStorageModule()
@@ -115,6 +130,10 @@ public class InquiryStage extends TargetFullFeatureStage {
             responseData = new UnitSerialNumberVpdPage(uuid);
           }
           break;
+
+        case BLOCK_LIMITS:
+          responseData = new BlockLimits();
+          break;
         default:
           // The initiator must not request unsupported mode pages.
           throw new InternetSCSIException();
@@ -122,7 +141,7 @@ public class InquiryStage extends TargetFullFeatureStage {
       }
 
       // send response
-      sendResponse(bhs.getInitiatorTaskTag(), parser.getExpectedDataTransferLength(), responseData);
+      sendResponse(bhs.getInitiatorTaskTag(), responseData.size(), responseData);
 
     }
 

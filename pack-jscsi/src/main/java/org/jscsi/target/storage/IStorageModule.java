@@ -126,4 +126,12 @@ public interface IStorageModule extends Closeable {
     return null;
   }
 
+  default String getVendorId() {
+    return "pack";
+  }
+
+  default String getProductId() {
+    return "pack.iscsi";
+  }
+
 }

@@ -22,7 +22,7 @@ public final class StandardInquiryData implements IResponseData {
   /**
    * The total length of the serialized Standard Inquiry Data.
    */
-  private static final int SIZE = 44;
+  private static final int SIZE = 36;
 
   private static final String VENDOR_ID = "disyUKon";
   private static final int VENDOR_ID_FIELD_POSITION = 8;
@@ -35,20 +35,22 @@ public final class StandardInquiryData implements IResponseData {
   private static final String PRODUCT_REVISION_LEVEL = "1.00";
   private static final int PRODUCT_REVISION_LEVEL_FIELD_POSITION = 32;
   private static final int PRODUCT_REVISION_LEVEL_FIELD_LENGTH = 4;
-  
-  private static final String DRIVE_SERIAL_NUMBER = "abc123";
+
+  private static final String DRIVE_SERIAL_NUMBER = "11111111";
   private static final int DRIVE_SERIAL_NUMBER_FIELD_POSITION = 36;
   private static final int DRIVE_SERIAL_NUMBER_FIELD_LENGTH = 8;
 
   private final String _vendorId;
   private final String _productId;
+  private final boolean _includeSerial;
 
   public StandardInquiryData() {
-    this(null, null);
+    this(null, null, false);
   }
 
-  public StandardInquiryData(String vendorId, String productId) {
+  public StandardInquiryData(String vendorId, String productId, boolean includeSerial) {
     // singleton pattern
+    _includeSerial = includeSerial;
     _vendorId = vendorId == null ? VENDOR_ID
         : vendorId.substring(0, Math.min(vendorId.length(), VENDOR_ID_FIELD_LENGTH));
     _productId = productId == null ? PRODUCT_ID
@@ -101,7 +103,11 @@ public final class StandardInquiryData implements IResponseData {
      * n - 4 = 35 - 4 = 31 The ADDITIONAL LENGTH field indicates the length in bytes
      * of the remaining standard INQUIRY data.
      */
-    byteBuffer.put((byte) 31);
+    if (_includeSerial) {
+      byteBuffer.put((byte) (31 + DRIVE_SERIAL_NUMBER_FIELD_LENGTH));
+    } else {
+      byteBuffer.put((byte) 31);
+    }
 
     // *** byte 5 ***
     /*
@@ -175,9 +181,12 @@ public final class StandardInquiryData implements IResponseData {
     putString(byteBuffer, PRODUCT_REVISION_LEVEL, index + PRODUCT_REVISION_LEVEL_FIELD_POSITION,
         PRODUCT_REVISION_LEVEL_FIELD_LENGTH);
 
-    // *** bytes 36 to 43 ***
-    putString(byteBuffer, DRIVE_SERIAL_NUMBER, index + DRIVE_SERIAL_NUMBER_FIELD_POSITION,
-        DRIVE_SERIAL_NUMBER_FIELD_LENGTH);
+    if (_includeSerial) {
+      // *** bytes 36 to 43 ***
+      putString(byteBuffer, DRIVE_SERIAL_NUMBER, index + DRIVE_SERIAL_NUMBER_FIELD_POSITION,
+          DRIVE_SERIAL_NUMBER_FIELD_LENGTH);
+      
+    }
   }
 
   /**
@@ -204,6 +213,10 @@ public final class StandardInquiryData implements IResponseData {
   }
 
   public int size() {
-    return SIZE;
+    if (_includeSerial) {
+      return SIZE + DRIVE_SERIAL_NUMBER_FIELD_LENGTH;
+    } else {
+      return SIZE;
+    }
   }
 }

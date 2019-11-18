@@ -81,36 +81,35 @@ public interface Connection extends Callable<Void> {
     TargetSenderWorker senderWorker;
 
     /**
-     * The {@link ConnectionSettingsNegotiator} of this connection responsible
-     * for negotiating and storing connection parameters which have been
-     * negotiated with or declared by the initiator.
+     * The {@link ConnectionSettingsNegotiator} of this connection responsible for
+     * negotiating and storing connection parameters which have been negotiated with
+     * or declared by the initiator.
      */
     private ConnectionSettingsNegotiator connectionSettingsNegotiator;
 
     /**
-     * The current {@link TargetPhase} describing a general state of the
-     * connection.
+     * The current {@link TargetPhase} describing a general state of the connection.
      */
     private TargetPhase phase;
 
     /**
-     * A counter for the <code>StatSN</code> field of sent
-     * {@link ProtocolDataUnit} objects with Status.
+     * A counter for the <code>StatSN</code> field of sent {@link ProtocolDataUnit}
+     * objects with Status.
      */
     private SerialArithmeticNumber statusSequenceNumber;
 
     /**
-     * Will manage and serve as a source of byte arrays to be used for sending
-     * Data In PDUs in the {@link ReadStage} .
+     * Will manage and serve as a source of byte arrays to be used for sending Data
+     * In PDUs in the {@link ReadStage} .
      */
     private FastByteArrayProvider dataInArrayProvider = new FastByteArrayProvider(4);
 
     /**
-     * <code>true</code> if and only if this connection is the first connection
-     * to be associated with its parent session.
+     * <code>true</code> if and only if this connection is the first connection to
+     * be associated with its parent session.
      * <p>
-     * This distinction is necessary because some parameters may only be
-     * declared over the leading connection.
+     * This distinction is necessary because some parameters may only be declared
+     * over the leading connection.
      */
     private final boolean isLeadingConnection;
 
@@ -122,11 +121,10 @@ public interface Connection extends Callable<Void> {
     /**
      * The {@link TargetConnection} constructor.
      * 
-     * @param socketChannel
-     *          used for sending and receiving PDUs
-     * @param isLeadingConnection
-     *          <code>true</code> if and only if this connection is the first
-     *          connection associated with its enclosing session
+     * @param socketChannel       used for sending and receiving PDUs
+     * @param isLeadingConnection <code>true</code> if and only if this connection
+     *                            is the first connection associated with its
+     *                            enclosing session
      */
     public TargetConnection(SocketChannel socketChannel, final boolean isLeadingConnection) {
       this.isLeadingConnection = isLeadingConnection;
@@ -134,11 +132,10 @@ public interface Connection extends Callable<Void> {
     }
 
     /**
-     * Returns a byte array that can be used for holding data segment data of
-     * Data In PDUs sent during the {@link ReadStage}.
+     * Returns a byte array that can be used for holding data segment data of Data
+     * In PDUs sent during the {@link ReadStage}.
      * 
-     * @param length
-     *          the length of the array
+     * @param length the length of the array
      * @return a byte array of the specified length
      */
     public byte[] getDataInArray(final int length) {
@@ -157,8 +154,7 @@ public interface Connection extends Callable<Void> {
     /**
      * Sets the {@link TargetSession} this connection belongs to.
      * 
-     * @param session
-     *          the {@link TargetSession} this connection belongs to
+     * @param session the {@link TargetSession} this connection belongs to
      */
     public void setSession(TargetSession session) {
       this.targetSession = session;
@@ -166,20 +162,16 @@ public interface Connection extends Callable<Void> {
     }
 
     /**
-     * Returns the next {@link ProtocolDataUnit} to be received on the
-     * connection.
+     * Returns the next {@link ProtocolDataUnit} to be received on the connection.
      * <p>
      * The method will block until a PDU has been completely received.
      * 
      * @return the next received PDU
-     * @throws DigestException
-     *           if a digest error has occured
-     * @throws InternetSCSIException
-     *           if a general iSCSI protocol error has been detected
-     * @throws IOException
-     *           if the connection was closed
-     * @throws SettingsException
-     *           will not happen
+     * @throws DigestException       if a digest error has occured
+     * @throws InternetSCSIException if a general iSCSI protocol error has been
+     *                               detected
+     * @throws IOException           if the connection was closed
+     * @throws SettingsException     will not happen
      */
     public ProtocolDataUnit receivePdu() throws DigestException, InternetSCSIException, IOException, SettingsException {
       lastReceivedPDU = senderWorker.receiveFromWire();
@@ -212,8 +204,7 @@ public interface Connection extends Callable<Void> {
     /**
      * Serializes and sends a {@link ProtocolDataUnit} over the connection.
      * 
-     * @param pdu
-     *          the PDU to send
+     * @param pdu the PDU to send
      * @throws InterruptedException
      * @throws IOException
      * @throws InternetSCSIException
@@ -225,14 +216,15 @@ public interface Connection extends Callable<Void> {
       // java.sql.Timestamp(System.currentTimeMillis()).toString() + "\n" + pdu
       // +
       // "\n******************************");
+//      LOGGER.info("send pdu {}", pdu);
       senderWorker.sendOverWire(pdu);
     }
 
     /**
      * Starts the processing of PDUs by this connection.
      * <p>
-     * For this method to work properly, the leading PDU send by the initiator
-     * over this connection must have been received via {@link #receivePdu()}.
+     * For this method to work properly, the leading PDU send by the initiator over
+     * this connection must have been received via {@link #receivePdu()}.
      * 
      */
     public Void call() {
@@ -286,9 +278,9 @@ public interface Connection extends Callable<Void> {
     }
 
     /**
-     * Returns <code>true</code> if this is the leading connection, i.e. the
-     * first TargetConnection in the connection's {@link TargetSession}.
-     * Otherwise <code>false</code> is returned.
+     * Returns <code>true</code> if this is the leading connection, i.e. the first
+     * TargetConnection in the connection's {@link TargetSession}. Otherwise
+     * <code>false</code> is returned.
      * 
      * @return <code>true</code> if this is the leading connection
      */
@@ -299,16 +291,16 @@ public interface Connection extends Callable<Void> {
     /**
      * Initializes {@link #connectionSettingsNegotiator}.
      * <p>
-     * This method must be be called after the this connection has been added to
-     * its session.
+     * This method must be be called after the this connection has been added to its
+     * session.
      */
     public void initializeConnectionSettingsNegotiator(final SessionSettingsNegotiator sessionSettingsNegotiator) {
       connectionSettingsNegotiator = new ConnectionSettingsNegotiator(sessionSettingsNegotiator);
     }
 
     /**
-     * Returns a {@link Settings} object with a snapshot of the current
-     * connection and session parameters.
+     * Returns a {@link Settings} object with a snapshot of the current connection
+     * and session parameters.
      * 
      * @return the current {@link Settings}
      */
