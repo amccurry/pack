@@ -3,7 +3,6 @@ package pack.iscsi.s3.volume;
 import java.io.File;
 
 import org.junit.Before;
-import org.junit.Test;
 
 import consistent.s3.ConsistentAmazonS3;
 import pack.iscsi.block.LocalBlockStateStore;
@@ -19,10 +18,7 @@ import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;
-import pack.iscsi.wal.local.LocalBlockWriteAheadLog;
-import pack.iscsi.wal.local.LocalBlockWriteAheadLog.LocalBlockWriteAheadLogConfig;
 
 public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTest {
 
@@ -73,14 +69,6 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
   }
 
   @Override
-  protected BlockWriteAheadLog getBlockWriteAheadLog() throws Exception {
-    LocalBlockWriteAheadLogConfig config = LocalBlockWriteAheadLogConfig.builder()
-                                                                        .walLogDir(WAL_DATA_DIR)
-                                                                        .build();
-    return new LocalBlockWriteAheadLog(config);
-  }
-
-  @Override
   protected BlockGenerationStore getBlockGenerationStore() throws Exception {
     S3GenerationBlockStoreConfig config = S3GenerationBlockStoreConfig.builder()
                                                                       .bucket(_bucket)
@@ -96,11 +84,6 @@ public class S3BlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTe
                                                                   .blockStateDir(BLOCK_STATE_DIR)
                                                                   .build();
     return new LocalBlockStateStore(config);
-  }
-
-  @Test
-  public void testBlockStorageModuleFactoryRecoverBlockThatOnlyExistsInWal() throws Exception {
-    super.testBlockStorageModuleFactoryRecoverBlockThatOnlyExistsInWal();
   }
 
   @Override

@@ -10,7 +10,6 @@ import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 @Value
 @Builder
@@ -19,8 +18,6 @@ public class BlockStorageModuleConfig {
   MetricsFactory metricsFactory;
 
   BlockGenerationStore blockGenerationStore;
-
-  BlockWriteAheadLog writeAheadLog;
 
   BlockStateStore blockStateStore;
 

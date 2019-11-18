@@ -6,7 +6,6 @@ import static org.junit.Assert.assertTrue;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
@@ -27,16 +26,12 @@ import pack.iscsi.s3.block.S3BlockReader.S3BlockReaderConfig;
 import pack.iscsi.s3.block.S3BlockWriter.S3BlockWriterConfig;
 import pack.iscsi.spi.BlockKey;
 import pack.iscsi.spi.RandomAccessIO;
-import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.Block;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockMetadata;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockJournalRange;
-import pack.iscsi.spi.wal.BlockRecoveryWriter;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 public class S3LocalBlockTest {
   private int _blockSize;
@@ -77,7 +72,6 @@ public class S3LocalBlockTest {
 
     BlockStateStore blockStateStore = getBlockStateStore();
     BlockGenerationStore store = getBlockStore();
-    BlockWriteAheadLog wal = getBlockWriteAheadLog();
 
     long volumeId = _random.nextLong();
     long blockId = _random.nextInt(_blockCount);
@@ -87,7 +81,7 @@ public class S3LocalBlockTest {
     byte[] blockData = new byte[_blockSize];
     try (RandomAccessIO randomAccessIO = getRandomAccessIO(_dir, volumeLengthInBytes)) {
       LocalBlockConfig config = getLocalBlockConfig(volumeId, blockId, _blockSize, randomAccessIO, blockStateStore,
-          store, wal);
+          store);
       random.nextBytes(blockData);
       try (Block block = new LocalBlock(config)) {
         assertTrue(block.idleWrites());
@@ -104,7 +98,7 @@ public class S3LocalBlockTest {
     _dir.mkdirs();
     try (RandomAccessIO randomAccessIO = getRandomAccessIO(_dir, volumeLengthInBytes)) {
       LocalBlockConfig config = getLocalBlockConfig(volumeId, blockId, _blockSize, randomAccessIO, blockStateStore,
-          store, wal);
+          store);
       byte[] buffer = new byte[_blockSize];
       try (Block block = new LocalBlock(config)) {
         assertTrue(block.idleWrites());
@@ -120,35 +114,6 @@ public class S3LocalBlockTest {
       assertEquals("offset " + i + " " + blockData[i] + " " + buffer2[i], blockData[i], buffer2[i]);
     }
     assertTrue(Arrays.equals(blockData, buffer2));
-  }
-
-  private BlockWriteAheadLog getBlockWriteAheadLog() {
-    return new BlockWriteAheadLog() {
-
-      @Override
-      public AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes,
-          int offset, int len) throws IOException {
-        return AsyncCompletableFuture.completedFuture();
-      }
-
-      @Override
-      public void releaseJournals(long volumeId, long blockId, long generation) throws IOException {
-
-      }
-
-      @Override
-      public List<BlockJournalRange> getJournalRanges(long volumeId, long blockId, long onDiskGeneration,
-          boolean closeExistingWriter) throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public long recoverFromJournal(BlockRecoveryWriter writer, BlockJournalRange range, long onDiskGeneration)
-          throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-    };
   }
 
   private BlockGenerationStore getBlockStore() {
@@ -218,8 +183,7 @@ public class S3LocalBlockTest {
   }
 
   private LocalBlockConfig getLocalBlockConfig(long volumeId, long blockId, int blockSize,
-      RandomAccessIO randomAccessIO, BlockStateStore blockStateStore, BlockGenerationStore store,
-      BlockWriteAheadLog wal) {
+      RandomAccessIO randomAccessIO, BlockStateStore blockStateStore, BlockGenerationStore store) {
 
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .randomAccessIO(randomAccessIO)
@@ -228,7 +192,6 @@ public class S3LocalBlockTest {
                                               .blockId(blockId)
                                               .blockGenerationStore(store)
                                               .blockSize(blockSize)
-                                              .wal(wal)
                                               .build();
     return config;
   }

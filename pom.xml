@@ -45,8 +45,6 @@
 		<module>pack-storage-modules/pack-file-storage-module</module>
 		<module>pack-storage-modules/pack-file-block-storage-module</module>
 		<module>pack-storage-modules/pack-s3-block-storage-module</module>
-		<module>pack-storage-modules/wal/pack-local-wal</module>
-		<module>pack-storage-modules/wal/pack-remote-wal</module>
 		<module>pack-rs-shim</module>
 	</modules>
 
@@ -137,23 +135,6 @@
 			<dependency>
 				<groupId>pack</groupId>
 				<artifactId>pack-block-storage-test-suite</artifactId>
-				<version>${project.version}</version>
-				<classifier>tests</classifier>
-				<type>test-jar</type>
-			</dependency>
-			<dependency>
-				<groupId>pack</groupId>
-				<artifactId>pack-local-wal</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>pack</groupId>
-				<artifactId>pack-remote-wal</artifactId>
-				<version>${project.version}</version>
-			</dependency>
-			<dependency>
-				<groupId>pack</groupId>
-				<artifactId>pack-remote-wal</artifactId>
 				<version>${project.version}</version>
 				<classifier>tests</classifier>
 				<type>test-jar</type>

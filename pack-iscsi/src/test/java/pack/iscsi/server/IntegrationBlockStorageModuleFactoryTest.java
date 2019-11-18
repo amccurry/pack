@@ -2,7 +2,6 @@ package pack.iscsi.server;
 
 import java.io.File;
 
-import org.apache.curator.framework.CuratorFramework;
 import org.junit.After;
 import org.junit.Before;
 
@@ -13,21 +12,14 @@ import pack.iscsi.io.IOUtils;
 import pack.iscsi.s3.S3TestProperties;
 import pack.iscsi.s3.S3TestSetup;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory;
-import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3ExternalBlockStoreFactory.S3ExternalBlockStoreFactoryConfig;
+import pack.iscsi.s3.block.S3GenerationBlockStore;
 import pack.iscsi.s3.block.S3GenerationBlockStore.S3GenerationBlockStoreConfig;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;
-import pack.iscsi.wal.WalTestProperties;
-import pack.iscsi.wal.WalTestSetup;
-import pack.iscsi.wal.remote.RemoteWALClient;
-import pack.iscsi.wal.remote.RemoteWALClient.RemoteWALClientConfig;
-import pack.iscsi.wal.remote.RemoteWALServer;
-import pack.iscsi.wal.remote.RemoteWALServer.RemoteWriteAheadLogServerConfig;
 
 public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTest {
 
@@ -38,7 +30,6 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
   private ConsistentAmazonS3 _consistentAmazonS3;
   private String _bucket;
   private String _objectPrefix;
-  private RemoteWALServer _walServer;
 
   @Override
   protected void clearBlockData() {
@@ -63,28 +54,14 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
   @Before
   public void setup() throws Exception {
     super.setup();
-
     _consistentAmazonS3 = S3TestSetup.getConsistentAmazonS3();
     _bucket = S3TestProperties.getBucket();
     _objectPrefix = S3TestProperties.getObjectPrefix();
     S3TestSetup.cleanS3(_bucket, _objectPrefix);
-
-    CuratorFramework curatorFramework = WalTestSetup.getCuratorFramework();
-
-    RemoteWriteAheadLogServerConfig config = RemoteWriteAheadLogServerConfig.builder()
-                                                                            .maxEntryPayload(1_000_000)
-                                                                            .walLogDir(WAL_DATA_DIR)
-                                                                            .port(0)
-                                                                            .curatorFramework(curatorFramework)
-                                                                            .zkPrefix(WalTestProperties.getPrefix())
-                                                                            .build();
-    _walServer = new RemoteWALServer(config);
-    _walServer.start(false);
   }
 
   @After
   public void after() throws Exception {
-    _walServer.stop();
   }
 
   @Override
@@ -95,16 +72,6 @@ public class IntegrationBlockStorageModuleFactoryTest extends BlockStorageModule
                                                                                 .objectPrefix(_objectPrefix)
                                                                                 .build();
     return new S3ExternalBlockStoreFactory(config);
-  }
-
-  @Override
-  protected BlockWriteAheadLog getBlockWriteAheadLog() throws Exception {
-    CuratorFramework curatorFramework = WalTestSetup.getCuratorFramework();
-    RemoteWALClientConfig config = RemoteWALClientConfig.builder()
-                                                        .curatorFramework(curatorFramework)
-                                                        .zkPrefix(WalTestProperties.getPrefix())
-                                                        .build();
-    return new RemoteWALClient(config);
   }
 
   @Override

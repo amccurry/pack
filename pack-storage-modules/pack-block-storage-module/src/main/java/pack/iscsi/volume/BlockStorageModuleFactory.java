@@ -31,7 +31,6 @@ import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 
 public class BlockStorageModuleFactory implements StorageModuleFactory, Closeable, VolumeListener {
@@ -39,7 +38,6 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
   private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModuleFactory.class);
 
   private final BlockGenerationStore _blockGenerationStore;
-  private final BlockWriteAheadLog _writeAheadLog;
   private final File _blockDataDir;
   private final PackVolumeStore _packVolumeStore;
   private final BlockIOFactory _externalBlockStoreFactory;
@@ -69,7 +67,6 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
     _packVolumeStore = config.getPackVolumeStore();
     _blockDataDir = config.getBlockDataDir();
     _blockGenerationStore = config.getBlockStore();
-    _writeAheadLog = config.getWriteAheadLog();
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
 
     _metricsFactory = config.getMetricsFactory();
@@ -129,7 +126,6 @@ public class BlockStorageModuleFactory implements StorageModuleFactory, Closeabl
                                                                 .syncTimeAfterIdle(syncTimeAfterIdle)
                                                                 .syncTimeAfterIdleTimeUnit(syncTimeAfterIdleTimeUnit)
                                                                 .metricsFactory(_metricsFactory)
-                                                                .writeAheadLog(_writeAheadLog)
                                                                 .maxCacheSizeInBytes(getMaxCacheSizeInBytes())
                                                                 .syncExecutorThreadCount(syncExecutorThreadCount)
                                                                 .readAheadExecutorThreadCount(

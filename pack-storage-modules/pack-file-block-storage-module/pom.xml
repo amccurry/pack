@@ -22,10 +22,6 @@
 		</dependency>
 		<dependency>
 			<groupId>pack</groupId>
-			<artifactId>pack-local-wal</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pack</groupId>
 			<artifactId>pack-block-storage-test-suite</artifactId>
 			<classifier>tests</classifier>
 			<type>test-jar</type>

@@ -11,7 +11,6 @@ import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 @Value
 @Builder(toBuilder = true)
@@ -20,8 +19,6 @@ public class BlockStorageModuleFactoryConfig {
   PackVolumeStore packVolumeStore;
 
   BlockGenerationStore blockStore;
-
-  BlockWriteAheadLog writeAheadLog;
 
   BlockIOFactory externalBlockStoreFactory;
 

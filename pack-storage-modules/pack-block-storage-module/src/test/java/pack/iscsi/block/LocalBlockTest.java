@@ -9,7 +9,6 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
@@ -32,9 +31,6 @@ import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockMetadata;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockJournalRange;
-import pack.iscsi.spi.wal.BlockRecoveryWriter;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 public class LocalBlockTest {
 
@@ -204,34 +200,6 @@ public class LocalBlockTest {
     }
   }
 
-  private BlockWriteAheadLog getBlockWriteAheadLog() {
-    return new BlockWriteAheadLog() {
-
-      @Override
-      public AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes,
-          int offset, int len) throws IOException {
-        return AsyncCompletableFuture.completedFuture();
-      }
-
-      @Override
-      public void releaseJournals(long volumeId, long blockId, long generation) throws IOException {
-      }
-
-      @Override
-      public List<BlockJournalRange> getJournalRanges(long volumeId, long blockId, long onDiskGeneration,
-          boolean closeExistingWriter) throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-      @Override
-      public long recoverFromJournal(BlockRecoveryWriter writer, BlockJournalRange range, long onDiskGeneration)
-          throws IOException {
-        throw new RuntimeException("not impl");
-      }
-
-    };
-  }
-
   private BlockGenerationStore getBlockStore() {
     return new BlockGenerationStore() {
 
@@ -258,7 +226,6 @@ public class LocalBlockTest {
       RandomAccessIO randomAccessIO) {
     BlockStateStore blockStateStore = getBlockStateStore();
     BlockGenerationStore store = getBlockStore();
-    BlockWriteAheadLog wal = getBlockWriteAheadLog();
     LocalBlockConfig config = LocalBlockConfig.builder()
                                               .randomAccessIO(randomAccessIO)
                                               .blockStateStore(blockStateStore)
@@ -266,7 +233,6 @@ public class LocalBlockTest {
                                               .blockId(blockId)
                                               .blockGenerationStore(store)
                                               .blockSize(blockSize)
-                                              .wal(wal)
                                               .build();
     return config;
   }

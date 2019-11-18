@@ -3,7 +3,6 @@ package pack.iscsi.volume;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -15,10 +14,7 @@ import java.util.Set;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import pack.iscsi.io.IOUtils;
 import pack.iscsi.spi.PackVolumeMetadata;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModule;
@@ -26,11 +22,8 @@ import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 public abstract class BlockStorageModuleFactoryTest {
-
-  private static final Logger LOGGER = LoggerFactory.getLogger(BlockStorageModuleFactoryTest.class);
 
   @Before
   public void setup() throws Exception {
@@ -49,8 +42,6 @@ public abstract class BlockStorageModuleFactoryTest {
 
   protected abstract BlockIOFactory getBlockIOFactory() throws Exception;
 
-  protected abstract BlockWriteAheadLog getBlockWriteAheadLog() throws Exception;
-
   protected abstract BlockGenerationStore getBlockGenerationStore() throws Exception;
 
   protected abstract BlockStateStore getBlockStateStore() throws Exception;
@@ -62,7 +53,6 @@ public abstract class BlockStorageModuleFactoryTest {
     PackVolumeStore volumeStore = getPackVolumeStore(12345, getBlockSize(), getVolumeSize());
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
-    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
     BlockStateStore blockStateStore = getBlockStateStore();
     BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore();
 
@@ -76,7 +66,6 @@ public abstract class BlockStorageModuleFactoryTest {
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
                                                                                 externalBlockStoreFactory)
-                                                                            .writeAheadLog(writeAheadLog)
                                                                             .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                                                             .build();
 
@@ -103,7 +92,6 @@ public abstract class BlockStorageModuleFactoryTest {
     PackVolumeStore volumeStore = getPackVolumeStore(12345, getBlockSize(), getVolumeSize());
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
-    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
     BlockStateStore blockStateStore = getBlockStateStore();
     BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore();
 
@@ -117,7 +105,6 @@ public abstract class BlockStorageModuleFactoryTest {
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
                                                                                 externalBlockStoreFactory)
-                                                                            .writeAheadLog(writeAheadLog)
                                                                             .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                                                             .build();
 
@@ -145,7 +132,6 @@ public abstract class BlockStorageModuleFactoryTest {
     PackVolumeStore volumeStore = getPackVolumeStore(12345, getBlockSize(), getVolumeSize());
     BlockGenerationStore blockStore = getBlockGenerationStore();
     BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
-    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
     BlockStateStore blockStateStore = getBlockStateStore();
     BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore();
 
@@ -160,7 +146,6 @@ public abstract class BlockStorageModuleFactoryTest {
                                                                             .blockStore(blockStore)
                                                                             .externalBlockStoreFactory(
                                                                                 externalBlockStoreFactory)
-                                                                            .writeAheadLog(writeAheadLog)
                                                                             .maxCacheSizeInBytes(maxCacheSizeInBytes)
                                                                             .build();
 
@@ -185,56 +170,6 @@ public abstract class BlockStorageModuleFactoryTest {
       }
       volumeStore.detachVolume(volumeName);
     }
-  }
-
-  @Test
-  public void testBlockStorageModuleFactoryRecoverBlockThatOnlyExistsInWal() throws Exception {
-    PackVolumeStore volumeStore = getPackVolumeStore(12345, getBlockSize(), getVolumeSize());
-    BlockGenerationStore blockStore = getBlockGenerationStore();
-    BlockIOFactory externalBlockStoreFactory = getBlockIOFactory();
-    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog();
-    BlockStateStore blockStateStore = getBlockStateStore();
-    BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore();
-
-    long maxCacheSizeInBytes = 50_000_000;
-
-    BlockStorageModuleFactoryConfig config = BlockStorageModuleFactoryConfig.builder()
-                                                                            .blockCacheMetadataStore(
-                                                                                blockCacheMetadataStore)
-                                                                            .packVolumeStore(volumeStore)
-                                                                            .blockDataDir(getBlockDataDir())
-                                                                            .blockStateStore(blockStateStore)
-                                                                            .blockStore(blockStore)
-                                                                            .externalBlockStoreFactory(
-                                                                                externalBlockStoreFactory)
-                                                                            .writeAheadLog(writeAheadLog)
-                                                                            .maxCacheSizeInBytes(maxCacheSizeInBytes)
-                                                                            .build();
-
-    long seed = new Random().nextLong();
-    String volumeName = "test";
-    List<Closeable> closeList = new ArrayList<>();
-
-    {
-      BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config);
-      closeList.add(factory);
-      volumeStore.attachVolume(volumeName);
-      StorageModule storageModule = factory.getStorageModule("test");
-      closeList.add(storageModule);
-      assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
-      readsAndWritesTest(storageModule, seed, 9876);
-    }
-    clearBlockData();
-    clearStateData();
-    try (BlockStorageModuleFactory factory = new BlockStorageModuleFactory(config)) {
-      try (StorageModule storageModule = factory.getStorageModule("test")) {
-        assertEquals(getSizeInBlocks(storageModule), storageModule.getSizeInBlocks());
-        readsOnlyTest(storageModule, seed, 9876);
-      }
-      volumeStore.detachVolume(volumeName);
-    }
-
-    IOUtils.close(LOGGER, closeList);
   }
 
   private long getVolumeSize() {

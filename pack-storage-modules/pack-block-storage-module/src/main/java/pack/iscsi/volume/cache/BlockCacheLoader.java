@@ -19,9 +19,6 @@ import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
-import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery;
-import pack.iscsi.volume.cache.wal.BlockWriteAheadLogRecovery.BlockWriteAheadLogRecoveryConfig;
 import pack.util.tracer.TracerUtil;
 
 public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
@@ -29,7 +26,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
   private static Logger LOGGER = LoggerFactory.getLogger(BlockCacheLoader.class);
 
   private final BlockGenerationStore _blockGenerationStore;
-  private final BlockWriteAheadLog _writeAheadLog;
   private final BlockIOFactory _externalBlockStoreFactory;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
@@ -44,7 +40,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     _volumeId = config.getVolumeId();
     _blockSize = config.getBlockSize();
     _blockGenerationStore = config.getBlockGenerationStore();
-    _writeAheadLog = config.getWriteAheadLog();
     _externalBlockStoreFactory = config.getExternalBlockStoreFactory();
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
@@ -68,7 +63,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
                                                 .blockSize(_blockSize)
                                                 .blockId(key.getBlockId())
                                                 .blockGenerationStore(_blockGenerationStore)
-                                                .wal(_writeAheadLog)
                                                 .syncTimeAfterIdle(_syncTimeAfterIdle)
                                                 .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
                                                 .build();
@@ -89,10 +83,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
           pullBlockFromExternalStore(localBlock);
         }
       }
-      // Always try to recover from WAL
-      try (Scope scope = TracerUtil.trace(BlockCacheLoader.class, "recover block from wal")) {
-        recoverFromWal(localBlock);
-      }
       return localBlock;
     }
   }
@@ -101,20 +91,6 @@ public class BlockCacheLoader implements CacheLoader<BlockKey, Block> {
     try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block external read")) {
       ConcurrentUtils.runUntilSuccess(LOGGER, () -> {
         localBlock.execIO(_externalBlockStoreFactory.getBlockReader());
-        return null;
-      });
-    }
-  }
-
-  private void recoverFromWal(LocalBlock localBlock) {
-    try (Scope externalRead = TracerUtil.trace(BlockCacheLoader.class, "block recover")) {
-      ConcurrentUtils.runUntilSuccess(LOGGER, () -> {
-        // recover if needed
-        BlockWriteAheadLogRecoveryConfig config = BlockWriteAheadLogRecoveryConfig.builder()
-                                                                                  .blockWriteAheadLog(_writeAheadLog)
-                                                                                  .build();
-        BlockWriteAheadLogRecovery recovery = new BlockWriteAheadLogRecovery(config);
-        localBlock.execIO(recovery);
         return null;
       });
     }

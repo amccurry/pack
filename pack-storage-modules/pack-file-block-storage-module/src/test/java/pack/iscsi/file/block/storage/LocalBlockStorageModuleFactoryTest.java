@@ -16,10 +16,7 @@ import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactoryTest;
-import pack.iscsi.wal.local.LocalBlockWriteAheadLog;
-import pack.iscsi.wal.local.LocalBlockWriteAheadLog.LocalBlockWriteAheadLogConfig;
 
 public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactoryTest {
 
@@ -60,14 +57,6 @@ public class LocalBlockStorageModuleFactoryTest extends BlockStorageModuleFactor
   @Override
   protected BlockIOFactory getBlockIOFactory() {
     return new LocalExternalBlockStoreFactory(EXTERNAL_BLOCK_DATA_DIR);
-  }
-
-  @Override
-  protected BlockWriteAheadLog getBlockWriteAheadLog() throws Exception {
-    LocalBlockWriteAheadLogConfig config = LocalBlockWriteAheadLogConfig.builder()
-                                                                        .walLogDir(WAL_DATA_DIR)
-                                                                        .build();
-    return new LocalBlockWriteAheadLog(config);
   }
 
   @Override

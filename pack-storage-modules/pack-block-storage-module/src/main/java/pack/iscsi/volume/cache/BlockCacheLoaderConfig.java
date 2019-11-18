@@ -7,7 +7,6 @@ import lombok.Value;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 @Value
 @Builder
@@ -22,8 +21,6 @@ public class BlockCacheLoaderConfig {
   BlockStateStore blockStateStore;
 
   BlockGenerationStore blockGenerationStore;
-
-  BlockWriteAheadLog writeAheadLog;
 
   BlockIOFactory externalBlockStoreFactory;
 

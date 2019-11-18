@@ -7,7 +7,6 @@ import lombok.Value;
 import pack.iscsi.spi.RandomAccessIO;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 
 @Value
 @Builder(toBuilder = true)
@@ -24,8 +23,6 @@ public class LocalBlockConfig {
   BlockStateStore blockStateStore;
 
   BlockGenerationStore blockGenerationStore;
-
-  BlockWriteAheadLog wal;
 
   @Builder.Default
   long syncTimeAfterIdle = 5;

@@ -2,8 +2,6 @@ package pack.iscsi.server.module;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
@@ -37,15 +35,11 @@ import pack.iscsi.server.admin.VolumeInfoPage;
 import pack.iscsi.spi.PackVolumeStore;
 import pack.iscsi.spi.StorageModuleFactory;
 import pack.iscsi.spi.StorageModuleLoader;
-import pack.iscsi.spi.async.AsyncCompletableFuture;
 import pack.iscsi.spi.block.BlockCacheMetadataStore;
 import pack.iscsi.spi.block.BlockGenerationStore;
 import pack.iscsi.spi.block.BlockIOFactory;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.spi.wal.BlockJournalRange;
-import pack.iscsi.spi.wal.BlockRecoveryWriter;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.volume.BlockStorageModuleFactory;
 import pack.iscsi.volume.BlockStorageModuleFactoryConfig;
 import spark.Service;
@@ -116,8 +110,6 @@ public class S3StorageModuleLoader extends StorageModuleLoader {
     BlockCacheMetadataStore blockCacheMetadataStore = getBlockCacheMetadataStore(properties, instanceName,
         consistentAmazonS3, volumeStore);
     BlockGenerationStore blockStore = getS3BlockStore(properties, instanceName, consistentAmazonS3);
-    BlockWriteAheadLog writeAheadLog = getBlockWriteAheadLog(properties, instanceName,
-        consistentAmazonS3.getCuratorFramework());
     BlockIOFactory externalBlockStoreFactory = getS3ExternalBlockStoreFactory(properties, instanceName,
         consistentAmazonS3, metricsTable);
     BlockStateStore blockStateStore = getBlockStateStore(properties, instanceName);
@@ -130,7 +122,6 @@ public class S3StorageModuleLoader extends StorageModuleLoader {
                                           .blockStore(blockStore)
                                           .externalBlockStoreFactory(externalBlockStoreFactory)
                                           .maxCacheSizeInBytes(maxCacheSizeInBytes)
-                                          .writeAheadLog(writeAheadLog)
                                           .metricsFactory(metricsTable)
                                           .build();
   }
@@ -179,39 +170,6 @@ public class S3StorageModuleLoader extends StorageModuleLoader {
 
   private static Service getSparkServiceIfNeeded(Properties properties, String instanceName) {
     return Service.ignite();
-  }
-
-  private static BlockWriteAheadLog getBlockWriteAheadLog(Properties properties, String instanceName,
-      CuratorFramework curatorFramework) throws IOException {
-    return noOpWAL();
-  }
-
-  private static BlockWriteAheadLog noOpWAL() {
-    return new BlockWriteAheadLog() {
-
-      @Override
-      public AsyncCompletableFuture write(long volumeId, long blockId, long generation, long position, byte[] bytes,
-          int offset, int len) throws IOException {
-        return AsyncCompletableFuture.completedFuture();
-      }
-
-      @Override
-      public void releaseJournals(long volumeId, long blockId, long generation) throws IOException {
-
-      }
-
-      @Override
-      public long recoverFromJournal(BlockRecoveryWriter writer, BlockJournalRange range, long onDiskGeneration)
-          throws IOException {
-        return onDiskGeneration;
-      }
-
-      @Override
-      public List<BlockJournalRange> getJournalRanges(long volumeId, long blockId, long onDiskGeneration,
-          boolean closeExistingWriter) throws IOException {
-        return Arrays.asList();
-      }
-    };
   }
 
   private static ConsistentAmazonS3 getConsistentAmazonS3(Properties properties, String instanceName)

@@ -49,7 +49,6 @@ import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
 import pack.iscsi.spi.metric.Meter;
 import pack.iscsi.spi.metric.MetricsFactory;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.iscsi.util.Utils;
 import pack.iscsi.volume.cache.BlockCacheLoader;
 import pack.iscsi.volume.cache.BlockCacheLoaderConfig;
@@ -84,7 +83,6 @@ public class BlockStorageModule implements StorageModule {
   private final Meter _readMeter;
   private final Meter _writeMeter;
   private final File _blockDataDir;
-  private final BlockWriteAheadLog _writeAheadLog;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
   private final BlockGenerationStore _blockGenerationStore;
@@ -124,7 +122,6 @@ public class BlockStorageModule implements StorageModule {
     _syncTimeAfterIdle = config.getSyncTimeAfterIdle();
     _syncTimeAfterIdleTimeUnit = config.getSyncTimeAfterIdleTimeUnit();
     _blockDataDir = config.getBlockDataDir();
-    _writeAheadLog = config.getWriteAheadLog();
     _metricsFactory = config.getMetricsFactory();
     _readMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(_volumeId), READ);
     _readIOMeter = _metricsFactory.meter(BlockStorageModule.class, Long.toString(_volumeId), READ_IOPS);
@@ -646,7 +643,6 @@ public class BlockStorageModule implements StorageModule {
                                                       .syncTimeAfterIdle(_syncTimeAfterIdle)
                                                       .syncTimeAfterIdleTimeUnit(_syncTimeAfterIdleTimeUnit)
                                                       .volumeId(_volumeId)
-                                                      .writeAheadLog(_writeAheadLog)
                                                       .build());
   }
 }

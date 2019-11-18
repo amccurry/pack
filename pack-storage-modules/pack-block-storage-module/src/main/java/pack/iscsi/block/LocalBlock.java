@@ -26,7 +26,6 @@ import pack.iscsi.spi.block.BlockIOResponse;
 import pack.iscsi.spi.block.BlockMetadata;
 import pack.iscsi.spi.block.BlockState;
 import pack.iscsi.spi.block.BlockStateStore;
-import pack.iscsi.spi.wal.BlockWriteAheadLog;
 import pack.util.LockUtil;
 import pack.util.tracer.TracerUtil;
 
@@ -44,7 +43,6 @@ public class LocalBlock implements Closeable, Block {
   private final AtomicLong _lastStoredGeneration = new AtomicLong();
   private final AtomicLong _lastWrite = new AtomicLong();
   private final AtomicBoolean _closed = new AtomicBoolean();
-  private final BlockWriteAheadLog _wal;
   private final BlockGenerationStore _blockStore;
   private final long _syncTimeAfterIdle;
   private final TimeUnit _syncTimeAfterIdleTimeUnit;
@@ -54,7 +52,6 @@ public class LocalBlock implements Closeable, Block {
   public LocalBlock(LocalBlockConfig config) throws IOException {
     _randomAccessIO = config.getRandomAccessIO();
     _blockStore = config.getBlockGenerationStore();
-    _wal = config.getWal();
     _volumeId = config.getVolumeId();
     _blockId = config.getBlockId();
     _blockStateStore = config.getBlockStateStore();
@@ -102,16 +99,12 @@ public class LocalBlock implements Closeable, Block {
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "mark dirty")) {
         markDirty();
       }
-      long generation = _onDiskGeneration.incrementAndGet();
-      AsyncCompletableFuture comWalWrite;
-      try (Scope scope = TracerUtil.trace(LocalBlock.class, "wal write")) {
-        comWalWrite = _wal.write(_volumeId, _blockId, generation, blockPosition, bytes, offset, len);
-      }
+      _onDiskGeneration.incrementAndGet();
       writeMetadata();
       try (Scope scope = TracerUtil.trace(LocalBlock.class, "randomaccessio write")) {
         _randomAccessIO.write(blockPosition, bytes, offset, len);
       }
-      return comWalWrite;
+      return AsyncCompletableFuture.completedFuture();
     }
   }
 
@@ -136,9 +129,6 @@ public class LocalBlock implements Closeable, Block {
       _lastStoredGeneration.set(response.getLastStoredGeneration());
       LOGGER.debug("write last store generation volumeId {} blockId {}", _volumeId, _blockId);
       _blockStore.setLastStoredGeneration(_volumeId, _blockId, response.getLastStoredGeneration());
-      LOGGER.debug("release journal volumeId {} blockId {} generation {}", _volumeId, _blockId,
-          response.getLastStoredGeneration());
-      _wal.releaseJournals(_volumeId, _blockId, response.getLastStoredGeneration());
       LOGGER.debug("write metadata {} blockId {}", _volumeId, _blockId);
       writeMetadata();
     }
