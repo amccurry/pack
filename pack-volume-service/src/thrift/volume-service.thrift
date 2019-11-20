@@ -1,4 +1,4 @@
-namespace java pack.volume.remote.generated
+namespace java pack.volume.thrift.generated
 
 typedef i32 int
 typedef i64 long
@@ -86,7 +86,7 @@ struct ListResponse {
   1:list<VolumeInfo> volumeInfos
 }
 
-service PackBrickService
+service PackVolumeService
 {
 
   CreateResponse createVolume(1:CreateRequest request) throws (1:PackVolumeException pe)
