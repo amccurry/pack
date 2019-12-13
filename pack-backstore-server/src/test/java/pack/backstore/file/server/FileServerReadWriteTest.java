@@ -28,12 +28,12 @@ import pack.backstore.thrift.generated.BackstoreServiceException;
 import pack.backstore.thrift.generated.CreateFileRequest;
 import pack.backstore.thrift.generated.DestroyFileRequest;
 import pack.backstore.thrift.generated.ExistsFileRequest;
-import pack.backstore.thrift.generated.ReadFileRequest;
 import pack.backstore.thrift.generated.ReadFileRequestBatch;
-import pack.backstore.thrift.generated.ReadFileResponse;
 import pack.backstore.thrift.generated.ReadFileResponseBatch;
-import pack.backstore.thrift.generated.WriteFileRequest;
+import pack.backstore.thrift.generated.ReadRequest;
+import pack.backstore.thrift.generated.ReadResponse;
 import pack.backstore.thrift.generated.WriteFileRequestBatch;
+import pack.backstore.thrift.generated.WriteRequest;
 import pack.thrift.common.ClientFactory;
 import pack.util.IOUtils;
 
@@ -94,9 +94,9 @@ public class FileServerReadWriteTest {
                        .isExists());
       String lockId = getLockId(filename);
       {
-        List<WriteFileRequest> writeRequests = new ArrayList<>();
-        writeRequests.add(new WriteFileRequest(0, ByteBuffer.wrap(new byte[] { 1, 2, 3 })));
-        writeRequests.add(new WriteFileRequest(4, ByteBuffer.wrap(new byte[] { 3, 2, 1 })));
+        List<WriteRequest> writeRequests = new ArrayList<>();
+        writeRequests.add(new WriteRequest(0, ByteBuffer.wrap(new byte[] { 1, 2, 3 })));
+        writeRequests.add(new WriteRequest(4, ByteBuffer.wrap(new byte[] { 3, 2, 1 })));
 
         WriteFileRequestBatch request = new WriteFileRequestBatch();
         request.setFilename(filename);
@@ -106,22 +106,22 @@ public class FileServerReadWriteTest {
         client.write(request);
       }
       {
-        List<ReadFileRequest> readRequests = new ArrayList<>();
-        readRequests.add(new ReadFileRequest(0, 7));
-        readRequests.add(new ReadFileRequest(4, 3));
+        List<ReadRequest> readRequests = new ArrayList<>();
+        readRequests.add(new ReadRequest(0, 7));
+        readRequests.add(new ReadRequest(4, 3));
 
         ReadFileRequestBatch request = new ReadFileRequestBatch();
         request.setFilename(filename);
         request.setReadRequests(readRequests);
         ReadFileResponseBatch response = client.read(request);
-        List<ReadFileResponse> responses = response.getReadResponses();
+        List<ReadResponse> responses = response.getReadResponses();
         {
-          ReadFileResponse readFileResponse = responses.get(0);
+          ReadResponse readFileResponse = responses.get(0);
           byte[] data = readFileResponse.getData();
           assertTrue(Arrays.equals(new byte[] { 1, 2, 3, 0, 3, 2, 1 }, data));
         }
         {
-          ReadFileResponse readFileResponse = responses.get(1);
+          ReadResponse readFileResponse = responses.get(1);
           byte[] data = readFileResponse.getData();
           assertTrue(Arrays.equals(new byte[] { 3, 2, 1 }, data));
         }
@@ -148,8 +148,8 @@ public class FileServerReadWriteTest {
                           .toString();
     try (FileServiceClient client = getFileServiceClient()) {
       {
-        List<WriteFileRequest> writeRequests = new ArrayList<>();
-        writeRequests.add(new WriteFileRequest(0, ByteBuffer.wrap(new byte[] { 1, 2, 3 })));
+        List<WriteRequest> writeRequests = new ArrayList<>();
+        writeRequests.add(new WriteRequest(0, ByteBuffer.wrap(new byte[] { 1, 2, 3 })));
 
         WriteFileRequestBatch request = new WriteFileRequestBatch();
         request.setFilename(filename);
@@ -163,8 +163,8 @@ public class FileServerReadWriteTest {
         }
       }
       {
-        List<ReadFileRequest> readRequests = new ArrayList<>();
-        readRequests.add(new ReadFileRequest(0, 7));
+        List<ReadRequest> readRequests = new ArrayList<>();
+        readRequests.add(new ReadRequest(0, 7));
 
         ReadFileRequestBatch request = new ReadFileRequestBatch();
         request.setFilename(filename);

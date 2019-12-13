@@ -23,12 +23,30 @@ exception BackstoreServiceException {
   3:string stackTraceStr
 }
 
+struct ReadRequest {
+  1:long position,
+  2:int length
+}
+
+struct ReadResponse {
+  1:binary data
+}
+
+struct WriteRequest {
+  1:long position,
+  2:binary data
+}
+
+struct DiscardRequest {
+  1:long position,
+  2:long length
+}
+
 /*
 ---------------------------------------------------------------
 File Service Section
 ---------------------------------------------------------------
 */
-
 
 struct CreateFileRequest {
   1:string filename,
@@ -37,31 +55,17 @@ struct CreateFileRequest {
 
 struct ReadFileRequestBatch {
   1:string filename,
-  2:list<ReadFileRequest> readRequests
-}
-
-struct ReadFileRequest {
-  1:long position,
-  2:int length
+  2:list<ReadRequest> readRequests
 }
 
 struct ReadFileResponseBatch {
-  1:list<ReadFileResponse> readResponses
-}
-
-struct ReadFileResponse {
-  1:binary data
+  1:list<ReadResponse> readResponses
 }
 
 struct WriteFileRequestBatch {
   1:string filename,
   2:string lockId,
-  3:list<WriteFileRequest> writeRequests
-}
-
-struct WriteFileRequest {
-  1:long position,
-  2:binary data
+  3:list<WriteRequest> writeRequests
 }
 
 struct DestroyFileRequest {
@@ -137,6 +141,58 @@ service BackstoreCoordinatorService
   RegisterFileResponse registerFileLock(1:RegisterFileRequest request) throws (1:BackstoreServiceException e)
 
   void releaseFileLock(1:ReleaseFileRequest request) throws (1:BackstoreServiceException e)
+
+  void noop() throws (1:BackstoreServiceException e)
+
+}
+
+/*
+---------------------------------------------------------------
+Volume Service Section
+---------------------------------------------------------------
+*/
+
+struct ReadVolumeRequestBatch {
+  1:long volumeId,
+  2:list<ReadRequest> readRequests
+}
+
+struct ReadVolumeResponseBatch {
+  1:list<ReadResponse> readResponses
+}
+
+struct WriteVolumeRequestBatch {
+  1:long volumeId,
+  2:list<WriteRequest> writeRequests
+}
+
+struct DiscardRequestBatch {
+  1:long volumeId,
+  2:list<DiscardRequest> discardRequests
+}
+
+struct CreateVolumeRequest {
+  1:long volumeId,
+  2:long length,
+  3:int blockSize
+}
+
+struct DestroyVolumeRequest {
+  1:long volumeId
+}
+
+service BackstoreVolumeService
+{
+
+  void createVolume(1:CreateVolumeRequest request) throws (1:BackstoreServiceException e)
+
+  void destroyVolume(1:DestroyVolumeRequest request) throws (1:BackstoreServiceException e)
+
+  ReadVolumeResponseBatch readVolume(1:ReadVolumeRequestBatch request) throws (1:BackstoreServiceException e)
+
+  void writeVolume(1:WriteVolumeRequestBatch request) throws (1:BackstoreServiceException e)
+
+  void discardVolume(1:DiscardRequestBatch request) throws (1:BackstoreServiceException e)
 
   void noop() throws (1:BackstoreServiceException e)
 

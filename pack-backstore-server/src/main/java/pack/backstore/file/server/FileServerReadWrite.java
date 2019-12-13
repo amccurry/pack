@@ -23,12 +23,12 @@ import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 
 import pack.backstore.thrift.generated.BackstoreServiceException;
-import pack.backstore.thrift.generated.ReadFileRequest;
 import pack.backstore.thrift.generated.ReadFileRequestBatch;
-import pack.backstore.thrift.generated.ReadFileResponse;
 import pack.backstore.thrift.generated.ReadFileResponseBatch;
-import pack.backstore.thrift.generated.WriteFileRequest;
+import pack.backstore.thrift.generated.ReadRequest;
+import pack.backstore.thrift.generated.ReadResponse;
 import pack.backstore.thrift.generated.WriteFileRequestBatch;
+import pack.backstore.thrift.generated.WriteRequest;
 import pack.thrift.common.BackstoreServiceExceptionHelper;
 import pack.util.ExecutorUtil;
 import pack.util.IOUtils;
@@ -73,9 +73,9 @@ public class FileServerReadWrite extends FileServerAdmin implements BackstoreSer
     FileHandle fileHandle = getFileHandle(request.getFilename());
     try (PackLock c = PackLock.create(getFileReadLock(fileHandle))) {
       FileChannel channel = fileHandle.getChannel();
-      List<ReadFileResponse> responses = new ArrayList<>();
-      List<ReadFileRequest> requests = request.getReadRequests();
-      for (ReadFileRequest readFileRequest : requests) {
+      List<ReadResponse> responses = new ArrayList<>();
+      List<ReadRequest> requests = request.getReadRequests();
+      for (ReadRequest readFileRequest : requests) {
         try {
           responses.add(read(readFileRequest, channel));
         } catch (IOException e) {
@@ -105,8 +105,8 @@ public class FileServerReadWrite extends FileServerAdmin implements BackstoreSer
     validateLockId(request);
     try (PackLock c = PackLock.create(getFileWriteLock(fileHandle))) {
       FileChannel channel = fileHandle.getChannel();
-      List<WriteFileRequest> writeRequests = request.getWriteRequests();
-      for (WriteFileRequest writeFileRequest : writeRequests) {
+      List<WriteRequest> writeRequests = request.getWriteRequests();
+      for (WriteRequest writeFileRequest : writeRequests) {
         try {
           write(writeFileRequest, channel);
         } catch (IOException e) {
@@ -123,7 +123,7 @@ public class FileServerReadWrite extends FileServerAdmin implements BackstoreSer
     _lockIdManager.validateLockId(request.getFilename(), request.getLockId());
   }
 
-  private void write(WriteFileRequest writeFileRequest, FileChannel channel) throws IOException {
+  private void write(WriteRequest writeFileRequest, FileChannel channel) throws IOException {
     ByteBuffer buffer = writeFileRequest.bufferForData();
     long position = writeFileRequest.getPosition();
     while (buffer.hasRemaining()) {
@@ -131,14 +131,14 @@ public class FileServerReadWrite extends FileServerAdmin implements BackstoreSer
     }
   }
 
-  private ReadFileResponse read(ReadFileRequest readFileRequest, FileChannel channel) throws IOException {
+  private ReadResponse read(ReadRequest readFileRequest, FileChannel channel) throws IOException {
     long position = readFileRequest.getPosition();
     ByteBuffer buffer = ByteBuffer.allocate(readFileRequest.getLength());
     while (buffer.hasRemaining()) {
       position += channel.read(buffer, position);
     }
     buffer.flip();
-    return new ReadFileResponse(buffer);
+    return new ReadResponse(buffer);
   }
 
   private FileHandle getFileHandle(String filename) throws BackstoreServiceException {
