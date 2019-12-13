@@ -13,6 +13,8 @@ import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.backstore.thrift.common.BackstoreServiceExceptionHelper;
+import pack.backstore.thrift.common.BaseServer;
 import pack.backstore.thrift.generated.BackstoreCoordinatorService;
 import pack.backstore.thrift.generated.BackstoreServiceException;
 import pack.backstore.thrift.generated.FileLockInfoRequest;
@@ -20,8 +22,6 @@ import pack.backstore.thrift.generated.FileLockInfoResponse;
 import pack.backstore.thrift.generated.RegisterFileRequest;
 import pack.backstore.thrift.generated.RegisterFileResponse;
 import pack.backstore.thrift.generated.ReleaseFileRequest;
-import pack.thrift.common.BackstoreServiceExceptionHelper;
-import pack.thrift.common.BaseServer;
 import pack.util.PackLock;
 
 public class CoordinatorServer extends BaseServer
@@ -33,8 +33,7 @@ public class CoordinatorServer extends BaseServer
   private final ReentrantReadWriteLock _lock = new ReentrantReadWriteLock(true);
 
   public CoordinatorServer(CoordinatorServerConfig config) throws TTransportException {
-    super(LOGGER, config.getHostname(), config.getPort(), config.getClientTimeout(), config.getMinThreads(),
-        config.getMaxThreads());
+    super(LOGGER, config);
   }
 
   @Override

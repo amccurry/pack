@@ -23,6 +23,7 @@ import org.slf4j.LoggerFactory;
 import pack.backstore.file.client.FileServiceClient;
 import pack.backstore.file.client.FileServiceClientConfig;
 import pack.backstore.file.client.FileServiceClientConfig.FileServiceClientConfigBuilder;
+import pack.backstore.thrift.common.ClientFactory;
 import pack.backstore.thrift.generated.BackstoreError;
 import pack.backstore.thrift.generated.BackstoreServiceException;
 import pack.backstore.thrift.generated.CreateFileRequest;
@@ -34,7 +35,6 @@ import pack.backstore.thrift.generated.ReadRequest;
 import pack.backstore.thrift.generated.ReadResponse;
 import pack.backstore.thrift.generated.WriteFileRequestBatch;
 import pack.backstore.thrift.generated.WriteRequest;
-import pack.thrift.common.ClientFactory;
 import pack.util.IOUtils;
 
 public class FileServerReadWriteTest {

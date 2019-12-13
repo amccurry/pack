@@ -1,4 +1,4 @@
-package pack.thrift.common;
+package pack.backstore.thrift.common;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -17,6 +17,7 @@ import org.apache.thrift.transport.TServerTransport;
 import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 
+import pack.backstore.config.ServerConfig;
 import pack.util.IOUtils;
 
 public abstract class BaseServer implements Closeable {
@@ -30,13 +31,12 @@ public abstract class BaseServer implements Closeable {
   private final int _minThreads;
   private final int _maxThreads;
 
-  public BaseServer(Logger logger, String hostname, int port, int clientTimeout, int minThreads, int maxThreads)
-      throws TTransportException {
+  public BaseServer(Logger logger, ServerConfig serverConfig) throws TTransportException {
     _logger = logger;
-    _minThreads = minThreads;
-    _maxThreads = maxThreads;
-    InetSocketAddress bindAddr = new InetSocketAddress(hostname, port);
-    _serverTransport = createServerTransport(bindAddr, clientTimeout);
+    _minThreads = serverConfig.getMinThreads();
+    _maxThreads = serverConfig.getMaxThreads();
+    InetSocketAddress bindAddr = new InetSocketAddress(serverConfig.getHostname(), serverConfig.getPort());
+    _serverTransport = createServerTransport(bindAddr, serverConfig.getClientTimeout());
     _server = createServer();
   }
 

@@ -22,6 +22,7 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.github.benmanes.caffeine.cache.RemovalListener;
 
+import pack.backstore.thrift.common.BackstoreServiceExceptionHelper;
 import pack.backstore.thrift.generated.BackstoreServiceException;
 import pack.backstore.thrift.generated.ReadFileRequestBatch;
 import pack.backstore.thrift.generated.ReadFileResponseBatch;
@@ -29,7 +30,6 @@ import pack.backstore.thrift.generated.ReadRequest;
 import pack.backstore.thrift.generated.ReadResponse;
 import pack.backstore.thrift.generated.WriteFileRequestBatch;
 import pack.backstore.thrift.generated.WriteRequest;
-import pack.thrift.common.BackstoreServiceExceptionHelper;
 import pack.util.ExecutorUtil;
 import pack.util.IOUtils;
 import pack.util.PackLock;

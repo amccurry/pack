@@ -3,11 +3,11 @@ package pack.backstore.coordinator.server;
 import pack.backstore.coordinator.client.CoordinatorServiceClient;
 import pack.backstore.coordinator.client.CoordinatorServiceClientConfig;
 import pack.backstore.file.server.LockIdManager;
+import pack.backstore.thrift.common.BackstoreServiceExceptionHelper;
+import pack.backstore.thrift.common.ClientFactory;
 import pack.backstore.thrift.generated.BackstoreServiceException;
 import pack.backstore.thrift.generated.FileLockInfoRequest;
 import pack.backstore.thrift.generated.FileLockInfoResponse;
-import pack.thrift.common.BackstoreServiceExceptionHelper;
-import pack.thrift.common.ClientFactory;
 
 public class CoordinatorLockIdManager implements LockIdManager, BackstoreServiceExceptionHelper {
 

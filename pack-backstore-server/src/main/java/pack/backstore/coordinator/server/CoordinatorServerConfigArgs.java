@@ -1,14 +1,12 @@
 package pack.backstore.coordinator.server;
 
-import java.io.IOException;
-
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 
+import pack.backstore.config.ServerConfigArgs;
 import pack.backstore.coordinator.server.CoordinatorServerConfig.CoordinatorServerConfigBuilder;
 
 public class CoordinatorServerConfigArgs {
@@ -19,8 +17,12 @@ public class CoordinatorServerConfigArgs {
   private static final String ZK_PREFIX_LONG = "zkPrefix";
   private static final String ZK_PREFIX_SHORT = "p";
 
-  public static CoordinatorServerConfig create(String[] args) throws ParseException, IOException {
+  public static CoordinatorServerConfig create(String[] args) throws Exception {
     Options options = new Options();
+
+    ServerConfigArgs.addServerOptions(options, CoordinatorServerConfig.builder()
+                                                                      .build());
+
     {
       Option option = new Option(ZK_SHORT, ZK_LONG, true, "ZooKeeper connection string");
       option.setRequired(true);
@@ -37,7 +39,10 @@ public class CoordinatorServerConfigArgs {
     CommandLineParser parser = new DefaultParser();
     CommandLine commandLine = parser.parse(options, args);
 
-     CoordinatorServerConfigBuilder builder = CoordinatorServerConfig.builder();
+    CoordinatorServerConfigBuilder builder = CoordinatorServerConfig.builder();
+
+    ServerConfigArgs.configureOptions(commandLine, builder);
+
     if (commandLine.hasOption(ZK_SHORT)) {
       String zkConnection = commandLine.getOptionValue(ZK_SHORT);
       builder.zkConnection(zkConnection);

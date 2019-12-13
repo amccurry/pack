@@ -16,6 +16,8 @@ import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import pack.backstore.thrift.common.BackstoreServiceExceptionHelper;
+import pack.backstore.thrift.common.BaseServer;
 import pack.backstore.thrift.generated.BackstoreFileService;
 import pack.backstore.thrift.generated.BackstoreServiceException;
 import pack.backstore.thrift.generated.CreateFileRequest;
@@ -24,8 +26,6 @@ import pack.backstore.thrift.generated.ExistsFileRequest;
 import pack.backstore.thrift.generated.ExistsFileResponse;
 import pack.backstore.thrift.generated.ListFilesRequest;
 import pack.backstore.thrift.generated.ListFilesResponse;
-import pack.thrift.common.BackstoreServiceExceptionHelper;
-import pack.thrift.common.BaseServer;
 import pack.util.PackLock;
 
 public abstract class FileServerAdmin extends BaseServer
@@ -41,8 +41,7 @@ public abstract class FileServerAdmin extends BaseServer
   }
 
   public FileServerAdmin(Logger logger, FileServerConfig config) throws TTransportException {
-    super(logger, config.getHostname(), config.getPort(), config.getClientTimeout(), config.getMinThreads(),
-        config.getMaxThreads());
+    super(logger, config);
     _storeDir = config.getStoreDir();
     _storeDir.mkdirs();
   }

@@ -1,4 +1,4 @@
-package pack.thrift.common;
+package pack.backstore.thrift.common;
 
 import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.transport.TSocket;

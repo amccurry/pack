@@ -7,7 +7,8 @@ import org.apache.thrift.transport.TSocket;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.thrift.common.ClientConfig;
+import pack.backstore.coordinator.server.CoordinatorServerConfig;
+import pack.backstore.thrift.common.ClientConfig;
 
 @Value
 @Builder(toBuilder = true)
@@ -16,7 +17,7 @@ public class CoordinatorServiceClientConfig implements ClientConfig<CoordinatorS
   String hostname;
 
   @Builder.Default
-  int port = 8312;
+  int port = CoordinatorServerConfig.DEFAULT_PORT;
 
   @Builder.Default
   int clientTimeout = (int) TimeUnit.SECONDS.toMillis(10);

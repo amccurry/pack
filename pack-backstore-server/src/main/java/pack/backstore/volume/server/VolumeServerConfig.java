@@ -1,6 +1,5 @@
-package pack.backstore.file.server;
+package pack.backstore.volume.server;
 
-import java.io.File;
 import java.util.concurrent.TimeUnit;
 
 import lombok.Builder;
@@ -9,11 +8,9 @@ import pack.backstore.config.ServerConfig;
 
 @Value
 @Builder(toBuilder = true)
-public class FileServerConfig implements ServerConfig {
-  
-  public static int DEFAULT_PORT = 8362;
+public class VolumeServerConfig implements ServerConfig {
 
-  File storeDir;
+  public static int DEFAULT_PORT = 8364;
 
   @Builder.Default
   String hostname = "0.0.0.0";
@@ -29,11 +26,5 @@ public class FileServerConfig implements ServerConfig {
 
   @Builder.Default
   int maxThreads = 100;
-
-  @Builder.Default
-  int maxFileHandles = 1000;
-
-  @Builder.Default
-  LockIdManager lockIdManager = LockIdManager.NO_LOCKS;
 
 }

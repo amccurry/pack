@@ -1,4 +1,4 @@
-package pack.backstore.file.client;
+package pack.backstore.volume.client;
 
 import java.util.concurrent.TimeUnit;
 
@@ -7,17 +7,17 @@ import org.apache.thrift.transport.TSocket;
 
 import lombok.Builder;
 import lombok.Value;
-import pack.backstore.file.server.FileServerConfig;
 import pack.backstore.thrift.common.ClientConfig;
+import pack.backstore.volume.server.VolumeServerConfig;
 
 @Value
 @Builder(toBuilder = true)
-public class FileServiceClientConfig implements ClientConfig<FileServiceClient> {
+public class VolumeServiceClientConfig implements ClientConfig<VolumeServiceClient> {
 
   String hostname;
 
   @Builder.Default
-  int port = FileServerConfig.DEFAULT_PORT;
+  int port = VolumeServerConfig.DEFAULT_PORT;
 
   @Builder.Default
   int clientTimeout = (int) TimeUnit.SECONDS.toMillis(10);
@@ -26,8 +26,8 @@ public class FileServiceClientConfig implements ClientConfig<FileServiceClient> 
   int maxFrameLength = 1024 * 1024;
 
   @Override
-  public FileServiceClient createClient(TProtocol protocol, TSocket transport) {
-    return new FileServiceClient(protocol, transport);
+  public VolumeServiceClient createClient(TProtocol protocol, TSocket transport) {
+    return new VolumeServiceClient(protocol, transport);
   }
 
 }

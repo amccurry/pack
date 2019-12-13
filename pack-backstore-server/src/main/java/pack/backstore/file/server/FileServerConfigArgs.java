@@ -8,8 +8,8 @@ import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.DefaultParser;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 
+import pack.backstore.config.ServerConfigArgs;
 import pack.backstore.file.server.FileServerConfig.FileServerConfigBuilder;
 
 public class FileServerConfigArgs {
@@ -17,8 +17,12 @@ public class FileServerConfigArgs {
   private static final String STORE_DIR_LONG = "storedir";
   private static final String STORE_DIR_SHORT = "d";
 
-  public static FileServerConfig create(String[] args) throws ParseException, IOException {
+  public static FileServerConfig create(String[] args) throws Exception {
     Options options = new Options();
+
+    ServerConfigArgs.addServerOptions(options, FileServerConfig.builder()
+                                                               .build());
+
     {
       Option option = new Option(STORE_DIR_SHORT, STORE_DIR_LONG, true, "Store directory");
       option.setRequired(true);
@@ -29,6 +33,9 @@ public class FileServerConfigArgs {
     CommandLine commandLine = parser.parse(options, args);
 
     FileServerConfigBuilder builder = FileServerConfig.builder();
+
+    ServerConfigArgs.configureOptions(commandLine, builder);
+
     if (commandLine.hasOption(STORE_DIR_SHORT)) {
       String dir = commandLine.getOptionValue(STORE_DIR_SHORT);
       File storeDir = new File(dir);

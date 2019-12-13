@@ -14,10 +14,10 @@ import pack.backstore.coordinator.client.CoordinatorServiceClientConfig.Coordina
 import pack.backstore.coordinator.server.CoordinatorServerConfig.CoordinatorServerConfigBuilder;
 import pack.backstore.file.server.FileServerConfig;
 import pack.backstore.file.server.FileServerReadWriteTest;
+import pack.backstore.thrift.common.ClientFactory;
 import pack.backstore.thrift.generated.RegisterFileRequest;
 import pack.backstore.thrift.generated.RegisterFileResponse;
 import pack.backstore.thrift.generated.ReleaseFileRequest;
-import pack.thrift.common.ClientFactory;
 import pack.util.IOUtils;
 
 public class CoordinatorServerTest extends FileServerReadWriteTest {

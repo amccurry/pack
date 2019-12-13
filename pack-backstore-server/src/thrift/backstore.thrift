@@ -174,7 +174,9 @@ struct DiscardRequestBatch {
 struct CreateVolumeRequest {
   1:long volumeId,
   2:long length,
-  3:int blockSize
+  3:int blockSize,
+  4:int dataPartCount,
+  5:int parityPartCount
 }
 
 struct DestroyVolumeRequest {

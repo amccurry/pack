@@ -14,6 +14,8 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
   private static final org.apache.thrift.protocol.TField VOLUME_ID_FIELD_DESC = new org.apache.thrift.protocol.TField("volumeId", org.apache.thrift.protocol.TType.I64, (short)1);
   private static final org.apache.thrift.protocol.TField LENGTH_FIELD_DESC = new org.apache.thrift.protocol.TField("length", org.apache.thrift.protocol.TType.I64, (short)2);
   private static final org.apache.thrift.protocol.TField BLOCK_SIZE_FIELD_DESC = new org.apache.thrift.protocol.TField("blockSize", org.apache.thrift.protocol.TType.I32, (short)3);
+  private static final org.apache.thrift.protocol.TField DATA_PART_COUNT_FIELD_DESC = new org.apache.thrift.protocol.TField("dataPartCount", org.apache.thrift.protocol.TType.I32, (short)4);
+  private static final org.apache.thrift.protocol.TField PARITY_PART_COUNT_FIELD_DESC = new org.apache.thrift.protocol.TField("parityPartCount", org.apache.thrift.protocol.TType.I32, (short)5);
 
   private static final org.apache.thrift.scheme.SchemeFactory STANDARD_SCHEME_FACTORY = new CreateVolumeRequestStandardSchemeFactory();
   private static final org.apache.thrift.scheme.SchemeFactory TUPLE_SCHEME_FACTORY = new CreateVolumeRequestTupleSchemeFactory();
@@ -21,12 +23,16 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
   public long volumeId; // required
   public long length; // required
   public int blockSize; // required
+  public int dataPartCount; // required
+  public int parityPartCount; // required
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
   public enum _Fields implements org.apache.thrift.TFieldIdEnum {
     VOLUME_ID((short)1, "volumeId"),
     LENGTH((short)2, "length"),
-    BLOCK_SIZE((short)3, "blockSize");
+    BLOCK_SIZE((short)3, "blockSize"),
+    DATA_PART_COUNT((short)4, "dataPartCount"),
+    PARITY_PART_COUNT((short)5, "parityPartCount");
 
     private static final java.util.Map<java.lang.String, _Fields> byName = new java.util.HashMap<java.lang.String, _Fields>();
 
@@ -48,6 +54,10 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
           return LENGTH;
         case 3: // BLOCK_SIZE
           return BLOCK_SIZE;
+        case 4: // DATA_PART_COUNT
+          return DATA_PART_COUNT;
+        case 5: // PARITY_PART_COUNT
+          return PARITY_PART_COUNT;
         default:
           return null;
       }
@@ -92,6 +102,8 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
   private static final int __VOLUMEID_ISSET_ID = 0;
   private static final int __LENGTH_ISSET_ID = 1;
   private static final int __BLOCKSIZE_ISSET_ID = 2;
+  private static final int __DATAPARTCOUNT_ISSET_ID = 3;
+  private static final int __PARITYPARTCOUNT_ISSET_ID = 4;
   private byte __isset_bitfield = 0;
   public static final java.util.Map<_Fields, org.apache.thrift.meta_data.FieldMetaData> metaDataMap;
   static {
@@ -101,6 +113,10 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
     tmpMap.put(_Fields.LENGTH, new org.apache.thrift.meta_data.FieldMetaData("length", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I64        , "long")));
     tmpMap.put(_Fields.BLOCK_SIZE, new org.apache.thrift.meta_data.FieldMetaData("blockSize", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32        , "int")));
+    tmpMap.put(_Fields.DATA_PART_COUNT, new org.apache.thrift.meta_data.FieldMetaData("dataPartCount", org.apache.thrift.TFieldRequirementType.DEFAULT, 
+        new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32        , "int")));
+    tmpMap.put(_Fields.PARITY_PART_COUNT, new org.apache.thrift.meta_data.FieldMetaData("parityPartCount", org.apache.thrift.TFieldRequirementType.DEFAULT, 
         new org.apache.thrift.meta_data.FieldValueMetaData(org.apache.thrift.protocol.TType.I32        , "int")));
     metaDataMap = java.util.Collections.unmodifiableMap(tmpMap);
     org.apache.thrift.meta_data.FieldMetaData.addStructMetaDataMap(CreateVolumeRequest.class, metaDataMap);
@@ -112,7 +128,9 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
   public CreateVolumeRequest(
     long volumeId,
     long length,
-    int blockSize)
+    int blockSize,
+    int dataPartCount,
+    int parityPartCount)
   {
     this();
     this.volumeId = volumeId;
@@ -121,6 +139,10 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
     setLengthIsSet(true);
     this.blockSize = blockSize;
     setBlockSizeIsSet(true);
+    this.dataPartCount = dataPartCount;
+    setDataPartCountIsSet(true);
+    this.parityPartCount = parityPartCount;
+    setParityPartCountIsSet(true);
   }
 
   /**
@@ -131,6 +153,8 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
     this.volumeId = other.volumeId;
     this.length = other.length;
     this.blockSize = other.blockSize;
+    this.dataPartCount = other.dataPartCount;
+    this.parityPartCount = other.parityPartCount;
   }
 
   public CreateVolumeRequest deepCopy() {
@@ -145,6 +169,10 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
     this.length = 0;
     setBlockSizeIsSet(false);
     this.blockSize = 0;
+    setDataPartCountIsSet(false);
+    this.dataPartCount = 0;
+    setParityPartCountIsSet(false);
+    this.parityPartCount = 0;
   }
 
   public long getVolumeId() {
@@ -216,6 +244,52 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
     __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __BLOCKSIZE_ISSET_ID, value);
   }
 
+  public int getDataPartCount() {
+    return this.dataPartCount;
+  }
+
+  public CreateVolumeRequest setDataPartCount(int dataPartCount) {
+    this.dataPartCount = dataPartCount;
+    setDataPartCountIsSet(true);
+    return this;
+  }
+
+  public void unsetDataPartCount() {
+    __isset_bitfield = org.apache.thrift.EncodingUtils.clearBit(__isset_bitfield, __DATAPARTCOUNT_ISSET_ID);
+  }
+
+  /** Returns true if field dataPartCount is set (has been assigned a value) and false otherwise */
+  public boolean isSetDataPartCount() {
+    return org.apache.thrift.EncodingUtils.testBit(__isset_bitfield, __DATAPARTCOUNT_ISSET_ID);
+  }
+
+  public void setDataPartCountIsSet(boolean value) {
+    __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __DATAPARTCOUNT_ISSET_ID, value);
+  }
+
+  public int getParityPartCount() {
+    return this.parityPartCount;
+  }
+
+  public CreateVolumeRequest setParityPartCount(int parityPartCount) {
+    this.parityPartCount = parityPartCount;
+    setParityPartCountIsSet(true);
+    return this;
+  }
+
+  public void unsetParityPartCount() {
+    __isset_bitfield = org.apache.thrift.EncodingUtils.clearBit(__isset_bitfield, __PARITYPARTCOUNT_ISSET_ID);
+  }
+
+  /** Returns true if field parityPartCount is set (has been assigned a value) and false otherwise */
+  public boolean isSetParityPartCount() {
+    return org.apache.thrift.EncodingUtils.testBit(__isset_bitfield, __PARITYPARTCOUNT_ISSET_ID);
+  }
+
+  public void setParityPartCountIsSet(boolean value) {
+    __isset_bitfield = org.apache.thrift.EncodingUtils.setBit(__isset_bitfield, __PARITYPARTCOUNT_ISSET_ID, value);
+  }
+
   public void setFieldValue(_Fields field, @org.apache.thrift.annotation.Nullable java.lang.Object value) {
     switch (field) {
     case VOLUME_ID:
@@ -242,6 +316,22 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
       }
       break;
 
+    case DATA_PART_COUNT:
+      if (value == null) {
+        unsetDataPartCount();
+      } else {
+        setDataPartCount((java.lang.Integer)value);
+      }
+      break;
+
+    case PARITY_PART_COUNT:
+      if (value == null) {
+        unsetParityPartCount();
+      } else {
+        setParityPartCount((java.lang.Integer)value);
+      }
+      break;
+
     }
   }
 
@@ -256,6 +346,12 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
 
     case BLOCK_SIZE:
       return getBlockSize();
+
+    case DATA_PART_COUNT:
+      return getDataPartCount();
+
+    case PARITY_PART_COUNT:
+      return getParityPartCount();
 
     }
     throw new java.lang.IllegalStateException();
@@ -274,6 +370,10 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
       return isSetLength();
     case BLOCK_SIZE:
       return isSetBlockSize();
+    case DATA_PART_COUNT:
+      return isSetDataPartCount();
+    case PARITY_PART_COUNT:
+      return isSetParityPartCount();
     }
     throw new java.lang.IllegalStateException();
   }
@@ -320,6 +420,24 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
         return false;
     }
 
+    boolean this_present_dataPartCount = true;
+    boolean that_present_dataPartCount = true;
+    if (this_present_dataPartCount || that_present_dataPartCount) {
+      if (!(this_present_dataPartCount && that_present_dataPartCount))
+        return false;
+      if (this.dataPartCount != that.dataPartCount)
+        return false;
+    }
+
+    boolean this_present_parityPartCount = true;
+    boolean that_present_parityPartCount = true;
+    if (this_present_parityPartCount || that_present_parityPartCount) {
+      if (!(this_present_parityPartCount && that_present_parityPartCount))
+        return false;
+      if (this.parityPartCount != that.parityPartCount)
+        return false;
+    }
+
     return true;
   }
 
@@ -332,6 +450,10 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
     hashCode = hashCode * 8191 + org.apache.thrift.TBaseHelper.hashCode(length);
 
     hashCode = hashCode * 8191 + blockSize;
+
+    hashCode = hashCode * 8191 + dataPartCount;
+
+    hashCode = hashCode * 8191 + parityPartCount;
 
     return hashCode;
   }
@@ -374,6 +496,26 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
         return lastComparison;
       }
     }
+    lastComparison = java.lang.Boolean.valueOf(isSetDataPartCount()).compareTo(other.isSetDataPartCount());
+    if (lastComparison != 0) {
+      return lastComparison;
+    }
+    if (isSetDataPartCount()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.dataPartCount, other.dataPartCount);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+    }
+    lastComparison = java.lang.Boolean.valueOf(isSetParityPartCount()).compareTo(other.isSetParityPartCount());
+    if (lastComparison != 0) {
+      return lastComparison;
+    }
+    if (isSetParityPartCount()) {
+      lastComparison = org.apache.thrift.TBaseHelper.compareTo(this.parityPartCount, other.parityPartCount);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+    }
     return 0;
   }
 
@@ -405,6 +547,14 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
     if (!first) sb.append(", ");
     sb.append("blockSize:");
     sb.append(this.blockSize);
+    first = false;
+    if (!first) sb.append(", ");
+    sb.append("dataPartCount:");
+    sb.append(this.dataPartCount);
+    first = false;
+    if (!first) sb.append(", ");
+    sb.append("parityPartCount:");
+    sb.append(this.parityPartCount);
     first = false;
     sb.append(")");
     return sb.toString();
@@ -475,6 +625,22 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
               org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
             }
             break;
+          case 4: // DATA_PART_COUNT
+            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
+              struct.dataPartCount = iprot.readI32();
+              struct.setDataPartCountIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+            }
+            break;
+          case 5: // PARITY_PART_COUNT
+            if (schemeField.type == org.apache.thrift.protocol.TType.I32) {
+              struct.parityPartCount = iprot.readI32();
+              struct.setParityPartCountIsSet(true);
+            } else { 
+              org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
+            }
+            break;
           default:
             org.apache.thrift.protocol.TProtocolUtil.skip(iprot, schemeField.type);
         }
@@ -498,6 +664,12 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
       oprot.writeFieldEnd();
       oprot.writeFieldBegin(BLOCK_SIZE_FIELD_DESC);
       oprot.writeI32(struct.blockSize);
+      oprot.writeFieldEnd();
+      oprot.writeFieldBegin(DATA_PART_COUNT_FIELD_DESC);
+      oprot.writeI32(struct.dataPartCount);
+      oprot.writeFieldEnd();
+      oprot.writeFieldBegin(PARITY_PART_COUNT_FIELD_DESC);
+      oprot.writeI32(struct.parityPartCount);
       oprot.writeFieldEnd();
       oprot.writeFieldStop();
       oprot.writeStructEnd();
@@ -526,7 +698,13 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
       if (struct.isSetBlockSize()) {
         optionals.set(2);
       }
-      oprot.writeBitSet(optionals, 3);
+      if (struct.isSetDataPartCount()) {
+        optionals.set(3);
+      }
+      if (struct.isSetParityPartCount()) {
+        optionals.set(4);
+      }
+      oprot.writeBitSet(optionals, 5);
       if (struct.isSetVolumeId()) {
         oprot.writeI64(struct.volumeId);
       }
@@ -536,12 +714,18 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
       if (struct.isSetBlockSize()) {
         oprot.writeI32(struct.blockSize);
       }
+      if (struct.isSetDataPartCount()) {
+        oprot.writeI32(struct.dataPartCount);
+      }
+      if (struct.isSetParityPartCount()) {
+        oprot.writeI32(struct.parityPartCount);
+      }
     }
 
     @Override
     public void read(org.apache.thrift.protocol.TProtocol prot, CreateVolumeRequest struct) throws org.apache.thrift.TException {
       org.apache.thrift.protocol.TTupleProtocol iprot = (org.apache.thrift.protocol.TTupleProtocol) prot;
-      java.util.BitSet incoming = iprot.readBitSet(3);
+      java.util.BitSet incoming = iprot.readBitSet(5);
       if (incoming.get(0)) {
         struct.volumeId = iprot.readI64();
         struct.setVolumeIdIsSet(true);
@@ -553,6 +737,14 @@ public class CreateVolumeRequest implements org.apache.thrift.TBase<CreateVolume
       if (incoming.get(2)) {
         struct.blockSize = iprot.readI32();
         struct.setBlockSizeIsSet(true);
+      }
+      if (incoming.get(3)) {
+        struct.dataPartCount = iprot.readI32();
+        struct.setDataPartCountIsSet(true);
+      }
+      if (incoming.get(4)) {
+        struct.parityPartCount = iprot.readI32();
+        struct.setParityPartCountIsSet(true);
       }
     }
   }

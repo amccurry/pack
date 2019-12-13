@@ -1,4 +1,4 @@
-package pack.thrift.common;
+package pack.backstore.thrift.common;
 
 import java.io.IOException;
 
