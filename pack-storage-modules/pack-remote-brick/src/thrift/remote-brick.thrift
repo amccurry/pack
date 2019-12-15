@@ -31,9 +31,7 @@ struct ReadResponse {
 struct WriteRequest {
   1:string brickId,
   2:long position,
-  3:binary data,
-  4:bool initialize,
-  5:long generationId
+  3:binary data
 }
 
 struct WriteResponse {
@@ -66,6 +64,7 @@ struct ListBricksResponse {
 
 service PackBrickService
 {
+
   CreateResponse create(1:CreateRequest request) throws (1:PackBrickException pe)
 
   ReadResponse read(1:ReadRequest request) throws (1:PackBrickException pe)

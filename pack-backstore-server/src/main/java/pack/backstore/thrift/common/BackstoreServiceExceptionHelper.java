@@ -71,4 +71,20 @@ public interface BackstoreServiceExceptionHelper {
     return newException(BackstoreError.IO_ERROR, e.getMessage(), e);
   }
 
+  public default BackstoreServiceException lengthCannotBeLessThanZero(long volumeId, long length) {
+    return createError(BackstoreError.LENGTH_INVALID_ERROR,
+        "Read from volume " + volumeId + " @ length " + length + " < 0");
+  }
+
+  public default BackstoreServiceException positionCannotBeLessThanZero(long volumeId, long position) {
+    return createError(BackstoreError.POSITION_INVALID_ERROR,
+        "Read from volume " + volumeId + " @ position " + position + " < 0");
+  }
+
+  public default BackstoreServiceException readBeyondEndOfVolume(long volumeId, long volumeLength, int length,
+      long position) {
+    return createError(BackstoreError.POSITION_AND_LENGTH_INVALID_ERROR, "Read from volume " + volumeId + " with volume length " + volumeLength
+        + " @ position " + position + " with length " + length + " reads beyond the end of the volume");
+  }
+
 }
