@@ -15,7 +15,7 @@
 		<parcel.version>${maven.build.timestamp}</parcel.version>
 		<maven.build.timestamp.format>yy.MM.dd.HH.mm</maven.build.timestamp.format>
 
-		<hadoop.version>2.6.0-cdh5.10.0</hadoop.version>
+		<hadoop.version>2.7.0</hadoop.version>
 		<jackson.version>2.9.7</jackson.version>
 		<commons-cli.version>1.2</commons-cli.version>
 		<sizeof.version>0.3.0</sizeof.version>
